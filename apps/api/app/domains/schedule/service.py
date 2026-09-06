@@ -2,9 +2,10 @@
 changes, and the abandon-matches hooks consumed by 001/002. Per
 specs/003-schedule-rotation/plan.md and research.md."""
 
+import random
 import uuid
 from collections.abc import Callable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from sqlalchemy import delete, exists, or_, select, update
@@ -382,10 +383,11 @@ async def _generate_individual_mixed_matches(
     (`stage2_pair_players` -> `team_matchup_stage2`), re-reading
     `PairHistory` (which reflects every match `flush()`-ed by earlier waves
     in this same call, per `create_match_with_participants`) so each wave
-    tends to surface pairs not yet seen. Stops the instant a wave would add
-    no new teammate pair — beyond that point the pipeline is deterministic
-    given unchanged inputs, so a second attempt could only repeat the exact
-    same (already-seen) result.
+    tends to surface pairs not yet seen. A wave that adds no new teammate
+    pair just means this rotation (see below) is stuck given the current
+    `PairHistory` — not that every rotation is; only once a full cycle of
+    rotations in a row adds nothing does the loop give up, since the
+    pipeline is otherwise deterministic given unchanged inputs.
 
     `PairHistory` counts teammates and opponents alike (003 research.md
     #5), so every pair in a single match gets incremented equally — on its
@@ -397,7 +399,41 @@ async def _generate_individual_mixed_matches(
     it doesn't conflate teammates with opponents), pushing the greedy
     search toward genuinely new pairings each wave; the matchup stage still
     uses the unpenalized `pair_count_lookup`, since minimizing repeat
-    opponents is exactly what it's already meant to do."""
+    opponents is exactly what it's already meant to do.
+
+    `greedy_pair_by_cost`'s anchor (`remaining.pop(0)`, i.e. the list's
+    first element) always ends up paired, never the odd one left sitting
+    out — so with an unrotated roster order the same player would be the
+    anchor (and, transitively, the anchor team going into
+    `team_matchup_stage2`) every single wave, guaranteeing them a match
+    every wave while the other players merely take turns sitting out.
+    `roster_ids` isn't priority-ordered here (unlike fair_rotation's
+    stage-1 selection), so rotating it each wave is safe and spreads the
+    anchor role round-robin across the whole roster instead of pinning it
+    to whoever the roster query happens to return first.
+
+    Rotating the anchor alone only rules out the single-player-always-plays
+    extreme — it doesn't bound how unevenly the OTHER players' per-round
+    appearance counts can land (confirmed by simulation: 6 players still
+    landed on a 4-vs-6 split some rounds), because a doubles wave can only
+    ever seat a multiple of 4, so whenever `len(roster_ids)` isn't one,
+    `sit_out_count` players must sit out every wave regardless of anchor —
+    and nothing about `stage2_pair_players`/`team_matchup_stage2` (which
+    only optimize for pair-coverage/repeat-opponent cost) has any notion of
+    "who's already played more this round." So sit-out selection is done
+    explicitly, upfront, per wave: rank this wave's roster order by
+    `play_count_this_round` (most-played first, ties broken by the
+    rotation's order since `sorted` is stable) and drop the top
+    `sit_out_count` from this wave's candidate pool entirely — they never
+    reach `stage2_pair_players`, so they can't be dealt back in by the
+    pairing cost. The remaining count is always a multiple of 4, so
+    `stage2_pair_players`/`team_matchup_stage2` never need to drop anyone
+    further this wave; every remaining player gets seated. This still
+    doesn't guarantee a perfectly even round (pair-coverage sometimes needs
+    a few extra waves to make room for it — confirmed by simulation, e.g. 6
+    players needing 9 matches this way instead of 7), but it does bound the
+    worst-case spread within a round to 1 match, versus the 2+ spread
+    rotation alone left possible."""
     roster_ids = await _get_active_roster_ids(session, group.id)
     if len(roster_ids) < 4:
         return
@@ -405,8 +441,12 @@ async def _generate_individual_mixed_matches(
     total_possible_pairs = len(roster_ids) * (len(roster_ids) - 1) // 2
     seen_teammate_pairs: set[frozenset[uuid.UUID]] = set()
     NOT_YET_TEAMMATES_PENALTY = 1_000_000
+    play_count_this_round: dict[uuid.UUID, int] = dict.fromkeys(roster_ids, 0)
+    sit_out_count = len(roster_ids) % 4
 
-    while len(seen_teammate_pairs) < total_possible_pairs:
+    wave = 0
+    stale_rotations = 0
+    while len(seen_teammate_pairs) < total_possible_pairs and stale_rotations < len(roster_ids):
         pair_count_lookup = await _build_pair_count_lookup(session, group.id)
 
         def cost_favoring_unseen_teammates(
@@ -417,15 +457,32 @@ async def _generate_individual_mixed_matches(
             penalty = NOT_YET_TEAMMATES_PENALTY if frozenset((a, b)) in seen_teammate_pairs else 0
             return _pair_count_lookup(a, b) + penalty
 
-        teammate_pairs = stage2_pair_players(roster_ids, cost_favoring_unseen_teammates)
+        rotation = wave % len(roster_ids)
+        wave_order = roster_ids[rotation:] + roster_ids[:rotation]
+        wave += 1
+
+        if sit_out_count:
+            ranked_by_play_count = sorted(
+                wave_order, key=lambda player_id: -play_count_this_round[player_id]
+            )
+            sitting_out = set(ranked_by_play_count[:sit_out_count])
+            active_order = [player_id for player_id in wave_order if player_id not in sitting_out]
+        else:
+            active_order = wave_order
+
+        teammate_pairs = stage2_pair_players(active_order, cost_favoring_unseen_teammates)
         new_pairs = [
             frozenset(pair) for pair in teammate_pairs if frozenset(pair) not in seen_teammate_pairs
         ]
         if not new_pairs:
-            break
+            stale_rotations += 1
+            continue
+        stale_rotations = 0
 
         team_matchups = team_matchup_stage2(teammate_pairs, pair_count_lookup)
         for team_a, team_b in team_matchups:
+            for player_id in (*team_a, *team_b):
+                play_count_this_round[player_id] += 1
             await create_match_with_participants(
                 session,
                 group,
@@ -528,6 +585,34 @@ async def _lock_group_for_round_generation(session: AsyncSession, group_id: uuid
         raise ApiError("ROUND_GENERATION_IN_PROGRESS", status_code=409) from exc
 
 
+async def _shuffle_round_match_order(
+    session: AsyncSession, group_id: uuid.UUID, round_number: int
+) -> None:
+    """Randomizes the call-up/display order of this round's just-generated
+    matches — purely cosmetic, deliberately separate from who's paired with
+    whom (that's decided by the mechanism-specific generators above; this
+    runs after all of them). `pull_queued_match_for_court` and
+    `build_round_matches_list` both `order_by(Match.created_at)` (this
+    file), and `created_at` is otherwise unused — never serialized to any
+    schema — so overwriting it with a freshly shuffled sequence is the
+    cheapest way to randomize both without a dedicated ordering column."""
+    result = await session.execute(
+        select(Match.id).where(Match.group_id == group_id, Match.round_number == round_number)
+    )
+    match_ids = list(result.scalars())
+    if len(match_ids) < 2:
+        return
+
+    random.shuffle(match_ids)
+    base = datetime.now(UTC)
+    for index, match_id in enumerate(match_ids):
+        await session.execute(
+            update(Match)
+            .where(Match.id == match_id)
+            .values(created_at=base + timedelta(microseconds=index))
+        )
+
+
 async def generate_next_round(session: AsyncSession, group: Group) -> Group:
     """Round generation entry point — both the manual "Next Round" button
     (FR-031~033) and Auto Next Round funnel through here. Force-abandons
@@ -587,6 +672,9 @@ async def generate_next_round(session: AsyncSession, group: Group) -> Group:
         await _generate_fixed_partner_matches(session, group, courts, group.current_round_number)
     else:
         raise ApiError("VALIDATION_ERROR", status_code=400)
+
+    if group.scheduling_mechanism != "manual":
+        await _shuffle_round_match_order(session, group.id, group.current_round_number)
 
     pulled: list[tuple[uuid.UUID, Match]] = []
     if group.scheduling_mechanism != "manual":
