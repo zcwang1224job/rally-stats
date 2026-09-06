@@ -48,7 +48,7 @@ export class LeaveGroupComponent {
       .subscribe({
         next: () => {
           this.left.emit();
-          void this.router.navigate(['/groups', this.groupId(), 'join']);
+          void this.router.navigate(['/groups']);
         },
         error: (error: ApiError) => this.errorKey.set(error.i18nKey),
       });

@@ -6,6 +6,7 @@ import {
   HttpRequest,
 } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { Observable, catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from '../../features/auth/auth.service';
 import { ApiError } from './api-error';
@@ -30,11 +31,20 @@ function toApiError(response: HttpErrorResponse): ApiError {
  * silently exchanges the refresh token for a new access token and retries
  * the request once, so the user isn't kicked out just because an hour
  * passed. If the refresh itself fails (refresh token dead/expired too),
- * the member is logged out and the original error is surfaced. */
+ * the member is logged out and the original error is surfaced.
+ *
+ * `MEMBERSHIP_REQUIRED` gets a global redirect to /groups: it has exactly
+ * one source across the whole backend (group/service.py
+ * `resolve_active_roster_membership`, gating every group-member-view read
+ * endpoint — schedule/standings/match-records) and means "the viewer's own
+ * RosterEntry stopped being active" — left elsewhere, or kicked, mid-
+ * session. Handling it here once covers all three tabs, whichever is
+ * active when it happens, instead of each duplicating its own redirect. */
 function handle(
   req: HttpRequest<unknown>,
   next: HttpHandlerFn,
   authService: AuthService,
+  router: Router,
   alreadyRetried: boolean,
 ): Observable<HttpEvent<unknown>> {
   return next(req).pipe(
@@ -44,6 +54,10 @@ function handle(
       }
 
       const apiError = toApiError(response);
+      if (apiError.errorCode === 'MEMBERSHIP_REQUIRED') {
+        void router.navigate(['/groups']);
+      }
+
       const canRetry =
         !alreadyRetried &&
         apiError.errorCode === 'MEMBER_TOKEN_INVALID' &&
@@ -59,7 +73,7 @@ function handle(
           const retried = req.clone({
             setHeaders: { Authorization: `Bearer ${refreshed.access_token}` },
           });
-          return handle(retried, next, authService, true);
+          return handle(retried, next, authService, router, true);
         }),
         catchError(() => {
           authService.logout();
@@ -72,5 +86,6 @@ function handle(
 
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
-  return handle(req, next, authService, false);
+  const router = inject(Router);
+  return handle(req, next, authService, router, false);
 };
