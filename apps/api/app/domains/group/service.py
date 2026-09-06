@@ -103,7 +103,19 @@ async def _raise_if_active_elsewhere(
     Guests at all. `exclude_group_id` only matters for `join_group`'s
     FR-020a same-group idempotency case, where the caller already knows
     about (and allows) their own existing entry in THIS group —
-    `create_group` never has one yet, so it never passes this."""
+    `create_group` never has one yet, so it never passes this.
+
+    `FOR UPDATE` on this Member's own row closes the TOCTOU window between
+    this check and the caller's later INSERT+commit: without it, two
+    near-simultaneous requests (a double-click, two tabs) could both read
+    "not active anywhere" before either commits, and both go on to
+    succeed. Same pessimistic-lock technique as schedule/service.py's
+    `_lock_group_for_round_generation` — but deliberately no `nowait`
+    here: blocking is the desired outcome (the second request should wait
+    and then correctly see the first's committed row), not something to
+    reject outright. Locks only this one Member's row, so unrelated
+    Members' requests never contend."""
+    await session.execute(select(Member.id).where(Member.id == member_id).with_for_update())
     active_group_id = await get_active_group_id_for_member(session, member_id)
     if active_group_id is not None and active_group_id != exclude_group_id:
         raise ApiError("ALREADY_ACTIVE_IN_ANOTHER_GROUP", status_code=409)
