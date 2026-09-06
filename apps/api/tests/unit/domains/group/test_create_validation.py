@@ -31,6 +31,22 @@ def test_name_over_30_chars_rejected() -> None:
         CreateGroupRequest(**_base_payload(name="x" * 31))
 
 
+def test_blank_creator_nickname_rejected() -> None:
+    """Regression: unlike JoinGroupRequest.nickname, this field previously
+    only checked length — a whitespace-only nickname passed validation and
+    the service layer's `not payload.creator_nickname` check (a non-empty
+    whitespace string is truthy), producing an invisible nickname stored
+    verbatim. Now mirrors JoinGroupRequest.nickname_format: strip, then
+    reject blank."""
+    with pytest.raises(ValidationError):
+        CreateGroupRequest(**_base_payload(creator_nickname="   "))
+
+
+def test_creator_nickname_is_trimmed() -> None:
+    request = CreateGroupRequest(**_base_payload(creator_nickname="  Alice  "))
+    assert request.creator_nickname == "Alice"
+
+
 def test_singles_min_members_enforced() -> None:
     with pytest.raises(ValidationError):
         CreateGroupRequest(**_base_payload(match_mode="singles", max_members=1))

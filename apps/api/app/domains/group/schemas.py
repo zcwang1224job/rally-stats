@@ -63,9 +63,12 @@ class CreateGroupRequest(BaseModel):
     @field_validator("creator_nickname")
     @classmethod
     def nickname_length(cls, v: str | None) -> str | None:
-        if v is not None and len(v) > 20:
-            raise ValueError("creator_nickname must be <= 20 chars")
-        return v
+        if v is None:
+            return v
+        stripped = v.strip()
+        if not stripped or len(stripped) > 20:
+            raise ValueError("creator_nickname must be 1-20 chars after trimming")
+        return stripped
 
     @model_validator(mode="after")
     def check_activity_time_pair(self) -> "CreateGroupRequest":

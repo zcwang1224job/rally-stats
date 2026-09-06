@@ -127,7 +127,8 @@ async def create_group(
 
     if member is not None and not member.nickname:
         raise ApiError("MEMBER_NICKNAME_NOT_SET", status_code=400)
-    if member is None and not payload.creator_nickname:
+    stripped_creator_nickname = (payload.creator_nickname or "").strip()
+    if member is None and not stripped_creator_nickname:
         raise ApiError("NICKNAME_REQUIRED_FOR_GUEST", status_code=400)
 
     if payload.scoring_mode == "custom":
@@ -165,7 +166,7 @@ async def create_group(
     session.add(group)
     await session.flush()  # populate group.id via default
 
-    nickname = member.nickname if member else payload.creator_nickname
+    nickname = member.nickname if member else stripped_creator_nickname
     assert nickname is not None
     guest_token = secrets.token_urlsafe(32) if member is None else None
 
