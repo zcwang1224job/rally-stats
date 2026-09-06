@@ -28,7 +28,6 @@ export const routes: Routes = [
       import('./features/group-admin/admin-page/admin-page.component').then(
         (m) => m.AdminPageComponent,
       ),
-    data: { navShell: false },
   },
   {
     path: 'groups',

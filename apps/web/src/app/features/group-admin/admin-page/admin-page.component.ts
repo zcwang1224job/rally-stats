@@ -1,7 +1,7 @@
 import { Component, DestroyRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { QRCodeComponent } from 'angularx-qrcode';
 import { interval } from 'rxjs';
@@ -45,7 +45,6 @@ type AdminSection = 'courts' | 'schedule' | 'roster' | 'name' | 'access' | 'sett
 @Component({
   selector: 'app-admin-page',
   imports: [
-    RouterLink,
     ReactiveFormsModule,
     TranslatePipe,
     ConfirmDialogComponent,

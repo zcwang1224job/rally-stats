@@ -187,7 +187,6 @@
   },
   "adminPage": {
     "title": "管理頁",
-    "backToHome": "返回首頁",
     "section": {
       "courts": "場地",
       "schedule": "賽程",

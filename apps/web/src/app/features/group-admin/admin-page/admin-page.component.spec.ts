@@ -89,21 +89,6 @@ describe('AdminPageComponent', () => {
     return Array.from(fixture.nativeElement.querySelectorAll('.admin-nav button'));
   }
 
-  it('shows a return-to-home link', () => {
-    const fixture = setup();
-
-    const link = fixture.nativeElement.querySelector('a.back-to-home') as HTMLAnchorElement | null;
-
-    expect(link).not.toBeNull();
-    expect(link?.getAttribute('href')).toBe('/');
-  });
-
-  it('does not render the global nav shell on this page', () => {
-    const fixture = setup();
-
-    expect(fixture.nativeElement.querySelector('app-nav-shell')).toBeNull();
-  });
-
   it('shows 6 left-nav sections, defaulting to 場地 (courts)', () => {
     const fixture = setup();
 
