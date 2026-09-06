@@ -75,6 +75,8 @@ export class AdminPageComponent {
   readonly errorKey = signal<string | null>(null);
   readonly saveErrorKey = signal<string | null>(null);
   readonly scoringErrorKey = signal<string | null>(null);
+  readonly saveSuccess = signal(false);
+  readonly scoringSaveSuccess = signal(false);
   readonly newPin = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
   readonly nextRoundErrorKey = signal<string | null>(null);
@@ -214,6 +216,7 @@ export class AdminPageComponent {
     }
     const raw = this.editForm.getRawValue();
     this.saveErrorKey.set(null);
+    this.saveSuccess.set(false);
     this.groupAdmin
       .editGroup(this.groupId, {
         expected_version: view.base_settings_version,
@@ -231,6 +234,8 @@ export class AdminPageComponent {
           this.adminView.set(updated);
           this.patchForms(updated);
           this.loadSchedule();
+          this.saveSuccess.set(true);
+          setTimeout(() => this.saveSuccess.set(false), 3000);
         },
         error: (error: ApiError) => {
           if (error.status === 401) {
@@ -253,6 +258,7 @@ export class AdminPageComponent {
     }
     const raw = this.scoringForm.getRawValue();
     this.scoringErrorKey.set(null);
+    this.scoringSaveSuccess.set(false);
     this.groupAdmin
       .editScoringSettings(this.groupId, {
         expected_version: view.base_settings_version,
@@ -262,7 +268,11 @@ export class AdminPageComponent {
         cap_score: raw.scoring_mode === 'custom' ? raw.custom_cap_score : undefined,
       })
       .subscribe({
-        next: (updated) => this.adminView.set(updated),
+        next: (updated) => {
+          this.adminView.set(updated);
+          this.scoringSaveSuccess.set(true);
+          setTimeout(() => this.scoringSaveSuccess.set(false), 3000);
+        },
         error: (error: ApiError) => {
           if (error.status === 401) {
             this.handleAuthFailure(error);

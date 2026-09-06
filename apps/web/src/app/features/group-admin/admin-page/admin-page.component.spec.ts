@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { CourtManagementService } from '../court-management/court-management.service';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { GroupAdminService } from '../group-admin.service';
@@ -45,7 +45,10 @@ const scheduleResponse: ScheduleResponse = {
 };
 
 describe('AdminPageComponent', () => {
-  function setup(readOnly = false) {
+  function setup(
+    readOnly = false,
+    groupAdminOverrides: Partial<GroupAdminService> = {},
+  ) {
     TestBed.configureTestingModule({
       imports: [AdminPageComponent],
       providers: [
@@ -60,6 +63,7 @@ describe('AdminPageComponent', () => {
           useValue: {
             getAdminToken: () => 'admin-tok',
             getAdminView: () => of({ ...adminGroupResponse, read_only: readOnly }),
+            ...groupAdminOverrides,
           },
         },
         {
@@ -191,6 +195,55 @@ describe('AdminPageComponent', () => {
     });
 
     expect(fixture.componentInstance.hasUnfinishedMatches()).toBe(false);
+  });
+
+  it('saving group settings shows a success message', () => {
+    const fixture = setup(false, {
+      editGroup: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
+    });
+
+    navButtons(fixture)[5].click();
+    fixture.detectChanges();
+    fixture.componentInstance.saveGroupSettings();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.saveSuccess()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('adminPage.saveSuccess');
+  });
+
+  it('a failed group-settings save shows the error, not the success message', () => {
+    const fixture = setup(false, {
+      editGroup: () =>
+        throwError(() => ({
+          errorCode: 'VALIDATION_ERROR',
+          i18nKey: 'errors.VALIDATION_ERROR',
+          detail: null,
+          status: 400,
+        })),
+    });
+
+    navButtons(fixture)[5].click();
+    fixture.detectChanges();
+    fixture.componentInstance.saveGroupSettings();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.saveSuccess()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('errors.VALIDATION_ERROR');
+    expect(fixture.nativeElement.textContent).not.toContain('adminPage.saveSuccess');
+  });
+
+  it('saving scoring settings shows a success message', () => {
+    const fixture = setup(false, {
+      editScoringSettings: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
+    });
+
+    navButtons(fixture)[5].click();
+    fixture.detectChanges();
+    fixture.componentInstance.saveScoringSettings();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.scoringSaveSuccess()).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('adminPage.saveSuccess');
   });
 
   it('hasUnfinishedMatches is true when a court still has an in-progress match', () => {

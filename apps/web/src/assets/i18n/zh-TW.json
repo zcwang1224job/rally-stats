@@ -200,6 +200,7 @@
     "activityTimeStart": "活動開始時間",
     "activityTimeEnd": "活動結束時間",
     "save": "儲存",
+    "saveSuccess": "✓ 已儲存",
     "scoringSectionTitle": "比賽設定",
     "scoringMode": "模式",
     "customTargetScore": "目標分數",

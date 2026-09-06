@@ -203,6 +203,9 @@
               @if (saveErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
+              @if (saveSuccess()) {
+                <span class="status-badge status-badge--success">{{ 'adminPage.saveSuccess' | translate }}</span>
+              }
               <button type="submit" class="btn">{{ 'adminPage.save' | translate }}</button>
             </form>
           }
@@ -282,6 +285,9 @@
               @if (saveErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
+              @if (saveSuccess()) {
+                <span class="status-badge status-badge--success">{{ 'adminPage.saveSuccess' | translate }}</span>
+              }
 
               <button type="submit" class="btn">{{ 'adminPage.save' | translate }}</button>
             </form>
@@ -318,6 +324,9 @@
 
               @if (scoringErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
+              }
+              @if (scoringSaveSuccess()) {
+                <span class="status-badge status-badge--success">{{ 'adminPage.saveSuccess' | translate }}</span>
               }
 
               <button type="submit" class="btn">{{ 'adminPage.saveScoring' | translate }}</button>
