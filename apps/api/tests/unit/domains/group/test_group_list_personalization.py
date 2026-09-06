@@ -97,7 +97,7 @@ async def test_member_active_elsewhere_false_for_own_group_and_true_for_others(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
 ) -> None:
     own_group = await _make_group(client, valid_turnstile_token, "elsewhere-自己的團")
-    other_group = await _make_group(client, valid_turnstile_token, "elsewhere-別人的團")
+    await _make_group(client, valid_turnstile_token, "elsewhere-別人的團")
     access_token = await _register_and_login(client, db_session, "elsewhere@example.com")
 
     join_response = await client.post(

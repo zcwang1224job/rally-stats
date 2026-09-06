@@ -66,11 +66,29 @@ async def get_active_group_id_for_member(
     any — the read-side counterpart of `_raise_if_active_elsewhere`'s
     write-time guard, reused by the browse list (US: proactively disabling
     "加入" for every OTHER group there instead of only failing after the
-    Member picks one and confirms)."""
+    Member picks one and confirms).
+
+    MUST join Group and filter out `status == "disbanded"` — disbanding a
+    group deliberately does NOT touch its members' RosterEntry.status
+    (`disband_group()`; a disbanded group stays readable/leavable, per
+    005-member-view's edge cases and
+    test_already_active_member_short_circuits_even_on_disbanded_group), so
+    without this filter, a Member who was ever in a group that later got
+    disbanded would look permanently "still active" there and be locked
+    out of ever creating or joining another group again. `.limit(1)`
+    defensively caps it at one row: this rule is only enforced going
+    forward, so a Member with more than one genuinely-active RosterEntry
+    from before it existed is possible, and `scalar_one_or_none()` would
+    otherwise raise on that instead of just picking one to report."""
     result = await session.execute(
-        select(RosterEntry.group_id).where(
-            RosterEntry.member_id == member_id, RosterEntry.status == "active"
+        select(RosterEntry.group_id)
+        .join(Group, Group.id == RosterEntry.group_id)
+        .where(
+            RosterEntry.member_id == member_id,
+            RosterEntry.status == "active",
+            Group.status != "disbanded",
         )
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
