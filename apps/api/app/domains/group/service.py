@@ -59,6 +59,28 @@ async def _touch_activity(session: AsyncSession, group: Group) -> None:
     group.last_activity_at = datetime.now(UTC)
 
 
+async def _raise_if_active_elsewhere(
+    session: AsyncSession, member_id: uuid.UUID, *, exclude_group_id: uuid.UUID | None = None
+) -> None:
+    """One active group per Member, at a time — deliberately Member-only:
+    a Guest's identity (`guest_session_token`) is already scoped to a single
+    group by design (FR-022, `RosterEntry.member_id` null) and has no
+    cross-group identity to check against, so this can't be enforced for
+    Guests at all. `member_id` alone (no `group_id`) finds an active
+    RosterEntry in ANY group; `exclude_group_id` only matters for
+    `join_group`'s FR-020a same-group idempotency case, where the caller
+    already knows about (and allows) their own existing entry in THIS
+    group — `create_group` never has one yet, so it never passes this."""
+    query = select(RosterEntry.id).where(
+        RosterEntry.member_id == member_id, RosterEntry.status == "active"
+    )
+    if exclude_group_id is not None:
+        query = query.where(RosterEntry.group_id != exclude_group_id)
+    result = await session.execute(query)
+    if result.scalar_one_or_none() is not None:
+        raise ApiError("ALREADY_ACTIVE_IN_ANOTHER_GROUP", status_code=409)
+
+
 async def create_group(
     session: AsyncSession,
     payload: CreateGroupRequest,
@@ -66,6 +88,9 @@ async def create_group(
     member: Member | None,
 ) -> tuple[Group, RosterEntry, str, str | None]:
     """Create a Group + the creator's RosterEntry in one transaction (spec FR-001-012)."""
+    if member is not None:
+        await _raise_if_active_elsewhere(session, member.id)
+
     max_allowed = await get_max_group_members(session)
     if payload.max_members > max_allowed:
         raise ApiError(
@@ -559,6 +584,12 @@ async def join_group(
     function on a disbanded group (e.g. to leave it), and that read-only
     short-circuit performs no write — only a genuinely new join attempt
     MUST be rejected once the group is disbanded.
+
+    Also runs the one-active-group-per-Member check (`_raise_if_active_elsewhere`)
+    right after that short-circuit, before any of the group-specific checks
+    below (disbanded/full/password) — none of those matter if the Member
+    isn't eligible to join a second group at all. Guest joins are exempt;
+    see that function's docstring for why.
     """
     if member is not None:
         existing_result = await session.execute(
@@ -571,6 +602,8 @@ async def join_group(
         existing = existing_result.scalar_one_or_none()
         if existing is not None:
             return existing, False
+
+        await _raise_if_active_elsewhere(session, member.id, exclude_group_id=group.id)
 
     if group.status == "disbanded":
         raise ApiError("GROUP_DISBANDED", status_code=409)

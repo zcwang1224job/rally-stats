@@ -319,6 +319,7 @@
     "GROUP_MEMBER_CAP_EXCEEDED": "人數上限超過系統允許範圍",
     "NICKNAME_REQUIRED_FOR_GUEST": "請輸入您的暱稱",
     "MEMBER_NICKNAME_NOT_SET": "請先完成暱稱設定",
+    "ALREADY_ACTIVE_IN_ANOTHER_GROUP": "您目前已在另一個團中，請先離開該團才能建立或加入新的團",
     "GROUP_NOT_FOUND": "找不到此組團編號",
     "GROUP_ADMIN_PIN_INCORRECT": "管理 PIN 碼錯誤",
     "GROUP_ADMIN_LOCKED": "錯誤次數過多，已暫時鎖定",
