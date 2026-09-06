@@ -1,4 +1,12 @@
-import { AfterViewInit, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -48,6 +56,14 @@ export class JoinFlowComponent implements AfterViewInit {
   readonly restoredNickname = signal<string | null>(null);
   private verifiedPassword: string | null = null;
   private isMember = false;
+
+  // Retrying the join button can't ever succeed here — the caller needs to
+  // leave their other group first, not resubmit the same request — so the
+  // confirm step swaps it for a way out instead (research: one-active-
+  // group-per-Member follow-up).
+  readonly alreadyActiveElsewhere = computed(
+    () => this.errorKey() === 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP',
+  );
 
   readonly passwordForm = this.fb.nonNullable.group({
     password: ['', Validators.required],
@@ -165,6 +181,10 @@ export class JoinFlowComponent implements AfterViewInit {
 
   goToGroup(): void {
     void this.router.navigate(['/groups', this.groupId, 'member-view']);
+  }
+
+  goToGroupList(): void {
+    void this.router.navigate(['/groups']);
   }
 
   private submitJoin(nickname: string | null): void {

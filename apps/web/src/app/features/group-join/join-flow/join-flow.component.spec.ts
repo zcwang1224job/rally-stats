@@ -1,8 +1,9 @@
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { ApiClient } from '../../../core/api/api-client';
+import { ApiError } from '../../../core/api/api-error';
 import { AuthService } from '../../auth/auth.service';
 import { GroupJoinService } from '../group-join.service';
 import { JoinFlowComponent } from './join-flow.component';
@@ -13,6 +14,8 @@ function setup(options: {
   nickname?: string | null;
   existingGuestToken?: string | null;
   alreadyJoined?: boolean;
+  joinError?: ApiError;
+  navigate?: (...args: unknown[]) => Promise<boolean>;
 }) {
   TestBed.configureTestingModule({
     imports: [JoinFlowComponent],
@@ -45,9 +48,15 @@ function setup(options: {
           resolveGuestSession: () => of({ nickname: '訪客' }),
           clearGuestSessionToken: () => undefined,
           verifyPassword: () => of({ correct: true }),
-          join: () => of({ roster_entry_id: 'r1', nickname: '訪客' }),
+          join: () =>
+            options.joinError
+              ? throwError(() => options.joinError)
+              : of({ roster_entry_id: 'r1', nickname: '訪客' }),
         },
       },
+      ...(options.navigate
+        ? [{ provide: Router, useValue: { navigate: options.navigate } }]
+        : []),
     ],
   });
   const fixture = TestBed.createComponent(JoinFlowComponent);
@@ -90,5 +99,58 @@ describe('JoinFlowComponent (US5 modal presentation)', () => {
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
     expect(dialog.querySelector('input[formcontrolname="password"]')).toBeNull();
     expect(dialog.textContent).toContain('groupJoin.successTitle');
+  });
+});
+
+/** Retrying the join button can't ever succeed for this specific error —
+ * the member has to leave their other group first, not resubmit the same
+ * request — so the confirm step swaps the join button for a way back to
+ * the list instead of leaving a dead-end retry button up. */
+describe('JoinFlowComponent: ALREADY_ACTIVE_IN_ANOTHER_GROUP on the confirm step', () => {
+  it('replaces the join button with a "back to list" button, and clicking it navigates to /groups', () => {
+    const navigateCalls: unknown[][] = [];
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: true,
+      nickname: '小明',
+      joinError: {
+        errorCode: 'ALREADY_ACTIVE_IN_ANOTHER_GROUP',
+        i18nKey: 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP',
+        detail: null,
+        status: 409,
+      },
+      navigate: (...args: unknown[]) => {
+        navigateCalls.push(args);
+        return Promise.resolve(true);
+      },
+    });
+
+    fixture.componentInstance.confirmMemberJoin();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    const buttonText = (dialog.querySelector('button') as HTMLButtonElement).textContent ?? '';
+    expect(buttonText).toContain('groupJoin.backToList');
+    expect(buttonText).not.toContain('groupJoin.joinSubmit');
+
+    (dialog.querySelector('button') as HTMLButtonElement).click();
+
+    expect(navigateCalls).toEqual([[['/groups']]]);
+  });
+
+  it('a different join error leaves the normal join (retry) button in place', () => {
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: true,
+      nickname: '小明',
+      joinError: { errorCode: 'GROUP_FULL', i18nKey: 'errors.GROUP_FULL', detail: null, status: 409 },
+    });
+
+    fixture.componentInstance.confirmMemberJoin();
+    fixture.detectChanges();
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    const buttonText = (dialog.querySelector('button') as HTMLButtonElement).textContent ?? '';
+    expect(buttonText).toContain('groupJoin.joinSubmit');
   });
 });

@@ -60,6 +60,7 @@
     "nickname": "暱稱",
     "confirmTitle": "確認加入",
     "joinSubmit": "加入",
+    "backToList": "回到列表頁",
     "successTitle": "加入成功",
     "successBody": "{{nickname}}，歡迎加入！",
     "restoredTitle": "歡迎回來",

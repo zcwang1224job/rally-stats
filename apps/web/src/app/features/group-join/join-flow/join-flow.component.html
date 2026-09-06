@@ -38,9 +38,15 @@
         @if (errorKey(); as key) {
           <p role="alert">{{ key | translate }}</p>
         }
-        <button type="button" class="btn" (click)="confirmMemberJoin()">
-          {{ 'groupJoin.joinSubmit' | translate }}
-        </button>
+        @if (alreadyActiveElsewhere()) {
+          <button type="button" class="btn" (click)="goToGroupList()">
+            {{ 'groupJoin.backToList' | translate }}
+          </button>
+        } @else {
+          <button type="button" class="btn" (click)="confirmMemberJoin()">
+            {{ 'groupJoin.joinSubmit' | translate }}
+          </button>
+        }
       </section>
     }
     @case ('done') {
