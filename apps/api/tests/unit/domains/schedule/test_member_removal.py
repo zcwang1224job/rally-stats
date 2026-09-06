@@ -171,6 +171,27 @@ async def test_handle_member_left_converges_schedule_and_sets_status(
 
 
 @pytest.mark.asyncio
+async def test_handle_member_left_decrements_current_member_count(
+    db_session: AsyncSession,
+) -> None:
+    """Regression test: current_member_count previously only ever had its
+    increment implemented (join_group's atomic +1) — nothing decremented it
+    on a leave/kick, so a group with turnover would eventually hit
+    max_members and start rejecting new joins even with barely anyone
+    actually active."""
+    group = await _make_group(db_session)
+    group.current_member_count = 2
+    await db_session.commit()
+    a = await _make_roster_entry(db_session, group, "A")
+
+    await handle_member_left(db_session, group, a, new_status="left")
+    await db_session.commit()
+
+    await db_session.refresh(group)
+    assert group.current_member_count == 1
+
+
+@pytest.mark.asyncio
 async def test_kick_member_sets_kicked_status(db_session: AsyncSession) -> None:
     group = await _make_group(db_session)
     a = await _make_roster_entry(db_session, group, "A")
@@ -178,6 +199,19 @@ async def test_kick_member_sets_kicked_status(db_session: AsyncSession) -> None:
     updated = await kick_member(db_session, group, a)
 
     assert updated.status == "kicked"
+
+
+@pytest.mark.asyncio
+async def test_kick_member_decrements_current_member_count(db_session: AsyncSession) -> None:
+    group = await _make_group(db_session)
+    group.current_member_count = 2
+    await db_session.commit()
+    a = await _make_roster_entry(db_session, group, "A")
+
+    await kick_member(db_session, group, a)
+
+    await db_session.refresh(group)
+    assert group.current_member_count == 1
 
 
 @pytest.mark.asyncio

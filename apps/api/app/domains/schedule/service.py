@@ -1133,7 +1133,19 @@ async def handle_member_left(
 ) -> None:
     """FR-023: dissolving a fixed_partner Partnership when one side leaves
     (the other side simply becomes unpaired — no forced re-pairing). FR-039
-    /040/041: convergence of the current round's schedule."""
+    /040/041: convergence of the current round's schedule.
+
+    Also decrements `current_member_count` — its only increment is
+    `join_group`'s atomic `+1` (group/service.py), and until this fix
+    nothing ever brought it back down on a leave/kick, so it only ever grew
+    (a group whose members kept turning over would eventually hit
+    max_members and start rejecting new joins with GROUP_FULL, even with
+    barely anyone actually active). Atomic `UPDATE ... - 1` for the same
+    reason `join_group`'s increment is atomic rather than a Python
+    read-modify-write — this can run concurrently with a leave/kick/join
+    elsewhere in the same group. `entry.status` was already confirmed
+    "active" by both callers before this runs, so exactly one is
+    guaranteed here per call — never over-decrements."""
     entry.status = new_status
     entry.left_at = datetime.now(UTC)
     if group.scheduling_mechanism == "fixed_partner":
@@ -1144,6 +1156,11 @@ async def handle_member_left(
             )
         )
     await remove_roster_entry_from_schedule(session, group, entry.id)
+    await session.execute(
+        update(Group)
+        .where(Group.id == group.id)
+        .values(current_member_count=Group.current_member_count - 1)
+    )
     await session.flush()
 
 
@@ -1158,6 +1175,7 @@ async def kick_member(session: AsyncSession, group: Group, entry: RosterEntry) -
     await handle_member_left(session, group, entry, new_status="kicked")
     await session.commit()
     await session.refresh(entry)
+    await session.refresh(group)
 
     await publish(
         group_notifications_channel(str(group.id)),

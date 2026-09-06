@@ -56,6 +56,24 @@ async def test_leave_group_invalidates_guest_token_immediately(db_session: Async
     assert exc_info.value.error_code == "MEMBERSHIP_REQUIRED"
 
 
+async def test_leave_group_decrements_current_member_count(db_session: AsyncSession) -> None:
+    """Regression test: current_member_count previously only ever went up
+    (join_group's atomic +1) — nothing brought it back down on a leave, so
+    a group with turnover would eventually hit max_members and start
+    rejecting new joins with GROUP_FULL even with barely anyone actually
+    active."""
+    group = await _make_group(db_session)
+    entry, _ = await join_group(db_session, group, member=None, password=None, nickname="小美")
+    assert group.current_member_count == 2
+
+    await leave_group(
+        db_session, group, entry.id, guest_session_token=entry.guest_session_token, member_id=None
+    )
+
+    await db_session.refresh(group)
+    assert group.current_member_count == 1
+
+
 async def test_leave_group_member_identity(db_session: AsyncSession) -> None:
     group = await _make_group(db_session)
     member = Member(

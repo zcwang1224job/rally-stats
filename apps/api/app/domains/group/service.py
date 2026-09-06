@@ -928,6 +928,7 @@ async def leave_group(
     await handle_member_left(session, group, entry, new_status="left")
     await session.commit()
     await session.refresh(entry)
+    await session.refresh(group)
 
     await publish(
         group_notifications_channel(str(group.id)),
