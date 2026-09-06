@@ -25,6 +25,9 @@ coverage/
 # Deployment infra (AWS resource IDs, account-specific defaults)
 /infra/
 
+# Local design/scratch files
+/ui/
+
 # OS / editor
 .DS_Store
 .vscode/
