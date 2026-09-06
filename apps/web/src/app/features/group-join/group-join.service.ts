@@ -117,6 +117,13 @@ export class GroupJoinService {
     localStorage.removeItem(ACTIVE_GUEST_GROUP_KEY);
   }
 
+  /** Public, unauthenticated group lookup (name/number/status) — used
+   * wherever a page just needs to show which group this is (e.g. the
+   * member-view header) without any of the admin/join machinery. */
+  getGroupPublic(groupId: string): Observable<GroupPublic> {
+    return this.api.get<GroupPublic>(`/groups/${groupId}`);
+  }
+
   /** The raw marker alone isn't enough to safely block on: disbanding a
    * group (manually, or via the inactivity auto-disband scheduler)
    * deliberately never touches its RosterEntries (a disbanded group stays
@@ -151,7 +158,7 @@ export class GroupJoinService {
         }),
       );
     }
-    return this.api.get<GroupPublic>(`/groups/${groupId}`).pipe(
+    return this.getGroupPublic(groupId).pipe(
       map((group) => {
         if (group.status === 'disbanded') {
           this.clearActiveGuestGroupId();

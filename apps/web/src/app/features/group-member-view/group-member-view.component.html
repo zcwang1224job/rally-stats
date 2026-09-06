@@ -1,41 +1,56 @@
-<nav class="bottom-nav">
-  <button
-    type="button"
-    class="tap-target"
-    [class.is-active]="activeTab() === 'schedule'"
-    (click)="setTab('schedule')"
-  >
-    {{ 'groupMemberView.nav.schedule' | translate }}
-  </button>
-  <button
-    type="button"
-    class="tap-target"
-    [class.is-active]="activeTab() === 'standings'"
-    (click)="setTab('standings')"
-  >
-    {{ 'groupMemberView.nav.standings' | translate }}
-  </button>
-  <button
-    type="button"
-    class="tap-target"
-    [class.is-active]="activeTab() === 'match-records'"
-    (click)="setTab('match-records')"
-  >
-    {{ 'groupMemberView.nav.matchRecords' | translate }}
-  </button>
-  <app-leave-group [groupId]="groupId" />
-</nav>
+@if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (errorKey(); as key) {
+  <p role="alert">{{ key | translate }}</p>
+} @else if (group(); as g) {
+  <h1>{{ g.name }}</h1>
+  <p class="group-number">{{ 'adminPage.groupNumber' | translate }}: {{ g.group_number }}</p>
 
-<div class="view-content">
-@switch (activeTab()) {
-  @case ('schedule') {
-    <app-member-schedule [groupId]="groupId" />
+  @if (g.status === 'disbanded') {
+    <p role="status" class="status-badge">{{ 'adminPage.disbandedNotice' | translate }}</p>
   }
-  @case ('standings') {
-    <app-standings [groupId]="groupId" />
-  }
-  @case ('match-records') {
-    <app-match-records [groupId]="groupId" />
-  }
+
+  <div class="member-shell">
+    <nav class="member-nav">
+      <button
+        type="button"
+        class="tap-target"
+        [class.is-active]="activeTab() === 'schedule'"
+        (click)="setTab('schedule')"
+      >
+        {{ 'groupMemberView.nav.schedule' | translate }}
+      </button>
+      <button
+        type="button"
+        class="tap-target"
+        [class.is-active]="activeTab() === 'standings'"
+        (click)="setTab('standings')"
+      >
+        {{ 'groupMemberView.nav.standings' | translate }}
+      </button>
+      <button
+        type="button"
+        class="tap-target"
+        [class.is-active]="activeTab() === 'match-records'"
+        (click)="setTab('match-records')"
+      >
+        {{ 'groupMemberView.nav.matchRecords' | translate }}
+      </button>
+      <app-leave-group [groupId]="groupId" />
+    </nav>
+
+    <div class="member-content">
+      @switch (activeTab()) {
+        @case ('schedule') {
+          <app-member-schedule [groupId]="groupId" />
+        }
+        @case ('standings') {
+          <app-standings [groupId]="groupId" />
+        }
+        @case ('match-records') {
+          <app-match-records [groupId]="groupId" />
+        }
+      }
+    </div>
+  </div>
 }
-</div>

@@ -2,61 +2,78 @@
 
 :host {
   display: block;
+  padding: var(--space-md);
+  max-width: 720px;
+  margin: 0 auto;
+
+  @media (min-width: tokens.$breakpoint-desktop) {
+    max-width: 960px;
+  }
 }
 
-// Mobile-first: fixed to the bottom of the viewport, full width — the
-// most touch-friendly pattern for switching between independent views on
-// a small screen (research.md #4). `app-leave-group`'s own button reuses
-// this same row.
-.bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 10;
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.group-number {
+  color: var(--color-text-muted);
+}
+
+// US3 (010-app-wide-ui-redesign)'s admin-page nav pattern, reused here for
+// a consistent group-scoped page shell: a horizontally-scrollable pill
+// strip under $breakpoint-tablet (FR-007's touch-friendly requirement —
+// never a fixed sidebar squeezing a phone's content column), a left
+// sidebar at tablet+.
+.member-shell {
   display: flex;
-  background: var(--color-surface);
-  border-top: 1px solid var(--color-border);
-  padding: var(--space-xs);
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.member-nav {
+  display: flex;
+  overflow-x: auto;
   gap: var(--space-xs);
+  padding-bottom: var(--space-xs);
 
   button {
-    flex: 1;
-    background: none;
-    border: none;
-    font-family: var(--font-family-base);
-    font-size: var(--font-size-caption);
-    color: var(--color-text-muted);
-    cursor: pointer;
+    flex: 0 0 auto;
+    min-height: var(--touch-target-min);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-bold);
+    white-space: nowrap;
 
     &.is-active {
-      color: var(--color-brand-primary);
-      font-weight: var(--font-weight-bold);
+      background: var(--color-brand-primary);
+      border-color: var(--color-brand-primary);
+      color: var(--color-brand-primary-contrast);
     }
   }
 
   @media (min-width: tokens.$breakpoint-tablet) {
-    position: static;
-    border-top: none;
-    border-bottom: 1px solid var(--color-border);
-    justify-content: flex-start;
-    gap: var(--space-md);
-    padding: var(--space-md);
+    flex-direction: column;
+    overflow-x: visible;
+    flex: 0 0 200px;
 
     button {
-      flex: none;
-      font-size: var(--font-size-body);
+      width: 100%;
+      text-align: left;
     }
   }
 }
 
-.view-content {
-  padding: var(--space-md);
-  // Leaves room for the fixed bottom nav so content is never hidden
-  // behind it (mobile only — the nav is `position: static` at tablet+).
-  padding-bottom: calc(var(--touch-target-min) + var(--space-lg));
-
-  @media (min-width: tokens.$breakpoint-tablet) {
-    padding-bottom: var(--space-md);
-  }
+.member-content {
+  flex: 1;
+  min-width: 0;
 }

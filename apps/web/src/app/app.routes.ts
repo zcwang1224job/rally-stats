@@ -57,7 +57,6 @@ export const routes: Routes = [
       import('./features/group-member-view/group-member-view.component').then(
         (m) => m.GroupMemberViewComponent,
       ),
-    data: { navShell: false },
   },
   {
     path: 'member',

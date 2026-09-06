@@ -4,15 +4,28 @@
   display: contents;
 }
 
+// Sized/shaped to match its siblings in .member-nav (group-member-view.
+// component.scss) — this lives in a separate component's stylesheet, so
+// Angular's view encapsulation won't let that parent rule reach in here;
+// the danger coloring (vs. the siblings' neutral one) is what marks this
+// as the one non-tab, destructive item in that row.
 .leave-btn {
-  background: none;
-  border: none;
+  flex: 0 0 auto;
+  min-height: var(--touch-target-min);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
   color: var(--color-danger);
   font-family: var(--font-family-base);
+  font-weight: var(--font-weight-bold);
   font-size: var(--font-size-caption);
+  white-space: nowrap;
   cursor: pointer;
 
   @media (min-width: tokens.$breakpoint-tablet) {
+    width: 100%;
+    text-align: left;
     font-size: var(--font-size-body);
   }
 }
