@@ -1,116 +1,173 @@
-<form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
-  <label>
-    {{ 'groupJoin.courtNameFilter' | translate }}
-    <input type="text" formControlName="court_name" />
-  </label>
-  <label>
-    {{ 'groupJoin.courtIdFilter' | translate }}
-    <input type="text" formControlName="court_id" />
-  </label>
-  <label>
-    {{ 'groupJoin.timeStartFilter' | translate }}
-    <input type="time" formControlName="time_start" />
-  </label>
-  <label>
-    {{ 'groupJoin.timeEndFilter' | translate }}
-    <input type="time" formControlName="time_end" />
-  </label>
-  <label>
-    {{ 'groupJoin.groupNameFilter' | translate }}
-    <input type="text" formControlName="group_name" />
-  </label>
-  <label>
-    {{ 'groupJoin.creatorNicknameFilter' | translate }}
-    <input type="text" formControlName="creator_nickname" />
-  </label>
-  <label>
-    {{ 'groupJoin.matchModeFilter' | translate }}
-    <select formControlName="match_mode">
-      <option value="">{{ 'groupJoin.matchModeFilterAny' | translate }}</option>
-      <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
-      <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
-    </select>
-  </label>
-  <button type="submit" class="btn">{{ 'groupJoin.applyFilters' | translate }}</button>
-</form>
+<main class="group-list-page">
+  <header class="page-header">
+    <h1>{{ 'nav.groups' | translate }}</h1>
+  </header>
 
-@if (loading()) {
-  <p>{{ 'common.loading' | translate }}</p>
-} @else {
-  <ul class="group-list">
-    @for (group of groups(); track group.group_id) {
-      <li class="card">
-        <span class="group-name">{{ group.name }}</span>
-        <span>{{ 'groupJoin.creatorLabel' | translate }}: {{ group.creator_nickname }}</span>
-        <span>{{ group.current_member_count }}/{{ group.max_members }}</span>
-        <span>
-          {{
-            (group.match_mode === 'singles' ? 'createGroup.matchModeSingles' : 'createGroup.matchModeDoubles')
-              | translate
-          }}
-        </span>
-        @if (group.courts.length > 0) {
-          <span class="court-list">
-            @for (court of group.courts; track court.court_id) {
-              <span class="court-item">
-                {{ court.name }}
-                <small class="court-id">({{ 'groupJoin.courtIdLabel' | translate }}: {{ court.court_id }})</small>
-              </span>
-            }
-          </span>
-        }
-        @if (group.activity_time_start && group.activity_time_end) {
-          <span>{{ group.activity_time_start }} - {{ group.activity_time_end }}</span>
-        }
-        @if (group.has_password) {
-          <span
-            class="status-badge lock-icon lock-closed"
-            [attr.aria-label]="'groupJoin.hasPasswordLabel' | translate"
-            [title]="'groupJoin.hasPasswordLabel' | translate"
-            >🔒 {{ 'groupJoin.hasPasswordLabel' | translate }}</span
-          >
-        } @else {
-          <span
-            class="status-badge lock-icon lock-open"
-            [attr.aria-label]="'groupJoin.noPasswordLabel' | translate"
-            [title]="'groupJoin.noPasswordLabel' | translate"
-            >🔓 {{ 'groupJoin.noPasswordLabel' | translate }}</span
-          >
-        }
-        @if (group.joined_by_me === true || isOwnGroupForGuest(group)) {
-          <span class="status-badge">{{ 'groupJoin.alreadyJoinedLabel' | translate }}</span>
-          <!-- 已加入者（會員或同一瀏覽器的訪客）即使團已滿也要有路回去
-               （不受 isFull 影響），且不需要再走一次密碼流程（clickJoin
-               內已處理）。 -->
-          <button type="button" class="btn" (click)="clickJoin(group)">
-            {{ 'groupJoin.returnButton' | translate }}
-          </button>
-        } @else if (isFull(group)) {
-          <span role="status" class="status-badge status-badge--danger">{{ 'errors.GROUP_FULL' | translate }}</span>
-        } @else if (isBlockedElsewhere(group)) {
-          <span role="status" class="status-badge status-badge--danger">{{ 'groupJoin.activeElsewhereLabel' | translate }}</span>
-        } @else {
-          <button type="button" class="btn" (click)="clickJoin(group)">
-            {{ 'groupJoin.joinButton' | translate }}
+  <section class="filters-panel card">
+    <form class="filters-form form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <label>
+        {{ 'groupJoin.groupNameFilter' | translate }}
+        <input
+          type="text"
+          formControlName="group_name"
+          [attr.placeholder]="'groupJoin.groupNameFilterPlaceholder' | translate"
+        />
+      </label>
+
+      <details class="advanced-filters">
+        <summary>{{ 'groupJoin.moreFilters' | translate }}</summary>
+        <div class="advanced-filters-grid">
+          <label>
+            {{ 'groupJoin.creatorNicknameFilter' | translate }}
+            <input type="text" formControlName="creator_nickname" />
+          </label>
+          <label>
+            {{ 'groupJoin.matchModeFilter' | translate }}
+            <select formControlName="match_mode">
+              <option value="">{{ 'groupJoin.matchModeFilterAny' | translate }}</option>
+              <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
+              <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
+            </select>
+          </label>
+          <label>
+            {{ 'groupJoin.courtNameFilter' | translate }}
+            <input type="text" formControlName="court_name" />
+          </label>
+          <label>
+            {{ 'groupJoin.timeStartFilter' | translate }}
+            <input type="time" formControlName="time_start" />
+          </label>
+          <label>
+            {{ 'groupJoin.timeEndFilter' | translate }}
+            <input type="time" formControlName="time_end" />
+          </label>
+        </div>
+      </details>
+
+      <div class="filters-actions">
+        <button type="submit" class="btn">{{ 'groupJoin.applyFilters' | translate }}</button>
+        @if (hasActiveFilters()) {
+          <button type="button" class="btn btn--secondary" (click)="clearAllFilters()">
+            {{ 'groupJoin.clearFilters' | translate }}
           </button>
         }
-      </li>
+      </div>
+    </form>
+
+    @if (activeFilterChips().length > 0) {
+      <ul class="filter-chips">
+        @for (chip of activeFilterChips(); track chip.key) {
+          <li>
+            <button type="button" class="filter-chip" (click)="clearFilter(chip.key)">
+              <span>{{ chip.labelKey | translate }}: {{ chip.value || (chip.valueKey! | translate) }}</span>
+              <span aria-hidden="true">✕</span>
+            </button>
+          </li>
+        }
+      </ul>
     }
-  </ul>
+  </section>
 
-  @if (totalPages() > 1) {
-    <nav class="pagination">
-      <button type="button" class="btn btn--secondary" [disabled]="page() === 1" (click)="goToPage(page() - 1)">
-        {{ 'common.previousPage' | translate }}
-      </button>
-      @for (p of pageNumbers(); track p) {
-        <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
-          {{ p }}
+  @if (loading()) {
+    <ul class="group-grid" aria-hidden="true">
+      @for (_ of skeletonPlaceholders; track _) {
+        <li class="card group-card skeleton-card"></li>
+      }
+    </ul>
+  } @else if (groups().length === 0) {
+    <div class="empty-state card">
+      <p>{{ 'groupJoin.emptyState' | translate }}</p>
+      @if (hasActiveFilters()) {
+        <button type="button" class="btn btn--secondary" (click)="clearAllFilters()">
+          {{ 'groupJoin.clearFilters' | translate }}
         </button>
       }
-      <button type="button" class="btn btn--secondary" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">
-        {{ 'common.nextPage' | translate }}
-      </button>
-    </nav>
+    </div>
+  } @else {
+    <ul class="group-grid">
+      @for (group of groups(); track group.group_id) {
+        <li class="card group-card">
+          <div class="group-card__header">
+            <span class="group-name">{{ group.name }}</span>
+            <div class="group-card__badges">
+              @if (group.has_password) {
+                <span
+                  class="status-badge lock-icon lock-closed"
+                  [attr.aria-label]="'groupJoin.hasPasswordLabel' | translate"
+                  [title]="'groupJoin.hasPasswordLabel' | translate"
+                  >🔒 {{ 'groupJoin.hasPasswordLabel' | translate }}</span
+                >
+              } @else {
+                <span
+                  class="status-badge lock-icon lock-open"
+                  [attr.aria-label]="'groupJoin.noPasswordLabel' | translate"
+                  [title]="'groupJoin.noPasswordLabel' | translate"
+                  >🔓 {{ 'groupJoin.noPasswordLabel' | translate }}</span
+                >
+              }
+              <span class="status-badge">
+                {{
+                  (group.match_mode === 'singles' ? 'createGroup.matchModeSingles' : 'createGroup.matchModeDoubles')
+                    | translate
+                }}
+              </span>
+            </div>
+          </div>
+
+          <div class="group-card__meta">
+            <span>👤 {{ group.creator_nickname }}</span>
+            @if (group.activity_time_start && group.activity_time_end) {
+              <span>🕐 {{ group.activity_time_start }} - {{ group.activity_time_end }}</span>
+            }
+            @if (group.court_names.length > 0) {
+              <span>📍 {{ group.court_names.join('、') }}</span>
+            }
+          </div>
+
+          <div class="capacity">
+            <div class="capacity-bar">
+              <div class="capacity-bar__fill" [style.width.%]="capacityPercent(group)"></div>
+            </div>
+            <span class="capacity-label">{{ group.current_member_count }} / {{ group.max_members }} 人</span>
+          </div>
+
+          <div class="group-card__footer">
+            @if (group.joined_by_me === true || isOwnGroupForGuest(group)) {
+              <span class="status-badge">{{ 'groupJoin.alreadyJoinedLabel' | translate }}</span>
+              <!-- 已加入者（會員或同一瀏覽器的訪客）即使團已滿也要有路回去
+                   （不受 isFull 影響），且不需要再走一次密碼流程（clickJoin
+                   內已處理）。 -->
+              <button type="button" class="btn" (click)="clickJoin(group)">
+                {{ 'groupJoin.returnButton' | translate }}
+              </button>
+            } @else if (isFull(group)) {
+              <span role="status" class="status-badge status-badge--danger">{{ 'errors.GROUP_FULL' | translate }}</span>
+            } @else if (isBlockedElsewhere(group)) {
+              <span role="status" class="status-badge status-badge--danger">{{ 'groupJoin.activeElsewhereLabel' | translate }}</span>
+            } @else {
+              <button type="button" class="btn" (click)="clickJoin(group)">
+                {{ 'groupJoin.joinButton' | translate }}
+              </button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+
+    @if (totalPages() > 1) {
+      <nav class="pagination">
+        <button type="button" class="btn btn--secondary" [disabled]="page() === 1" (click)="goToPage(page() - 1)">
+          {{ 'common.previousPage' | translate }}
+        </button>
+        @for (p of pageNumbers(); track p) {
+          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
+            {{ p }}
+          </button>
+        }
+        <button type="button" class="btn btn--secondary" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">
+          {{ 'common.nextPage' | translate }}
+        </button>
+      </nav>
+    }
   }
-}
+</main>

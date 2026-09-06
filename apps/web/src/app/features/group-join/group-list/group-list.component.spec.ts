@@ -19,7 +19,7 @@ const group = {
   activity_time_start: '19:00',
   activity_time_end: '21:00',
   status: 'active' as const,
-  courts: [{ court_id: 'c1', name: '場地一' }],
+  court_names: ['場地一'],
   creator_nickname: '王小明',
   joined_by_me: false,
 };
@@ -87,21 +87,14 @@ describe('GroupListComponent', () => {
     expect(text).toContain('21:00');
   });
 
-  it('shows each court name alongside its court ID', () => {
-    const twoCourtGroup = {
-      ...group,
-      courts: [
-        { court_id: 'c1', name: '1號場' },
-        { court_id: 'c2', name: '2號場' },
-      ],
-    };
+  it('shows every court name for a group, without any court ID', () => {
+    const twoCourtGroup = { ...group, court_names: ['1號場', '2號場'] };
     const fixture = setup(1, [twoCourtGroup]);
 
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('1號場');
-    expect(text).toContain('c1');
     expect(text).toContain('2號場');
-    expect(text).toContain('c2');
+    expect(fixture.nativeElement.querySelector('input[formcontrolname="court_id"]')).toBeNull();
   });
 
   it('sends group name, creator nickname, and match mode filters when applied', () => {
@@ -123,6 +116,75 @@ describe('GroupListComponent', () => {
         match_mode: 'singles',
       }),
     );
+  });
+
+  it('shows an empty-state message instead of the grid when no groups match', () => {
+    const fixture = setup(1, []);
+
+    expect(fixture.nativeElement.querySelector('.empty-state')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.group-grid li')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('groupJoin.emptyState');
+  });
+
+  it('renders a chip for each applied filter, and none when no filters are applied', () => {
+    const fixture = setup(1);
+
+    expect(fixture.nativeElement.querySelector('.filter-chips')).toBeNull();
+
+    fixture.componentInstance.filterForm.patchValue({ group_name: '夜羽球', match_mode: 'singles' });
+    fixture.componentInstance.applyFilters();
+    fixture.detectChanges();
+
+    const chips = fixture.nativeElement.querySelectorAll('.filter-chips button');
+    expect(chips.length).toBe(2);
+    expect(fixture.nativeElement.textContent).toContain('夜羽球');
+    expect(fixture.nativeElement.textContent).toContain('createGroup.matchModeSingles');
+  });
+
+  it('clicking a filter chip clears just that filter and re-applies', () => {
+    const listGroups = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    const fixture = setup(1, [group], { listGroups });
+
+    fixture.componentInstance.filterForm.patchValue({ group_name: '夜羽球', creator_nickname: '王小明' });
+    fixture.componentInstance.applyFilters();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.filter-chips button') as HTMLButtonElement).click();
+
+    expect(fixture.componentInstance.filterForm.getRawValue().group_name).toBe('');
+    expect(fixture.componentInstance.filterForm.getRawValue().creator_nickname).toBe('王小明');
+    expect(listGroups).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ group_name: undefined, creator_nickname: '王小明' }),
+    );
+  });
+
+  it('"clear filters" resets every field and re-applies', () => {
+    const listGroups = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    const fixture = setup(1, [group], { listGroups });
+
+    fixture.componentInstance.filterForm.patchValue({ group_name: '夜羽球', match_mode: 'singles' });
+    fixture.componentInstance.applyFilters();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.filter-chips')).not.toBeNull();
+
+    fixture.componentInstance.clearAllFilters();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.filter-chips')).toBeNull();
+    expect(listGroups).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({ group_name: undefined, match_mode: undefined }),
+    );
+  });
+
+  it('capacityPercent caps at 100 and handles a zero max_members defensively', () => {
+    const fixture = setup(1);
+    const component = fixture.componentInstance;
+
+    expect(component.capacityPercent({ ...group, current_member_count: 4, max_members: 8 })).toBe(50);
+    expect(component.capacityPercent({ ...group, current_member_count: 10, max_members: 8 })).toBe(100);
+    expect(component.capacityPercent({ ...group, current_member_count: 0, max_members: 0 })).toBe(0);
   });
 
   it('renders pagination controls when totalPages > 1', () => {

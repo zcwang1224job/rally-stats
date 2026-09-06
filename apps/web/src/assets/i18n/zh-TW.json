@@ -48,7 +48,6 @@
     "confirmNewPassword": "確認新密碼"
   },
   "groupJoin": {
-    "creatorLabel": "開團者",
     "hasPasswordLabel": "需要密碼",
     "noPasswordLabel": "公開",
     "alreadyJoinedLabel": "已加入",
@@ -67,15 +66,18 @@
     "restoredTitle": "歡迎回來",
     "goToGroupButton": "前往揪團頁面",
     "courtNameFilter": "場地名稱",
-    "courtIdFilter": "場地 ID",
     "timeStartFilter": "活動時間（起）",
     "timeEndFilter": "活動時間（迄）",
     "groupNameFilter": "組團名稱",
+    "groupNameFilterPlaceholder": "搜尋組團名稱",
     "creatorNicknameFilter": "開團者",
     "matchModeFilter": "賽制",
     "matchModeFilterAny": "不限",
+    "timeRangeFilter": "活動時間",
+    "moreFilters": "進階篩選",
     "applyFilters": "套用篩選",
-    "courtIdLabel": "ID"
+    "clearFilters": "清除篩選",
+    "emptyState": "目前沒有符合條件的揪團"
   },
   "friends": {
     "listTitle": "好友列表",

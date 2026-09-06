@@ -1,4 +1,4 @@
-"""Unit test: GET /groups filter query logic — court name/ID substring
+"""Unit test: GET /groups filter query logic — court name substring
 match (any court hits), activity time range overlap (US5)."""
 
 from datetime import time
@@ -57,18 +57,6 @@ async def test_court_name_filter_matches_any_court_in_group(db_session: AsyncSes
     groups, _ = await list_groups(db_session, court_name="南")
     ids = {g.id for g in groups}
     assert match_group.id in ids
-    assert other_group.id not in ids
-
-
-async def test_court_id_filter_exact_match(db_session: AsyncSession) -> None:
-    group = await _make_group(db_session, "場地ID篩選")
-    court = await _make_court(db_session, group, "唯一場地")
-    other_group = await _make_group(db_session, "場地ID篩選-其他")
-    await _make_court(db_session, other_group, "其他場地")
-
-    groups, _ = await list_groups(db_session, court_id=court.id)
-    ids = {g.id for g in groups}
-    assert group.id in ids
     assert other_group.id not in ids
 
 

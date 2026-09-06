@@ -17,7 +17,6 @@ const ACTIVE_GUEST_GROUP_KEY = 'rally-stats:guest-active-group-id';
 
 export interface GroupListFilters {
   court_name?: string;
-  court_id?: string;
   time_start?: string;
   time_end?: string;
   group_name?: string;
@@ -37,9 +36,6 @@ export class GroupJoinService {
     const params = new URLSearchParams({ page: String(page) });
     if (filters.court_name) {
       params.set('court_name', filters.court_name);
-    }
-    if (filters.court_id) {
-      params.set('court_id', filters.court_id);
     }
     if (filters.time_start && filters.time_end) {
       params.set('time_start', filters.time_start);

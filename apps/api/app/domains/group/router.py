@@ -136,7 +136,6 @@ async def list_groups(
     member: Annotated[Member | None, Depends(optional_member)],
     page: int = 1,
     court_name: str | None = None,
-    court_id: uuid.UUID | None = None,
     time_start: time | None = None,
     time_end: time | None = None,
     group_name: str | None = None,
@@ -150,7 +149,6 @@ async def list_groups(
         session,
         page=page,
         court_name=court_name,
-        court_id=court_id,
         time_start=time_start,
         time_end=time_end,
         group_name=group_name,
@@ -168,7 +166,7 @@ async def list_groups(
     )
     items = []
     for group in groups:
-        courts = await service.courts_for_group(session, group.id)
+        court_names = await service.court_names_for_group(session, group.id)
         creator_nickname_value = await service.creator_nickname_for_group(session, group.id)
         joined_by_me = None
         created_by_me = None
@@ -183,10 +181,7 @@ async def list_groups(
         items.append(
             GroupListItem(
                 **_to_public(group).model_dump(),
-                courts=[
-                    AllCourtsCourtSummary(court_id=court_id, name=name)
-                    for court_id, name in courts
-                ],
+                court_names=court_names,
                 creator_nickname=creator_nickname_value,
                 joined_by_me=joined_by_me,
                 created_by_me=created_by_me,

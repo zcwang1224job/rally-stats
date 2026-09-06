@@ -535,19 +535,6 @@ async def court_names_for_group(session: AsyncSession, group_id: uuid.UUID) -> l
     return [row[0] for row in result.all()]
 
 
-async def courts_for_group(session: AsyncSession, group_id: uuid.UUID) -> list[tuple[str, str]]:
-    """(court_id, name) pairs for the browse list (US5) — unlike
-    `court_names_for_group` above (still used by the join-link preview,
-    which only ever displays the name), the list needs the ID too so a
-    Guest can tell apart two courts that happen to share a name."""
-    result = await session.execute(
-        select(Court.id, Court.name)
-        .where(Court.group_id == group_id, Court.deleted_at.is_(None))
-        .order_by(Court.created_at)
-    )
-    return [(str(row.id), row.name) for row in result.all()]
-
-
 async def creator_nickname_for_group(session: AsyncSession, group_id: uuid.UUID) -> str:
     """FR-002: 開團者暱稱 — the creator's `RosterEntry` always exists (created
     in the same transaction as the group itself, per `create_group`)."""
@@ -564,7 +551,6 @@ async def list_groups(
     *,
     page: int = 1,
     court_name: str | None = None,
-    court_id: uuid.UUID | None = None,
     time_start: time | None = None,
     time_end: time | None = None,
     group_name: str | None = None,
@@ -575,7 +561,7 @@ async def list_groups(
     personalization (US6) is layered on top of this function's result set
     by the router, not here.
 
-    research.md #7: court name/ID filters match if ANY of the group's
+    research.md #7: the court name filter matches if ANY of the group's
     (non-deleted) courts hits — a group can have multiple courts. Time
     filters use overlap semantics (spec.md Assumptions) and MUST exclude
     groups with no activity time set when applied (FR-004), but MUST NOT
@@ -588,13 +574,16 @@ async def list_groups(
     member's nickname — same scope as `creator_nickname_for_group()`.
     """
     conditions = [Group.status == "active"]
-    if court_name is not None or court_id is not None:
-        court_conditions = [Court.group_id == Group.id, Court.deleted_at.is_(None)]
-        if court_name is not None:
-            court_conditions.append(Court.name.ilike(f"%{court_name}%"))
-        if court_id is not None:
-            court_conditions.append(Court.id == court_id)
-        conditions.append(select(Court.id).where(*court_conditions).exists())
+    if court_name is not None:
+        conditions.append(
+            select(Court.id)
+            .where(
+                Court.group_id == Group.id,
+                Court.deleted_at.is_(None),
+                Court.name.ilike(f"%{court_name}%"),
+            )
+            .exists()
+        )
     if time_start is not None and time_end is not None:
         conditions.extend(
             [

@@ -243,7 +243,7 @@ class GroupListItem(BaseModel):
     activity_time_start: time | None
     activity_time_end: time | None
     status: Literal["active", "disbanded"]
-    courts: list[AllCourtsCourtSummary]
+    court_names: list[str]
     creator_nickname: str
     joined_by_me: bool | None = None
     # True only when the logged-in Member is this group's creator (a

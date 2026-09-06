@@ -8,6 +8,20 @@ import { MatchMode } from '../../group-admin/group-admin.models';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { GroupJoinService } from '../group-join.service';
 
+type FilterChipKey =
+  | 'group_name'
+  | 'creator_nickname'
+  | 'court_name'
+  | 'match_mode'
+  | 'time_range';
+
+interface FilterChip {
+  key: FilterChipKey;
+  labelKey: string;
+  value?: string;
+  valueKey?: string;
+}
+
 @Component({
   selector: 'app-group-list',
   imports: [TranslatePipe, ReactiveFormsModule],
@@ -28,16 +42,64 @@ export class GroupListComponent {
   readonly pageNumbers = computed(() =>
     Array.from({ length: this.totalPages() }, (_, i) => i + 1),
   );
+  /** A handful of placeholder rows shown in place of the group list while
+   * the first page loads — purely cosmetic (skeleton screens read as
+   * "loading" faster than a bare loading line), no data behind them. */
+  readonly skeletonPlaceholders = [1, 2, 3, 4];
 
   readonly filterForm = this.fb.nonNullable.group({
     court_name: [''],
-    court_id: [''],
     time_start: [''],
     time_end: [''],
     group_name: [''],
     creator_nickname: [''],
     match_mode: [''],
   });
+
+  /** Snapshot of the filters a load() call actually used — captured
+   * separately from the live filterForm value so the "active filters"
+   * chips reflect what the list ON SCREEN was fetched with, not whatever
+   * the user has half-typed into the form but not yet submitted. */
+  private readonly appliedFilters = signal(this.filterForm.getRawValue());
+
+  private static readonly FILTER_CHIP_LABEL_KEYS: Record<FilterChipKey, string> = {
+    group_name: 'groupJoin.groupNameFilter',
+    creator_nickname: 'groupJoin.creatorNicknameFilter',
+    court_name: 'groupJoin.courtNameFilter',
+    match_mode: 'groupJoin.matchModeFilter',
+    time_range: 'groupJoin.timeRangeFilter',
+  };
+
+  readonly activeFilterChips = computed<FilterChip[]>(() => {
+    const filters = this.appliedFilters();
+    const chips: FilterChip[] = [];
+    for (const key of ['group_name', 'creator_nickname', 'court_name'] as const) {
+      const value = filters[key];
+      if (value) {
+        chips.push({ key, labelKey: GroupListComponent.FILTER_CHIP_LABEL_KEYS[key], value });
+      }
+    }
+    if (filters.match_mode) {
+      chips.push({
+        key: 'match_mode',
+        labelKey: GroupListComponent.FILTER_CHIP_LABEL_KEYS.match_mode,
+        valueKey:
+          filters.match_mode === 'singles'
+            ? 'createGroup.matchModeSingles'
+            : 'createGroup.matchModeDoubles',
+      });
+    }
+    if (filters.time_start && filters.time_end) {
+      chips.push({
+        key: 'time_range',
+        labelKey: GroupListComponent.FILTER_CHIP_LABEL_KEYS.time_range,
+        value: `${filters.time_start} - ${filters.time_end}`,
+      });
+    }
+    return chips;
+  });
+
+  readonly hasActiveFilters = computed(() => this.activeFilterChips().length > 0);
 
   // Verified once per page visit (not re-checked on every filter/page
   // change — the underlying marker doesn't change from those), rather than
@@ -72,10 +134,10 @@ export class GroupListComponent {
   private load(): void {
     this.loading.set(true);
     const raw = this.filterForm.getRawValue();
+    this.appliedFilters.set(raw);
     this.joinService
       .listGroups(this.page(), {
         court_name: raw.court_name || undefined,
-        court_id: raw.court_id || undefined,
         time_start: raw.time_start || undefined,
         time_end: raw.time_end || undefined,
         group_name: raw.group_name || undefined,
@@ -87,6 +149,50 @@ export class GroupListComponent {
         this.groups.set(response.groups);
         this.totalPages.set(response.total_pages);
       });
+  }
+
+  /** Clears one active-filter chip's field(s) and re-applies immediately —
+   * a quicker undo than clearing the input and re-submitting the form by
+   * hand. `time_range` clears both time fields, since they're shown (and
+   * only ever set) as a single combined chip. */
+  clearFilter(key: FilterChipKey): void {
+    switch (key) {
+      case 'time_range':
+        this.filterForm.patchValue({ time_start: '', time_end: '' });
+        break;
+      case 'group_name':
+        this.filterForm.patchValue({ group_name: '' });
+        break;
+      case 'creator_nickname':
+        this.filterForm.patchValue({ creator_nickname: '' });
+        break;
+      case 'court_name':
+        this.filterForm.patchValue({ court_name: '' });
+        break;
+      case 'match_mode':
+        this.filterForm.patchValue({ match_mode: '' });
+        break;
+    }
+    this.applyFilters();
+  }
+
+  clearAllFilters(): void {
+    this.filterForm.reset({
+      court_name: '',
+      time_start: '',
+      time_end: '',
+      group_name: '',
+      creator_nickname: '',
+      match_mode: '',
+    });
+    this.applyFilters();
+  }
+
+  capacityPercent(group: GroupListItem): number {
+    if (group.max_members <= 0) {
+      return 0;
+    }
+    return Math.min(100, (group.current_member_count / group.max_members) * 100);
   }
 
   clickJoin(group: GroupListItem): void {
