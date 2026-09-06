@@ -167,8 +167,10 @@ async def list_groups(
         created_by_me = None
         member_active_elsewhere = None
         if member is not None:
-            existing = await service.active_roster_entry_for_member(session, group.id, member.id)
-            joined_by_me = existing is not None
+            # No per-item query needed here — active_group_id (looked up once,
+            # above) already is the one group this Member has an active
+            # RosterEntry in, if any (the one-active-group invariant).
+            joined_by_me = active_group_id == group.id
             created_by_me = group.created_by_member_id == member.id
             member_active_elsewhere = active_group_id is not None and active_group_id != group.id
         items.append(
