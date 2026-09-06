@@ -1,0 +1,15 @@
+@switch (status()) {
+  @case ('verifying') {
+    <p>{{ 'auth.verifying' | translate }}</p>
+  }
+  @case ('verified') {
+    <section class="card">
+      <h1>{{ 'auth.verifiedTitle' | translate }}</h1>
+      <p>{{ 'auth.verifiedBody' | translate }}</p>
+      <button type="button" class="btn" (click)="goToLogin()">{{ 'auth.goToLogin' | translate }}</button>
+    </section>
+  }
+  @case ('error') {
+    <p role="alert">{{ (errorKey() ?? 'auth.verificationLinkInvalid') | translate }}</p>
+  }
+}

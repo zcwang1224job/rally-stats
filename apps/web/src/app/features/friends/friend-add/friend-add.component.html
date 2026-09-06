@@ -1,0 +1,41 @@
+<main>
+  <h1>{{ 'friends.addTitle' | translate }}</h1>
+
+  <form class="form card" [formGroup]="form" (ngSubmit)="search()">
+    <label>
+      {{ 'friends.userNumberLabel' | translate }}
+      <input type="text" formControlName="user_number" />
+    </label>
+    <button type="submit" class="btn">{{ 'friends.searchButton' | translate }}</button>
+  </form>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  @if (result(); as r) {
+    <section class="card search-result">
+      <p class="nickname">{{ r.nickname }}</p>
+      <p class="user-number">{{ r.user_number }}</p>
+
+      @switch (r.friendship_status) {
+        @case ('none') {
+          <button type="button" class="btn" (click)="sendRequest()">
+            {{ 'friends.sendRequestButton' | translate }}
+          </button>
+        }
+        @case ('pending_outgoing') {
+          <span class="status-badge">{{ 'friends.pendingOutgoing' | translate }}</span>
+        }
+        @case ('pending_incoming') {
+          <a class="status-badge" routerLink="/friends/requests">{{ 'friends.pendingIncoming' | translate }}</a>
+        }
+        @case ('friends') {
+          <span class="status-badge status-badge--success">{{ 'friends.alreadyFriends' | translate }}</span>
+        }
+      }
+    </section>
+  }
+
+  <a class="tap-target" routerLink="/friends">{{ 'friends.backToList' | translate }}</a>
+</main>

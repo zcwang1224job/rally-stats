@@ -1,0 +1,141 @@
+@if (result(); as created) {
+  <section class="card">
+    <h1>{{ 'createGroup.successTitle' | translate }}</h1>
+    <p>
+      {{ 'createGroup.groupNumber' | translate }}: <strong>{{ created.group_number }}</strong>
+    </p>
+    <p>
+      {{ 'createGroup.adminPin' | translate }}: <strong>{{ created.admin_pin }}</strong>
+    </p>
+    <p>{{ 'createGroup.adminPinNotice' | translate }}</p>
+    @if (memberNickname() === null) {
+      <p role="alert">{{ 'createGroup.anonymousRecoveryWarning' | translate }}</p>
+    }
+    <button type="button" class="btn" (click)="goToAdmin()">{{ 'createGroup.goToAdmin' | translate }}</button>
+  </section>
+} @else {
+  <form class="form" [formGroup]="form" (ngSubmit)="submit()">
+    <h1>{{ 'createGroup.title' | translate }}</h1>
+
+    <label>
+      {{ 'createGroup.name' | translate }}
+      <input type="text" formControlName="name" [attr.placeholder]="'createGroup.namePlaceholder' | translate" maxlength="30" />
+    </label>
+    @if (form.controls.name.touched && form.controls.name.errors?.['required']) {
+      <p role="alert">{{ 'createGroup.nameRequired' | translate }}</p>
+    }
+    @if (form.controls.name.touched && form.controls.name.errors?.['maxlength']) {
+      <p role="alert">{{ 'createGroup.nameTooLong' | translate }}</p>
+    }
+
+    <label>
+      {{ 'createGroup.password' | translate }}
+      <input type="text" formControlName="password" maxlength="20" />
+    </label>
+
+    <label>
+      {{ 'createGroup.matchMode' | translate }}
+      <select formControlName="match_mode" (change)="onMatchModeChange()">
+        <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
+        <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
+      </select>
+    </label>
+
+    <label>
+      {{ 'createGroup.maxMembers' | translate }}
+      <input type="number" formControlName="max_members" min="1" />
+    </label>
+    @if (form.controls.max_members.touched && form.controls.max_members.errors?.['required']) {
+      <p role="alert">{{ 'createGroup.maxMembersRequired' | translate }}</p>
+    }
+    @if (form.controls.max_members.touched && form.controls.max_members.errors?.['min']) {
+      <p role="alert">{{ 'createGroup.maxMembersInvalid' | translate }}</p>
+    }
+    @if (form.errors?.['maxMembersBelowMinimum']; as err) {
+      <p role="alert">{{ 'createGroup.matchMode' | translate }}: min {{ err.minimum }}</p>
+    }
+
+    <label>
+      {{ 'createGroup.schedulingMechanism' | translate }}
+      <select formControlName="scheduling_mechanism">
+        <option value="fair_rotation">{{ 'createGroup.schedulingFairRotation' | translate }}</option>
+        <option value="manual">{{ 'createGroup.schedulingManual' | translate }}</option>
+        @if (form.controls.match_mode.value !== 'singles') {
+          <option value="fixed_partner">{{ 'createGroup.schedulingFixedPartner' | translate }}</option>
+          <option value="individual_mixed">{{ 'createGroup.schedulingIndividualMixed' | translate }}</option>
+        }
+      </select>
+    </label>
+    @if (form.errors?.['schedulingMechanismMatchModeConflict']) {
+      <p role="alert">{{ 'errors.SCHEDULING_MECHANISM_MATCH_MODE_CONFLICT' | translate }}</p>
+    }
+
+    <fieldset>
+      <legend>{{ 'createGroup.scoringMode' | translate }}</legend>
+      <select formControlName="scoring_mode">
+        <option value="21pt">{{ 'createGroup.scoring21pt' | translate }}</option>
+        <option value="15pt">{{ 'createGroup.scoring15pt' | translate }}</option>
+        <option value="custom">{{ 'createGroup.scoringCustom' | translate }}</option>
+      </select>
+
+      @if (form.controls.scoring_mode.value === 'custom') {
+        <label>
+          {{ 'createGroup.customTargetScore' | translate }}
+          <input type="number" formControlName="custom_target_score" min="1" />
+        </label>
+        <label>
+          {{ 'createGroup.customDeuceThreshold' | translate }}
+          <input type="number" formControlName="custom_deuce_threshold" min="1" />
+        </label>
+        <label>
+          {{ 'createGroup.customCapScore' | translate }}
+          <input type="number" formControlName="custom_cap_score" min="1" />
+        </label>
+        @if (form.errors?.['customScoringInvalid']) {
+          <p role="alert">{{ 'errors.INVALID_CUSTOM_SCORING' | translate }}</p>
+        }
+      }
+    </fieldset>
+
+    <label>
+      {{ 'createGroup.activityTimeStart' | translate }}
+      <input type="time" formControlName="activity_time_start" />
+    </label>
+    <label>
+      {{ 'createGroup.activityTimeEnd' | translate }}
+      <input type="time" formControlName="activity_time_end" />
+    </label>
+    @if (form.errors?.['activityTimeIncomplete'] || form.errors?.['activityTimeOutOfOrder']) {
+      <p role="alert">{{ 'createGroup.activityTimeStart' | translate }} / {{ 'createGroup.activityTimeEnd' | translate }}</p>
+    }
+
+    @if (memberNickname(); as nickname) {
+      <p>{{ 'createGroup.creatorAsMember' | translate: { nickname } }}</p>
+    } @else {
+      <label>
+        {{ 'createGroup.creatorNickname' | translate }}
+        <input type="text" formControlName="creator_nickname" maxlength="20" />
+      </label>
+      @if (form.controls.creator_nickname.touched && form.controls.creator_nickname.errors?.['required']) {
+        <p role="alert">{{ 'createGroup.creatorNicknameRequired' | translate }}</p>
+      }
+      @if (form.controls.creator_nickname.touched && form.controls.creator_nickname.errors?.['maxlength']) {
+        <p role="alert">{{ 'createGroup.creatorNicknameTooLong' | translate }}</p>
+      }
+    }
+
+    <app-turnstile-widget
+      [language]="turnstileLanguage"
+      (verified)="onTurnstileVerified($event)"
+      (expired)="onTurnstileExpired()"
+    />
+
+    @if (errorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    }
+
+    <button type="submit" class="btn" [disabled]="submitting() || !turnstileToken()">
+      {{ 'createGroup.submit' | translate }}
+    </button>
+  </form>
+}

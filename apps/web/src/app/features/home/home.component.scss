@@ -1,0 +1,35 @@
+main {
+  display: block;
+  padding: var(--space-xl) var(--space-md);
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+h1 {
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+  color: var(--color-brand-primary);
+}
+
+// US4 (010-app-wide-ui-redesign FR-009): icon-based entry points, replacing
+// the previous plain text links.
+.home-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-xl);
+
+  a {
+    text-decoration: none;
+  }
+}
+
+.icon-link {
+  gap: var(--space-sm);
+}
+
+.icon {
+  font-size: 1.25em;
+  line-height: 1;
+}

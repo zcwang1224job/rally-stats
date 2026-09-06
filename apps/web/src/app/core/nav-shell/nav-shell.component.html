@@ -1,0 +1,46 @@
+<nav class="nav-shell">
+  <a class="nav-shell__brand tap-target" routerLink="/" (click)="closeMenu()">
+    {{ 'nav.home' | translate }}
+  </a>
+
+  <button
+    type="button"
+    class="nav-shell__toggle tap-target"
+    (click)="toggleOpen()"
+    [attr.aria-expanded]="open()"
+    [attr.aria-label]="'nav.menuToggle' | translate"
+  >
+    <span class="nav-shell__toggle-icon" aria-hidden="true">☰</span>
+  </button>
+
+  <div class="nav-shell__links" [class.is-open]="open()">
+    <a class="tap-target" routerLink="/groups" (click)="closeMenu()">
+      {{ 'nav.groups' | translate }}
+    </a>
+
+    @if (!loggedIn()) {
+      <a class="tap-target" routerLink="/auth/login" (click)="closeMenu()">
+        {{ 'nav.login' | translate }}
+      </a>
+      <a class="tap-target" routerLink="/auth/register" (click)="closeMenu()">
+        {{ 'nav.register' | translate }}
+      </a>
+    } @else {
+      <a class="tap-target" routerLink="/member" (click)="closeMenu()">
+        {{ 'nav.memberHome' | translate }}
+      </a>
+      <a class="tap-target" routerLink="/member/settings" (click)="closeMenu()">
+        {{ 'nav.settings' | translate }}
+      </a>
+      <a class="tap-target" routerLink="/member/match-history" (click)="closeMenu()">
+        {{ 'nav.matchHistory' | translate }}
+      </a>
+      <a class="tap-target" routerLink="/friends" (click)="closeMenu()">
+        {{ 'nav.friends' | translate }}
+      </a>
+      <button type="button" class="nav-shell__logout tap-target" (click)="onLogout()">
+        {{ 'nav.logout' | translate }}
+      </button>
+    }
+  </div>
+</nav>

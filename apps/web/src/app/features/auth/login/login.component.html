@@ -1,0 +1,19 @@
+<form class="form card" [formGroup]="form" (ngSubmit)="submit()">
+  <h1>{{ 'auth.loginTitle' | translate }}</h1>
+
+  <label>
+    {{ 'auth.email' | translate }}
+    <input type="email" formControlName="email" />
+  </label>
+
+  <label>
+    {{ 'auth.password' | translate }}
+    <input type="password" formControlName="password" />
+  </label>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  <button type="submit" class="btn" [disabled]="submitting()">{{ 'auth.loginSubmit' | translate }}</button>
+</form>

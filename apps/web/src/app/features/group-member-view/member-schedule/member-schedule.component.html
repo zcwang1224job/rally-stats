@@ -1,0 +1,42 @@
+@if (connectionState() !== 'connected') {
+  <p role="status" class="status-badge status-badge--danger">
+    {{ 'common.offlineBanner' | translate }}
+  </p>
+}
+@if (errorKey()) {
+  <p role="alert">{{ errorKey()! | translate }}</p>
+} @else if (schedule(); as s) {
+  <p class="round-label">
+    {{ 'groupMemberView.schedule.roundLabel' | translate: { round: s.current_round_number } }}
+  </p>
+  @for (court of s.courts; track court.court_id) {
+    <section class="court card">
+      <h3>{{ court.name }}</h3>
+      @if (court.current_match; as match) {
+        <div class="score-board">
+          <span class="score">{{ match.score_a }}</span>
+          <span class="score">{{ match.score_b }}</span>
+        </div>
+        <ul class="participants">
+          @for (participant of match.participants; track participant.roster_entry_id) {
+            <li>{{ participant.nickname }}（{{ participant.team }}）</li>
+          }
+        </ul>
+      } @else if (court.waiting_reason === 'manual_assignment') {
+        <p class="status-badge">{{ 'groupMemberView.schedule.waitingManualAssignment' | translate }}</p>
+      } @else {
+        <p class="status-badge">{{ 'groupMemberView.schedule.waitingNoQueuedMatch' | translate }}</p>
+      }
+      @if (court.next_up; as nextUp) {
+        <p class="next-up">
+          {{ 'groupMemberView.schedule.nextUpLabel' | translate }}
+          @for (participant of nextUp.participants; track participant.roster_entry_id) {
+            {{ participant.nickname }}（{{ participant.team }}）
+          }
+        </p>
+      }
+    </section>
+  }
+} @else {
+  <p>{{ 'common.loading' | translate }}</p>
+}

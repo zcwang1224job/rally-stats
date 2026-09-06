@@ -1,0 +1,93 @@
+@use '../../../styles/tokens';
+
+:host {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.nav-shell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.nav-shell__brand {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.nav-shell__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  border: none;
+  background: transparent;
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    display: none;
+  }
+}
+
+.nav-shell__toggle-icon {
+  font-size: var(--font-size-heading);
+}
+
+// Mobile (< 768px): links form a collapsible panel toggled by the hamburger
+// button — hidden via layout collapse, not removed from the DOM, so the
+// shell's auth-state content stays consistent regardless of open state
+// (FR-003, research.md #3).
+.nav-shell__links {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  max-height: 0;
+  overflow: hidden;
+
+  &.is-open {
+    max-height: 20rem;
+  }
+
+  a,
+  button {
+    min-height: var(--touch-target-min);
+    display: flex;
+    align-items: center;
+    text-decoration: none;
+    color: var(--color-text-primary);
+    background: transparent;
+    border: none;
+    text-align: left;
+    font: inherit;
+    padding: var(--space-xs) 0;
+  }
+
+  // Tablet/desktop (>= 768px): persistent horizontal bar, no collapse.
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-basis: auto;
+    flex-direction: row;
+    align-items: center;
+    max-height: none;
+    overflow: visible;
+    gap: var(--space-md);
+
+    a,
+    button {
+      padding: 0;
+    }
+  }
+}
+
+.nav-shell__logout {
+  color: var(--color-danger);
+}

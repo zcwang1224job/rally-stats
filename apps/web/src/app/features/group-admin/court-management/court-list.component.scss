@@ -1,0 +1,25 @@
+@use '../../../../styles/tokens';
+
+:host {
+  display: block;
+  margin-bottom: var(--space-md);
+}
+
+.add-court-form {
+  flex-direction: row;
+  max-width: none;
+  align-items: center;
+  margin-bottom: var(--space-md);
+
+  input {
+    flex: 1;
+    min-height: var(--touch-target-min);
+  }
+}
+
+.court-entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}

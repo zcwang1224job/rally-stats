@@ -1,0 +1,380 @@
+<a class="back-to-home tap-target" routerLink="/">{{ 'adminPage.backToHome' | translate }}</a>
+
+@if (connectionState() !== 'connected') {
+  <p role="status" class="status-badge status-badge--danger">
+    {{ 'common.offlineBanner' | translate }}
+  </p>
+}
+
+@if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (errorKey(); as key) {
+  <p role="alert">{{ key | translate }}</p>
+} @else if (adminView(); as view) {
+  <h1>{{ 'adminPage.title' | translate }}</h1>
+  <p class="group-number">{{ 'adminPage.groupNumber' | translate }}: {{ view.group.group_number }}</p>
+
+  @if (view.read_only) {
+    <p role="status" class="status-badge">{{ 'adminPage.disbandedNotice' | translate }}</p>
+  }
+
+  <div class="admin-shell">
+    <nav class="admin-nav">
+      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'courts'" (click)="activeSection.set('courts')">
+        {{ 'adminPage.section.courts' | translate }}
+      </button>
+      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'schedule'" (click)="activeSection.set('schedule')">
+        {{ 'adminPage.section.schedule' | translate }}
+      </button>
+      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'roster'" (click)="activeSection.set('roster')">
+        {{ 'adminPage.section.roster' | translate }}
+      </button>
+      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'name'" (click)="activeSection.set('name')">
+        {{ 'adminPage.section.name' | translate }}
+      </button>
+      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'access'" (click)="activeSection.set('access')">
+        {{ 'adminPage.section.access' | translate }}
+      </button>
+      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'settings'" (click)="activeSection.set('settings')">
+        {{ 'adminPage.section.settings' | translate }}
+      </button>
+    </nav>
+
+    <div class="admin-content">
+      @if (view.read_only) {
+        <!-- Read-only (disbanded) mode: mirrors the page's previous
+             behavior of showing nothing but the disbanded notice, now
+             scoped per-tab instead of once for the whole page (contract
+             row 3 — no new functionality is exposed for a disbanded
+             group). -->
+        <section class="card">
+          <p class="status-badge">{{ 'adminPage.disbandedNotice' | translate }}</p>
+        </section>
+      } @else {
+        @switch (activeSection()) {
+          @case ('courts') {
+            <section class="card links-section">
+              <h2>{{ 'reauth.groupNumber' | translate }} / 團層級連結</h2>
+              <div class="link-section">
+                <p>加入連結</p>
+                <qrcode [qrdata]="joinLinkUrl()" [width]="128" errorCorrectionLevel="M" />
+                <input type="text" readonly [value]="joinLinkUrl()" />
+                <button type="button" class="btn btn--secondary" (click)="openRegenerateJoinLinkDialog()">
+                  {{ 'courtManagement.regenerateLink' | translate }}
+                </button>
+              </div>
+              <div class="link-section">
+                <p>{{ 'courtManagement.allCourtsTitle' | translate }}</p>
+                <qrcode [qrdata]="allCourtsLinkUrl()" [width]="128" errorCorrectionLevel="M" />
+                <input type="text" readonly [value]="allCourtsLinkUrl()" />
+                <button type="button" class="btn btn--secondary" (click)="openRegenerateAllCourtsLinkDialog()">
+                  {{ 'courtManagement.regenerateLink' | translate }}
+                </button>
+              </div>
+            </section>
+
+            <app-court-list [groupId]="groupId" />
+          }
+
+          @case ('schedule') {
+            <section class="card">
+              <h2>{{ 'scheduleManagement.sectionTitle' | translate }}</h2>
+
+              @if (schedule(); as sched) {
+                <p>{{ 'scheduleManagement.roundLabel' | translate: { round: sched.current_round_number } }}</p>
+
+                @if (sched.scheduling_mechanism !== 'manual') {
+                  <app-round-matches-list [groupId]="groupId" />
+                }
+
+                @if (sched.courts.length === 0) {
+                  <p>{{ 'courtManagement.noCourtsYet' | translate }}</p>
+                } @else {
+                  @for (court of sched.courts; track court.court_id) {
+                    <div class="court-control-block card">
+                      <h3>{{ court.name }}</h3>
+                      @if (court.current_match) {
+                        <app-court-control [groupId]="groupId" [court]="court" (changed)="loadSchedule()" />
+                      } @else if (court.waiting_reason === 'manual_assignment') {
+                        <app-manual-assign
+                          [groupId]="groupId"
+                          [courtId]="court.court_id"
+                          [matchMode]="editForm.controls.match_mode.value"
+                          [roster]="sched.roster"
+                          (assigned)="loadSchedule()"
+                        />
+                      } @else if (court.next_up; as next) {
+                        <p>
+                          {{
+                            'controlPanel.nextUpLabel'
+                              | translate
+                                : {
+                                    names:
+                                      next.participants.at(0)?.nickname +
+                                      ' / ' +
+                                      next.participants.at(1)?.nickname,
+                                  }
+                          }}
+                        </p>
+                      } @else {
+                        <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+                      }
+                    </div>
+                  }
+                }
+
+                @if (nextRoundErrorKey(); as key) {
+                  <p role="alert">{{ key | translate }}</p>
+                }
+
+                @if (sched.scheduling_mechanism !== 'manual') {
+                  <label class="checkbox-label">
+                    <input
+                      type="checkbox"
+                      [checked]="sched.auto_next_round"
+                      (change)="toggleAutoNextRound($any($event.target).checked)"
+                    />
+                    {{ 'scheduleManagement.autoNextRound' | translate }}
+                  </label>
+                }
+
+                <button type="button" class="btn" (click)="openNextRoundDialog()">
+                  {{ 'scheduleManagement.nextRound' | translate }}
+                </button>
+
+                @if (sched.scheduling_mechanism === 'fixed_partner') {
+                  <app-partnership-settings [groupId]="groupId" />
+                }
+              }
+            </section>
+          }
+
+          @case ('roster') {
+            <section class="card">
+              <h3>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h3>
+              @if (kickMemberErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+              @if (schedule(); as sched) {
+                <ul class="roster-list">
+                  @for (member of sched.roster; track member.roster_entry_id) {
+                    <li>
+                      <span class="roster-name">
+                        {{ member.nickname }}
+                        @if (member.currently_playing) {
+                          <span class="status-badge status-badge--success">{{ 'scheduleManagement.currentlyPlaying' | translate }}</span>
+                        } @else if (sched.scheduling_mechanism === 'manual' && member.wait_count !== null) {
+                          <!-- 011-round-robin-scheduling research.md #5: wait_count is frozen
+                               (no longer meaningful) once the group is on an algorithmic
+                               scheduling mechanism — only manual mode still updates it. -->
+                          <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
+                        }
+                      </span>
+                      <button
+                        type="button"
+                        class="btn btn--danger"
+                        (click)="openKickMemberDialog(member.roster_entry_id, member.nickname)"
+                      >
+                        {{ 'scheduleManagement.kickMember' | translate }}
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+            </section>
+          }
+
+          @case ('name') {
+            <form class="form card" [formGroup]="editForm" (ngSubmit)="saveGroupSettings()">
+              <h2>{{ 'adminPage.section.name' | translate }}</h2>
+              <label>
+                {{ 'adminPage.name' | translate }}
+                <input type="text" formControlName="name" maxlength="30" />
+              </label>
+              @if (saveErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+              <button type="submit" class="btn">{{ 'adminPage.save' | translate }}</button>
+            </form>
+          }
+
+          @case ('access') {
+            <section class="card">
+              <h2>{{ 'adminPage.section.access' | translate }}</h2>
+              <button type="button" class="btn" (click)="openRegeneratePinDialog()">{{ 'adminPage.regeneratePin' | translate }}</button>
+              @if (newPin(); as pin) {
+                <p>{{ 'adminPage.newPinTitle' | translate }}: <strong>{{ pin }}</strong></p>
+              }
+            </section>
+          }
+
+          @case ('settings') {
+            <form class="form card" [formGroup]="editForm" (ngSubmit)="saveGroupSettings()">
+              <h2>{{ 'adminPage.section.settings' | translate }}</h2>
+
+              <label>
+                {{ 'adminPage.password' | translate }}
+                <input type="text" formControlName="password" maxlength="20" />
+              </label>
+
+              <label>
+                {{ 'adminPage.matchMode' | translate }}
+                <select formControlName="match_mode" (change)="onMatchModeChange()">
+                  <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
+                  <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
+                </select>
+              </label>
+
+              <label>
+                {{ 'createGroup.schedulingMechanism' | translate }}
+                <select formControlName="scheduling_mechanism">
+                  <option value="fair_rotation">{{ 'createGroup.schedulingFairRotation' | translate }}</option>
+                  <option value="manual">{{ 'createGroup.schedulingManual' | translate }}</option>
+                  @if (editForm.controls.match_mode.value !== 'singles') {
+                    <option value="fixed_partner">{{ 'createGroup.schedulingFixedPartner' | translate }}</option>
+                    <option value="individual_mixed">{{ 'createGroup.schedulingIndividualMixed' | translate }}</option>
+                  }
+                </select>
+              </label>
+              @if (editForm.errors?.['schedulingMechanismMatchModeConflict']) {
+                <p role="alert">{{ 'errors.SCHEDULING_MECHANISM_MATCH_MODE_CONFLICT' | translate }}</p>
+              }
+
+              @if (editForm.controls.scheduling_mechanism.value === 'fixed_partner') {
+                <label>
+                  {{ 'adminPage.partnerSource' | translate }}
+                  <select formControlName="partner_source">
+                    <option value="manual">{{ 'adminPage.partnerSourceManual' | translate }}</option>
+                    <option value="auto">{{ 'adminPage.partnerSourceAuto' | translate }}</option>
+                  </select>
+                </label>
+              }
+
+              <label>
+                {{ 'adminPage.maxMembers' | translate }}
+                <input type="number" formControlName="max_members" min="1" />
+              </label>
+              @if (editForm.errors?.['maxMembersBelowMinimum']; as err) {
+                <p role="alert">min {{ err.minimum }}</p>
+              }
+
+              <label>
+                {{ 'adminPage.activityTimeStart' | translate }}
+                <input type="time" formControlName="activity_time_start" />
+              </label>
+              <label>
+                {{ 'adminPage.activityTimeEnd' | translate }}
+                <input type="time" formControlName="activity_time_end" />
+              </label>
+              @if (editForm.errors?.['activityTimeIncomplete'] || editForm.errors?.['activityTimeOutOfOrder']) {
+                <p role="alert">{{ 'adminPage.activityTimeStart' | translate }} / {{ 'adminPage.activityTimeEnd' | translate }}</p>
+              }
+
+              @if (saveErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+
+              <button type="submit" class="btn">{{ 'adminPage.save' | translate }}</button>
+            </form>
+
+            <form class="form card" [formGroup]="scoringForm" (ngSubmit)="saveScoringSettings()">
+              <h2>{{ 'adminPage.scoringSectionTitle' | translate }}</h2>
+
+              <label>
+                {{ 'adminPage.scoringMode' | translate }}
+                <select formControlName="scoring_mode">
+                  <option value="21pt">{{ 'createGroup.scoring21pt' | translate }}</option>
+                  <option value="15pt">{{ 'createGroup.scoring15pt' | translate }}</option>
+                  <option value="custom">{{ 'createGroup.scoringCustom' | translate }}</option>
+                </select>
+              </label>
+
+              @if (scoringForm.controls.scoring_mode.value === 'custom') {
+                <label>
+                  {{ 'adminPage.customTargetScore' | translate }}
+                  <input type="number" formControlName="custom_target_score" min="1" />
+                </label>
+                <label>
+                  {{ 'adminPage.customDeuceThreshold' | translate }}
+                  <input type="number" formControlName="custom_deuce_threshold" min="1" />
+                </label>
+                <label>
+                  {{ 'adminPage.customCapScore' | translate }}
+                  <input type="number" formControlName="custom_cap_score" min="1" />
+                </label>
+                @if (scoringForm.errors?.['customScoringInvalid']) {
+                  <p role="alert">{{ 'errors.INVALID_CUSTOM_SCORING' | translate }}</p>
+                }
+              }
+
+              @if (scoringErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+
+              <button type="submit" class="btn">{{ 'adminPage.saveScoring' | translate }}</button>
+            </form>
+
+            <section class="card">
+              <button type="button" class="btn btn--danger" (click)="openDisbandDialog()">{{ 'adminPage.disband' | translate }}</button>
+            </section>
+          }
+        }
+      }
+    </div>
+  </div>
+}
+
+<app-confirm-dialog
+  #disbandDialog
+  [title]="'adminPage.disbandConfirmTitle' | translate"
+  [body]="'adminPage.disbandConfirmBody' | translate"
+  (confirmed)="confirmDisband()"
+/>
+
+<app-confirm-dialog
+  #regeneratePinDialog
+  [title]="'adminPage.regeneratePinConfirmTitle' | translate"
+  [body]="'adminPage.regeneratePinConfirmBody' | translate"
+  (confirmed)="confirmRegeneratePin()"
+/>
+
+<app-confirm-dialog
+  #regenerateJoinLinkDialog
+  [title]="'courtManagement.regenerateLinkConfirmTitle' | translate"
+  [body]="'courtManagement.regenerateLinkConfirmBody' | translate"
+  (confirmed)="confirmRegenerateJoinLink()"
+/>
+
+<app-confirm-dialog
+  #regenerateAllCourtsLinkDialog
+  [title]="'courtManagement.regenerateLinkConfirmTitle' | translate"
+  [body]="'courtManagement.regenerateLinkConfirmBody' | translate"
+  (confirmed)="confirmRegenerateAllCourtsLink()"
+/>
+
+<app-confirm-dialog
+  #nextRoundDialog
+  [title]="
+    (hasUnfinishedMatches()
+      ? 'scheduleManagement.nextRoundConfirmTitle'
+      : 'scheduleManagement.nextRoundConfirmTitleAllEnded'
+    ) | translate
+  "
+  [body]="
+    (hasUnfinishedMatches()
+      ? 'scheduleManagement.nextRoundConfirmBody'
+      : 'scheduleManagement.nextRoundConfirmBodyAllEnded'
+    ) | translate
+  "
+  (confirmed)="confirmNextRound()"
+/>
+
+<app-confirm-dialog
+  #kickMemberDialog
+  [title]="
+    'scheduleManagement.kickMemberConfirmTitle'
+      | translate: { nickname: kickMemberTarget()?.nickname }
+  "
+  [body]="'scheduleManagement.kickMemberConfirmBody' | translate"
+  (confirmed)="confirmKickMember()"
+/>

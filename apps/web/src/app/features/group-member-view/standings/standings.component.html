@@ -1,0 +1,36 @@
+@if (errorKey()) {
+  <p role="alert">{{ errorKey()! | translate }}</p>
+} @else if (standings(); as s) {
+  @if (s.rounds.length === 0) {
+    <p>{{ 'groupMemberView.standings.noRoundsYet' | translate }}</p>
+  } @else {
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ 'groupMemberView.standings.nicknameLabel' | translate }}</th>
+            @for (round of s.rounds; track round) {
+              <th>{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round } }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (member of s.members; track member.roster_entry_id) {
+            <tr>
+              <td>{{ member.nickname }}</td>
+              @for (round of s.rounds; track round) {
+                <td>
+                  <span class="status-badge" [attr.data-status]="member.rounds[round]">
+                    {{ 'groupMemberView.standings.status.' + member.rounds[round] | translate }}
+                  </span>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+} @else {
+  <p>{{ 'common.loading' | translate }}</p>
+}

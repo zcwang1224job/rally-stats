@@ -1,0 +1,89 @@
+@if (linkInvalidated()) {
+  <p role="alert">{{ 'courtManagement.linkInvalidatedNotice' | translate }}</p>
+} @else if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (errorKey(); as key) {
+  <p role="alert">{{ key | translate }}</p>
+} @else if (courtInfo(); as info) {
+  @if (info.deleted) {
+    <p role="alert">{{ 'courtManagement.courtDeletedNotice' | translate }}</p>
+  } @else if (info.group_disbanded) {
+    <p role="alert">{{ 'courtManagement.groupDisbandedNotice' | translate }}</p>
+  } @else {
+    @if (connectionState() !== 'connected') {
+      <p role="status" class="status-badge status-badge--danger">
+        {{ 'common.offlineBanner' | translate }}
+      </p>
+    }
+    <h1>{{ info.name }}</h1>
+    @if (liveState(); as state) {
+      <p class="round-label">
+        {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
+      </p>
+      @if (state.current_match; as match) {
+        <div class="score-board">
+          <div class="team team--a">
+            <div class="buttons">
+              <button
+                type="button"
+                class="btn"
+                [disabled]="connectionState() !== 'connected'"
+                (click)="score('A', 1)"
+              >
+                +1
+              </button>
+              <button
+                type="button"
+                class="btn btn--secondary"
+                [disabled]="connectionState() !== 'connected'"
+                (click)="score('A', -1)"
+              >
+                -1
+              </button>
+            </div>
+            <span class="score">{{ match.score_a }}</span>
+          </div>
+          <div class="team team--b">
+            <span class="score">{{ match.score_b }}</span>
+            <div class="buttons">
+              <button
+                type="button"
+                class="btn"
+                [disabled]="connectionState() !== 'connected'"
+                (click)="score('B', 1)"
+              >
+                +1
+              </button>
+              <button
+                type="button"
+                class="btn btn--secondary"
+                [disabled]="connectionState() !== 'connected'"
+                (click)="score('B', -1)"
+              >
+                -1
+              </button>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn btn--danger"
+          [disabled]="connectionState() !== 'connected'"
+          (click)="openEndMatchDialog()"
+        >
+          {{ 'controlPanel.endMatch' | translate }}
+        </button>
+        <app-confirm-dialog
+          #endMatchDialog
+          [title]="'controlPanel.endMatchConfirmTitle' | translate"
+          [body]="'controlPanel.endMatchConfirmBody' | translate"
+          (confirmed)="confirmEndMatch()"
+        />
+      } @else if (state.waiting_reason === 'manual_assignment') {
+        <p>{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
+      } @else {
+        <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+      }
+    }
+  }
+}

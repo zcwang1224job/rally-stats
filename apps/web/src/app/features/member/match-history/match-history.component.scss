@@ -1,0 +1,41 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+}
+
+.summary {
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-md);
+}
+
+.record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.record-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.teams {
+  flex: 1;
+  min-width: 0;
+}
+
+.score {
+  font-weight: var(--font-weight-bold);
+}
+
+.pagination {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}

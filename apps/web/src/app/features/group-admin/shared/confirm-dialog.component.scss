@@ -1,0 +1,23 @@
+dialog {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  max-width: min(90vw, 400px);
+
+  &::backdrop {
+    background: rgb(0 0 0 / 50%);
+  }
+}
+
+h2 {
+  margin-top: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}

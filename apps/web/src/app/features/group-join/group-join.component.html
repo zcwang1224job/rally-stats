@@ -1,0 +1,17 @@
+@switch (status()) {
+  @case ('loading') {
+    <p>{{ 'common.loading' | translate }}</p>
+  }
+  @case ('disbanded') {
+    <p role="alert">{{ 'errors.GROUP_DISBANDED' | translate }}</p>
+  }
+  @case ('full') {
+    <p role="alert">{{ 'errors.GROUP_FULL' | translate }}</p>
+  }
+  @case ('error') {
+    <p role="alert">{{ (errorKey() ?? 'errors.LINK_NOT_FOUND') | translate }}</p>
+  }
+  @case ('restored') {
+    <p>{{ 'groupJoin.restoredTitle' | translate }}</p>
+  }
+}

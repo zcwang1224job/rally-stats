@@ -1,0 +1,88 @@
+<form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+  <label>
+    {{ 'groupJoin.courtNameFilter' | translate }}
+    <input type="text" formControlName="court_name" />
+  </label>
+  <label>
+    {{ 'groupJoin.courtIdFilter' | translate }}
+    <input type="text" formControlName="court_id" />
+  </label>
+  <label>
+    {{ 'groupJoin.timeStartFilter' | translate }}
+    <input type="time" formControlName="time_start" />
+  </label>
+  <label>
+    {{ 'groupJoin.timeEndFilter' | translate }}
+    <input type="time" formControlName="time_end" />
+  </label>
+  <button type="submit" class="btn">{{ 'groupJoin.applyFilters' | translate }}</button>
+</form>
+
+@if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else {
+  <ul class="group-list">
+    @for (group of groups(); track group.group_id) {
+      <li class="card">
+        <span class="group-name">{{ group.name }}</span>
+        <span>{{ 'groupJoin.creatorLabel' | translate }}: {{ group.creator_nickname }}</span>
+        <span>{{ group.current_member_count }}/{{ group.max_members }}</span>
+        <span>
+          {{
+            (group.match_mode === 'singles' ? 'createGroup.matchModeSingles' : 'createGroup.matchModeDoubles')
+              | translate
+          }}
+        </span>
+        <span>{{ group.court_names.join(', ') }}</span>
+        @if (group.activity_time_start && group.activity_time_end) {
+          <span>{{ group.activity_time_start }} - {{ group.activity_time_end }}</span>
+        }
+        @if (group.has_password) {
+          <span
+            class="status-badge lock-icon lock-closed"
+            [attr.aria-label]="'groupJoin.hasPasswordLabel' | translate"
+            [title]="'groupJoin.hasPasswordLabel' | translate"
+            >🔒 {{ 'groupJoin.hasPasswordLabel' | translate }}</span
+          >
+        } @else {
+          <span
+            class="status-badge lock-icon lock-open"
+            [attr.aria-label]="'groupJoin.noPasswordLabel' | translate"
+            [title]="'groupJoin.noPasswordLabel' | translate"
+            >🔓 {{ 'groupJoin.noPasswordLabel' | translate }}</span
+          >
+        }
+        @if (group.joined_by_me === true) {
+          <span class="status-badge">{{ 'groupJoin.alreadyJoinedLabel' | translate }}</span>
+          <!-- 已加入的會員即使團已滿也要有路回去（不受 isFull 影響），且不需
+               要再走一次密碼流程（clickJoin 內已處理）。 -->
+          <button type="button" class="btn" (click)="clickJoin(group)">
+            {{ 'groupJoin.returnButton' | translate }}
+          </button>
+        } @else if (isFull(group)) {
+          <span role="status" class="status-badge status-badge--danger">{{ 'errors.GROUP_FULL' | translate }}</span>
+        } @else {
+          <button type="button" class="btn" (click)="clickJoin(group)">
+            {{ 'groupJoin.joinButton' | translate }}
+          </button>
+        }
+      </li>
+    }
+  </ul>
+
+  @if (totalPages() > 1) {
+    <nav class="pagination">
+      <button type="button" class="btn btn--secondary" [disabled]="page() === 1" (click)="goToPage(page() - 1)">
+        {{ 'common.previousPage' | translate }}
+      </button>
+      @for (p of pageNumbers(); track p) {
+        <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
+          {{ p }}
+        </button>
+      }
+      <button type="button" class="btn btn--secondary" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">
+        {{ 'common.nextPage' | translate }}
+      </button>
+    </nav>
+  }
+}

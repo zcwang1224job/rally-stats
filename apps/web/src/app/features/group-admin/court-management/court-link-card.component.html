@@ -1,0 +1,45 @@
+<div class="court-link-card card">
+  <h3>{{ court().name }}</h3>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  <div class="link-section">
+    <p>{{ 'courtManagement.scoreboardLink' | translate }}</p>
+    <qrcode [qrdata]="scoreboardUrl()" [width]="128" errorCorrectionLevel="M" />
+    <input type="text" readonly [value]="scoreboardUrl()" />
+    <button type="button" class="btn btn--secondary" (click)="copyScoreboardLink()">
+      {{ (copiedScoreboard() ? 'common.copied' : 'common.copy') | translate }}
+    </button>
+    <button type="button" class="btn btn--secondary" (click)="openScoreboardRegenDialog()">
+      {{ 'courtManagement.regenerateLink' | translate }}
+    </button>
+  </div>
+
+  <div class="link-section">
+    <p>{{ 'courtManagement.controlPanelLink' | translate }}</p>
+    <qrcode [qrdata]="controlPanelUrl()" [width]="128" errorCorrectionLevel="M" />
+    <input type="text" readonly [value]="controlPanelUrl()" />
+    <button type="button" class="btn btn--secondary" (click)="copyControlPanelLink()">
+      {{ (copiedControlPanel() ? 'common.copied' : 'common.copy') | translate }}
+    </button>
+    <button type="button" class="btn btn--secondary" (click)="openControlPanelRegenDialog()">
+      {{ 'courtManagement.regenerateLink' | translate }}
+    </button>
+  </div>
+</div>
+
+<app-confirm-dialog
+  #scoreboardRegenDialog
+  [title]="'courtManagement.regenerateLinkConfirmTitle' | translate"
+  [body]="'courtManagement.regenerateLinkConfirmBody' | translate"
+  (confirmed)="confirmRegenerateScoreboardLink()"
+/>
+
+<app-confirm-dialog
+  #controlPanelRegenDialog
+  [title]="'courtManagement.regenerateLinkConfirmTitle' | translate"
+  [body]="'courtManagement.regenerateLinkConfirmBody' | translate"
+  (confirmed)="confirmRegenerateControlPanelLink()"
+/>

@@ -1,0 +1,36 @@
+.round-label {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-bold);
+}
+
+.court {
+  margin-bottom: var(--space-md);
+}
+
+h3 {
+  margin-top: 0;
+  font-size: var(--font-size-heading);
+}
+
+.score-board {
+  display: flex;
+  gap: var(--space-md);
+  margin: var(--space-sm) 0;
+}
+
+.score {
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+}
+
+.participants {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.next-up {
+  margin-top: var(--space-sm);
+}

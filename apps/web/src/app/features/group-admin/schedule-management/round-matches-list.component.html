@@ -1,0 +1,42 @@
+<button type="button" class="btn btn--secondary" (click)="toggle()">
+  {{ (expanded() ? 'scheduleManagement.hideRoundMatches' : 'scheduleManagement.showRoundMatches') | translate }}
+</button>
+
+@if (expanded()) {
+  <div class="round-matches">
+    @if (loading()) {
+      <p>{{ 'common.loading' | translate }}</p>
+    } @else if (errorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    } @else {
+      <div class="round-matches-header">
+        @if (roundNumber(); as round) {
+          <span>{{ 'scheduleManagement.roundLabel' | translate: { round } }}</span>
+        }
+        <button type="button" class="btn btn--secondary" (click)="load()">
+          {{ 'scheduleManagement.refresh' | translate }}
+        </button>
+      </div>
+      @if (matches().length === 0) {
+        <p>{{ 'scheduleManagement.noRoundMatchesYet' | translate }}</p>
+      } @else {
+        <ul class="round-matches-list">
+          @for (match of matches(); track match.match_id) {
+            <li>
+              <span class="status-badge" [attr.data-status]="match.status">
+                {{ 'scheduleManagement.matchStatus.' + match.status | translate }}
+              </span>
+              <span class="vs">{{ vsLabel(match) }}</span>
+              @if (match.court_name) {
+                <span class="court-name">{{ match.court_name }}</span>
+              }
+              @if (match.status === 'completed' || match.status === 'in_progress') {
+                <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+    }
+  </div>
+}

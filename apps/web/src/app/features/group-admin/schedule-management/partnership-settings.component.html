@@ -1,0 +1,35 @@
+<section class="partnership-settings card">
+  <h2>{{ 'scheduleManagement.partnershipSectionTitle' | translate }}</h2>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  @if (loading()) {
+    <p>{{ 'common.loading' | translate }}</p>
+  } @else if (partnerships(); as data) {
+    <p>{{ 'scheduleManagement.partnershipPickHint' | translate }}</p>
+
+    <ul class="pair-list">
+      @for (pair of data.partnerships; track pair.partnership_id) {
+        <li>
+          <button type="button" class="btn btn--secondary" (click)="pick(pair.player_a.roster_entry_id)">
+            {{ pair.player_a.nickname }}
+          </button>
+          ＋
+          <button type="button" class="btn btn--secondary" (click)="pick(pair.player_b.roster_entry_id)">
+            {{ pair.player_b.nickname }}
+          </button>
+        </li>
+      }
+      @for (entry of data.unpaired; track entry.roster_entry_id) {
+        <li>
+          <button type="button" class="btn btn--secondary" (click)="pick(entry.roster_entry_id)">
+            {{ entry.nickname }}
+          </button>
+          <span class="status-badge">{{ 'scheduleManagement.partnershipUnpaired' | translate }}</span>
+        </li>
+      }
+    </ul>
+  }
+</section>

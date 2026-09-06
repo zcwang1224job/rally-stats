@@ -1,0 +1,50 @@
+@if (errorKey()) {
+  <p role="alert">{{ errorKey()! | translate }}</p>
+} @else if (records(); as r) {
+  <section class="card summary">
+    <p>
+      {{
+        'member.matchHistory.summary'
+          | translate: {
+              total: r.total_matches,
+              wins: r.total_wins,
+              losses: r.total_losses,
+              winRate: (r.win_rate * 100).toFixed(0)
+            }
+      }}
+    </p>
+  </section>
+  @if (r.matches.length === 0) {
+    <p>{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
+  } @else {
+    <ul class="record-list">
+      @for (match of r.matches; track match.match_id) {
+        <li class="card">
+          <span class="status-badge">{{ match.group_name }}</span>
+          <span class="status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
+          <span class="teams">
+            @for (p of match.team_a; track p.roster_entry_id) {
+              {{ p.nickname }}
+            }
+            vs
+            @for (p of match.team_b; track p.roster_entry_id) {
+              {{ p.nickname }}
+            }
+          </span>
+          <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+        </li>
+      }
+    </ul>
+    @if (r.total_pages > 1) {
+      <nav class="pagination">
+        @for (p of pageNumbers(); track p) {
+          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
+            {{ p }}
+          </button>
+        }
+      </nav>
+    }
+  }
+} @else {
+  <p>{{ 'common.loading' | translate }}</p>
+}

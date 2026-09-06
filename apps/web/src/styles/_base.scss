@@ -1,0 +1,144 @@
+// Shared base classes for the "運動簡約風" visual language
+// (contracts/design-system.md). These are global classes (not SCSS
+// mixins), applied directly in component templates alongside a
+// component's own co-located .component.scss.
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  transition:
+    transform 0.05s ease-out,
+    opacity 0.15s ease-out;
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn--danger {
+  background: var(--color-danger);
+  color: var(--color-danger-contrast);
+}
+
+.btn--secondary {
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+// Status text MUST NOT rely on color alone (constitution VII) — every
+// status-badge carries a leading icon/symbol baked into its i18n string
+// (established in 005-member-view, e.g. "⏏ 已離開") alongside the color
+// variant below, never color by itself.
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+
+  &--success {
+    background: color-mix(in srgb, var(--color-brand-accent) 15%, white);
+    color: var(--color-brand-accent);
+  }
+
+  &--danger {
+    background: color-mix(in srgb, var(--color-danger) 12%, white);
+    color: var(--color-danger);
+  }
+
+  &--muted {
+    color: var(--color-text-muted);
+  }
+}
+
+// Validation/error text (every `<p role="alert">` across the app — field
+// errors, API error keys, expiry/lockout notices). The wording itself
+// always carries the meaning (constitution: MUST NOT rely on color alone),
+// this is just the shared visual highlight so errors are easy to spot.
+p[role='alert'] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  margin: calc(var(--space-xs) * -1) 0 0;
+  color: var(--color-danger);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
+
+  &::before {
+    content: '⚠';
+  }
+}
+
+// Shared form layout — used by every form-heavy page (join flow, auth,
+// create-group, etc.) so inputs/labels/buttons don't need to be
+// re-specified per component (contracts/design-system.md).
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 420px;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+  }
+
+  input,
+  select {
+    min-height: var(--touch-target-min);
+    padding: var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-body);
+    color: var(--color-text-primary);
+
+    &:focus {
+      outline: 2px solid var(--color-brand-primary);
+      outline-offset: 1px;
+    }
+  }
+}
+
+// For non-<button> clickable elements (custom nav items, card-as-link)
+// that need the same touch-target guarantee without a button's default
+// appearance.
+.tap-target {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+}

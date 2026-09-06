@@ -1,0 +1,59 @@
+<section class="card">
+  <form class="form" [formGroup]="nicknameForm" (ngSubmit)="submitNickname()">
+    <h2>{{ 'member.nicknameSectionTitle' | translate }}</h2>
+
+    <label>
+      {{ 'member.nickname' | translate }}
+      <input type="text" formControlName="nickname" maxlength="20" />
+    </label>
+
+    @if (nicknameErrorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    }
+    @if (nicknameSaved()) {
+      <p>{{ 'member.nicknameSaved' | translate }}</p>
+    }
+
+    <button type="submit" class="btn" [disabled]="nicknameSubmitting()">
+      {{ 'member.saveNickname' | translate }}
+    </button>
+  </form>
+</section>
+
+<section class="card">
+  <form class="form" [formGroup]="passwordForm" (ngSubmit)="submitPassword()">
+    <h2>{{ 'member.passwordSectionTitle' | translate }}</h2>
+
+    <label>
+      {{ 'member.currentPassword' | translate }}
+      <input type="password" formControlName="current_password" />
+    </label>
+
+    <label>
+      {{ 'auth.newPassword' | translate }}
+      <input type="password" formControlName="new_password" />
+    </label>
+    @if (passwordForm.controls.new_password.errors?.['passwordTooWeak']) {
+      <p role="alert">{{ 'auth.passwordTooWeak' | translate }}</p>
+    }
+
+    <label>
+      {{ 'auth.confirmNewPassword' | translate }}
+      <input type="password" formControlName="confirm_new_password" />
+    </label>
+    @if (passwordForm.errors?.['passwordMismatch']) {
+      <p role="alert">{{ 'auth.passwordMismatch' | translate }}</p>
+    }
+
+    @if (passwordErrorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    }
+    @if (passwordSaved()) {
+      <p>{{ 'member.passwordSaved' | translate }}</p>
+    }
+
+    <button type="submit" class="btn" [disabled]="passwordSubmitting()">
+      {{ 'member.savePassword' | translate }}
+    </button>
+  </form>
+</section>

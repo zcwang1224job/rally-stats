@@ -1,0 +1,12 @@
+@if (errorKey()) {
+  <p role="alert">{{ errorKey()! | translate }}</p>
+}
+<button type="button" class="tap-target leave-btn" (click)="openDialog()">
+  {{ 'groupMemberView.nav.leaveGroup' | translate }}
+</button>
+<app-confirm-dialog
+  #dialog
+  [title]="'groupMemberView.leaveGroup.confirmTitle' | translate"
+  [body]="'groupMemberView.leaveGroup.confirmBody' | translate"
+  (confirmed)="confirmLeave()"
+/>

@@ -1,0 +1,54 @@
+// Design tokens for the "運動簡約風" (sport-minimalist) visual language.
+// CSS custom properties are consumed at runtime via var(...) from any
+// component stylesheet; the two breakpoints are SCSS variables instead,
+// since media queries can't take a var() value.
+//
+// 008-sport-minimalist-ui data-model.md is the source of truth for token
+// names/purposes — this file only fills in concrete values.
+
+// Breakpoints (research.md #2) — @use this file `as tokens` and reference
+// tokens.$breakpoint-tablet / tokens.$breakpoint-desktop from media queries.
+$breakpoint-tablet: 768px;
+$breakpoint-desktop: 1024px;
+
+:root {
+  // Color — bold, high-contrast, single vivid accent (research.md #1).
+  --color-brand-primary: #ff5a1f;
+  --color-brand-primary-contrast: #ffffff;
+  --color-brand-accent: #16a34a; // "won" state, success
+  --color-danger: #dc2626;
+  --color-danger-contrast: #ffffff;
+
+  --color-surface: #ffffff;
+  --color-surface-alt: #f3f4f6;
+  --color-text-primary: #111417;
+  --color-text-muted: #6b7280;
+  --color-border: #e2e4e8;
+
+  // Typography — bold weights lean into the "sporty" half of the language;
+  // system font stack avoids an extra network request (research.md #8's
+  // "no new dependency" reasoning applies here too).
+  --font-family-base:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-size-display: 3rem; // scoreboard score (FR-004: readable at a distance)
+  --font-size-heading: 1.5rem;
+  --font-size-body: 1rem;
+  --font-size-caption: 0.875rem;
+  --font-weight-bold: 700;
+  --font-weight-black: 800;
+
+  // Spacing scale (4px grid).
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  // Shape.
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  // Touch target minimum (WCAG 2.5.5, research.md #3).
+  --touch-target-min: 44px;
+}

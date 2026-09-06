@@ -1,0 +1,16 @@
+// Global styles — 008-sport-minimalist-ui design system entry point.
+@use './styles/tokens';
+@use './styles/base';
+
+body {
+  margin: 0;
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  color: var(--color-text-primary);
+  background: var(--color-surface-alt);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}

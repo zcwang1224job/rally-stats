@@ -1,0 +1,165 @@
+@use '../../../../styles/tokens';
+
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 720px;
+  margin: 0 auto;
+
+  // Desktop / tablet-landscape: wide enough that stacking every court's
+  // control block and both link cards in a single column wastes the
+  // available width (research.md #2's second breakpoint).
+  @media (min-width: tokens.$breakpoint-desktop) {
+    max-width: 960px;
+  }
+}
+
+.back-to-home {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-sm);
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+h2 {
+  margin-top: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+}
+
+.group-number {
+  color: var(--color-text-muted);
+}
+
+// Every logical block on this page (settings form, PIN, disband, links,
+// schedule control) is a .card — a clear visual boundary so scrolling
+// through the page on a phone never reads as one undifferentiated block
+// (FR-003, research.md #4).
+form.card,
+section.card {
+  margin-bottom: var(--space-md);
+}
+
+// US3 (010-app-wide-ui-redesign): left-nav tab shell. Below
+// $breakpoint-tablet the nav collapses to a horizontally-scrollable strip
+// (FR-008) — never a fixed sidebar that would squeeze the content column
+// on a phone.
+.admin-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+}
+
+.admin-nav {
+  display: flex;
+  overflow-x: auto;
+  gap: var(--space-xs);
+  padding-bottom: var(--space-xs);
+
+  button {
+    flex: 0 0 auto;
+    min-height: var(--touch-target-min);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-bold);
+    white-space: nowrap;
+
+    &.is-active {
+      background: var(--color-brand-primary);
+      border-color: var(--color-brand-primary);
+      color: var(--color-brand-primary-contrast);
+    }
+  }
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-direction: column;
+    overflow-x: visible;
+    flex: 0 0 200px;
+
+    button {
+      width: 100%;
+      text-align: left;
+    }
+  }
+}
+
+.admin-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.links-section {
+  @media (min-width: tokens.$breakpoint-desktop) {
+    display: flex;
+    gap: var(--space-lg);
+
+    .link-section {
+      flex: 1;
+    }
+  }
+}
+
+.link-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+
+  input {
+    width: 100%;
+    min-height: var(--touch-target-min);
+    padding: var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+  }
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: var(--space-sm) 0;
+}
+
+.court-control-block {
+  margin-bottom: var(--space-md);
+}
+
+.roster-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.roster-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.roster-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}

@@ -1,0 +1,123 @@
+@use '../../../styles/tokens';
+
+// Scoreboard-only dark theme + team colors (010-app-wide-ui-redesign
+// research.md Decision 1). Deliberately NOT added to the global
+// _tokens.scss :root — every other screen keeps 008's light theme
+// unchanged; this component is the one screen the source mockup
+// (ui/ScoreBoardUI.drawio, "計分板" page) draws with a dark background.
+:host {
+  --scoreboard-bg: #000000;
+  --scoreboard-team-a-bg: #d80073;
+  --scoreboard-team-a-border: #a50040;
+  --scoreboard-team-b-bg: #0050ef;
+  --scoreboard-team-b-border: #001dbc;
+
+  display: block;
+  position: relative;
+  min-height: 100vh;
+  padding: var(--space-lg);
+  text-align: center;
+  background: var(--scoreboard-bg);
+  color: #ffffff;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.round-label {
+  color: #cccccc;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-heading);
+}
+
+// Non-color-only status indicator (Constitution VII) already comes from
+// the shared .status-badge--danger icon/text combination — this just
+// pins it above the dark background so it stays legible.
+.offline-banner {
+  position: relative;
+  z-index: 1;
+}
+
+.score-board {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--space-md);
+  margin: var(--space-xl) 0;
+}
+
+.team {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
+  border: 4px solid transparent;
+}
+
+.team--a {
+  background: var(--scoreboard-team-a-bg);
+  border-color: var(--scoreboard-team-a-border);
+
+  .names div {
+    color: #ff8000;
+  }
+}
+
+.team--b {
+  background: var(--scoreboard-team-b-bg);
+  border-color: var(--scoreboard-team-b-border);
+
+  .names div {
+    color: #ff8000;
+  }
+}
+
+.names {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+
+  div {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+}
+
+// FR-001: read from across a court — the largest, boldest element on
+// screen by a wide margin.
+.score {
+  font-size: 6rem;
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+  color: #ffffff;
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    font-size: 10rem;
+  }
+}
+
+// FR-003: corner "即將登場" indicator — repositioned from the previous
+// inline placement (below the score) to a fixed screen corner, per
+// contracts/scoreboard-control-panel-contract.md row 4. Data source and
+// gating condition are unchanged, only position/styling.
+.next-up {
+  position: fixed;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 2;
+  color: #999999;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.waiting-message {
+  color: #cccccc;
+  margin-top: var(--space-lg);
+}

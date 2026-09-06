@@ -1,0 +1,69 @@
+@if (linkInvalidated()) {
+  <p role="alert">{{ 'courtManagement.linkInvalidatedNotice' | translate }}</p>
+} @else if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (errorKey(); as key) {
+  <p role="alert">{{ key | translate }}</p>
+} @else if (courtInfo(); as info) {
+  @if (info.deleted) {
+    <p role="alert">{{ 'courtManagement.courtDeletedNotice' | translate }}</p>
+  } @else if (info.group_disbanded) {
+    <p role="alert">{{ 'courtManagement.groupDisbandedNotice' | translate }}</p>
+  } @else {
+    @if (connectionState() !== 'connected') {
+      <p role="status" class="status-badge status-badge--danger offline-banner">
+        {{ 'common.offlineBanner' | translate }}
+      </p>
+    }
+    <h1>{{ info.name }}</h1>
+    @if (liveState(); as state) {
+      <p class="round-label">
+        {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
+      </p>
+
+      @if (state.next_up; as next) {
+        <p class="next-up status-badge">
+          {{
+            'controlPanel.nextUpLabel'
+              | translate: { names: next.participants.at(0)?.nickname + ' / ' + next.participants.at(1)?.nickname }
+          }}
+        </p>
+      }
+
+      <div class="score-board">
+        <div class="team team--a">
+          @if (state.current_match; as match) {
+            <div class="names">
+              @for (p of match.participants; track p.roster_entry_id) {
+                @if (p.team === 'A') {
+                  <div>{{ p.nickname }}</div>
+                }
+              }
+            </div>
+          }
+          <span class="score">{{ state.current_match?.score_a ?? 0 }}</span>
+        </div>
+        <div class="team team--b">
+          @if (state.current_match; as match) {
+            <div class="names">
+              @for (p of match.participants; track p.roster_entry_id) {
+                @if (p.team === 'B') {
+                  <div>{{ p.nickname }}</div>
+                }
+              }
+            </div>
+          }
+          <span class="score">{{ state.current_match?.score_b ?? 0 }}</span>
+        </div>
+      </div>
+
+      @if (!state.current_match) {
+        @if (state.waiting_reason === 'manual_assignment') {
+          <p class="waiting-message">{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
+        } @else if (!state.next_up) {
+          <p class="waiting-message">{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+        }
+      }
+    }
+  }
+}

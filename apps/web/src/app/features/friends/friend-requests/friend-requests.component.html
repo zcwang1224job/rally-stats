@@ -1,0 +1,32 @@
+<main>
+  <h1>{{ 'friends.requestsTitle' | translate }}</h1>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  @if (loading()) {
+    <p>{{ 'common.loading' | translate }}</p>
+  } @else if (items().length === 0) {
+    <p>{{ 'friends.emptyRequests' | translate }}</p>
+  } @else {
+    <ul class="request-list">
+      @for (request of items(); track request.friend_request_id) {
+        <li class="card">
+          <span class="nickname">{{ request.requester.nickname }}</span>
+          <span class="user-number">{{ request.requester.user_number }}</span>
+          <div class="actions">
+            <button type="button" class="btn" (click)="accept(request)">
+              {{ 'common.accept' | translate }}
+            </button>
+            <button type="button" class="btn btn--secondary" (click)="reject(request)">
+              {{ 'common.reject' | translate }}
+            </button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+
+  <a class="tap-target" routerLink="/friends">{{ 'friends.backToList' | translate }}</a>
+</main>

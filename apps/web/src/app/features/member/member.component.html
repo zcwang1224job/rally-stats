@@ -1,0 +1,18 @@
+@if (loading()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (member(); as m) {
+  <section class="card">
+    <h1>{{ m.nickname }}</h1>
+    <p class="user-number">{{ 'auth.userNumber' | translate }}: {{ m.user_number }}</p>
+    @if (m.verification_status === 'unverified') {
+      <p role="status" class="status-badge">{{ 'member.unverifiedNotice' | translate }}</p>
+    }
+    <nav class="member-links">
+      <a class="tap-target" routerLink="/member/match-history">{{ 'member.matchHistoryLink' | translate }}</a>
+      <a class="tap-target" routerLink="/friends">{{ 'member.friendsLink' | translate }}</a>
+      <a class="tap-target" routerLink="/member/my-groups">{{ 'member.myGroupsLink' | translate }}</a>
+      <a class="tap-target" routerLink="/member/settings">{{ 'member.settingsLink' | translate }}</a>
+      <button type="button" class="tap-target logout-action" (click)="logout()">{{ 'nav.logout' | translate }}</button>
+    </nav>
+  </section>
+}

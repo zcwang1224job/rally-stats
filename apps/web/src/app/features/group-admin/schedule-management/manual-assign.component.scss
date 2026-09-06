@@ -1,0 +1,31 @@
+.manual-assign {
+  margin-bottom: var(--space-md);
+}
+
+.roster-picker {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-sm) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.roster-picker li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+
+  span {
+    flex: 1;
+  }
+}
+
+.team-toggle {
+  min-width: var(--touch-target-min);
+
+  &[aria-pressed='true'] {
+    background: var(--color-brand-primary);
+    color: var(--color-brand-primary-contrast);
+  }
+}

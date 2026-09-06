@@ -1,0 +1,37 @@
+<section class="card">
+  <h2>{{ 'courtManagement.sectionTitle' | translate: { count: activeCourtCount() } }}</h2>
+
+  <form class="form add-court-form" [formGroup]="form" (ngSubmit)="addCourt()">
+    <input
+      type="text"
+      formControlName="name"
+      maxlength="20"
+      [attr.placeholder]="'courtManagement.namePlaceholder' | translate"
+    />
+    <button type="submit" class="btn">{{ 'courtManagement.addCourt' | translate }}</button>
+  </form>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  @if (loading()) {
+    <p>{{ 'common.loading' | translate }}</p>
+  } @else {
+    @for (court of courts(); track court.court_id) {
+      <div class="court-entry">
+        <app-court-link-card [groupId]="groupId()" [court]="court" (regenerated)="load(groupId())" />
+        <button type="button" class="btn btn--danger" (click)="openDeleteDialog(court)">
+          {{ 'courtManagement.delete' | translate }}
+        </button>
+      </div>
+    }
+  }
+</section>
+
+<app-confirm-dialog
+  #deleteDialog
+  [title]="deleteDialogTitle()"
+  [body]="deleteDialogBody()"
+  (confirmed)="confirmDelete()"
+/>

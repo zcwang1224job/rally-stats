@@ -1,0 +1,49 @@
+@if (result(); as created) {
+  <section class="card">
+    <h1>{{ 'auth.registerSuccessTitle' | translate }}</h1>
+    <p>{{ 'auth.registerSuccessBody' | translate }}</p>
+    <p>
+      {{ 'auth.userNumber' | translate }}: <strong>{{ created.user_number }}</strong>
+    </p>
+    <button type="button" class="btn" (click)="goToLogin()">{{ 'auth.goToLogin' | translate }}</button>
+  </section>
+} @else {
+  <form class="form card" [formGroup]="form" (ngSubmit)="submit()">
+    <h1>{{ 'auth.registerTitle' | translate }}</h1>
+
+    <label>
+      {{ 'auth.email' | translate }}
+      <input type="email" formControlName="email" />
+    </label>
+
+    <label>
+      {{ 'auth.password' | translate }}
+      <input type="password" formControlName="password" />
+    </label>
+    @if (form.controls.password.errors?.['passwordTooWeak']) {
+      <p role="alert">{{ 'auth.passwordTooWeak' | translate }}</p>
+    }
+
+    <label>
+      {{ 'auth.confirmPassword' | translate }}
+      <input type="password" formControlName="confirm_password" />
+    </label>
+    @if (form.errors?.['passwordMismatch']) {
+      <p role="alert">{{ 'auth.passwordMismatch' | translate }}</p>
+    }
+
+    <app-turnstile-widget
+      [language]="turnstileLanguage"
+      (verified)="onTurnstileVerified($event)"
+      (expired)="onTurnstileExpired()"
+    />
+
+    @if (errorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    }
+
+    <button type="submit" class="btn" [disabled]="submitting() || !turnstileToken()">
+      {{ 'auth.registerSubmit' | translate }}
+    </button>
+  </form>
+}

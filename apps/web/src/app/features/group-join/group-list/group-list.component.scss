@@ -1,0 +1,58 @@
+@use '../../../../styles/tokens';
+
+:host {
+  display: block;
+  padding: var(--space-md);
+}
+
+.filter-form {
+  max-width: none;
+  flex-direction: column;
+  margin-bottom: var(--space-lg);
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+
+    label {
+      flex: 1;
+      min-width: 140px;
+    }
+  }
+}
+
+.group-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.group-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.group-name {
+  font-weight: var(--font-weight-bold);
+  flex-basis: 100%;
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-basis: auto;
+  }
+}
+
+// US5 (010-app-wide-ui-redesign FR-010): pagination controls for the
+// group browse list — previously tracked in TS but never rendered.
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-lg);
+}

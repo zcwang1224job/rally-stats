@@ -1,0 +1,401 @@
+import { Component, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { TranslatePipe } from '@ngx-translate/core';
+import { QRCodeComponent } from 'angularx-qrcode';
+import { interval } from 'rxjs';
+import { ApiError } from '../../../core/api/api-error';
+import { RealtimeService } from '../../../core/realtime/ably.service';
+import { GroupAdminService } from '../group-admin.service';
+import {
+  AdminGroupResponse,
+  MatchMode,
+  PartnerSource,
+  SchedulingMechanism,
+  ScoringMode,
+} from '../group-admin.models';
+import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
+import {
+  activityTimePairValidator,
+  customScoringValidator,
+  maxMembersValidator,
+  schedulingMechanismMatchModeValidator,
+} from '../shared/group-form-validators';
+import { CourtListComponent } from '../court-management/court-list.component';
+import { ScheduleService } from '../schedule-management/schedule.service';
+import { ScheduleResponse } from '../schedule-management/schedule.models';
+import { ManualAssignComponent } from '../schedule-management/manual-assign.component';
+import { PartnershipSettingsComponent } from '../schedule-management/partnership-settings.component';
+import { CourtControlComponent } from '../schedule-management/court-control.component';
+import { RoundMatchesListComponent } from '../schedule-management/round-matches-list.component';
+
+const HEARTBEAT_INTERVAL_MS = 30_000; // spec FR-035: 30s heartbeat fallback ceiling
+
+/** 010-app-wide-ui-redesign US3 (data-model.md): left-nav tab shell —
+ * client-side view state only, never reflected in the URL (research.md
+ * Decision 2). "團名" and "管理員設定" both render fields from the same
+ * single `editForm`/`saveGroupSettings()` (one PATCH, one optimistic-lock
+ * version) — splitting the form's DOM across two @switch cases is safe
+ * because Angular's FormGroup holds every control's current value
+ * independent of which one is currently attached to the DOM. */
+type AdminSection = 'courts' | 'schedule' | 'roster' | 'name' | 'access' | 'settings';
+
+@Component({
+  selector: 'app-admin-page',
+  imports: [
+    RouterLink,
+    ReactiveFormsModule,
+    TranslatePipe,
+    ConfirmDialogComponent,
+    CourtListComponent,
+    QRCodeComponent,
+    ManualAssignComponent,
+    PartnershipSettingsComponent,
+    CourtControlComponent,
+    RoundMatchesListComponent,
+  ],
+  templateUrl: './admin-page.component.html',
+  styleUrl: './admin-page.component.scss',
+})
+export class AdminPageComponent {
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  private readonly groupAdmin = inject(GroupAdminService);
+  private readonly scheduleService = inject(ScheduleService);
+  private readonly realtime = inject(RealtimeService);
+  private readonly fb = inject(FormBuilder);
+  private readonly destroyRef = inject(DestroyRef);
+
+  readonly groupId = this.route.snapshot.paramMap.get('groupId')!;
+  readonly activeSection = signal<AdminSection>('courts');
+  readonly adminView = signal<AdminGroupResponse | null>(null);
+  readonly loading = signal(true);
+  readonly errorKey = signal<string | null>(null);
+  readonly saveErrorKey = signal<string | null>(null);
+  readonly scoringErrorKey = signal<string | null>(null);
+  readonly newPin = signal<string | null>(null);
+  readonly schedule = signal<ScheduleResponse | null>(null);
+  readonly nextRoundErrorKey = signal<string | null>(null);
+
+  readonly connectionState = this.realtime.connectionState;
+
+  readonly disbandDialog = viewChild.required<ConfirmDialogComponent>('disbandDialog');
+  readonly regeneratePinDialog = viewChild.required<ConfirmDialogComponent>('regeneratePinDialog');
+  readonly regenerateJoinLinkDialog =
+    viewChild.required<ConfirmDialogComponent>('regenerateJoinLinkDialog');
+  readonly regenerateAllCourtsLinkDialog = viewChild.required<ConfirmDialogComponent>(
+    'regenerateAllCourtsLinkDialog',
+  );
+  readonly nextRoundDialog = viewChild.required<ConfirmDialogComponent>('nextRoundDialog');
+  readonly kickMemberDialog = viewChild.required<ConfirmDialogComponent>('kickMemberDialog');
+  readonly kickMemberTarget = signal<{ rosterEntryId: string; nickname: string } | null>(null);
+  readonly kickMemberErrorKey = signal<string | null>(null);
+
+  readonly editForm = this.fb.nonNullable.group(
+    {
+      name: ['', [Validators.required, Validators.maxLength(30)]],
+      password: [''],
+      match_mode: ['doubles' as MatchMode, Validators.required],
+      scheduling_mechanism: ['fair_rotation' as SchedulingMechanism, Validators.required],
+      partner_source: ['manual' as PartnerSource, Validators.required],
+      max_members: [4, [Validators.required, Validators.min(1)]],
+      activity_time_start: [''],
+      activity_time_end: [''],
+    },
+    {
+      validators: [
+        maxMembersValidator('match_mode'),
+        activityTimePairValidator,
+        schedulingMechanismMatchModeValidator('match_mode', 'scheduling_mechanism'),
+      ],
+    },
+  );
+
+  readonly scoringForm = this.fb.nonNullable.group(
+    {
+      scoring_mode: ['21pt' as ScoringMode, Validators.required],
+      custom_target_score: [11],
+      custom_deuce_threshold: [10],
+      custom_cap_score: [15],
+    },
+    { validators: [customScoringValidator] },
+  );
+
+  constructor() {
+    const token = this.groupAdmin.getAdminToken(this.groupId);
+    if (!token) {
+      void this.router.navigate(['/groups/reauth']);
+      return;
+    }
+    this.load();
+    this.subscribeToDisbandEvent();
+    interval(HEARTBEAT_INTERVAL_MS)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.load());
+  }
+
+  private load(): void {
+    this.groupAdmin.getAdminView(this.groupId).subscribe({
+      next: (view) => {
+        this.adminView.set(view);
+        this.loading.set(false);
+        if (!view.read_only) {
+          this.patchForms(view);
+          this.loadSchedule();
+        }
+      },
+      error: (error: ApiError) => this.handleAuthFailure(error),
+    });
+  }
+
+  /** 場地控制區塊 (003 US1, T026) — 各場地目前比賽（或等待原因）+ 輪替名單
+   * 狀態，取代 002 US4 的空骨架。實際 +1/-1、提前結束操作仍留待 007 spec
+   * 串接（此區塊僅顯示狀態，不提供計分操作）。 */
+  loadSchedule(): void {
+    this.scheduleService.getSchedule(this.groupId).subscribe({
+      next: (response) => this.schedule.set(response),
+      error: () => this.schedule.set(null),
+    });
+  }
+
+  private patchForms(view: AdminGroupResponse): void {
+    this.editForm.patchValue({
+      name: view.group.name,
+      password: view.password_plaintext ?? '',
+      match_mode: view.group.match_mode,
+      scheduling_mechanism: view.group.scheduling_mechanism,
+      partner_source: view.group.partner_source,
+      max_members: view.group.max_members,
+      activity_time_start: view.group.activity_time_start ?? '',
+      activity_time_end: view.group.activity_time_end ?? '',
+    });
+  }
+
+  private subscribeToDisbandEvent(): void {
+    this.realtime
+      .subscribe(`group:${this.groupId}:notifications`, 'group.disbanded')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.load());
+  }
+
+  private handleAuthFailure(error: ApiError): void {
+    this.loading.set(false);
+    if (error.status === 401) {
+      this.groupAdmin.clearAdminToken(this.groupId);
+      void this.router.navigate(['/groups/reauth']);
+      return;
+    }
+    this.errorKey.set(error.i18nKey);
+  }
+
+  /** 固定搭檔循環賽/個人全混搭循環賽僅適用於雙打——這兩個選項在單打模式下
+   * 從下拉選單隱藏（模板），切到單打時若目前選的正是其中之一，順手重設為
+   * 公平輪替，避免留下使用者看不到、卻仍卡在表單裡的無效值。 */
+  onMatchModeChange(): void {
+    const schedulingMechanism = this.editForm.controls.scheduling_mechanism.value;
+    if (
+      this.editForm.controls.match_mode.value === 'singles' &&
+      (schedulingMechanism === 'fixed_partner' || schedulingMechanism === 'individual_mixed')
+    ) {
+      this.editForm.controls.scheduling_mechanism.setValue('fair_rotation');
+    }
+  }
+
+  saveGroupSettings(): void {
+    const view = this.adminView();
+    if (!view || this.editForm.invalid) {
+      this.editForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.editForm.getRawValue();
+    this.saveErrorKey.set(null);
+    this.groupAdmin
+      .editGroup(this.groupId, {
+        expected_version: view.base_settings_version,
+        name: raw.name,
+        password: raw.password || undefined,
+        match_mode: raw.match_mode,
+        scheduling_mechanism: raw.scheduling_mechanism,
+        partner_source: raw.partner_source,
+        max_members: raw.max_members,
+        activity_time_start: raw.activity_time_start || null,
+        activity_time_end: raw.activity_time_end || null,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.adminView.set(updated);
+          this.patchForms(updated);
+          this.loadSchedule();
+        },
+        error: (error: ApiError) => {
+          if (error.status === 401) {
+            this.handleAuthFailure(error);
+            return;
+          }
+          this.saveErrorKey.set(error.i18nKey);
+          if (error.errorCode === 'VERSION_CONFLICT') {
+            this.load();
+          }
+        },
+      });
+  }
+
+  saveScoringSettings(): void {
+    const view = this.adminView();
+    if (!view || this.scoringForm.invalid) {
+      this.scoringForm.markAllAsTouched();
+      return;
+    }
+    const raw = this.scoringForm.getRawValue();
+    this.scoringErrorKey.set(null);
+    this.groupAdmin
+      .editScoringSettings(this.groupId, {
+        expected_version: view.base_settings_version,
+        scoring_mode: raw.scoring_mode,
+        target_score: raw.scoring_mode === 'custom' ? raw.custom_target_score : undefined,
+        deuce_threshold: raw.scoring_mode === 'custom' ? raw.custom_deuce_threshold : undefined,
+        cap_score: raw.scoring_mode === 'custom' ? raw.custom_cap_score : undefined,
+      })
+      .subscribe({
+        next: (updated) => this.adminView.set(updated),
+        error: (error: ApiError) => {
+          if (error.status === 401) {
+            this.handleAuthFailure(error);
+            return;
+          }
+          this.scoringErrorKey.set(error.i18nKey);
+          if (error.errorCode === 'VERSION_CONFLICT') {
+            this.load();
+          }
+        },
+      });
+  }
+
+  joinLinkUrl(): string {
+    const view = this.adminView();
+    return view ? `${window.location.origin}/join/${view.join_link_token}` : '';
+  }
+
+  allCourtsLinkUrl(): string {
+    const view = this.adminView();
+    return view
+      ? `${window.location.origin}/control/all/${view.all_courts_control_panel_token}`
+      : '';
+  }
+
+  openDisbandDialog(): void {
+    this.disbandDialog().open();
+  }
+
+  confirmDisband(): void {
+    this.groupAdmin.disband(this.groupId).subscribe({
+      next: () => this.load(),
+      error: (error: ApiError) => this.handleAuthFailure(error),
+    });
+  }
+
+  openRegeneratePinDialog(): void {
+    this.regeneratePinDialog().open();
+  }
+
+  confirmRegeneratePin(): void {
+    this.groupAdmin.regeneratePin(this.groupId).subscribe({
+      next: (response) => {
+        this.groupAdmin.setAdminToken(this.groupId, response.admin_token);
+        this.newPin.set(response.admin_pin);
+        this.load();
+      },
+      error: (error: ApiError) => this.handleAuthFailure(error),
+    });
+  }
+
+  openRegenerateJoinLinkDialog(): void {
+    this.regenerateJoinLinkDialog().open();
+  }
+
+  confirmRegenerateJoinLink(): void {
+    const view = this.adminView();
+    if (!view) {
+      return;
+    }
+    this.groupAdmin.regenerateJoinLink(this.groupId, view.join_link_version).subscribe({
+      next: () => this.load(),
+      error: (error: ApiError) => this.handleAuthFailure(error),
+    });
+  }
+
+  openRegenerateAllCourtsLinkDialog(): void {
+    this.regenerateAllCourtsLinkDialog().open();
+  }
+
+  confirmRegenerateAllCourtsLink(): void {
+    const view = this.adminView();
+    if (!view) {
+      return;
+    }
+    this.groupAdmin.regenerateAllCourtsLink(this.groupId, view.all_courts_link_version).subscribe({
+      next: () => this.load(),
+      error: (error: ApiError) => this.handleAuthFailure(error),
+    });
+  }
+
+  toggleAutoNextRound(enabled: boolean): void {
+    this.nextRoundErrorKey.set(null);
+    this.scheduleService.setAutoNextRound(this.groupId, enabled).subscribe({
+      next: () => this.loadSchedule(),
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  hasUnfinishedMatches(): boolean {
+    return (this.schedule()?.courts ?? []).some((court) => court.current_match !== null);
+  }
+
+  openNextRoundDialog(): void {
+    this.nextRoundDialog().open();
+  }
+
+  confirmNextRound(): void {
+    this.nextRoundErrorKey.set(null);
+    this.scheduleService.nextRound(this.groupId).subscribe({
+      next: (response) => this.schedule.set(response),
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  openKickMemberDialog(rosterEntryId: string, nickname: string): void {
+    this.kickMemberTarget.set({ rosterEntryId, nickname });
+    this.kickMemberErrorKey.set(null);
+    this.kickMemberDialog().open();
+  }
+
+  confirmKickMember(): void {
+    const target = this.kickMemberTarget();
+    if (!target) {
+      return;
+    }
+    this.scheduleService.kickMember(this.groupId, target.rosterEntryId).subscribe({
+      next: () => this.loadSchedule(),
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.kickMemberErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+}

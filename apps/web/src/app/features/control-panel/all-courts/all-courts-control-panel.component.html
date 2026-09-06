@@ -1,0 +1,36 @@
+@if (linkInvalidated()) {
+  <p role="alert">{{ 'courtManagement.linkInvalidatedNotice' | translate }}</p>
+} @else {
+  @if (connectionState() !== 'connected') {
+    <p role="status" class="status-badge status-badge--danger">
+      {{ 'common.offlineBanner' | translate }}
+    </p>
+  }
+
+  <h1>{{ 'courtManagement.allCourtsTitle' | translate }}</h1>
+
+  @if (loading()) {
+    <p>{{ 'common.loading' | translate }}</p>
+  } @else if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  } @else if (groupDisbanded()) {
+    <p role="status">{{ 'courtManagement.groupDisbandedNotice' | translate }}</p>
+  } @else if (courts().length === 0) {
+    <p>{{ 'courtManagement.noCourtsYet' | translate }}</p>
+  } @else {
+    @if (liveState(); as state) {
+      <p class="round-label">
+        {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
+      </p>
+    }
+    @for (court of courts(); track court.court_id) {
+      <app-all-courts-court-block
+        [token]="token"
+        [courtId]="court.court_id"
+        [name]="court.name"
+        [state]="stateFor(court.court_id)"
+        (changed)="refreshState()"
+      />
+    }
+  }
+}

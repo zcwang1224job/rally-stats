@@ -1,0 +1,46 @@
+// FR-003: the table itself may scroll horizontally when there are many
+// rounds, without dragging the rest of the page along with it.
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  padding: var(--space-sm);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+th {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
+}
+
+// Status colors are attached via the [data-status] attribute already on
+// the element — color is never the only differentiator (constitution
+// VII): the i18n string itself carries a symbol/prefix ("⏏ 已離開",
+// "－ 未上場"), this is purely an additional visual reinforcement.
+.status-badge {
+  &[data-status='won'] {
+    background: color-mix(in srgb, var(--color-brand-accent) 15%, white);
+    color: var(--color-brand-accent);
+  }
+
+  &[data-status='lost'] {
+    background: color-mix(in srgb, var(--color-danger) 12%, white);
+    color: var(--color-danger);
+  }
+
+  &[data-status='left'] {
+    color: var(--color-text-muted);
+    text-decoration: underline;
+  }
+}

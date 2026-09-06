@@ -1,0 +1,62 @@
+@use '../../../styles/tokens';
+
+:host {
+  display: block;
+}
+
+// Mobile-first: fixed to the bottom of the viewport, full width — the
+// most touch-friendly pattern for switching between independent views on
+// a small screen (research.md #4). `app-leave-group`'s own button reuses
+// this same row.
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-xs);
+  gap: var(--space-xs);
+
+  button {
+    flex: 1;
+    background: none;
+    border: none;
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+    cursor: pointer;
+
+    &.is-active {
+      color: var(--color-brand-primary);
+      font-weight: var(--font-weight-bold);
+    }
+  }
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    position: static;
+    border-top: none;
+    border-bottom: 1px solid var(--color-border);
+    justify-content: flex-start;
+    gap: var(--space-md);
+    padding: var(--space-md);
+
+    button {
+      flex: none;
+      font-size: var(--font-size-body);
+    }
+  }
+}
+
+.view-content {
+  padding: var(--space-md);
+  // Leaves room for the fixed bottom nav so content is never hidden
+  // behind it (mobile only — the nav is `position: static` at tablet+).
+  padding-bottom: calc(var(--touch-target-min) + var(--space-lg));
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    padding-bottom: var(--space-md);
+  }
+}

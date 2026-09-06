@@ -1,0 +1,35 @@
+<main>
+  <h1>{{ 'myGroups.title' | translate }}</h1>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  @if (loading()) {
+    <p>{{ 'common.loading' | translate }}</p>
+  } @else if (groups().length === 0) {
+    <p>{{ 'myGroups.empty' | translate }}</p>
+  } @else {
+    <ul class="group-list">
+      @for (group of groups(); track group.group_id) {
+        <li class="card">
+          <span class="group-name">{{ group.name }}</span>
+          <span class="group-number">{{ group.group_number }}</span>
+          @if (group.status === 'disbanded') {
+            <span class="status-badge">{{ 'adminPage.disbandedNotice' | translate }}</span>
+          }
+          <button type="button" class="btn btn--secondary" (click)="openForgotPinDialog(group)">
+            {{ 'myGroups.forgotPinButton' | translate }}
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</main>
+
+<app-confirm-dialog
+  #forgotPinDialog
+  [title]="'myGroups.forgotPinConfirmTitle' | translate"
+  [body]="'myGroups.forgotPinConfirmBody' | translate"
+  (confirmed)="confirmForgotPin()"
+/>

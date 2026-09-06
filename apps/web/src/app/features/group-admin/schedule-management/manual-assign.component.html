@@ -1,0 +1,35 @@
+<div class="manual-assign card">
+  <p>{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
+
+  <ul class="roster-picker">
+    @for (entry of availableRoster(); track entry.roster_entry_id) {
+      <li>
+        <span>{{ entry.nickname }}</span>
+        <button
+          type="button"
+          class="btn btn--secondary team-toggle"
+          [attr.aria-pressed]="isSelected(entry.roster_entry_id) === 'A'"
+          (click)="toggle(entry.roster_entry_id, 'A')"
+        >
+          A
+        </button>
+        <button
+          type="button"
+          class="btn btn--secondary team-toggle"
+          [attr.aria-pressed]="isSelected(entry.roster_entry_id) === 'B'"
+          (click)="toggle(entry.roster_entry_id, 'B')"
+        >
+          B
+        </button>
+      </li>
+    }
+  </ul>
+
+  <button type="button" class="btn" [disabled]="!canSubmit()" (click)="submit()">
+    {{ 'common.confirm' | translate }}
+  </button>
+</div>

@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+coverage/
+*.log
+
+# Secrets / environment
+.env
+.env.*
+!.env.example
+
+# Deployment infra (AWS resource IDs, account-specific defaults)
+/infra/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp

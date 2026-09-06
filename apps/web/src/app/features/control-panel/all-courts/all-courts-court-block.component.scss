@@ -1,0 +1,45 @@
+@use '../../../../styles/tokens';
+
+.court-block {
+  margin-bottom: var(--space-lg);
+}
+
+h2 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+  margin-top: 0;
+}
+
+// FR-005: score centered, each team's +1/-1 flanking it on the outside —
+// see control-panel.component.scss for the identical layout rationale.
+.score-board {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  margin: var(--space-md) 0;
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    gap: var(--space-xl);
+  }
+}
+
+.team {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.score {
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+  min-width: 2ch;
+  text-align: center;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}

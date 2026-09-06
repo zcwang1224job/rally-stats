@@ -1,0 +1,65 @@
+<dialog #dialog class="join-dialog">
+  @switch (step()) {
+    @case ('loading') {
+      <p>{{ 'common.loading' | translate }}</p>
+    }
+    @case ('error') {
+      <p role="alert">{{ (errorKey() ?? 'errors.UNKNOWN_ERROR') | translate }}</p>
+    }
+    @case ('password') {
+      <form class="form" [formGroup]="passwordForm" (ngSubmit)="submitPassword()">
+        <h1>{{ 'groupJoin.passwordTitle' | translate }}</h1>
+        <label>
+          {{ 'groupJoin.password' | translate }}
+          <input type="password" formControlName="password" />
+        </label>
+        @if (passwordErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        <button type="submit" class="btn">{{ 'common.submit' | translate }}</button>
+      </form>
+    }
+    @case ('nickname') {
+      <form class="form" [formGroup]="nicknameForm" (ngSubmit)="submitNickname()">
+        <h1>{{ 'groupJoin.nicknameTitle' | translate }}</h1>
+        <label>
+          {{ 'groupJoin.nickname' | translate }}
+          <input type="text" formControlName="nickname" maxlength="20" />
+        </label>
+        @if (errorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        <button type="submit" class="btn">{{ 'groupJoin.joinSubmit' | translate }}</button>
+      </form>
+    }
+    @case ('confirm') {
+      <section class="form">
+        <h1>{{ 'groupJoin.confirmTitle' | translate }}</h1>
+        @if (errorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        <button type="button" class="btn" (click)="confirmMemberJoin()">
+          {{ 'groupJoin.joinSubmit' | translate }}
+        </button>
+      </section>
+    }
+    @case ('done') {
+      <section>
+        <h1>{{ 'groupJoin.successTitle' | translate }}</h1>
+        <p>{{ 'groupJoin.successBody' | translate: { nickname: result()?.nickname } }}</p>
+        <button type="button" class="btn" (click)="goToGroup()">
+          {{ 'groupJoin.goToGroupButton' | translate }}
+        </button>
+      </section>
+    }
+    @case ('restored') {
+      <section>
+        <h1>{{ 'groupJoin.restoredTitle' | translate }}</h1>
+        <p>{{ 'groupJoin.successBody' | translate: { nickname: restoredNickname() } }}</p>
+        <button type="button" class="btn" (click)="goToGroup()">
+          {{ 'groupJoin.goToGroupButton' | translate }}
+        </button>
+      </section>
+    }
+  }
+</dialog>

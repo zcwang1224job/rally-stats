@@ -1,0 +1,27 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.search-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.nickname {
+  font-weight: var(--font-weight-bold);
+}
+
+.user-number {
+  color: var(--color-text-muted);
+}

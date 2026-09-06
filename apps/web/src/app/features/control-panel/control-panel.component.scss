@@ -1,0 +1,57 @@
+@use '../../../styles/tokens';
+
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.round-label {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-bold);
+}
+
+// FR-005: score centered, each team's +1/-1 flanking it on the outside
+// (team A's buttons to the left of its score, team B's to the right) —
+// both scores end up adjacent in the middle of the row.
+.score-board {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    gap: var(--space-xl);
+  }
+}
+
+// Element order in the template (not flex-direction) determines left/right
+// placement here: team A renders buttons-then-score, team B renders
+// score-then-buttons — both already yield the correct outside-in layout
+// under a plain row, so no reversal is needed.
+.team {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.score {
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+  min-width: 2ch;
+  text-align: center;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}

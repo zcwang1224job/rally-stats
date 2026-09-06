@@ -1,0 +1,904 @@
+"""Group domain service layer: create, disband, reauth, edit, PIN regeneration,
+and (004) the browse/join flow.
+
+`disband_group` accepts an `abandon_unfinished_matches` hook, wired in by
+003's `abandon_group_matches` at the router layer (research.md #2 of 003),
+transitioning unfinished matches to `abandoned` on disband (spec FR-033).
+"""
+
+import secrets
+import uuid
+from collections import defaultdict
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, time, timedelta
+
+from sqlalchemy import Select, func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.errors import ApiError
+from app.core.realtime import court_channel, group_notifications_channel, publish
+from app.domains.court.models import Court
+from app.domains.group.models import Group, RoundHistory
+from app.domains.group.schemas import (
+    CreateGroupRequest,
+    EditGroupRequest,
+    EditScoringSettingsRequest,
+    GroupMatchRecordsResponse,
+    GroupStandingsResponse,
+    MatchRecordSummary,
+    MemberStandingRow,
+    RoundStatus,
+)
+from app.domains.group.security import (
+    decrypt_group_password,
+    encrypt_group_password,
+    generate_admin_pin,
+    hash_admin_pin,
+    issue_admin_token,
+    verify_admin_pin,
+)
+from app.domains.member.models import Member
+from app.domains.roster.models import RosterEntry
+from app.domains.schedule.models import Match, MatchParticipant
+from app.domains.schedule.schemas import ParticipantSummary
+from app.domains.schedule.service import handle_member_joined, handle_member_left
+from app.system_config.service import get_max_group_members
+
+AbandonMatchesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
+
+_MATCH_RECORDS_PAGE_SIZE = 20
+
+_SCORING_PRESETS = {
+    "21pt": (21, 20, 30),
+    "15pt": (15, 14, 21),
+}
+
+
+async def _touch_activity(session: AsyncSession, group: Group) -> None:
+    group.last_activity_at = datetime.now(UTC)
+
+
+async def create_group(
+    session: AsyncSession,
+    payload: CreateGroupRequest,
+    *,
+    member: Member | None,
+) -> tuple[Group, RosterEntry, str, str | None]:
+    """Create a Group + the creator's RosterEntry in one transaction (spec FR-001-012)."""
+    max_allowed = await get_max_group_members(session)
+    if payload.max_members > max_allowed:
+        raise ApiError(
+            "GROUP_MEMBER_CAP_EXCEEDED", status_code=400, detail={"max_allowed": max_allowed}
+        )
+
+    if member is not None and not member.nickname:
+        raise ApiError("MEMBER_NICKNAME_NOT_SET", status_code=400)
+    if member is None and not payload.creator_nickname:
+        raise ApiError("NICKNAME_REQUIRED_FOR_GUEST", status_code=400)
+
+    if payload.scoring_mode == "custom":
+        assert payload.custom_scoring is not None
+        target_score = payload.custom_scoring.target_score
+        deuce_threshold = payload.custom_scoring.deuce_threshold
+        cap_score = payload.custom_scoring.cap_score
+    else:
+        target_score, deuce_threshold, cap_score = _SCORING_PRESETS[payload.scoring_mode]
+
+    password_ciphertext: bytes | None = None
+    password_nonce: bytes | None = None
+    if payload.password:
+        password_ciphertext, password_nonce = encrypt_group_password(payload.password)
+
+    admin_pin = generate_admin_pin()
+    group = Group(
+        name=payload.name,
+        password_ciphertext=password_ciphertext,
+        password_nonce=password_nonce,
+        max_members=payload.max_members,
+        match_mode=payload.match_mode,
+        scheduling_mechanism=payload.scheduling_mechanism,
+        activity_time_start=payload.activity_time_start,
+        activity_time_end=payload.activity_time_end,
+        current_member_count=1,
+        status="active",
+        created_by_member_id=member.id if member else None,
+        admin_pin_hash=hash_admin_pin(admin_pin),
+        scoring_mode=payload.scoring_mode,
+        target_score=target_score,
+        deuce_threshold=deuce_threshold,
+        cap_score=cap_score,
+    )
+    session.add(group)
+    await session.flush()  # populate group.id via default
+
+    nickname = member.nickname if member else payload.creator_nickname
+    assert nickname is not None
+    guest_token = secrets.token_urlsafe(32) if member is None else None
+
+    roster_entry = RosterEntry(
+        group_id=group.id,
+        member_id=member.id if member else None,
+        nickname=nickname,
+        status="active",
+        is_creator=True,
+        wait_count=None,
+        guest_session_token=guest_token,
+    )
+    session.add(roster_entry)
+
+    await session.commit()
+    await session.refresh(group)
+    await session.refresh(roster_entry)
+
+    return group, roster_entry, admin_pin, guest_token
+
+
+async def get_group_by_id(session: AsyncSession, group_id: uuid.UUID) -> Group:
+    result = await session.execute(select(Group).where(Group.id == group_id))
+    group = result.scalar_one_or_none()
+    if group is None:
+        raise ApiError("GROUP_NOT_FOUND", status_code=404)
+    return group
+
+
+async def reauth_admin(
+    session: AsyncSession, group_number: int, admin_pin: str
+) -> tuple[str, Group]:
+    settings = get_settings()
+    result = await session.execute(select(Group).where(Group.group_number == group_number))
+    group = result.scalar_one_or_none()
+    if group is None:
+        # Same error as "PIN incorrect" to avoid enumerating valid group numbers.
+        raise ApiError("GROUP_ADMIN_PIN_INCORRECT", status_code=401)
+
+    now = datetime.now(UTC)
+    if group.admin_locked_until is not None and group.admin_locked_until > now:
+        retry_after = int((group.admin_locked_until - now).total_seconds())
+        raise ApiError(
+            "GROUP_ADMIN_LOCKED", status_code=423, detail={"retry_after_seconds": retry_after}
+        )
+
+    if not verify_admin_pin(admin_pin, group.admin_pin_hash):
+        group.admin_failed_attempts += 1
+        if group.admin_failed_attempts >= settings.admin_pin_max_attempts:
+            group.admin_locked_until = now + timedelta(minutes=settings.admin_pin_lockout_minutes)
+        await session.commit()
+        raise ApiError("GROUP_ADMIN_PIN_INCORRECT", status_code=401)
+
+    group.admin_failed_attempts = 0
+    group.admin_locked_until = None
+    await _touch_activity(session, group)
+    await session.commit()
+
+    token = issue_admin_token(str(group.id), group.admin_token_version)
+    return token, group
+
+
+async def edit_group(
+    session: AsyncSession, group: Group, payload: EditGroupRequest
+) -> Group:
+    if group.status == "disbanded":
+        raise ApiError("GROUP_DISBANDED", status_code=409)
+    if payload.expected_version != group.base_settings_version:
+        raise ApiError("VERSION_CONFLICT", status_code=409)
+
+    if payload.match_mode is not None and payload.match_mode != group.match_mode:
+        effective_max = (
+            payload.max_members if payload.max_members is not None else group.max_members
+        )
+        if payload.match_mode == "doubles" and effective_max < 4:
+            raise ApiError("MATCH_MODE_MEMBER_CAP_CONFLICT", status_code=400)
+        group.match_mode = payload.match_mode
+        # The new minimum (2 for singles / 4 for doubles) is enforced by the
+        # max_members validation block below, which reads the now-updated
+        # group.match_mode.
+
+    if payload.max_members is not None:
+        max_allowed = await get_max_group_members(session)
+        if payload.max_members > max_allowed:
+            raise ApiError(
+                "GROUP_MEMBER_CAP_EXCEEDED", status_code=400, detail={"max_allowed": max_allowed}
+            )
+        minimum = 2 if group.match_mode == "singles" else 4
+        if payload.max_members < minimum:
+            raise ApiError("VALIDATION_ERROR", status_code=422)
+        group.max_members = payload.max_members
+
+    if payload.name is not None:
+        group.name = payload.name
+    if payload.password is not None:
+        ciphertext, nonce = encrypt_group_password(payload.password)
+        group.password_ciphertext = ciphertext
+        group.password_nonce = nonce
+    if payload.activity_time_start is not None or payload.activity_time_end is not None:
+        if (payload.activity_time_start is None) != (payload.activity_time_end is None):
+            raise ApiError("VALIDATION_ERROR", status_code=422)
+        if payload.activity_time_start >= payload.activity_time_end:  # type: ignore[operator]
+            raise ApiError("VALIDATION_ERROR", status_code=422)
+        group.activity_time_start = payload.activity_time_start
+        group.activity_time_end = payload.activity_time_end
+    if payload.scheduling_mechanism is not None:
+        group.scheduling_mechanism = payload.scheduling_mechanism
+        # spec 003 FR-016: manual scheduling MUST NOT support Auto Next
+        # Round — switching into it force-disables an already-on toggle.
+        if group.scheduling_mechanism == "manual":
+            group.auto_next_round = False
+
+    # 011-round-robin-scheduling FR-008/FR-010: partner_source only means
+    # anything for fixed_partner — silently ignored otherwise (contracts
+    # amendments), not a validation error. Toggling it never touches the
+    # `partnerships` table itself (research.md #6); that table's data is
+    # simply not read while `partner_source == "auto"`.
+    if payload.partner_source is not None and group.scheduling_mechanism == "fixed_partner":
+        group.partner_source = payload.partner_source
+
+    # spec 003 FR-042: fixed_partner/individual_mixed only apply to doubles —
+    # checked against the FINAL state (after any match_mode/scheduling_mechanism
+    # change above), regardless of which field the caller actually changed.
+    if group.scheduling_mechanism in ("fixed_partner", "individual_mixed") and (
+        group.match_mode == "singles"
+    ):
+        raise ApiError("SCHEDULING_MECHANISM_MATCH_MODE_CONFLICT", status_code=400)
+
+    group.base_settings_version += 1
+    await _touch_activity(session, group)
+    await session.commit()
+    await session.refresh(group)
+    return group
+
+
+async def edit_scoring_settings(
+    session: AsyncSession, group: Group, payload: EditScoringSettingsRequest
+) -> Group:
+    if group.status == "disbanded":
+        raise ApiError("GROUP_DISBANDED", status_code=409)
+    if payload.expected_version != group.base_settings_version:
+        raise ApiError("VERSION_CONFLICT", status_code=409)
+
+    if payload.scoring_mode == "custom":
+        if payload.target_score is None or payload.target_score < 1:
+            raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
+        if payload.deuce_threshold is None or not (
+            1 <= payload.deuce_threshold <= payload.target_score
+        ):
+            raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
+        if payload.cap_score is None or payload.cap_score < payload.deuce_threshold:
+            raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
+        if payload.cap_score < payload.target_score:
+            raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
+        group.target_score = payload.target_score
+        group.deuce_threshold = payload.deuce_threshold
+        group.cap_score = payload.cap_score
+    else:
+        target_score, deuce_threshold, cap_score = _SCORING_PRESETS[payload.scoring_mode]
+        group.target_score = target_score
+        group.deuce_threshold = deuce_threshold
+        group.cap_score = cap_score
+
+    group.scoring_mode = payload.scoring_mode
+    group.base_settings_version += 1
+    await _touch_activity(session, group)
+    await session.commit()
+    await session.refresh(group)
+    return group
+
+
+async def disband_group(
+    session: AsyncSession,
+    group: Group,
+    *,
+    abandon_unfinished_matches: AbandonMatchesHook | None = None,
+) -> Group:
+    """Disband (manual or auto-triggered). Idempotent: re-disbanding an already
+    disbanded group is a no-op rather than an error, since the auto-disband
+    scheduler and manual disband may race harmlessly."""
+    if group.status == "disbanded":
+        return group
+
+    group.status = "disbanded"
+    await _touch_activity(session, group)
+
+    if abandon_unfinished_matches is not None:
+        await abandon_unfinished_matches(session, group.id)
+
+    await session.commit()
+    await session.refresh(group)
+
+    # Broadcast group.disbanded: per-court channels + the group notifications channel
+    # (contracts/ably-events.md — MUST NOT rely on a single wildcard channel).
+    result = await session.execute(
+        select(Court.id).where(Court.group_id == group.id, Court.deleted_at.is_(None))
+    )
+    disbanded_payload = {"event": "group.disbanded"}
+    for (court_id,) in result.all():
+        channel = court_channel(str(group.id), str(court_id))
+        await publish(channel, "group.disbanded", disbanded_payload)
+    await publish(
+        group_notifications_channel(str(group.id)), "group.disbanded", disbanded_payload
+    )
+
+    return group
+
+
+async def regenerate_admin_pin(session: AsyncSession, group: Group) -> tuple[str, str]:
+    """Optimistic-lock on admin_token_version itself: re-read immediately before
+    writing inside the same transaction context (the row was already loaded by
+    require_admin in this request, so a concurrent regenerate that already
+    committed would have changed admin_token_version — we detect that here)."""
+    result = await session.execute(select(Group.admin_token_version).where(Group.id == group.id))
+    current_version = result.scalar_one()
+    if current_version != group.admin_token_version:
+        raise ApiError("VERSION_CONFLICT", status_code=409)
+
+    new_pin = generate_admin_pin()
+    group.admin_pin_hash = hash_admin_pin(new_pin)
+    group.admin_token_version += 1
+    group.admin_failed_attempts = 0
+    group.admin_locked_until = None
+    await _touch_activity(session, group)
+    await session.commit()
+    await session.refresh(group)
+
+    new_token = issue_admin_token(str(group.id), group.admin_token_version)
+
+    await publish(
+        group_notifications_channel(str(group.id)),
+        "link.regenerated",
+        {"event": "link.regenerated", "group_id": str(group.id), "link_type": "admin"},
+    )
+
+    return new_pin, new_token
+
+
+async def forgot_admin_pin(
+    session: AsyncSession, group_id: uuid.UUID, member_id: uuid.UUID
+) -> tuple[str, str]:
+    """006-member-friends US4 (FR-028~032): member-only recovery path — no
+    original PIN or password required, unlike `regenerate_admin_pin` (which
+    needs an already-valid admin session). Reuses that function's exact
+    core logic once the caller is confirmed to be this group's creator, so
+    the two paths stay behaviorally identical (same version bump, same
+    `link.regenerated` broadcast). Works on a disbanded group too — no
+    `Group.status` check here, matching `resolve_active_roster_membership`'s
+    established precedent of member-view/recovery endpoints staying
+    readable after disband. Errors: `GROUP_NOT_FOUND`, `NOT_GROUP_CREATOR`."""
+    group = await get_group_by_id(session, group_id)
+    if group.created_by_member_id != member_id:
+        raise ApiError("NOT_GROUP_CREATOR", status_code=403)
+    return await regenerate_admin_pin(session, group)
+
+
+async def get_group_if_creator(
+    session: AsyncSession, group_id: uuid.UUID, member_id: uuid.UUID
+) -> Group:
+    """011-round-robin-scheduling follow-up: backs the "回到我的團" button's
+    creator short-circuit — a logged-in member who created this group can
+    jump straight back to the admin page without the PIN, but (unlike
+    `forgot_admin_pin` above) MUST NOT reset the PIN or bump
+    `admin_token_version` in the process; this is a read-only ownership
+    check, the token itself gets (re)issued by the caller against the
+    group's *current* version so existing admin sessions elsewhere stay
+    valid. Same disbanded-group-readable precedent as `forgot_admin_pin`.
+    Errors: `GROUP_NOT_FOUND`, `NOT_GROUP_CREATOR`."""
+    group = await get_group_by_id(session, group_id)
+    if group.created_by_member_id != member_id:
+        raise ApiError("NOT_GROUP_CREATOR", status_code=403)
+    return group
+
+
+def get_group_password_plaintext(group: Group) -> str | None:
+    if group.password_ciphertext is None or group.password_nonce is None:
+        return None
+    return decrypt_group_password(group.password_ciphertext, group.password_nonce)
+
+
+async def get_group_by_all_courts_token(
+    session: AsyncSession, token: uuid.UUID
+) -> tuple[Group, list[Court]]:
+    """Public bootstrap + heartbeat for the all-courts control panel
+    (specs/002-court-management/contracts/courts-api.md). Deliberately does
+    NOT return each court's own scoreboard/control_panel token — the
+    all-courts panel operates by court_id, and callers holding only this
+    all-courts token must not be able to discover other courts' individual
+    link credentials (constitution IV)."""
+    result = await session.execute(
+        select(Group).where(Group.all_courts_control_panel_token == token)
+    )
+    group = result.scalar_one_or_none()
+    if group is None:
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+
+    courts_result = await session.execute(
+        select(Court)
+        .where(Court.group_id == group.id, Court.deleted_at.is_(None))
+        .order_by(Court.created_at)
+    )
+    return group, list(courts_result.scalars().all())
+
+
+async def regenerate_join_link(
+    session: AsyncSession, group: Group, expected_version: int
+) -> Group:
+    """Per FR-033, the join link is validated by the backend at the moment a
+    join request is submitted (004 spec) rather than via a live subscription
+    — this MUST NOT publish any realtime event, unlike every other link type
+    in this domain."""
+    if group.status == "disbanded":
+        raise ApiError("GROUP_DISBANDED", status_code=409)
+    if expected_version != group.join_link_version:
+        raise ApiError("VERSION_CONFLICT", status_code=409)
+
+    group.join_link_token = uuid.uuid4()
+    group.join_link_version += 1
+    await session.commit()
+    await session.refresh(group)
+    return group
+
+
+async def regenerate_all_courts_link(
+    session: AsyncSession, group: Group, expected_version: int
+) -> Group:
+    if group.status == "disbanded":
+        raise ApiError("GROUP_DISBANDED", status_code=409)
+    if expected_version != group.all_courts_link_version:
+        raise ApiError("VERSION_CONFLICT", status_code=409)
+
+    group.all_courts_control_panel_token = uuid.uuid4()
+    group.all_courts_link_version += 1
+    await session.commit()
+    await session.refresh(group)
+
+    await publish(
+        group_notifications_channel(str(group.id)),
+        "link.regenerated",
+        {"event": "link.regenerated", "group_id": str(group.id), "link_type": "all_courts"},
+    )
+    return group
+
+
+_GROUP_LIST_PAGE_SIZE = 20
+
+
+async def court_names_for_group(session: AsyncSession, group_id: uuid.UUID) -> list[str]:
+    result = await session.execute(
+        select(Court.name)
+        .where(Court.group_id == group_id, Court.deleted_at.is_(None))
+        .order_by(Court.created_at)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def creator_nickname_for_group(session: AsyncSession, group_id: uuid.UUID) -> str:
+    """FR-002: 開團者暱稱 — the creator's `RosterEntry` always exists (created
+    in the same transaction as the group itself, per `create_group`)."""
+    result = await session.execute(
+        select(RosterEntry.nickname).where(
+            RosterEntry.group_id == group_id, RosterEntry.is_creator.is_(True)
+        )
+    )
+    return result.scalar_one()
+
+
+async def list_groups(
+    session: AsyncSession,
+    *,
+    page: int = 1,
+    court_name: str | None = None,
+    court_id: uuid.UUID | None = None,
+    time_start: time | None = None,
+    time_end: time | None = None,
+) -> tuple[list[Group], int]:
+    """Browse query (US1 base, extended by US5's filters); `joined_by_me`
+    personalization (US6) is layered on top of this function's result set
+    by the router, not here.
+
+    research.md #7: court name/ID filters match if ANY of the group's
+    (non-deleted) courts hits — a group can have multiple courts. Time
+    filters use overlap semantics (spec.md Assumptions) and MUST exclude
+    groups with no activity time set when applied (FR-004), but MUST NOT
+    exclude them when no time filter is given at all.
+    """
+    conditions = [Group.status == "active"]
+    if court_name is not None or court_id is not None:
+        court_conditions = [Court.group_id == Group.id, Court.deleted_at.is_(None)]
+        if court_name is not None:
+            court_conditions.append(Court.name.ilike(f"%{court_name}%"))
+        if court_id is not None:
+            court_conditions.append(Court.id == court_id)
+        conditions.append(select(Court.id).where(*court_conditions).exists())
+    if time_start is not None and time_end is not None:
+        conditions.extend(
+            [
+                Group.activity_time_start.is_not(None),
+                Group.activity_time_end.is_not(None),
+                Group.activity_time_start < time_end,
+                Group.activity_time_end > time_start,
+            ]
+        )
+
+    count_result = await session.execute(
+        select(func.count()).select_from(Group).where(*conditions)
+    )
+    total = count_result.scalar_one()
+    total_pages = max(1, (total + _GROUP_LIST_PAGE_SIZE - 1) // _GROUP_LIST_PAGE_SIZE)
+
+    result = await session.execute(
+        select(Group)
+        .where(*conditions)
+        .order_by(Group.created_at.desc())
+        .limit(_GROUP_LIST_PAGE_SIZE)
+        .offset((page - 1) * _GROUP_LIST_PAGE_SIZE)
+    )
+    return list(result.scalars().all()), total_pages
+
+
+def verify_password(group: Group, password: str) -> bool:
+    """No lockout mechanism (FR-016) — pure comparison, no attempt counter."""
+    if group.password_ciphertext is None or group.password_nonce is None:
+        return True
+    return decrypt_group_password(group.password_ciphertext, group.password_nonce) == password
+
+
+async def join_group(
+    session: AsyncSession,
+    group: Group,
+    *,
+    member: Member | None,
+    password: str | None,
+    nickname: str | None,
+) -> tuple[RosterEntry, bool]:
+    """FR-011~027: the core join write path, shared by every join entry
+    point (list, join-link, guest reconnect is separate). Returns
+    `(roster_entry, created_new)` — `created_new=False` signals the FR-020a
+    short-circuit (an already-active member, no new row written).
+
+    The FR-020a short-circuit MUST run before the disbanded check: 005's
+    member view (research.md #5) relies on being able to idempotently
+    re-resolve an already-active member's `roster_entry_id` via this
+    function on a disbanded group (e.g. to leave it), and that read-only
+    short-circuit performs no write — only a genuinely new join attempt
+    MUST be rejected once the group is disbanded.
+    """
+    if member is not None:
+        existing_result = await session.execute(
+            select(RosterEntry).where(
+                RosterEntry.group_id == group.id,
+                RosterEntry.member_id == member.id,
+                RosterEntry.status == "active",
+            )
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing is not None:
+            return existing, False
+
+    if group.status == "disbanded":
+        raise ApiError("GROUP_DISBANDED", status_code=409)
+
+    if group.current_member_count >= group.max_members:
+        raise ApiError("GROUP_FULL", status_code=409)
+
+    if not verify_password(group, password or ""):
+        raise ApiError("GROUP_PASSWORD_INCORRECT", status_code=401)
+
+    if member is not None:
+        if not member.nickname:
+            raise ApiError("MEMBER_NICKNAME_NOT_SET", status_code=400)
+        resolved_nickname = member.nickname
+    else:
+        stripped = (nickname or "").strip()
+        if not stripped or len(stripped) > 20:
+            raise ApiError("NICKNAME_REQUIRED_FOR_GUEST", status_code=400)
+        resolved_nickname = stripped
+
+    update_result = await session.execute(
+        update(Group)
+        .where(Group.id == group.id, Group.current_member_count < Group.max_members)
+        .values(current_member_count=Group.current_member_count + 1)
+    )
+    if update_result.rowcount == 0:
+        raise ApiError("GROUP_FULL", status_code=409)
+
+    guest_token = secrets.token_urlsafe(32) if member is None else None
+    roster_entry = RosterEntry(
+        group_id=group.id,
+        member_id=member.id if member else None,
+        nickname=resolved_nickname,
+        status="active",
+        is_creator=False,
+        wait_count=None,
+        guest_session_token=guest_token,
+    )
+    session.add(roster_entry)
+    await session.flush()
+
+    await handle_member_joined(session, group, roster_entry)
+    await _touch_activity(session, group)
+    await session.commit()
+    await session.refresh(group)
+    await session.refresh(roster_entry)
+
+    await publish(
+        group_notifications_channel(str(group.id)),
+        "member.joined",
+        {
+            "event": "member.joined",
+            "roster_entry_id": str(roster_entry.id),
+            "nickname": resolved_nickname,
+        },
+    )
+    return roster_entry, True
+
+
+async def resolve_join_link(session: AsyncSession, join_link_token: uuid.UUID) -> Group:
+    """US2: resolves the token itself; whether the group is disbanded/full
+    is a field on the returned Group, not this function's concern (FR-009 —
+    those are 200 responses with status fields, not error codes)."""
+    result = await session.execute(select(Group).where(Group.join_link_token == join_link_token))
+    group = result.scalar_one_or_none()
+    if group is None:
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return group
+
+
+async def resolve_guest_session(session: AsyncSession, guest_session_token: str) -> RosterEntry:
+    """FR-023~025: an unknown token, a non-`active` roster entry (left/
+    kicked), or a disbanded group are all indistinguishable failures here
+    (research.md #4) — the frontend treats every case identically (start a
+    fresh join flow)."""
+    result = await session.execute(
+        select(RosterEntry)
+        .join(Group, Group.id == RosterEntry.group_id)
+        .where(
+            RosterEntry.guest_session_token == guest_session_token,
+            RosterEntry.status == "active",
+            Group.status == "active",
+        )
+    )
+    roster_entry = result.scalar_one_or_none()
+    if roster_entry is None:
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return roster_entry
+
+
+async def active_roster_entry_for_member(
+    session: AsyncSession, group_id: uuid.UUID, member_id: uuid.UUID
+) -> RosterEntry | None:
+    """US6: backs both `joined_by_me` (list) and `already_joined` (join-link
+    preview) — a member's existing active `RosterEntry` in this group, if
+    any."""
+    result = await session.execute(
+        select(RosterEntry).where(
+            RosterEntry.group_id == group_id,
+            RosterEntry.member_id == member_id,
+            RosterEntry.status == "active",
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def resolve_active_roster_membership(
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    *,
+    guest_session_token: str | None,
+    member_id: uuid.UUID | None,
+) -> RosterEntry:
+    """005-member-view research.md #5: backs every read-only member-view
+    endpoint (賽程/戰績/對戰紀錄) plus 退出組團's authorization check.
+    Deliberately independent of `resolve_guest_session()` — this MUST NOT
+    check `Group.status` (a disbanded group's member view stays readable per
+    spec Edge Cases), unlike that function's join-flow semantics. Guest
+    token and Member identity are mutually exclusive inputs; whichever is
+    given must resolve to an `active` RosterEntry in this exact group, or
+    the caller gets the same generic failure regardless of the reason
+    (never-joined / already-left / wrong token) — research.md #5."""
+    if guest_session_token is not None:
+        result = await session.execute(
+            select(RosterEntry).where(
+                RosterEntry.group_id == group_id,
+                RosterEntry.guest_session_token == guest_session_token,
+                RosterEntry.status == "active",
+            )
+        )
+        entry = result.scalar_one_or_none()
+        if entry is not None:
+            return entry
+    elif member_id is not None:
+        entry = await active_roster_entry_for_member(session, group_id, member_id)
+        if entry is not None:
+            return entry
+    raise ApiError("MEMBERSHIP_REQUIRED", status_code=403)
+
+
+async def build_group_standings(session: AsyncSession, group: Group) -> GroupStandingsResponse:
+    """005-member-view US2 (FR-005~010): four-state per-round formula per
+    research.md #4. Rounds are exactly those that have ever been generated
+    for this group (one `round_history` row per round, including round 1) —
+    a group that hasn't pressed Next Round yet has no rows and thus no
+    rounds to report."""
+    round_history_result = await session.execute(
+        select(RoundHistory)
+        .where(RoundHistory.group_id == group.id)
+        .order_by(RoundHistory.round_number)
+    )
+    round_history_rows = list(round_history_result.scalars())
+    rounds = [rh.round_number for rh in round_history_rows]
+    started_at_by_round = {rh.round_number: rh.started_at for rh in round_history_rows}
+
+    roster_result = await session.execute(
+        select(RosterEntry)
+        .where(RosterEntry.group_id == group.id)
+        .order_by(RosterEntry.joined_at)
+    )
+    roster_entries = list(roster_result.scalars())
+
+    participation: dict[tuple[uuid.UUID, int], tuple[str, str, str | None]] = {}
+    if roster_entries:
+        entry_ids = [entry.id for entry in roster_entries]
+        participants_result = await session.execute(
+            select(MatchParticipant, Match)
+            .join(Match, Match.id == MatchParticipant.match_id)
+            .where(
+                Match.group_id == group.id,
+                Match.round_number.in_(rounds),
+                MatchParticipant.roster_entry_id.in_(entry_ids),
+            )
+        )
+        for participant, match in participants_result.all():
+            participation[(participant.roster_entry_id, match.round_number)] = (
+                match.status,
+                participant.team,
+                match.winner_team,
+            )
+
+    members = []
+    for entry in roster_entries:
+        row_rounds: dict[int, RoundStatus] = {}
+        for round_number in rounds:
+            started_at = started_at_by_round.get(round_number)
+            if (
+                entry.status in ("left", "kicked")
+                and entry.left_at is not None
+                and started_at is not None
+                and entry.left_at <= started_at
+            ):
+                row_rounds[round_number] = "left"
+            elif started_at is not None and entry.joined_at > started_at:
+                row_rounds[round_number] = "did_not_play"
+            else:
+                info = participation.get((entry.id, round_number))
+                if info is None:
+                    row_rounds[round_number] = "did_not_play"
+                else:
+                    match_status, team, winner_team = info
+                    if match_status == "completed":
+                        row_rounds[round_number] = "won" if team == winner_team else "lost"
+                    else:
+                        row_rounds[round_number] = "did_not_play"
+        members.append(
+            MemberStandingRow(
+                roster_entry_id=str(entry.id),
+                nickname=entry.nickname,
+                current_status=entry.status,
+                rounds=row_rounds,
+            )
+        )
+
+    return GroupStandingsResponse(
+        current_round_number=group.current_round_number, rounds=rounds, members=members
+    )
+
+
+def _completed_matches_query() -> Select[tuple[Match]]:
+    """005-member-view research.md #8: the shared "比賽結果" query base for
+    both 團內對戰紀錄 (US3, filters by `group_id`) and 會員跨團對戰紀錄
+    (US5, filters by an `EXISTS` on `roster_entries.member_id` — see
+    `app/domains/member/service.py`, which imports this function)."""
+    return select(Match).where(Match.status == "completed")
+
+
+async def _build_match_record_summaries(
+    session: AsyncSession, matches: list[Match]
+) -> list[MatchRecordSummary]:
+    if not matches:
+        return []
+    match_ids = [match.id for match in matches]
+    result = await session.execute(
+        select(MatchParticipant, RosterEntry)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(MatchParticipant.match_id.in_(match_ids))
+    )
+    participants_by_match: dict[uuid.UUID, list[tuple[MatchParticipant, RosterEntry]]] = (
+        defaultdict(list)
+    )
+    for participant, entry in result.all():
+        participants_by_match[participant.match_id].append((participant, entry))
+
+    summaries = []
+    for match in matches:
+        team_a: list[ParticipantSummary] = []
+        team_b: list[ParticipantSummary] = []
+        for participant, entry in participants_by_match.get(match.id, []):
+            summary = ParticipantSummary(
+                roster_entry_id=str(entry.id), nickname=entry.nickname, team=participant.team
+            )
+            (team_a if participant.team == "A" else team_b).append(summary)
+        summaries.append(
+            MatchRecordSummary(
+                match_id=str(match.id),
+                round_number=match.round_number,
+                team_a=team_a,
+                team_b=team_b,
+                score_a=match.score_a,
+                score_b=match.score_b,
+                winner_team=match.winner_team,
+            )
+        )
+    return summaries
+
+
+async def build_group_match_records(
+    session: AsyncSession, group_id: uuid.UUID, page: int = 1
+) -> GroupMatchRecordsResponse:
+    """005-member-view US3 (FR-011/012): 本團已完成比賽列表，依 Round 由新
+    到舊排序，僅限本團範圍。"""
+    base_query = _completed_matches_query().where(Match.group_id == group_id)
+
+    count_result = await session.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
+    total = count_result.scalar_one()
+    total_pages = max(1, (total + _MATCH_RECORDS_PAGE_SIZE - 1) // _MATCH_RECORDS_PAGE_SIZE)
+
+    matches_result = await session.execute(
+        base_query.order_by(Match.round_number.desc(), Match.ended_at.desc())
+        .offset((page - 1) * _MATCH_RECORDS_PAGE_SIZE)
+        .limit(_MATCH_RECORDS_PAGE_SIZE)
+    )
+    matches = list(matches_result.scalars())
+
+    summaries = await _build_match_record_summaries(session, matches)
+    return GroupMatchRecordsResponse(matches=summaries, page=page, total_pages=total_pages)
+
+
+async def leave_group(
+    session: AsyncSession,
+    group: Group,
+    roster_entry_id: uuid.UUID,
+    *,
+    guest_session_token: str | None,
+    member_id: uuid.UUID | None,
+) -> RosterEntry:
+    """005-member-view US4 (FR-013~016): a general member leaving on their
+    own — reuses 003's `handle_member_left()` verbatim (research.md #7,
+    same convergence rules as an admin kick, `new_status` is the only
+    difference). The caller MUST be proven to own `roster_entry_id` (Guest
+    token or Member identity matches); any mismatch, or an already-non-
+    active entry, is reported identically as `ROSTER_ENTRY_NOT_FOUND` —
+    this MUST NOT reveal whether the entry exists to someone who can't
+    prove ownership of it."""
+    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    entry = result.scalar_one_or_none()
+    if entry is None or entry.group_id != group.id or entry.status != "active":
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+
+    if guest_session_token is not None:
+        owns_entry = entry.guest_session_token == guest_session_token
+    elif member_id is not None:
+        owns_entry = entry.member_id == member_id
+    else:
+        owns_entry = False
+    if not owns_entry:
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+
+    await handle_member_left(session, group, entry, new_status="left")
+    await session.commit()
+    await session.refresh(entry)
+
+    await publish(
+        group_notifications_channel(str(group.id)),
+        "member.left",
+        {"roster_entry_id": str(entry.id), "nickname": entry.nickname},
+    )
+    return entry

@@ -1,0 +1,60 @@
+@if (connectionState() !== 'connected') {
+  <p role="status" class="status-badge status-badge--danger">
+    {{ 'common.offlineBanner' | translate }}
+  </p>
+}
+@if (court().current_match; as match) {
+  <div class="score-board">
+    <div class="team">
+      <span class="score">{{ match.score_a }}</span>
+      <div class="buttons">
+        <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">
+          +1
+        </button>
+        <button
+          type="button"
+          class="btn btn--secondary"
+          [disabled]="connectionState() !== 'connected'"
+          (click)="score('A', -1)"
+        >
+          -1
+        </button>
+      </div>
+    </div>
+    <div class="team">
+      <span class="score">{{ match.score_b }}</span>
+      <div class="buttons">
+        <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">
+          +1
+        </button>
+        <button
+          type="button"
+          class="btn btn--secondary"
+          [disabled]="connectionState() !== 'connected'"
+          (click)="score('B', -1)"
+        >
+          -1
+        </button>
+      </div>
+    </div>
+  </div>
+  <ul class="participants">
+    @for (participant of match.participants; track participant.roster_entry_id) {
+      <li>{{ participant.nickname }}（{{ participant.team }}）</li>
+    }
+  </ul>
+  <button
+    type="button"
+    class="btn btn--danger"
+    [disabled]="connectionState() !== 'connected'"
+    (click)="openEndMatchDialog()"
+  >
+    {{ 'controlPanel.endMatch' | translate }}
+  </button>
+  <app-confirm-dialog
+    #endMatchDialog
+    [title]="'controlPanel.endMatchConfirmTitle' | translate"
+    [body]="'controlPanel.endMatchConfirmBody' | translate"
+    (confirmed)="confirmEndMatch()"
+  />
+}

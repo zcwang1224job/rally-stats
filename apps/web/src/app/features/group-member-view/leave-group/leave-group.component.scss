@@ -1,0 +1,18 @@
+@use '../../../../styles/tokens';
+
+:host {
+  display: contents;
+}
+
+.leave-btn {
+  background: none;
+  border: none;
+  color: var(--color-danger);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    font-size: var(--font-size-body);
+  }
+}

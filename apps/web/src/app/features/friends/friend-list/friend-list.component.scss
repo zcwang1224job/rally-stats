@@ -1,0 +1,62 @@
+@use '../../../../styles/tokens';
+
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.filter-form {
+  max-width: none;
+  flex-direction: column;
+  margin-bottom: var(--space-md);
+
+  @media (min-width: tokens.$breakpoint-tablet) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+
+    label {
+      flex: 1;
+      min-width: 140px;
+    }
+  }
+}
+
+.friend-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-md) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.friend-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.nickname {
+  font-weight: var(--font-weight-bold);
+}
+
+.user-number {
+  color: var(--color-text-muted);
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-lg);
+}

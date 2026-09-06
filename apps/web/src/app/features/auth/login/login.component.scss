@@ -1,0 +1,11 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}

@@ -1,0 +1,43 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.user-number {
+  color: var(--color-text-muted);
+}
+
+// US6 (010-app-wide-ui-redesign): menu-style rows — 對戰紀錄/好友/我的團/
+// 個人設定/登出.
+.member-links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+
+  a,
+  button {
+    display: flex;
+    align-items: center;
+    color: var(--color-brand-primary);
+    font-weight: var(--font-weight-bold);
+    text-decoration: none;
+    background: none;
+    border: none;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+  }
+}
+
+.member-links .logout-action {
+  color: var(--color-danger);
+}

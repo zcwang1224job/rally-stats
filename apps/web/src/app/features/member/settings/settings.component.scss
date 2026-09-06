@@ -1,0 +1,16 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+section.card {
+  margin-bottom: var(--space-md);
+}
+
+h2 {
+  margin-top: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+}

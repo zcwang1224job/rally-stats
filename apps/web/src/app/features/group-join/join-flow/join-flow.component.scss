@@ -1,0 +1,23 @@
+:host {
+  display: block;
+}
+
+h1 {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+// US5 (010-app-wide-ui-redesign, research.md Decision 4): centered modal
+// card, reusing the same native-<dialog> idiom as
+// confirm-dialog.component.scss.
+.join-dialog {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  max-width: min(90vw, 480px);
+  width: 100%;
+
+  &::backdrop {
+    background: rgb(0 0 0 / 50%);
+  }
+}

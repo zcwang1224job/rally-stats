@@ -1,0 +1,71 @@
+<section class="court-block card">
+  <h2>{{ name() }}</h2>
+  @if (state(); as s) {
+    @if (s.current_match; as match) {
+      <div class="score-board">
+        <div class="team team--a">
+          <div class="buttons">
+            <button
+              type="button"
+              class="btn"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="score('A', 1)"
+            >
+              +1
+            </button>
+            <button
+              type="button"
+              class="btn btn--secondary"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="score('A', -1)"
+            >
+              -1
+            </button>
+          </div>
+          <span class="score">{{ match.score_a }}</span>
+        </div>
+        <div class="team team--b">
+          <span class="score">{{ match.score_b }}</span>
+          <div class="buttons">
+            <button
+              type="button"
+              class="btn"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="score('B', 1)"
+            >
+              +1
+            </button>
+            <button
+              type="button"
+              class="btn btn--secondary"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="score('B', -1)"
+            >
+              -1
+            </button>
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="btn btn--danger"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="openEndMatchDialog()"
+      >
+        {{ 'controlPanel.endMatch' | translate }}
+      </button>
+      <app-confirm-dialog
+        #endMatchDialog
+        [title]="'controlPanel.endMatchConfirmTitle' | translate"
+        [body]="'controlPanel.endMatchConfirmBody' | translate"
+        (confirmed)="confirmEndMatch()"
+      />
+    } @else if (s.waiting_reason === 'manual_assignment') {
+      <p>{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
+    } @else {
+      <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+    }
+  } @else {
+    <p>{{ 'common.loading' | translate }}</p>
+  }
+</section>

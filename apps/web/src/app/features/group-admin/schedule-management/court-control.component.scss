@@ -1,0 +1,43 @@
+@use '../../../../styles/tokens';
+
+:host {
+  display: block;
+}
+
+.score-board {
+  display: flex;
+  gap: var(--space-md);
+  margin: var(--space-md) 0;
+}
+
+.team {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.score {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+}
+
+.buttons {
+  display: flex;
+  gap: var(--space-sm);
+  width: 100%;
+
+  .btn {
+    flex: 1;
+  }
+}
+
+.participants {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-sm) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
