@@ -55,10 +55,16 @@
           @case ('courts') {
             <section class="card links-section">
               <h2>{{ 'reauth.groupNumber' | translate }} / 團層級連結</h2>
+              @if (copyLinkErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
               <div class="link-section">
                 <p>加入連結</p>
                 <qrcode [qrdata]="joinLinkUrl()" [width]="128" errorCorrectionLevel="M" />
                 <input type="text" readonly [value]="joinLinkUrl()" />
+                <button type="button" class="btn btn--secondary" (click)="copyJoinLink()">
+                  {{ (copiedJoinLink() ? 'common.copied' : 'common.copy') | translate }}
+                </button>
                 <button type="button" class="btn btn--secondary" (click)="openRegenerateJoinLinkDialog()">
                   {{ 'courtManagement.regenerateLink' | translate }}
                 </button>
@@ -67,6 +73,9 @@
                 <p>{{ 'courtManagement.allCourtsTitle' | translate }}</p>
                 <qrcode [qrdata]="allCourtsLinkUrl()" [width]="128" errorCorrectionLevel="M" />
                 <input type="text" readonly [value]="allCourtsLinkUrl()" />
+                <button type="button" class="btn btn--secondary" (click)="copyAllCourtsLink()">
+                  {{ (copiedAllCourtsLink() ? 'common.copied' : 'common.copy') | translate }}
+                </button>
                 <button type="button" class="btn btn--secondary" (click)="openRegenerateAllCourtsLinkDialog()">
                   {{ 'courtManagement.regenerateLink' | translate }}
                 </button>

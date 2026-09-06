@@ -6,6 +6,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { QRCodeComponent } from 'angularx-qrcode';
 import { interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
+import { copyTextToClipboard } from '../../../core/clipboard';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { GroupAdminService } from '../group-admin.service';
 import {
@@ -77,6 +78,9 @@ export class AdminPageComponent {
   readonly newPin = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
   readonly nextRoundErrorKey = signal<string | null>(null);
+  readonly copiedJoinLink = signal(false);
+  readonly copiedAllCourtsLink = signal(false);
+  readonly copyLinkErrorKey = signal<string | null>(null);
 
   readonly connectionState = this.realtime.connectionState;
 
@@ -282,6 +286,26 @@ export class AdminPageComponent {
     return view
       ? `${window.location.origin}/control/all/${view.all_courts_control_panel_token}`
       : '';
+  }
+
+  async copyJoinLink(): Promise<void> {
+    this.copyLinkErrorKey.set(null);
+    if (await copyTextToClipboard(this.joinLinkUrl())) {
+      this.copiedJoinLink.set(true);
+      setTimeout(() => this.copiedJoinLink.set(false), 2000);
+    } else {
+      this.copyLinkErrorKey.set('courtManagement.copyFailed');
+    }
+  }
+
+  async copyAllCourtsLink(): Promise<void> {
+    this.copyLinkErrorKey.set(null);
+    if (await copyTextToClipboard(this.allCourtsLinkUrl())) {
+      this.copiedAllCourtsLink.set(true);
+      setTimeout(() => this.copiedAllCourtsLink.set(false), 2000);
+    } else {
+      this.copyLinkErrorKey.set('courtManagement.copyFailed');
+    }
   }
 
   openDisbandDialog(): void {

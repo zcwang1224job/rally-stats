@@ -232,6 +232,7 @@
     "regenerateLink": "重新產生連結",
     "regenerateLinkConfirmTitle": "確認重新產生此連結？",
     "regenerateLinkConfirmBody": "舊連結與 QR Code 將立即失效，此操作無法復原。",
+    "copyFailed": "複製失敗，請手動選取下方欄位的連結文字複製",
     "delete": "刪除場地",
     "deleteConfirmTitle": "確定刪除「{{name}}」場地？",
     "deleteConfirmBody": "此操作無法復原。",

@@ -2,6 +2,7 @@ import { Component, inject, input, output, signal, viewChild } from '@angular/co
 import { QRCodeComponent } from 'angularx-qrcode';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { copyTextToClipboard } from '../../../core/clipboard';
 import { CourtManagementService } from './court-management.service';
 import { Court } from './court-management.models';
 import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
@@ -39,15 +40,23 @@ export class CourtLinkCardComponent {
   }
 
   async copyScoreboardLink(): Promise<void> {
-    await navigator.clipboard.writeText(this.scoreboardUrl());
-    this.copiedScoreboard.set(true);
-    setTimeout(() => this.copiedScoreboard.set(false), 2000);
+    this.errorKey.set(null);
+    if (await copyTextToClipboard(this.scoreboardUrl())) {
+      this.copiedScoreboard.set(true);
+      setTimeout(() => this.copiedScoreboard.set(false), 2000);
+    } else {
+      this.errorKey.set('courtManagement.copyFailed');
+    }
   }
 
   async copyControlPanelLink(): Promise<void> {
-    await navigator.clipboard.writeText(this.controlPanelUrl());
-    this.copiedControlPanel.set(true);
-    setTimeout(() => this.copiedControlPanel.set(false), 2000);
+    this.errorKey.set(null);
+    if (await copyTextToClipboard(this.controlPanelUrl())) {
+      this.copiedControlPanel.set(true);
+      setTimeout(() => this.copiedControlPanel.set(false), 2000);
+    } else {
+      this.errorKey.set('courtManagement.copyFailed');
+    }
   }
 
   openScoreboardRegenDialog(): void {
