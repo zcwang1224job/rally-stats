@@ -16,8 +16,19 @@
 
 .score-board {
   display: flex;
+  align-items: center;
   gap: var(--space-md);
   margin: var(--space-md) 0;
+}
+
+// Sits between the two team blocks — see control-panel.component.scss for
+// the identical rationale and why only the color scheme is overridden here
+// (the rest comes from the shared .btn class this also carries).
+.swap-teams-btn {
+  flex-shrink: 0;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
 }
 
 .team {
@@ -41,6 +52,22 @@
   border-color: var(--team-b-border);
 }
 
+// Own team's nickname(s) shown above its score — lets an admin tell which
+// color block is which player(s) without cross-referencing a separate list.
+.names {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  color: #ffffff;
+  max-width: 100%;
+
+  div {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+}
+
 .score {
   font-size: var(--font-size-heading);
   font-weight: var(--font-weight-black);
@@ -51,6 +78,11 @@
   color: #ffffff;
 }
 
+// Bigger than the shared .btn touch-target minimum (44px) — this is a
+// rapid-fire, mid-rally control, not a once-in-a-while form button, so it
+// gets a wider margin for a thumb that isn't aiming carefully. Scoped to
+// just these buttons rather than the global .btn class, which is used all
+// over the app for things that don't need this.
 .buttons {
   display: flex;
   gap: var(--space-sm);
@@ -58,13 +90,7 @@
 
   .btn {
     flex: 1;
+    min-height: 64px;
+    font-size: var(--font-size-heading);
   }
-}
-
-.participants {
-  list-style: none;
-  padding: 0;
-  margin: var(--space-sm) 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-caption);
 }

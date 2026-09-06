@@ -47,11 +47,14 @@ function reconnectStub() {
 }
 
 /** 010-app-wide-ui-redesign FR-005: score centered, each team's +1/-1
- * flanking it on the outside (team A's buttons before its score in DOM
- * order, team B's buttons after its score) — this is what makes both
- * scores land adjacent in the middle under a plain flex row. */
+ * flanking it on the outside (team A's buttons before its score-block in DOM
+ * order, team B's buttons after its score-block) — this is what makes both
+ * scores land adjacent in the middle under a plain flex row. `.score-block`
+ * groups the score with its own team's nickname(s) (added so the color
+ * block can be matched to a player at a glance) — it's the unit that
+ * flanks, in place of the bare `.score` this test originally checked. */
 describe('ControlPanelComponent score-board button placement (US2 FR-005)', () => {
-  it('team A renders buttons before the score; team B renders the score before its buttons', () => {
+  it('team A renders buttons before the score-block; team B renders the score-block before its buttons', () => {
     TestBed.configureTestingModule({
       imports: [ControlPanelComponent],
       providers: [
@@ -91,9 +94,11 @@ describe('ControlPanelComponent score-board button placement (US2 FR-005)', () =
     const teamA = fixture.nativeElement.querySelector('.team--a');
     const teamB = fixture.nativeElement.querySelector('.team--b');
     expect(teamA.children[0].classList.contains('buttons')).toBe(true);
-    expect(teamA.children[1].classList.contains('score')).toBe(true);
-    expect(teamB.children[0].classList.contains('score')).toBe(true);
+    expect(teamA.children[1].classList.contains('score-block')).toBe(true);
+    expect(teamA.querySelector('.score-block .score')).not.toBeNull();
+    expect(teamB.children[0].classList.contains('score-block')).toBe(true);
     expect(teamB.children[1].classList.contains('buttons')).toBe(true);
+    expect(teamB.querySelector('.score-block .score')).not.toBeNull();
   });
 });
 

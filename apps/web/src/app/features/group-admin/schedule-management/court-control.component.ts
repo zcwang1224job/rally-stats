@@ -1,8 +1,23 @@
-import { Component, DestroyRef, effect, inject, input, output, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  OnInit,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
+import {
+  getScoreSwapPreference,
+  setScoreSwapPreference,
+} from '../../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
 import { ScheduleService } from './schedule.service';
 import { CourtScheduleStatus, Team } from './schedule.models';
@@ -17,7 +32,7 @@ import { CourtScheduleStatus, Team } from './schedule.models';
   templateUrl: './court-control.component.html',
   styleUrl: './court-control.component.scss',
 })
-export class CourtControlComponent {
+export class CourtControlComponent implements OnInit {
   readonly groupId = input.required<string>();
   readonly court = input.required<CourtScheduleStatus>();
   readonly changed = output<void>();
@@ -29,6 +44,15 @@ export class CourtControlComponent {
 
   readonly connectionState = this.realtime.connectionState;
   readonly endMatchDialog = viewChild<ConfirmDialogComponent>('endMatchDialog');
+
+  // Lets whoever's scoring swap which side each team's block renders on —
+  // remembered per court, not globally, since a different physical court
+  // may warrant a different left/right arrangement. Read in ngOnInit, not a
+  // field initializer — `court` is a required input and only guaranteed set
+  // by the time lifecycle hooks run, not necessarily at construction.
+  readonly swapped = signal(false);
+  readonly leftTeam = computed<Team>(() => (this.swapped() ? 'B' : 'A'));
+  readonly rightTeam = computed<Team>(() => (this.swapped() ? 'A' : 'B'));
 
   private subscribedChannel: string | null = null;
 
@@ -59,6 +83,16 @@ export class CourtControlComponent {
           .subscribe(() => this.changed.emit());
       }
     });
+  }
+
+  ngOnInit(): void {
+    this.swapped.set(getScoreSwapPreference(this.court().court_id));
+  }
+
+  toggleSwap(): void {
+    const next = !this.swapped();
+    this.swapped.set(next);
+    setScoreSwapPreference(this.court().court_id, next);
   }
 
   score(side: Team, delta: 1 | -1): void {

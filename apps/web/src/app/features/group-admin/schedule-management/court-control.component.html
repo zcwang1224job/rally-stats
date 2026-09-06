@@ -5,44 +5,72 @@
 }
 @if (court().current_match; as match) {
   <div class="score-board">
-    <div class="team team--a">
-      <span class="score">{{ match.score_a }}</span>
+    <div class="team" [class.team--a]="leftTeam() === 'A'" [class.team--b]="leftTeam() === 'B'">
+      <div class="names">
+        @for (participant of match.participants; track participant.roster_entry_id) {
+          @if (participant.team === leftTeam()) {
+            <div>{{ participant.nickname }}</div>
+          }
+        }
+      </div>
+      <span class="score">{{ leftTeam() === 'A' ? match.score_a : match.score_b }}</span>
       <div class="buttons">
-        <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">
+        <button
+          type="button"
+          class="btn"
+          [disabled]="connectionState() !== 'connected'"
+          (click)="score(leftTeam(), 1)"
+        >
           +1
         </button>
         <button
           type="button"
           class="btn btn--secondary"
           [disabled]="connectionState() !== 'connected'"
-          (click)="score('A', -1)"
+          (click)="score(leftTeam(), -1)"
         >
           -1
         </button>
       </div>
     </div>
-    <div class="team team--b">
-      <span class="score">{{ match.score_b }}</span>
+    <button
+      type="button"
+      class="btn swap-teams-btn"
+      [attr.aria-label]="'controlPanel.swapTeams' | translate"
+      [title]="'controlPanel.swapTeams' | translate"
+      (click)="toggleSwap()"
+    >
+      ⇄
+    </button>
+    <div class="team" [class.team--a]="rightTeam() === 'A'" [class.team--b]="rightTeam() === 'B'">
+      <div class="names">
+        @for (participant of match.participants; track participant.roster_entry_id) {
+          @if (participant.team === rightTeam()) {
+            <div>{{ participant.nickname }}</div>
+          }
+        }
+      </div>
+      <span class="score">{{ rightTeam() === 'A' ? match.score_a : match.score_b }}</span>
       <div class="buttons">
-        <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">
+        <button
+          type="button"
+          class="btn"
+          [disabled]="connectionState() !== 'connected'"
+          (click)="score(rightTeam(), 1)"
+        >
           +1
         </button>
         <button
           type="button"
           class="btn btn--secondary"
           [disabled]="connectionState() !== 'connected'"
-          (click)="score('B', -1)"
+          (click)="score(rightTeam(), -1)"
         >
           -1
         </button>
       </div>
     </div>
   </div>
-  <ul class="participants">
-    @for (participant of match.participants; track participant.roster_entry_id) {
-      <li>{{ participant.nickname }}（{{ participant.team }}）</li>
-    }
-  </ul>
   <button
     type="button"
     class="btn btn--danger"

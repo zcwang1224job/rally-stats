@@ -220,7 +220,8 @@
     "nextUpLabel": "即將登場：{{names}}",
     "noQueuedNextUp": "本輪已無排隊中的比賽",
     "enterFullscreen": "進入全螢幕",
-    "exitFullscreen": "離開全螢幕"
+    "exitFullscreen": "離開全螢幕",
+    "swapTeams": "交換兩隊位置"
   },
   "courtManagement": {
     "sectionTitle": "場地 ({{count}})",

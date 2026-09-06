@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -9,6 +9,7 @@ import { CourtStateResponse, Team } from '../../core/api/court-live-state.models
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
+import { getScoreSwapPreference, setScoreSwapPreference } from '../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
 
 /** 單一場地控制板：連結初始化/心跳（T042）+ link.regenerated 專屬失效
@@ -40,6 +41,13 @@ export class ControlPanelComponent {
   readonly connectionState = this.realtime.connectionState;
 
   readonly endMatchDialog = viewChild<ConfirmDialogComponent>('endMatchDialog');
+
+  // Lets whoever's scoring swap which side each team's block renders on —
+  // remembered per court (`this.token`), not globally, since a different
+  // physical court may warrant a different left/right arrangement.
+  readonly swapped = signal(getScoreSwapPreference(this.token));
+  readonly leftTeam = computed<Team>(() => (this.swapped() ? 'B' : 'A'));
+  readonly rightTeam = computed<Team>(() => (this.swapped() ? 'A' : 'B'));
 
   constructor() {
     // FR-024: 重新連線後強制拉取最新完整狀態覆蓋本地暫存，不信任斷線
@@ -166,5 +174,11 @@ export class ControlPanelComponent {
       .endMatch(this.token, matchId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.loadState());
+  }
+
+  toggleSwap(): void {
+    const next = !this.swapped();
+    this.swapped.set(next);
+    setScoreSwapPreference(this.token, next);
   }
 }

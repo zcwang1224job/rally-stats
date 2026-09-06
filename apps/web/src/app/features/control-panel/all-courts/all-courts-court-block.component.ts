@@ -1,9 +1,23 @@
-import { Component, DestroyRef, inject, input, output, viewChild } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  OnInit,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { CourtControlService } from '../../../core/api/court-control.service';
 import { CourtLiveState, Team } from '../../../core/api/court-live-state.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
+import {
+  getScoreSwapPreference,
+  setScoreSwapPreference,
+} from '../../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
 
 /** 全部場地控制板中單一場地的操作區塊（007 US5）——每個場地一個獨立
@@ -17,7 +31,7 @@ import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.
   templateUrl: './all-courts-court-block.component.html',
   styleUrl: './all-courts-court-block.component.scss',
 })
-export class AllCourtsCourtBlockComponent {
+export class AllCourtsCourtBlockComponent implements OnInit {
   readonly token = input.required<string>();
   readonly courtId = input.required<string>();
   readonly name = input.required<string>();
@@ -30,6 +44,25 @@ export class AllCourtsCourtBlockComponent {
 
   readonly connectionState = this.realtime.connectionState;
   readonly endMatchDialog = viewChild<ConfirmDialogComponent>('endMatchDialog');
+
+  // Lets whoever's scoring swap which side each team's block renders on —
+  // remembered per court, not globally, since a different physical court
+  // may warrant a different left/right arrangement. Read in ngOnInit, not a
+  // field initializer — `courtId` is a required input and only guaranteed
+  // set by the time lifecycle hooks run, not necessarily at construction.
+  readonly swapped = signal(false);
+  readonly leftTeam = computed<Team>(() => (this.swapped() ? 'B' : 'A'));
+  readonly rightTeam = computed<Team>(() => (this.swapped() ? 'A' : 'B'));
+
+  ngOnInit(): void {
+    this.swapped.set(getScoreSwapPreference(this.courtId()));
+  }
+
+  toggleSwap(): void {
+    const next = !this.swapped();
+    this.swapped.set(next);
+    setScoreSwapPreference(this.courtId(), next);
+  }
 
   score(side: Team, delta: 1 | -1): void {
     if (this.connectionState() !== 'connected') {

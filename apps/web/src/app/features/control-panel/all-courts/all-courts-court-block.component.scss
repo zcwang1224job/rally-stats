@@ -42,6 +42,7 @@ h2 {
   padding: var(--space-sm);
   border-radius: var(--radius-md);
   border: 2px solid transparent;
+  min-width: 0;
 }
 
 .team--a {
@@ -52,6 +53,31 @@ h2 {
 .team--b {
   background: var(--team-b-bg);
   border-color: var(--team-b-border);
+}
+
+.score-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+// Own team's nickname(s) next to the score being adjusted — the main fix
+// for telling which color block belongs to which player(s) at a glance,
+// instead of relying on color/position alone across several stacked courts.
+.names {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  color: #ffffff;
+  max-width: 100%;
+
+  div {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
 }
 
 .score {
@@ -65,8 +91,45 @@ h2 {
   color: #ffffff;
 }
 
+// Bigger than the shared .btn touch-target minimum (44px), same reasoning
+// as control-panel.component.scss — a bit smaller than that single-court
+// page's buttons since several of these court blocks stack on one screen
+// (FR-004) and have to share the vertical space.
 .buttons {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
+
+  .btn {
+    min-width: 64px;
+    min-height: 64px;
+    font-size: var(--font-size-heading);
+  }
+}
+
+// Sits between the two team blocks — see control-panel.component.scss for
+// the identical rationale and why only the color scheme is overridden here
+// (the rest comes from the shared .btn class this also carries).
+.swap-teams-btn {
+  flex-shrink: 0;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+// Landscape phones trade width for height, and several court blocks
+// compete for that height at once (FR-004) — tighten vertical margins so
+// more of them fit without scrolling.
+@media (orientation: landscape) and (max-height: 500px) {
+  .court-block {
+    margin-bottom: var(--space-sm);
+  }
+
+  .score-board {
+    margin: var(--space-sm) 0;
+  }
+
+  h2 {
+    margin-bottom: var(--space-xs);
+  }
 }
