@@ -34,3 +34,46 @@ h3 {
 .next-up {
   margin-top: var(--space-sm);
 }
+
+// All-matches-this-round section (mirrors group-admin's
+// round-matches-list.component.scss — separate stylesheet, so view
+// encapsulation means it has to be duplicated here rather than shared).
+.round-matches {
+  margin-top: var(--space-lg);
+}
+
+.round-matches-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+
+  li {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+  }
+}
+
+.round-matches-list .status-badge {
+  &[data-status='in_progress'] {
+    background: color-mix(in srgb, var(--color-brand-accent) 15%, white);
+    color: var(--color-brand-accent);
+  }
+
+  &[data-status='completed'] {
+    background: color-mix(in srgb, var(--color-text-muted) 15%, white);
+    color: var(--color-text-muted);
+  }
+
+  &[data-status='abandoned'] {
+    background: color-mix(in srgb, var(--color-danger) 12%, white);
+    color: var(--color-danger);
+  }
+}

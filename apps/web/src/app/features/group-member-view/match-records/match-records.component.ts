@@ -1,7 +1,10 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
-import { GroupMatchRecordsResponse } from '../../../core/api/group-member-view.models';
+import {
+  GroupMatchRecordsResponse,
+  MatchRecordSummary,
+} from '../../../core/api/group-member-view.models';
 import { GroupMemberViewService } from '../group-member-view.service';
 
 /** US3 (FR-011/012): 團內對戰紀錄——逐場列表，僅限本團，載入時查詢。 */
@@ -42,5 +45,13 @@ export class MatchRecordsComponent {
 
   goToPage(page: number): void {
     this.page.set(page);
+  }
+
+  /** The winning side's player names, joined — shown instead of a bare
+   * "A方獲勝"/"B方獲勝": a Guest/Member reading their own group's history
+   * cares who won, not which internal team letter was assigned to them. */
+  winnerNames(match: MatchRecordSummary): string {
+    const winners = match.winner_team === 'A' ? match.team_a : match.team_b;
+    return winners.map((p) => p.nickname).join('、');
   }
 }

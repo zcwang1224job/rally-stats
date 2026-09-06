@@ -28,7 +28,7 @@ from app.domains.group.schemas import (
     GroupStandingsResponse,
     MatchRecordSummary,
     MemberStandingRow,
-    RoundStatus,
+    RoundRecord,
 )
 from app.domains.group.security import (
     decrypt_group_password,
@@ -811,11 +811,16 @@ async def resolve_active_roster_membership(
 
 
 async def build_group_standings(session: AsyncSession, group: Group) -> GroupStandingsResponse:
-    """005-member-view US2 (FR-005~010): four-state per-round formula per
-    research.md #4. Rounds are exactly those that have ever been generated
-    for this group (one `round_history` row per round, including round 1) —
-    a group that hasn't pressed Next Round yet has no rows and thus no
-    rounds to report."""
+    """005-member-view US2 (FR-005~010): per-round win/loss tally per
+    research.md #4, extended for 011-round-robin-scheduling's singles full
+    round-robin (a Member can have several *completed* matches within one
+    round_number there — `RoundRecord` sums them all rather than the
+    original formula's single won/lost/did_not_play/left outcome, which
+    silently kept only the last match processed for each (member, round)
+    pair). Rounds are exactly those that have ever been generated for this
+    group (one `round_history` row per round, including round 1) — a group
+    that hasn't pressed Next Round yet has no rows and thus no rounds to
+    report."""
     round_history_result = await session.execute(
         select(RoundHistory)
         .where(RoundHistory.group_id == group.id)
@@ -832,7 +837,9 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
     )
     roster_entries = list(roster_result.scalars())
 
-    participation: dict[tuple[uuid.UUID, int], tuple[str, str, str | None]] = {}
+    participation: dict[tuple[uuid.UUID, int], list[tuple[str, str, str | None]]] = defaultdict(
+        list
+    )
     if roster_entries:
         entry_ids = [entry.id for entry in roster_entries]
         participants_result = await session.execute(
@@ -845,15 +852,13 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
             )
         )
         for participant, match in participants_result.all():
-            participation[(participant.roster_entry_id, match.round_number)] = (
-                match.status,
-                participant.team,
-                match.winner_team,
+            participation[(participant.roster_entry_id, match.round_number)].append(
+                (match.status, participant.team, match.winner_team)
             )
 
     members = []
     for entry in roster_entries:
-        row_rounds: dict[int, RoundStatus] = {}
+        row_rounds: dict[int, RoundRecord] = {}
         for round_number in rounds:
             started_at = started_at_by_round.get(round_number)
             if (
@@ -862,19 +867,21 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
                 and started_at is not None
                 and entry.left_at <= started_at
             ):
-                row_rounds[round_number] = "left"
+                row_rounds[round_number] = RoundRecord(wins=0, losses=0, left=True)
             elif started_at is not None and entry.joined_at > started_at:
-                row_rounds[round_number] = "did_not_play"
+                row_rounds[round_number] = RoundRecord(wins=0, losses=0, left=False)
             else:
-                info = participation.get((entry.id, round_number))
-                if info is None:
-                    row_rounds[round_number] = "did_not_play"
-                else:
-                    match_status, team, winner_team = info
+                wins = 0
+                losses = 0
+                for match_status, team, winner_team in participation.get(
+                    (entry.id, round_number), []
+                ):
                     if match_status == "completed":
-                        row_rounds[round_number] = "won" if team == winner_team else "lost"
-                    else:
-                        row_rounds[round_number] = "did_not_play"
+                        if team == winner_team:
+                            wins += 1
+                        else:
+                            losses += 1
+                row_rounds[round_number] = RoundRecord(wins=wins, losses=losses, left=False)
         members.append(
             MemberStandingRow(
                 roster_entry_id=str(entry.id),

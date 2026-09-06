@@ -12,6 +12,7 @@
             @for (round of s.rounds; track round) {
               <th>{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round } }}</th>
             }
+            <th>{{ 'groupMemberView.standings.totalLabel' | translate }}</th>
           </tr>
         </thead>
         <tbody>
@@ -20,11 +21,37 @@
               <td>{{ member.nickname }}</td>
               @for (round of s.rounds; track round) {
                 <td>
-                  <span class="status-badge" [attr.data-status]="member.rounds[round]">
-                    {{ 'groupMemberView.standings.status.' + member.rounds[round] | translate }}
-                  </span>
+                  @if (member.rounds[round].left) {
+                    <span class="status-badge" data-status="left">
+                      {{ 'groupMemberView.standings.status.left' | translate }}
+                    </span>
+                  } @else if (!hasRecord(member, round)) {
+                    <span class="status-badge" data-status="did_not_play">
+                      {{ 'groupMemberView.standings.status.did_not_play' | translate }}
+                    </span>
+                  } @else {
+                    <span
+                      class="status-badge"
+                      [attr.data-status]="
+                        member.rounds[round].losses === 0
+                          ? 'won'
+                          : member.rounds[round].wins === 0
+                            ? 'lost'
+                            : 'mixed'
+                      "
+                    >
+                      {{
+                        'groupMemberView.standings.recordLabel'
+                          | translate
+                            : { wins: member.rounds[round].wins, losses: member.rounds[round].losses }
+                      }}
+                    </span>
+                  }
                 </td>
               }
+              <td class="total-record">
+                {{ 'groupMemberView.standings.recordLabel' | translate: { wins: totalRecord(member).wins, losses: totalRecord(member).losses } }}
+              </td>
             </tr>
           }
         </tbody>

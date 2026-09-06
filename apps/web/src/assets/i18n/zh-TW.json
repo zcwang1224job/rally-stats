@@ -299,7 +299,8 @@
       "roundLabel": "第 {{round}} 輪",
       "waitingManualAssignment": "等待管理員安排下一場",
       "waitingNoQueuedMatch": "等待下一輪",
-      "nextUpLabel": "即將登場："
+      "nextUpLabel": "即將登場：",
+      "allMatchesTitle": "本輪賽程"
     },
     "leaveGroup": {
       "confirmTitle": "確定退出本團？",
@@ -309,17 +310,16 @@
       "noRoundsYet": "尚無已完成的輪次",
       "nicknameLabel": "暱稱",
       "roundColumnLabel": "第 {{round}} 輪",
+      "totalLabel": "總戰績",
+      "recordLabel": "{{wins}} 勝 {{losses}} 敗",
       "status": {
-        "won": "勝",
-        "lost": "敗",
         "did_not_play": "－ 未上場",
         "left": "⏏ 已離開"
       }
     },
     "matchRecords": {
       "empty": "尚無已完成的比賽",
-      "teamAWon": "A 方獲勝",
-      "teamBWon": "B 方獲勝"
+      "winnerLabel": "{{names}} 獲勝"
     }
   },
   "errors": {

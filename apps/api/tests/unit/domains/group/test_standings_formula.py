@@ -1,7 +1,10 @@
-"""Unit test: build_group_standings() four-state per-round formula
-(won/lost/did_not_play/left) per research.md #4 of 005-member-view —
-covers every state and every cause listed in FR-006~010, plus scope
-isolation (FR-009)."""
+"""Unit test: build_group_standings() per-round win/loss tally
+(RoundRecord: wins/losses/left) per research.md #4 of 005-member-view —
+covers every state and every cause listed in FR-006~010, scope isolation
+(FR-009), and 011-round-robin-scheduling's multi-match-per-round case
+(singles full round-robin can complete several matches for one Member
+within a single round_number, which the original single-outcome formula
+silently collapsed to just the last match processed)."""
 
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -10,6 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.group.models import Group, RoundHistory
+from app.domains.group.schemas import GroupStandingsResponse, RoundRecord
 from app.domains.group.security import hash_admin_pin
 from app.domains.group.service import build_group_standings
 from app.domains.roster.models import RosterEntry
@@ -101,10 +105,12 @@ async def _make_match(
     return match
 
 
-def _rounds_for(response: object, roster_entry_id: uuid.UUID) -> dict[int, str]:
-    for member in response.members:  # type: ignore[attr-defined]
+def _record(
+    response: GroupStandingsResponse, roster_entry_id: uuid.UUID, round_number: int
+) -> RoundRecord:
+    for member in response.members:
         if member.roster_entry_id == str(roster_entry_id):
-            return member.rounds
+            return member.rounds[round_number]
     raise AssertionError("roster entry not found in standings response")
 
 
@@ -120,8 +126,44 @@ async def test_won_and_lost(db_session: AsyncSession) -> None:
 
     response = await build_group_standings(db_session, group)
 
-    assert _rounds_for(response, winner.id)[2] == "won"
-    assert _rounds_for(response, loser.id)[2] == "lost"
+    assert _record(response, winner.id, 2) == RoundRecord(wins=1, losses=0, left=False)
+    assert _record(response, loser.id, 2) == RoundRecord(wins=0, losses=1, left=False)
+
+
+async def test_multiple_matches_in_one_round_are_all_tallied(db_session: AsyncSession) -> None:
+    """Regression: 011-round-robin-scheduling's singles full round-robin
+    (_generate_singles_round_robin_matches) plays every other active
+    member once within the SAME round_number — a Member can have several
+    completed matches there before Next Round is pressed. The original
+    formula kept only whichever match SQLAlchemy happened to return last
+    for that (member, round) pair, silently discarding the rest."""
+    group = await _make_group(db_session, match_mode="singles")
+    await _make_round_history(db_session, group, 2, T2)
+    p1 = await _make_entry(db_session, group, joined_at=BEFORE)
+    p2 = await _make_entry(db_session, group, joined_at=BEFORE)
+    p3 = await _make_entry(db_session, group, joined_at=BEFORE)
+    p4 = await _make_entry(db_session, group, joined_at=BEFORE)
+    # p1 plays (and beats) p2, then plays (and loses to) p3 — same round.
+    await _make_match(
+        db_session, group, round_number=2, status="completed", winner_team="A",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await _make_match(
+        db_session, group, round_number=2, status="completed", winner_team="B",
+        team_a=[p1.id], team_b=[p3.id],
+    )
+    # An unrelated third match this round, not involving p1 at all.
+    await _make_match(
+        db_session, group, round_number=2, status="completed", winner_team="A",
+        team_a=[p4.id], team_b=[p2.id],
+    )
+
+    response = await build_group_standings(db_session, group)
+
+    assert _record(response, p1.id, 2) == RoundRecord(wins=1, losses=1, left=False)
+    assert _record(response, p2.id, 2) == RoundRecord(wins=0, losses=2, left=False)
+    assert _record(response, p3.id, 2) == RoundRecord(wins=1, losses=0, left=False)
+    assert _record(response, p4.id, 2) == RoundRecord(wins=1, losses=0, left=False)
 
 
 async def test_did_not_play_bench(db_session: AsyncSession) -> None:
@@ -131,7 +173,7 @@ async def test_did_not_play_bench(db_session: AsyncSession) -> None:
 
     response = await build_group_standings(db_session, group)
 
-    assert _rounds_for(response, bench.id)[2] == "did_not_play"
+    assert _record(response, bench.id, 2) == RoundRecord(wins=0, losses=0, left=False)
 
 
 async def test_did_not_play_abandoned(db_session: AsyncSession) -> None:
@@ -146,8 +188,8 @@ async def test_did_not_play_abandoned(db_session: AsyncSession) -> None:
 
     response = await build_group_standings(db_session, group)
 
-    assert _rounds_for(response, a.id)[2] == "did_not_play"
-    assert _rounds_for(response, b.id)[2] == "did_not_play"
+    assert _record(response, a.id, 2) == RoundRecord(wins=0, losses=0, left=False)
+    assert _record(response, b.id, 2) == RoundRecord(wins=0, losses=0, left=False)
 
 
 async def test_did_not_play_in_progress_transient(db_session: AsyncSession) -> None:
@@ -162,8 +204,8 @@ async def test_did_not_play_in_progress_transient(db_session: AsyncSession) -> N
 
     response = await build_group_standings(db_session, group)
 
-    assert _rounds_for(response, a.id)[2] == "did_not_play"
-    assert _rounds_for(response, b.id)[2] == "did_not_play"
+    assert _record(response, a.id, 2) == RoundRecord(wins=0, losses=0, left=False)
+    assert _record(response, b.id, 2) == RoundRecord(wins=0, losses=0, left=False)
 
 
 async def test_did_not_play_joined_after_round_start(db_session: AsyncSession) -> None:
@@ -173,7 +215,7 @@ async def test_did_not_play_joined_after_round_start(db_session: AsyncSession) -
 
     response = await build_group_standings(db_session, group)
 
-    assert _rounds_for(response, late.id)[2] == "did_not_play"
+    assert _record(response, late.id, 2) == RoundRecord(wins=0, losses=0, left=False)
 
 
 async def test_left_state_is_irreversible(db_session: AsyncSession) -> None:
@@ -186,11 +228,11 @@ async def test_left_state_is_irreversible(db_session: AsyncSession) -> None:
     )
 
     response = await build_group_standings(db_session, group)
-    rounds = _rounds_for(response, leaver.id)
 
-    assert rounds[2] == "did_not_play"  # left_at is after round 2 started
-    assert rounds[3] == "left"
-    assert rounds[4] == "left"  # never reverts
+    # left_at is after round 2 started
+    assert _record(response, leaver.id, 2) == RoundRecord(wins=0, losses=0, left=False)
+    assert _record(response, leaver.id, 3) == RoundRecord(wins=0, losses=0, left=True)
+    assert _record(response, leaver.id, 4) == RoundRecord(wins=0, losses=0, left=True)  # never reverts
 
 
 async def test_left_state_basis_consistent_in_manual_mode(db_session: AsyncSession) -> None:
@@ -204,10 +246,9 @@ async def test_left_state_basis_consistent_in_manual_mode(db_session: AsyncSessi
     )
 
     response = await build_group_standings(db_session, group)
-    rounds = _rounds_for(response, kicked.id)
 
-    assert rounds[2] == "did_not_play"
-    assert rounds[3] == "left"
+    assert _record(response, kicked.id, 2) == RoundRecord(wins=0, losses=0, left=False)
+    assert _record(response, kicked.id, 3) == RoundRecord(wins=0, losses=0, left=True)
 
 
 async def test_scope_isolation_excludes_other_groups(db_session: AsyncSession) -> None:
@@ -227,4 +268,4 @@ async def test_scope_isolation_excludes_other_groups(db_session: AsyncSession) -
 
     member_ids = {member.roster_entry_id for member in response.members}
     assert member_ids == {str(entry_a.id)}
-    assert _rounds_for(response, entry_a.id)[2] == "did_not_play"
+    assert _record(response, entry_a.id, 2) == RoundRecord(wins=0, losses=0, left=False)

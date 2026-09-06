@@ -49,6 +49,7 @@ from app.domains.member.models import Member
 from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
     AllCourtsLiveState,
+    RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
@@ -57,6 +58,7 @@ from app.domains.schedule.service import (
     abandon_group_matches,
     apply_score_delta,
     auto_pair_on_enter_fixed_partner,
+    build_round_matches_list,
     build_schedule_snapshot,
     clear_partnerships_on_exit,
     court_live_state,
@@ -559,6 +561,30 @@ async def get_member_schedule(
     )
     group = await service.get_group_by_id(session, group_id)
     return await build_schedule_snapshot(session, group)
+
+
+@router.get("/{group_id}/member-schedule/round-matches", response_model=RoundMatchesResponse)
+async def get_member_round_matches(
+    group_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    member: Annotated[Member | None, Depends(optional_member)],
+    guest_session_token: str | None = None,
+) -> RoundMatchesResponse:
+    """The member-view equivalent of the admin-only
+    `GET /{group_id}/schedule/matches` — same `build_round_matches_list()`
+    (every match in the current round, any status, in generation order),
+    just gated by roster membership instead of the admin token, so a
+    general Member/Guest can see the full round's schedule too, not only
+    what's currently on a court (`get_member_schedule` above). Errors:
+    `MEMBERSHIP_REQUIRED`."""
+    await service.resolve_active_roster_membership(
+        session,
+        group_id,
+        guest_session_token=guest_session_token,
+        member_id=member.id if member is not None else None,
+    )
+    group = await service.get_group_by_id(session, group_id)
+    return await build_round_matches_list(session, group)
 
 
 @router.get("/{group_id}/standings", response_model=GroupStandingsResponse)

@@ -37,6 +37,32 @@
       }
     </section>
   }
+
+  @if (roundMatches(); as rm) {
+    <section class="round-matches">
+      <h3>{{ 'groupMemberView.schedule.allMatchesTitle' | translate }}</h3>
+      @if (rm.matches.length === 0) {
+        <p>{{ 'scheduleManagement.noRoundMatchesYet' | translate }}</p>
+      } @else {
+        <ul class="round-matches-list">
+          @for (match of rm.matches; track match.match_id) {
+            <li>
+              <span class="status-badge" [attr.data-status]="match.status">
+                {{ 'scheduleManagement.matchStatus.' + match.status | translate }}
+              </span>
+              <span class="vs">{{ vsLabel(match) }}</span>
+              @if (match.court_name) {
+                <span class="court-name">{{ match.court_name }}</span>
+              }
+              @if (match.status === 'completed' || match.status === 'in_progress') {
+                <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
 } @else {
   <p>{{ 'common.loading' | translate }}</p>
 }

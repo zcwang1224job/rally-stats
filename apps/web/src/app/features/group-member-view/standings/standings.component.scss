@@ -39,8 +39,21 @@ th {
     color: var(--color-danger);
   }
 
+  // Both a win and a loss landed in the same round — 011-round-robin-
+  // scheduling's singles full round-robin can play several matches per
+  // Member within one round, so this isn't the edge case it'd be in a
+  // one-match-per-round mode.
+  &[data-status='mixed'] {
+    background: color-mix(in srgb, var(--color-text-primary) 8%, white);
+    color: var(--color-text-primary);
+  }
+
   &[data-status='left'] {
     color: var(--color-text-muted);
     text-decoration: underline;
   }
+}
+
+.total-record {
+  font-weight: var(--font-weight-bold);
 }

@@ -323,14 +323,30 @@ class GuestSessionResponse(BaseModel):
 
 # --- 005-member-view: 團內成員視圖（戰績/對戰紀錄/退出組團）---
 
-RoundStatus = Literal["won", "lost", "did_not_play", "left"]
+
+class RoundRecord(BaseModel):
+    """011-round-robin-scheduling made this a per-round *tally*, not a
+    single outcome: singles fair_rotation's full round-robin
+    (_generate_singles_round_robin_matches) plays every other active
+    member once *within the same round_number*, so a Member can rack up
+    several wins/losses before the round changes — the original
+    won/lost/did_not_play/left four-state enum silently dropped every
+    match but the last one processed for that (member, round) pair.
+    `left` still means what it did before (irreversible once left_at is at
+    or before this round's start) and is mutually exclusive with ever
+    accumulating wins/losses for that round; did_not_play is simply
+    `wins == 0 and losses == 0 and not left`."""
+
+    wins: int
+    losses: int
+    left: bool
 
 
 class MemberStandingRow(BaseModel):
     roster_entry_id: str
     nickname: str
     current_status: Literal["active", "left", "kicked"]
-    rounds: dict[int, RoundStatus]
+    rounds: dict[int, RoundRecord]
 
 
 class GroupStandingsResponse(BaseModel):

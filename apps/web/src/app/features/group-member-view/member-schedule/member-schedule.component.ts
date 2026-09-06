@@ -4,7 +4,11 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
-import { ScheduleResponse } from '../../group-admin/schedule-management/schedule.models';
+import {
+  RoundMatchesResponse,
+  RoundMatchSummary,
+  ScheduleResponse,
+} from '../../group-admin/schedule-management/schedule.models';
 import { GroupMemberViewService } from '../group-member-view.service';
 
 const COURT_EVENTS = ['match.scoreUpdated', 'match.ended', 'rotation.updated', 'match.nextRound'];
@@ -29,6 +33,7 @@ export class MemberScheduleComponent {
 
   readonly connectionState = this.realtime.connectionState;
   readonly schedule = signal<ScheduleResponse | null>(null);
+  readonly roundMatches = signal<RoundMatchesResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
 
   private readonly subscribedCourtChannels = new Set<string>();
@@ -64,6 +69,18 @@ export class MemberScheduleComponent {
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
+    // Same load()-on-every-relevant-event refresh as the per-court view
+    // above — no separate polling loop for this list.
+    this.memberView.getRoundMatches(this.groupId()).subscribe({
+      next: (response) => this.roundMatches.set(response),
+      error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+    });
+  }
+
+  vsLabel(match: RoundMatchSummary): string {
+    const teamA = match.participants.filter((p) => p.team === 'A').map((p) => p.nickname);
+    const teamB = match.participants.filter((p) => p.team === 'B').map((p) => p.nickname);
+    return `${teamA.join(' / ')} vs ${teamB.join(' / ')}`;
   }
 
   private subscribeToGroupChannel(): void {

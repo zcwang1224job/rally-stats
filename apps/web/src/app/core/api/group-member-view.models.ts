@@ -4,13 +4,25 @@
 
 import { ParticipantSummary, Team } from '../../features/group-admin/schedule-management/schedule.models';
 
-export type RoundStatus = 'won' | 'lost' | 'did_not_play' | 'left';
+// A per-round *tally*, not a single outcome: singles fair_rotation's full
+// round-robin can complete several matches for one Member within the same
+// round_number before Next Round is pressed (011-round-robin-scheduling),
+// so `wins`/`losses` count every completed match that round. `left` means
+// this Member had already left/been kicked before the round started
+// (irreversible from then on) — mutually exclusive with ever accumulating
+// wins/losses for that round. did_not_play is simply `wins === 0 && losses
+// === 0 && !left`.
+export interface RoundRecord {
+  wins: number;
+  losses: number;
+  left: boolean;
+}
 
 export interface MemberStandingRow {
   roster_entry_id: string;
   nickname: string;
   current_status: 'active' | 'left' | 'kicked';
-  rounds: Record<string, RoundStatus>;
+  rounds: Record<string, RoundRecord>;
 }
 
 export interface GroupStandingsResponse {

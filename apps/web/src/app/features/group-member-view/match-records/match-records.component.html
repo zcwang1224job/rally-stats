@@ -19,12 +19,7 @@
           </span>
           <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
           <span class="result status-badge status-badge--success">
-            {{
-              (match.winner_team === 'A'
-                ? 'groupMemberView.matchRecords.teamAWon'
-                : 'groupMemberView.matchRecords.teamBWon'
-              ) | translate
-            }}
+            {{ 'groupMemberView.matchRecords.winnerLabel' | translate: { names: winnerNames(match) } }}
           </span>
         </li>
       }

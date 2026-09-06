@@ -108,13 +108,14 @@ async def test_member_view_full_lifecycle(
     assert standings_response.status_code == 200
     standings = {m["roster_entry_id"]: m for m in standings_response.json()["members"]}
 
-    assert standings[p0_id]["rounds"]["1"] == "did_not_play"
-    assert standings[p0_id]["rounds"]["2"] == "won"
-    assert standings[p1_id]["rounds"]["1"] == "did_not_play"
-    assert standings[p1_id]["rounds"]["2"] == "lost"
+    not_played = {"wins": 0, "losses": 0, "left": False}
+    assert standings[p0_id]["rounds"]["1"] == not_played
+    assert standings[p0_id]["rounds"]["2"] == {"wins": 1, "losses": 0, "left": False}
+    assert standings[p1_id]["rounds"]["1"] == not_played
+    assert standings[p1_id]["rounds"]["2"] == {"wins": 0, "losses": 1, "left": False}
     assert standings[p2_id]["current_status"] == "kicked"
-    assert standings[p2_id]["rounds"]["1"] == "did_not_play"
-    assert standings[p2_id]["rounds"]["2"] == "left"
+    assert standings[p2_id]["rounds"]["1"] == not_played
+    assert standings[p2_id]["rounds"]["2"] == {"wins": 0, "losses": 0, "left": True}
 
     # US3: match-records shows only the completed round-2 match.
     records_response = await client.get(

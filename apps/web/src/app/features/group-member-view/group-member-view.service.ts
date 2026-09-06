@@ -6,7 +6,10 @@ import {
   GroupStandingsResponse,
   LeaveGroupResponse,
 } from '../../core/api/group-member-view.models';
-import { ScheduleResponse } from '../group-admin/schedule-management/schedule.models';
+import {
+  RoundMatchesResponse,
+  ScheduleResponse,
+} from '../group-admin/schedule-management/schedule.models';
 import { AuthService } from '../auth/auth.service';
 import { GroupJoinService } from '../group-join/group-join.service';
 
@@ -25,6 +28,17 @@ export class GroupMemberViewService {
   getMemberSchedule(groupId: string): Observable<ScheduleResponse> {
     return this.api.get<ScheduleResponse>(
       `/groups/${groupId}/member-schedule${this.guestTokenQuery(groupId)}`,
+      this.authHeader(),
+    );
+  }
+
+  /** Full current-round schedule (every match, any status) — the
+   * member-view equivalent of the admin-only "本輪賽程清單", so a general
+   * Member/Guest can see the whole pre-generated round, not only what's
+   * currently on a court (`getMemberSchedule` above). */
+  getRoundMatches(groupId: string): Observable<RoundMatchesResponse> {
+    return this.api.get<RoundMatchesResponse>(
+      `/groups/${groupId}/member-schedule/round-matches${this.guestTokenQuery(groupId)}`,
       this.authHeader(),
     );
   }
