@@ -218,7 +218,9 @@
     "endMatchConfirmTitle": "確認提前結束本場比賽？",
     "endMatchConfirmBody": "此操作無法復原，本場比賽將視為已捨棄，不計入戰績。",
     "nextUpLabel": "即將登場：{{names}}",
-    "noQueuedNextUp": "本輪已無排隊中的比賽"
+    "noQueuedNextUp": "本輪已無排隊中的比賽",
+    "enterFullscreen": "進入全螢幕",
+    "exitFullscreen": "離開全螢幕"
   },
   "courtManagement": {
     "sectionTitle": "場地 ({{count}})",

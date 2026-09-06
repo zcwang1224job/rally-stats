@@ -38,7 +38,31 @@ export class ScoreboardComponent {
 
   readonly connectionState = this.realtime.connectionState;
 
+  // Already launched from a home-screen icon (manifest.json's "fullscreen"
+  // display mode, or iOS's own standalone mode) — no browser chrome to hide,
+  // so the Fullscreen API button isn't needed.
+  // `(window.navigator as { standalone?: boolean }).standalone` is iOS
+  // Safari's own pre-manifest flag; the two matchMedia checks are the
+  // cross-browser standard — guarded by a `typeof` check since jsdom (this
+  // project's test environment) doesn't implement `matchMedia` at all.
+  private readonly isStandalone =
+    (typeof window.matchMedia === 'function' &&
+      (window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches)) ||
+    (window.navigator as { standalone?: boolean }).standalone === true;
+
+  // Fullscreen API has no effect on iOS Safari/WebKit for a plain element
+  // (only <video> supports it there) — `document.fullscreenEnabled` is the
+  // standard feature-detection for this, so the button simply doesn't
+  // render on iOS (no fullscreen path is offered there for now).
+  readonly canRequestFullscreen = document.fullscreenEnabled && !this.isStandalone;
+  readonly isFullscreen = signal(!!document.fullscreenElement);
+
   constructor() {
+    const onFullscreenChange = (): void => this.isFullscreen.set(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    this.destroyRef.onDestroy(() => document.removeEventListener('fullscreenchange', onFullscreenChange));
+
     // FR-024: 重新連線後強制拉取最新完整狀態覆蓋本地暫存。
     this.reconnectRefetch
       .onReconnect()
@@ -118,5 +142,13 @@ export class ScoreboardComponent {
       .subscribe(this.subscribedChannel, 'match.nextRound')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.loadState());
+  }
+
+  toggleFullscreen(): void {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => undefined);
+    } else {
+      document.documentElement.requestFullscreen().catch(() => undefined);
+    }
   }
 }

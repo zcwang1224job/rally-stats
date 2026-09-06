@@ -15,6 +15,11 @@
         {{ 'common.offlineBanner' | translate }}
       </p>
     }
+    @if (canRequestFullscreen) {
+      <button type="button" class="btn btn--secondary fullscreen-toggle" (click)="toggleFullscreen()">
+        {{ (isFullscreen() ? 'controlPanel.exitFullscreen' : 'controlPanel.enterFullscreen') | translate }}
+      </button>
+    }
     <h1>{{ info.name }}</h1>
     @if (liveState(); as state) {
       <p class="round-label">

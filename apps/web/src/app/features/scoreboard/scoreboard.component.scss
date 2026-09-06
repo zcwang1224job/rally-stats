@@ -121,3 +121,15 @@ h1 {
   color: #cccccc;
   margin-top: var(--space-lg);
 }
+
+// Mirrors .next-up's fixed corner placement (opposite corner, so the two
+// never collide) — this is the only same-tab path to a chrome-less view
+// when the page was reached by scanning the courtside QR code, since that
+// always opens a plain browser tab rather than the manifest's fullscreen
+// home-screen icon.
+.fullscreen-toggle {
+  position: fixed;
+  top: var(--space-md);
+  left: var(--space-md);
+  z-index: 2;
+}
