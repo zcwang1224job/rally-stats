@@ -41,6 +41,7 @@ describe('CreateGroupComponent', () => {
               });
             },
             setAdminToken: () => undefined,
+            setLastCreatedGroupId: () => undefined,
           },
         },
         { provide: AuthService, useValue: auth },

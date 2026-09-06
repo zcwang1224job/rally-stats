@@ -145,6 +145,9 @@ export class CreateGroupComponent {
         next: (response) => {
           this.submitting.set(false);
           this.groupAdmin.setAdminToken(response.group_id, response.admin_token);
+          if (this.memberNickname() === null) {
+            this.groupAdmin.setLastCreatedGroupId(response.group_id);
+          }
           this.result.set(response);
         },
         error: (error: ApiError) => {

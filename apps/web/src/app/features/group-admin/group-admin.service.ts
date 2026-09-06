@@ -15,6 +15,7 @@ import {
 } from './group-admin.models';
 
 const SESSION_KEY_PREFIX = 'rally-stats:admin-token:';
+const LAST_CREATED_GROUP_KEY = 'rally-stats:last-created-group-id';
 
 /** Centralized API layer for the group-admin feature (T038). Also owns the
  * per-groupId admin_token in sessionStorage so the reauth and admin-page
@@ -124,5 +125,27 @@ export class GroupAdminService {
 
   clearAdminToken(groupId: string): void {
     sessionStorage.removeItem(SESSION_KEY_PREFIX + groupId);
+    // Keeps the home page's "已經開過團？回到管理頁" shortcut (which links
+    // straight to this groupId's admin page) from surviving past the
+    // session it points to — a stale link would just bounce back to
+    // /groups/reauth anyway (admin-page.component.ts's own 401 handling),
+    // but there's no reason to show it at all once we know it's dead.
+    if (this.getLastCreatedGroupId() === groupId) {
+      sessionStorage.removeItem(LAST_CREATED_GROUP_KEY);
+    }
+  }
+
+  /** Guest/anonymous group creation (US: home-page "已經開過團？回到管理頁"
+   * shortcut) — logged-in members don't need this, they already get a full
+   * recovery list via 我的團 (FR-017), so `create-group.component.ts` only
+   * calls this for the anonymous-creator path. Session-scoped like the
+   * admin token itself (`sessionStorage`, not `localStorage`) — this is a
+   * "come back later in the same tab" convenience, not a permanent record. */
+  setLastCreatedGroupId(groupId: string): void {
+    sessionStorage.setItem(LAST_CREATED_GROUP_KEY, groupId);
+  }
+
+  getLastCreatedGroupId(): string | null {
+    return sessionStorage.getItem(LAST_CREATED_GROUP_KEY);
   }
 }

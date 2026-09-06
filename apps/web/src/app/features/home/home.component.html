@@ -9,10 +9,12 @@
       <span class="icon" aria-hidden="true">➕</span>
       {{ 'home.createGroup' | translate }}
     </a>
-    <a class="btn btn--secondary icon-link" routerLink="/groups/reauth">
-      <span class="icon" aria-hidden="true">🔙</span>
-      {{ 'home.backToAdmin' | translate }}
-    </a>
+    @if (!loggedIn() && lastCreatedGroupId) {
+      <a class="btn btn--secondary icon-link" [routerLink]="['/groups', lastCreatedGroupId, 'admin']">
+        <span class="icon" aria-hidden="true">🔙</span>
+        {{ 'home.backToAdmin' | translate }}
+      </a>
+    }
     @if (!loggedIn()) {
       <a class="btn btn--secondary icon-link" routerLink="/auth/login">
         <span class="icon" aria-hidden="true">🔑</span>
