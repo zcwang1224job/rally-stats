@@ -1,5 +1,16 @@
 @use '../../../../styles/tokens';
 
+:host {
+  // Same hex values as scoreboard.component.scss's --scoreboard-team-*-bg/
+  // border and control-panel.component.scss's single-court equivalent —
+  // deliberately identical everywhere a team's score is shown, so the same
+  // color always means the same team.
+  --team-a-bg: #d80073;
+  --team-a-border: #a50040;
+  --team-b-bg: #0050ef;
+  --team-b-border: #001dbc;
+}
+
 .court-block {
   margin-bottom: var(--space-lg);
 }
@@ -28,6 +39,19 @@ h2 {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+}
+
+.team--a {
+  background: var(--team-a-bg);
+  border-color: var(--team-a-border);
+}
+
+.team--b {
+  background: var(--team-b-bg);
+  border-color: var(--team-b-border);
 }
 
 .score {
@@ -36,6 +60,9 @@ h2 {
   line-height: 1;
   min-width: 2ch;
   text-align: center;
+  // Always rendered inside .team--a/.team--b, both the same dark, saturated
+  // colors as the scoreboard — white keeps the score readable there too.
+  color: #ffffff;
 }
 
 .buttons {

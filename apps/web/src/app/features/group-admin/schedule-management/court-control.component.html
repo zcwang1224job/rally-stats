@@ -5,7 +5,7 @@
 }
 @if (court().current_match; as match) {
   <div class="score-board">
-    <div class="team">
+    <div class="team team--a">
       <span class="score">{{ match.score_a }}</span>
       <div class="buttons">
         <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">
@@ -21,7 +21,7 @@
         </button>
       </div>
     </div>
-    <div class="team">
+    <div class="team team--b">
       <span class="score">{{ match.score_b }}</span>
       <div class="buttons">
         <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">

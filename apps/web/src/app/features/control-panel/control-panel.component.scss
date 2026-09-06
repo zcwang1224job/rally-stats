@@ -1,6 +1,16 @@
 @use '../../../styles/tokens';
 
 :host {
+  // Same hex values as scoreboard.component.scss's --scoreboard-team-*-bg/
+  // border — deliberately identical, not just "similarly pink/blue", so
+  // whoever's scoring from courtside sees the same color here as on the
+  // scoreboard the players are looking at, instead of two different
+  // palettes for the same team.
+  --team-a-bg: #d80073;
+  --team-a-border: #a50040;
+  --team-b-bg: #0050ef;
+  --team-b-border: #001dbc;
+
   display: block;
   padding: var(--space-md);
   max-width: 480px;
@@ -40,6 +50,19 @@ h1 {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+}
+
+.team--a {
+  background: var(--team-a-bg);
+  border-color: var(--team-a-border);
+}
+
+.team--b {
+  background: var(--team-b-bg);
+  border-color: var(--team-b-border);
 }
 
 .score {
@@ -48,6 +71,9 @@ h1 {
   line-height: 1;
   min-width: 2ch;
   text-align: center;
+  // Always rendered inside .team--a/.team--b, both the same dark, saturated
+  // colors as the scoreboard — white keeps the score readable there too.
+  color: #ffffff;
 }
 
 .buttons {
