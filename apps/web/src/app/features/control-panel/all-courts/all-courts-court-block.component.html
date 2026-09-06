@@ -2,6 +2,11 @@
   <h2>{{ name() }}</h2>
   @if (state(); as s) {
     @if (s.current_match; as match) {
+      <div class="score-controls-toolbar">
+        <button type="button" class="btn btn--secondary" (click)="toggleSwap()">
+          ⇄ {{ 'controlPanel.swapTeams' | translate }}
+        </button>
+      </div>
       <div class="score-board">
         <div class="team" [class.team--a]="leftTeam() === 'A'" [class.team--b]="leftTeam() === 'B'">
           <div class="buttons">
@@ -33,15 +38,6 @@
             <span class="score">{{ leftTeam() === 'A' ? match.score_a : match.score_b }}</span>
           </div>
         </div>
-        <button
-          type="button"
-          class="btn swap-teams-btn"
-          [attr.aria-label]="'controlPanel.swapTeams' | translate"
-          [title]="'controlPanel.swapTeams' | translate"
-          (click)="toggleSwap()"
-        >
-          ⇄
-        </button>
         <div class="team" [class.team--a]="rightTeam() === 'A'" [class.team--b]="rightTeam() === 'B'">
           <div class="score-block">
             <div class="names">

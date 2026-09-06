@@ -21,18 +21,29 @@
   margin: var(--space-md) 0;
 }
 
-// Sits between the two team blocks — see control-panel.component.scss for
-// the identical rationale and why only the color scheme is overridden here
-// (the rest comes from the shared .btn class this also carries).
-.swap-teams-btn {
-  flex-shrink: 0;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
+// A swap-teams button used to sit as a third flex item between the two
+// team blocks — with `.team { flex: 1 }` already fighting for width, that
+// left almost nothing to spare on a narrow admin-page column (this
+// component's actual container, often narrower than a bare phone screen),
+// so long nicknames or the +1/-1 buttons would overflow instead of
+// shrinking. Pulling the toggle out of that row entirely removes the
+// contest for space — .score-board is back to exactly the two team
+// blocks it was before the swap feature existed, so this can't regress
+// regardless of nickname length or how narrow the container gets.
+.score-controls-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-sm);
 }
 
 .team {
   flex: 1;
+  // Flex items default to `min-width: auto`, which floors shrinking at the
+  // content's own intrinsic width — `.names div`'s `white-space: nowrap`
+  // nicknames and the +1/-1 buttons both have one, so without this the row
+  // (two teams + the swap button between them) overflows instead of
+  // shrinking to fit on a narrow screen.
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;

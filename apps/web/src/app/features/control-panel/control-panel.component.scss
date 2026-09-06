@@ -124,17 +124,16 @@ h1 {
   }
 }
 
-// Sits between the two team blocks (in the middle of the flex row, where
-// the two scores already land) — a natural, always-visible spot for
-// "swap which side each team is on" that doesn't compete for space with
-// either team's own buttons. Carries the shared .btn class (FR-002 touch
-// target) — only the color scheme needs overriding here, since this isn't
-// a "primary action" the brand-orange .btn default would suit.
-.swap-teams-btn {
-  flex-shrink: 0;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
+// A swap-teams button used to sit as a third flex item between the two
+// team blocks — with .team already fighting for width (buttons/score-block
+// both min-width: 0), that left almost nothing to spare, so long nicknames
+// or the 72px buttons would overflow on a narrow screen. Its own row above
+// .score-board removes the contest for space entirely: .score-board is
+// back to exactly the two team blocks it was before the swap feature
+// existed, so this can't regress regardless of nickname length or width.
+.score-controls-toolbar {
+  display: flex;
+  justify-content: flex-end;
 }
 
 // Landscape phones trade width for height — the extra width goes to a

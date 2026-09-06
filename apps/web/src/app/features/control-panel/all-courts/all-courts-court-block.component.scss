@@ -107,14 +107,16 @@ h2 {
   }
 }
 
-// Sits between the two team blocks — see control-panel.component.scss for
-// the identical rationale and why only the color scheme is overridden here
-// (the rest comes from the shared .btn class this also carries).
-.swap-teams-btn {
-  flex-shrink: 0;
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
+// A swap-teams button used to sit as a third flex item between the two
+// team blocks — see control-panel.component.scss for why that overflowed
+// on a narrow screen, and why its own row above .score-board fixes it for
+// good (back to exactly the two team blocks that existed before the swap
+// feature). Extra reason to keep it out of that row here specifically:
+// several of these court blocks stack on one screen (FR-004), so there's
+// even less width to spare per block than the single-court page has.
+.score-controls-toolbar {
+  display: flex;
+  justify-content: flex-end;
 }
 
 // Landscape phones trade width for height, and several court blocks
