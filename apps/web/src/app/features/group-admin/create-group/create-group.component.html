@@ -1,4 +1,13 @@
-@if (result(); as created) {
+@if (checkingGuestGroup()) {
+  <p>{{ 'common.loading' | translate }}</p>
+} @else if (blockedByActiveGuestGroup()) {
+  <section class="card">
+    <p role="alert">{{ 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP' | translate }}</p>
+    <button type="button" class="btn" (click)="goToGroupList()">
+      {{ 'groupJoin.backToList' | translate }}
+    </button>
+  </section>
+} @else if (result(); as created) {
   <section class="card">
     <h1>{{ 'createGroup.successTitle' | translate }}</h1>
     <p>
@@ -134,8 +143,14 @@
       <p role="alert">{{ key | translate }}</p>
     }
 
-    <button type="submit" class="btn" [disabled]="submitting() || !turnstileToken()">
-      {{ 'createGroup.submit' | translate }}
-    </button>
+    @if (alreadyActiveElsewhere()) {
+      <button type="button" class="btn" (click)="goToGroupList()">
+        {{ 'groupJoin.backToList' | translate }}
+      </button>
+    } @else {
+      <button type="submit" class="btn" [disabled]="submitting() || !turnstileToken()">
+        {{ 'createGroup.submit' | translate }}
+      </button>
+    }
   </form>
 }

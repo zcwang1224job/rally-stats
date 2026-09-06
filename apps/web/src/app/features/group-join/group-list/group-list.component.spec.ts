@@ -31,6 +31,7 @@ function setup(
     getCreatorAdminToken?: () => Observable<{ admin_token: string; group_id: string }>;
     isLoggedIn?: boolean;
     activeGuestGroupId?: string | null;
+    verifiedActiveGuestGroupId?: string | null;
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -43,6 +44,12 @@ function setup(
         useValue: {
           listGroups: () => of({ groups, page: 1, total_pages: totalPages }),
           getActiveGuestGroupId: () => options.activeGuestGroupId ?? null,
+          verifyActiveGuestGroupId: () =>
+            of(
+              'verifiedActiveGuestGroupId' in options
+                ? (options.verifiedActiveGuestGroupId as string | null)
+                : (options.activeGuestGroupId ?? null),
+            ),
         },
       },
       {
@@ -180,6 +187,27 @@ describe('GroupListComponent', () => {
 
     const li = fixture.nativeElement.querySelector('li');
     expect(li.textContent).not.toContain('groupJoin.activeElsewhereLabel');
+    expect(li.querySelector('button')).not.toBeNull();
+  });
+
+  /** Regression test: disbanding a group (manually, or via the inactivity
+   * auto-disband scheduler) never touches RosterEntry.status — so a marker
+   * pointing at a since-disbanded group must not permanently lock a Guest
+   * out of joining anywhere else. verifyActiveGuestGroupId() is
+   * responsible for that liveness check; this confirms a row isn't blocked
+   * (nor mistaken for the Guest's "own group") when it reports the raw
+   * marker as stale. */
+  it('a Guest whose tracked group has since disbanded (stale marker) is not blocked anywhere', () => {
+    const otherGroup = { ...group, group_id: 'g2' };
+    const fixture = setup(1, [otherGroup], {
+      isLoggedIn: false,
+      activeGuestGroupId: 'disbanded-group',
+      verifiedActiveGuestGroupId: null,
+    });
+
+    const li = fixture.nativeElement.querySelector('li');
+    expect(li.textContent).not.toContain('groupJoin.activeElsewhereLabel');
+    expect(li.textContent).not.toContain('groupJoin.alreadyJoinedLabel');
     expect(li.querySelector('button')).not.toBeNull();
   });
 });

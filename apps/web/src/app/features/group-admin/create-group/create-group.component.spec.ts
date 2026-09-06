@@ -18,7 +18,7 @@ const nicknameMember = {
 const noNicknameMember = { ...nicknameMember, nickname: null };
 
 describe('CreateGroupComponent', () => {
-  function setup(auth: Partial<AuthService>) {
+  function setup(auth: Partial<AuthService>, options: { activeGuestGroupId?: string | null } = {}) {
     let createGroupCall: { payload: unknown; headers: unknown } | null = null;
 
     TestBed.configureTestingModule({
@@ -46,7 +46,14 @@ describe('CreateGroupComponent', () => {
           },
         },
         { provide: AuthService, useValue: auth },
-        { provide: GroupJoinService, useValue: { setActiveGuestGroupId: () => undefined } },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            setActiveGuestGroupId: () => undefined,
+            getActiveGuestGroupId: () => options.activeGuestGroupId ?? null,
+            verifyActiveGuestGroupId: () => of(options.activeGuestGroupId ?? null),
+          },
+        },
       ],
     });
     const fixture = TestBed.createComponent(CreateGroupComponent);
@@ -116,7 +123,10 @@ describe('CreateGroupComponent', () => {
           provide: AuthService,
           useValue: { isLoggedIn: () => true, getMe: () => of(noNicknameMember) },
         },
-        { provide: GroupJoinService, useValue: { setActiveGuestGroupId: () => undefined } },
+        {
+          provide: GroupJoinService,
+          useValue: { setActiveGuestGroupId: () => undefined, getActiveGuestGroupId: () => null },
+        },
       ],
     });
     const fixture = TestBed.createComponent(CreateGroupComponent);
@@ -216,5 +226,208 @@ describe('CreateGroupComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
+/** A Member hits ALREADY_ACTIVE_IN_ANOTHER_GROUP reactively, on submit — the
+ * backend is the actual enforcement here (see group/service.py's
+ * _raise_if_active_elsewhere()), unlike the Guest case above which has to be
+ * checked client-side and proactively. Retrying the submit button can't ever
+ * succeed either way, so this mirrors join-flow.component.spec.ts's
+ * "ALREADY_ACTIVE_IN_ANOTHER_GROUP on the confirm step" describe block:
+ * the button gets swapped for a way out instead of a dead-end retry loop. */
+describe('CreateGroupComponent: ALREADY_ACTIVE_IN_ANOTHER_GROUP on submit', () => {
+  it('replaces the submit button with a "back to list" button, and clicking it navigates to /groups', () => {
+    const navigateCalls: unknown[][] = [];
+    TestBed.configureTestingModule({
+      imports: [CreateGroupComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: Router,
+          useValue: {
+            navigate: (...args: unknown[]) => {
+              navigateCalls.push(args);
+              return Promise.resolve(true);
+            },
+          },
+        },
+        {
+          provide: GroupAdminService,
+          useValue: {
+            createGroup: () =>
+              throwError(() => ({
+                errorCode: 'ALREADY_ACTIVE_IN_ANOTHER_GROUP',
+                i18nKey: 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP',
+                detail: null,
+                status: 409,
+              })),
+            setAdminToken: () => undefined,
+            setLastCreatedGroupId: () => undefined,
+          },
+        },
+        { provide: AuthService, useValue: { isLoggedIn: () => false } },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            setActiveGuestGroupId: () => undefined,
+            getActiveGuestGroupId: () => null,
+            verifyActiveGuestGroupId: () => of(null),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CreateGroupComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.form.patchValue({ name: 'Test', creator_nickname: '小華' });
+    fixture.componentInstance.onTurnstileVerified('tok');
+    fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const form = fixture.nativeElement.querySelector('form');
+    const buttonText = (form.querySelector('button[class="btn"]') as HTMLButtonElement)
+      .textContent ?? '';
+    expect(buttonText).toContain('groupJoin.backToList');
+    expect(buttonText).not.toContain('createGroup.submit');
+    expect(form.querySelector('button[type="submit"]')).toBeNull();
+
+    (form.querySelector('button') as HTMLButtonElement).click();
+    expect(navigateCalls).toEqual([[['/groups']]]);
+  });
+
+  it('a different submit error leaves the normal submit button in place', () => {
+    TestBed.configureTestingModule({
+      imports: [CreateGroupComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService({}),
+        {
+          provide: GroupAdminService,
+          useValue: {
+            createGroup: () =>
+              throwError(() => ({
+                errorCode: 'GROUP_FULL',
+                i18nKey: 'errors.GROUP_FULL',
+                detail: null,
+                status: 409,
+              })),
+            setAdminToken: () => undefined,
+            setLastCreatedGroupId: () => undefined,
+          },
+        },
+        { provide: AuthService, useValue: { isLoggedIn: () => false } },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            setActiveGuestGroupId: () => undefined,
+            getActiveGuestGroupId: () => null,
+            verifyActiveGuestGroupId: () => of(null),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CreateGroupComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.form.patchValue({ name: 'Test', creator_nickname: '小華' });
+    fixture.componentInstance.onTurnstileVerified('tok');
+    fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const form = fixture.nativeElement.querySelector('form');
+    expect(form.querySelector('button[type="submit"]')).not.toBeNull();
+    expect(form.textContent).toContain('errors.GROUP_FULL');
+  });
+});
+
+/** Same-browser-only Guest nicety (research: one-active-group-per-Member
+ * follow-up) — a Guest has no cross-group identity to check server-side
+ * (see group/service.py _raise_if_active_elsewhere's docstring), so unlike
+ * a Member (rejected server-side with ALREADY_ACTIVE_IN_ANOTHER_GROUP on
+ * submit) this has to be checked client-side, and proactively — the form
+ * never even renders — since there's no backend rejection to fall back on. */
+describe('CreateGroupComponent: Guest already active in a different group (same browser)', () => {
+  it('shows an error and a back-to-list button instead of the create form', () => {
+    const navigateCalls: unknown[][] = [];
+    TestBed.configureTestingModule({
+      imports: [CreateGroupComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: Router,
+          useValue: {
+            navigate: (...args: unknown[]) => {
+              navigateCalls.push(args);
+              return Promise.resolve(true);
+            },
+          },
+        },
+        { provide: GroupAdminService, useValue: {} },
+        { provide: AuthService, useValue: { isLoggedIn: () => false } },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            getActiveGuestGroupId: () => 'some-other-group',
+            verifyActiveGuestGroupId: () => of('some-other-group'),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CreateGroupComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
+
+    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    expect(navigateCalls).toEqual([[['/groups']]]);
+  });
+
+  it('does not block a Guest with no tracked active group', () => {
+    TestBed.configureTestingModule({
+      imports: [CreateGroupComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService({}),
+        { provide: GroupAdminService, useValue: {} },
+        { provide: AuthService, useValue: { isLoggedIn: () => false } },
+        { provide: GroupJoinService, useValue: { getActiveGuestGroupId: () => null } },
+      ],
+    });
+    const fixture = TestBed.createComponent(CreateGroupComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('form')).not.toBeNull();
+  });
+
+  /** Regression test: disbanding a group (manually, or via the inactivity
+   * auto-disband scheduler) never touches RosterEntry.status — so a marker
+   * pointing at a since-disbanded group must not permanently lock a Guest
+   * out of ever creating another group. verifyActiveGuestGroupId() is
+   * responsible for that liveness check; this confirms the form actually
+   * un-blocks when it reports the marker as stale. */
+  it('does not block a Guest whose tracked group has since disbanded (stale marker)', () => {
+    TestBed.configureTestingModule({
+      imports: [CreateGroupComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService({}),
+        { provide: GroupAdminService, useValue: {} },
+        { provide: AuthService, useValue: { isLoggedIn: () => false } },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            getActiveGuestGroupId: () => 'disbanded-group',
+            verifyActiveGuestGroupId: () => of(null),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CreateGroupComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('form')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
   });
 });

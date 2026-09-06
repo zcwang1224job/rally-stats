@@ -97,29 +97,36 @@ export class JoinFlowComponent implements AfterViewInit {
     // tracked as active in a DIFFERENT group, don't even let the Guest
     // fill in a nickname for this one, since the join would just fail
     // anyway once submitted (and for a Guest, nothing server-side would
-    // have rejected it earlier than that).
-    const activeGuestGroupId = this.joinService.getActiveGuestGroupId();
-    if (activeGuestGroupId !== null && activeGuestGroupId !== this.groupId) {
-      this.step.set('error');
-      this.errorKey.set('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
-      return;
-    }
+    // have rejected it earlier than that). `verifyActiveGuestGroupId()`
+    // (not the raw getter) because the marker alone can be stale — a
+    // disbanded group (manually, or via the inactivity auto-disband
+    // scheduler) never gets left, so nothing else would have cleared it;
+    // `step` just stays 'loading' for this instant, same as any other
+    // async check on this page. Only proceeds past THIS check into the
+    // normal restore/load flow when NOT blocked.
+    this.joinService.verifyActiveGuestGroupId().subscribe((activeGuestGroupId) => {
+      if (activeGuestGroupId !== null && activeGuestGroupId !== this.groupId) {
+        this.step.set('error');
+        this.errorKey.set('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
+        return;
+      }
 
-    const existingToken = this.joinService.getGuestSessionToken(this.groupId);
-    if (existingToken) {
-      this.joinService.resolveGuestSession(existingToken).subscribe({
-        next: (session) => {
-          this.restoredNickname.set(session.nickname);
-          this.step.set('restored');
-        },
-        error: () => {
-          this.joinService.clearGuestSessionToken(this.groupId);
-          this.loadGroupInfo();
-        },
-      });
-      return;
-    }
-    this.loadGroupInfo();
+      const existingToken = this.joinService.getGuestSessionToken(this.groupId);
+      if (existingToken) {
+        this.joinService.resolveGuestSession(existingToken).subscribe({
+          next: (session) => {
+            this.restoredNickname.set(session.nickname);
+            this.step.set('restored');
+          },
+          error: () => {
+            this.joinService.clearGuestSessionToken(this.groupId);
+            this.loadGroupInfo();
+          },
+        });
+        return;
+      }
+      this.loadGroupInfo();
+    });
   }
 
   /** US5 (010-app-wide-ui-redesign, research.md Decision 4): every step

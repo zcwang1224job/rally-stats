@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, catchError, map, of, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
 import {
   GroupListResponse,
@@ -9,6 +9,7 @@ import {
   JoinLinkPreviewResponse,
   VerifyPasswordResponse,
 } from '../../core/api/group-join.models';
+import { GroupPublic } from '../group-admin/group-admin.models';
 import { AuthService } from '../auth/auth.service';
 
 const GUEST_TOKEN_KEY_PREFIX = 'rally-stats:guest-session-token:';
@@ -106,6 +107,55 @@ export class GroupJoinService {
 
   clearActiveGuestGroupId(): void {
     localStorage.removeItem(ACTIVE_GUEST_GROUP_KEY);
+  }
+
+  /** The raw marker alone isn't enough to safely block on: disbanding a
+   * group (manually, or via the inactivity auto-disband scheduler)
+   * deliberately never touches its RosterEntries (a disbanded group stays
+   * readable/leavable — same reason group/service.py's
+   * get_active_group_id_for_member() has to filter out disbanded groups
+   * on the Member side), and being kicked doesn't clear this marker either
+   * (only a voluntary leave does, in leave-group.component.ts) — nothing
+   * else would ever clear this marker in either case. Verifies against the
+   * live group before reporting it as still blocking, clearing the marker
+   * if it's stale so a Guest isn't permanently locked out.
+   *
+   * Prefers resolveGuestSession() (by this group's guest_session_token)
+   * when one is on file — it checks this Guest's own RosterEntry.status,
+   * so it catches "kicked from a still-active group" as well as
+   * "disbanded", the same way get_active_group_id_for_member() does for a
+   * Member. Falls back to a plain group-status check (disbanded-only) when
+   * no token is on file for this group — there's no Guest identity to
+   * resolve against in that case. */
+  verifyActiveGuestGroupId(): Observable<string | null> {
+    const groupId = this.getActiveGuestGroupId();
+    if (groupId === null) {
+      return of(null);
+    }
+    const guestToken = this.getGuestSessionToken(groupId);
+    if (guestToken !== null) {
+      return this.resolveGuestSession(guestToken).pipe(
+        map(() => groupId),
+        catchError(() => {
+          this.clearActiveGuestGroupId();
+          this.clearGuestSessionToken(groupId);
+          return of(null);
+        }),
+      );
+    }
+    return this.api.get<GroupPublic>(`/groups/${groupId}`).pipe(
+      map((group) => {
+        if (group.status === 'disbanded') {
+          this.clearActiveGuestGroupId();
+          return null;
+        }
+        return groupId;
+      }),
+      catchError(() => {
+        this.clearActiveGuestGroupId();
+        return of(null);
+      }),
+    );
   }
 
   private authHeader(): Record<string, string> {

@@ -17,6 +17,7 @@ function setup(options: {
   joinError?: ApiError;
   navigate?: (...args: unknown[]) => Promise<boolean>;
   activeGuestGroupId?: string | null;
+  verifiedActiveGuestGroupId?: string | null;
 }) {
   TestBed.configureTestingModule({
     imports: [JoinFlowComponent],
@@ -47,6 +48,12 @@ function setup(options: {
         useValue: {
           getGuestSessionToken: () => options.existingGuestToken ?? null,
           getActiveGuestGroupId: () => options.activeGuestGroupId ?? null,
+          verifyActiveGuestGroupId: () =>
+            of(
+              'verifiedActiveGuestGroupId' in options
+                ? (options.verifiedActiveGuestGroupId as string | null)
+                : (options.activeGuestGroupId ?? null),
+            ),
           resolveGuestSession: () => of({ nickname: '訪客' }),
           clearGuestSessionToken: () => undefined,
           verifyPassword: () => of({ correct: true }),
@@ -205,5 +212,24 @@ describe('JoinFlowComponent: Guest already active in a different group (same bro
 
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
     expect(dialog.querySelector('input[formcontrolname="nickname"]')).not.toBeNull();
+  });
+
+  /** Regression test: disbanding a group (manually, or via the inactivity
+   * auto-disband scheduler) never touches RosterEntry.status — so a marker
+   * pointing at a since-disbanded group must not permanently lock a Guest
+   * out of joining anywhere else. verifyActiveGuestGroupId() is
+   * responsible for that liveness check; this confirms the nickname form
+   * still shows when it reports the raw marker as stale. */
+  it('does not block a Guest whose tracked group has since disbanded (stale marker)', () => {
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: false,
+      activeGuestGroupId: 'disbanded-group',
+      verifiedActiveGuestGroupId: null,
+    });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('input[formcontrolname="nickname"]')).not.toBeNull();
+    expect(dialog.textContent).not.toContain('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
   });
 });

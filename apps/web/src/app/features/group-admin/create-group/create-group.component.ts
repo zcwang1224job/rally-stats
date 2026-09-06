@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
@@ -38,6 +38,28 @@ export class CreateGroupComponent {
    * group links back to this Member identity instead of creating a Guest
    * roster entry — see group-admin.service.ts `createGroup()`. */
   readonly memberNickname = signal<string | null>(null);
+  // Same-browser-only Guest nicety (no cross-group identity exists to
+  // check server-side — see group-join.service.ts's
+  // setActiveGuestGroupId() docstring): a Guest already tracked as active
+  // in some group can't be blocked from creating a second one server-side
+  // the way a Member is (ALREADY_ACTIVE_IN_ANOTHER_GROUP), so this is
+  // checked here proactively instead — the form never even renders.
+  // `checkingGuestGroup` covers the brief window where the marker is being
+  // verified against the live group (it may be stale — e.g. that group
+  // disbanded since — see verifyActiveGuestGroupId()'s docstring) so the
+  // form doesn't flash visible before flipping to blocked.
+  readonly blockedByActiveGuestGroup = signal(false);
+  readonly checkingGuestGroup = signal(false);
+
+  // A Member hits this same error reactively, on submit (the backend is
+  // the actual enforcement for a Member — see the block above for why a
+  // Guest needs the proactive version instead). Retrying the submit button
+  // can't ever succeed here either — same reasoning as join-flow.component
+  // .ts's confirm step — so it gets the same swap-for-a-way-out treatment
+  // instead of a dead-end retry loop.
+  readonly alreadyActiveElsewhere = computed(
+    () => this.errorKey() === 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP',
+  );
 
   readonly form = this.fb.nonNullable.group(
     {
@@ -66,6 +88,13 @@ export class CreateGroupComponent {
 
   constructor() {
     if (!this.auth.isLoggedIn()) {
+      if (this.groupJoin.getActiveGuestGroupId() !== null) {
+        this.checkingGuestGroup.set(true);
+        this.groupJoin.verifyActiveGuestGroupId().subscribe((stillActiveGroupId) => {
+          this.checkingGuestGroup.set(false);
+          this.blockedByActiveGuestGroup.set(stillActiveGroupId !== null);
+        });
+      }
       return;
     }
     this.auth.getMe().subscribe({
@@ -150,6 +179,9 @@ export class CreateGroupComponent {
           if (this.memberNickname() === null) {
             this.groupAdmin.setLastCreatedGroupId(response.group_id);
             this.groupJoin.setActiveGuestGroupId(response.group_id);
+            if (response.guest_session_token) {
+              this.groupJoin.setGuestSessionToken(response.group_id, response.guest_session_token);
+            }
           }
           this.result.set(response);
         },
@@ -165,6 +197,10 @@ export class CreateGroupComponent {
     if (groupId) {
       void this.router.navigate(['/groups', groupId, 'admin']);
     }
+  }
+
+  goToGroupList(): void {
+    void this.router.navigate(['/groups']);
   }
 
   get turnstileLanguage(): string {

@@ -35,8 +35,24 @@ export class GroupListComponent {
     time_end: [''],
   });
 
+  // Verified once per page visit (not re-checked on every filter/page
+  // change — the underlying marker doesn't change from those), rather than
+  // reading the raw localStorage marker directly per row — see
+  // verifyActiveGuestGroupId()'s docstring for why the raw marker alone
+  // can be stale (a since-disbanded group never gets "left"). null both
+  // when there's genuinely nothing tracked and before this resolves; the
+  // brief window where a row might flash "加入" before flipping to
+  // blocked/already-joined is an acceptable trade-off for not spamming an
+  // extra request per row.
+  private readonly verifiedActiveGuestGroupId = signal<string | null>(null);
+
   constructor() {
     this.load();
+    if (!this.auth.isLoggedIn()) {
+      this.joinService
+        .verifyActiveGuestGroupId()
+        .subscribe((groupId) => this.verifiedActiveGuestGroupId.set(groupId));
+    }
   }
 
   applyFilters(): void {
@@ -122,7 +138,7 @@ export class GroupListComponent {
     if (this.auth.isLoggedIn()) {
       return false;
     }
-    return this.joinService.getActiveGuestGroupId() === group.group_id;
+    return this.verifiedActiveGuestGroupId() === group.group_id;
   }
 
   /** Backend-computed for a Member (`member_active_elsewhere`, enforced
@@ -139,7 +155,7 @@ export class GroupListComponent {
     if (this.auth.isLoggedIn()) {
       return false;
     }
-    const activeGuestGroupId = this.joinService.getActiveGuestGroupId();
+    const activeGuestGroupId = this.verifiedActiveGuestGroupId();
     return activeGuestGroupId !== null && activeGuestGroupId !== group.group_id;
   }
 }
