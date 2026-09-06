@@ -47,6 +47,23 @@
   }
 }
 
+.court-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.court-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.court-id {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
 // US5 (010-app-wide-ui-redesign FR-010): pagination controls for the
 // group browse list — previously tracked in TS but never rendered.
 .pagination {

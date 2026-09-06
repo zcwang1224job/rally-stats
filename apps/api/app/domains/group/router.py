@@ -34,6 +34,7 @@ from app.domains.group.schemas import (
     JoinLinkPreviewResponse,
     LeaveGroupRequest,
     LeaveGroupResponse,
+    MatchMode,
     ReauthRequest,
     ReauthResponse,
     RegenerateAllCourtsLinkResponse,
@@ -138,6 +139,9 @@ async def list_groups(
     court_id: uuid.UUID | None = None,
     time_start: time | None = None,
     time_end: time | None = None,
+    group_name: str | None = None,
+    creator_nickname: str | None = None,
+    match_mode: MatchMode | None = None,
 ) -> GroupListResponse:
     """Public group browse list (US1/US5); an optional `Authorization`
     Bearer token adds per-item `joined_by_me` personalization (US6, research.md
@@ -149,6 +153,9 @@ async def list_groups(
         court_id=court_id,
         time_start=time_start,
         time_end=time_end,
+        group_name=group_name,
+        creator_nickname=creator_nickname,
+        match_mode=match_mode,
     )
     # Computed once for the whole list, not per item — a Member has at most
     # one active RosterEntry anywhere (the one-active-group invariant), so
@@ -161,8 +168,8 @@ async def list_groups(
     )
     items = []
     for group in groups:
-        court_names = await service.court_names_for_group(session, group.id)
-        creator_nickname = await service.creator_nickname_for_group(session, group.id)
+        courts = await service.courts_for_group(session, group.id)
+        creator_nickname_value = await service.creator_nickname_for_group(session, group.id)
         joined_by_me = None
         created_by_me = None
         member_active_elsewhere = None
@@ -176,8 +183,11 @@ async def list_groups(
         items.append(
             GroupListItem(
                 **_to_public(group).model_dump(),
-                court_names=court_names,
-                creator_nickname=creator_nickname,
+                courts=[
+                    AllCourtsCourtSummary(court_id=court_id, name=name)
+                    for court_id, name in courts
+                ],
+                creator_nickname=creator_nickname_value,
                 joined_by_me=joined_by_me,
                 created_by_me=created_by_me,
                 member_active_elsewhere=member_active_elsewhere,

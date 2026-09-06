@@ -535,6 +535,19 @@ async def court_names_for_group(session: AsyncSession, group_id: uuid.UUID) -> l
     return [row[0] for row in result.all()]
 
 
+async def courts_for_group(session: AsyncSession, group_id: uuid.UUID) -> list[tuple[str, str]]:
+    """(court_id, name) pairs for the browse list (US5) — unlike
+    `court_names_for_group` above (still used by the join-link preview,
+    which only ever displays the name), the list needs the ID too so a
+    Guest can tell apart two courts that happen to share a name."""
+    result = await session.execute(
+        select(Court.id, Court.name)
+        .where(Court.group_id == group_id, Court.deleted_at.is_(None))
+        .order_by(Court.created_at)
+    )
+    return [(str(row.id), row.name) for row in result.all()]
+
+
 async def creator_nickname_for_group(session: AsyncSession, group_id: uuid.UUID) -> str:
     """FR-002: 開團者暱稱 — the creator's `RosterEntry` always exists (created
     in the same transaction as the group itself, per `create_group`)."""
@@ -554,6 +567,9 @@ async def list_groups(
     court_id: uuid.UUID | None = None,
     time_start: time | None = None,
     time_end: time | None = None,
+    group_name: str | None = None,
+    creator_nickname: str | None = None,
+    match_mode: str | None = None,
 ) -> tuple[list[Group], int]:
     """Browse query (US1 base, extended by US5's filters); `joined_by_me`
     personalization (US6) is layered on top of this function's result set
@@ -564,6 +580,12 @@ async def list_groups(
     filters use overlap semantics (spec.md Assumptions) and MUST exclude
     groups with no activity time set when applied (FR-004), but MUST NOT
     exclude them when no time filter is given at all.
+
+    group_name/creator_nickname are substring, case-insensitive matches
+    (same convention as court_name); match_mode is an exact match (it's a
+    closed enum, not free text). creator_nickname matches against the
+    group's creator RosterEntry specifically (`is_creator`), not any
+    member's nickname — same scope as `creator_nickname_for_group()`.
     """
     conditions = [Group.status == "active"]
     if court_name is not None or court_id is not None:
@@ -582,6 +604,20 @@ async def list_groups(
                 Group.activity_time_end > time_start,
             ]
         )
+    if group_name is not None:
+        conditions.append(Group.name.ilike(f"%{group_name}%"))
+    if creator_nickname is not None:
+        conditions.append(
+            select(RosterEntry.id)
+            .where(
+                RosterEntry.group_id == Group.id,
+                RosterEntry.is_creator.is_(True),
+                RosterEntry.nickname.ilike(f"%{creator_nickname}%"),
+            )
+            .exists()
+        )
+    if match_mode is not None:
+        conditions.append(Group.match_mode == match_mode)
 
     count_result = await session.execute(
         select(func.count()).select_from(Group).where(*conditions)

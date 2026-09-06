@@ -44,6 +44,99 @@ async def test_filter_by_court_name(client: AsyncClient, valid_turnstile_token: 
     assert "篩選團B" not in names
 
 
+async def test_filter_by_group_name(client: AsyncClient, valid_turnstile_token: str) -> None:
+    await client.post(
+        "/groups",
+        json={
+            "name": "週三夜羽球團",
+            "max_members": 8,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "阿明",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+    await client.post(
+        "/groups",
+        json={
+            "name": "週五晨間球敘",
+            "max_members": 8,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "阿明",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+
+    response = await client.get("/groups?group_name=夜羽球")
+    assert response.status_code == 200
+    names = [g["name"] for g in response.json()["groups"]]
+    assert "週三夜羽球團" in names
+    assert "週五晨間球敘" not in names
+
+
+async def test_filter_by_creator_nickname(client: AsyncClient, valid_turnstile_token: str) -> None:
+    await client.post(
+        "/groups",
+        json={
+            "name": "阿明開的團",
+            "max_members": 8,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "阿明",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+    await client.post(
+        "/groups",
+        json={
+            "name": "阿華開的團",
+            "max_members": 8,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "阿華",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+
+    response = await client.get("/groups?creator_nickname=阿明")
+    assert response.status_code == 200
+    names = [g["name"] for g in response.json()["groups"]]
+    assert "阿明開的團" in names
+    assert "阿華開的團" not in names
+
+
+async def test_filter_by_match_mode(client: AsyncClient, valid_turnstile_token: str) -> None:
+    await client.post(
+        "/groups",
+        json={
+            "name": "雙打篩選團",
+            "max_members": 8,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "阿明",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+    await client.post(
+        "/groups",
+        json={
+            "name": "單打篩選團",
+            "max_members": 8,
+            "match_mode": "singles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "阿明",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+
+    response = await client.get("/groups?match_mode=singles")
+    assert response.status_code == 200
+    names = [g["name"] for g in response.json()["groups"]]
+    assert "單打篩選團" in names
+    assert "雙打篩選團" not in names
+
+
 async def test_filter_by_time_range(client: AsyncClient, valid_turnstile_token: str) -> None:
     await client.post(
         "/groups",

@@ -15,6 +15,22 @@
     {{ 'groupJoin.timeEndFilter' | translate }}
     <input type="time" formControlName="time_end" />
   </label>
+  <label>
+    {{ 'groupJoin.groupNameFilter' | translate }}
+    <input type="text" formControlName="group_name" />
+  </label>
+  <label>
+    {{ 'groupJoin.creatorNicknameFilter' | translate }}
+    <input type="text" formControlName="creator_nickname" />
+  </label>
+  <label>
+    {{ 'groupJoin.matchModeFilter' | translate }}
+    <select formControlName="match_mode">
+      <option value="">{{ 'groupJoin.matchModeFilterAny' | translate }}</option>
+      <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
+      <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
+    </select>
+  </label>
   <button type="submit" class="btn">{{ 'groupJoin.applyFilters' | translate }}</button>
 </form>
 
@@ -33,7 +49,16 @@
               | translate
           }}
         </span>
-        <span>{{ group.court_names.join(', ') }}</span>
+        @if (group.courts.length > 0) {
+          <span class="court-list">
+            @for (court of group.courts; track court.court_id) {
+              <span class="court-item">
+                {{ court.name }}
+                <small class="court-id">({{ 'groupJoin.courtIdLabel' | translate }}: {{ court.court_id }})</small>
+              </span>
+            }
+          </span>
+        }
         @if (group.activity_time_start && group.activity_time_end) {
           <span>{{ group.activity_time_start }} - {{ group.activity_time_end }}</span>
         }

@@ -3,6 +3,11 @@
 
 import { MatchMode, SchedulingMechanism } from '../../features/group-admin/group-admin.models';
 
+export interface GroupListCourtSummary {
+  court_id: string;
+  name: string;
+}
+
 export interface GroupListItem {
   group_id: string;
   group_number: number;
@@ -15,7 +20,7 @@ export interface GroupListItem {
   activity_time_start: string | null;
   activity_time_end: string | null;
   status: 'active' | 'disbanded';
-  court_names: string[];
+  courts: GroupListCourtSummary[];
   creator_nickname: string;
   joined_by_me: boolean | null;
   // True only when the logged-in Member created this group — a subset of
@@ -35,7 +40,11 @@ export interface GroupListResponse {
   total_pages: number;
 }
 
-export interface JoinLinkPreviewResponse extends Omit<GroupListItem, 'joined_by_me'> {
+export interface JoinLinkPreviewResponse extends Omit<GroupListItem, 'joined_by_me' | 'courts'> {
+  // Unlike GroupListItem, the join-link preview endpoint was left on the
+  // older shape (just names) — it only ever displays them, never needs the
+  // court_id (see group/service.py's court_names_for_group() docstring).
+  court_names: string[];
   already_joined: boolean;
   roster_entry_id: string | null;
 }

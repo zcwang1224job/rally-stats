@@ -19,7 +19,7 @@ const group = {
   activity_time_start: '19:00',
   activity_time_end: '21:00',
   status: 'active' as const,
-  court_names: ['場地一'],
+  courts: [{ court_id: 'c1', name: '場地一' }],
   creator_nickname: '王小明',
   joined_by_me: false,
 };
@@ -32,6 +32,7 @@ function setup(
     isLoggedIn?: boolean;
     activeGuestGroupId?: string | null;
     verifiedActiveGuestGroupId?: string | null;
+    listGroups?: (...args: unknown[]) => Observable<unknown>;
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -42,7 +43,8 @@ function setup(
       {
         provide: GroupJoinService,
         useValue: {
-          listGroups: () => of({ groups, page: 1, total_pages: totalPages }),
+          listGroups:
+            options.listGroups ?? (() => of({ groups, page: 1, total_pages: totalPages })),
           getActiveGuestGroupId: () => options.activeGuestGroupId ?? null,
           verifyActiveGuestGroupId: () =>
             of(
@@ -83,6 +85,44 @@ describe('GroupListComponent', () => {
     expect(text).toContain('createGroup.matchModeDoubles');
     expect(text).toContain('19:00');
     expect(text).toContain('21:00');
+  });
+
+  it('shows each court name alongside its court ID', () => {
+    const twoCourtGroup = {
+      ...group,
+      courts: [
+        { court_id: 'c1', name: '1號場' },
+        { court_id: 'c2', name: '2號場' },
+      ],
+    };
+    const fixture = setup(1, [twoCourtGroup]);
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('1號場');
+    expect(text).toContain('c1');
+    expect(text).toContain('2號場');
+    expect(text).toContain('c2');
+  });
+
+  it('sends group name, creator nickname, and match mode filters when applied', () => {
+    const listGroups = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    const fixture = setup(1, [group], { listGroups });
+
+    fixture.componentInstance.filterForm.patchValue({
+      group_name: '夜羽球',
+      creator_nickname: '王小明',
+      match_mode: 'singles',
+    });
+    fixture.componentInstance.applyFilters();
+
+    expect(listGroups).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        group_name: '夜羽球',
+        creator_nickname: '王小明',
+        match_mode: 'singles',
+      }),
+    );
   });
 
   it('renders pagination controls when totalPages > 1', () => {

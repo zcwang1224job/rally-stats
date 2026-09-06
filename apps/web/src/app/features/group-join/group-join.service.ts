@@ -9,7 +9,7 @@ import {
   JoinLinkPreviewResponse,
   VerifyPasswordResponse,
 } from '../../core/api/group-join.models';
-import { GroupPublic } from '../group-admin/group-admin.models';
+import { GroupPublic, MatchMode } from '../group-admin/group-admin.models';
 import { AuthService } from '../auth/auth.service';
 
 const GUEST_TOKEN_KEY_PREFIX = 'rally-stats:guest-session-token:';
@@ -20,6 +20,9 @@ export interface GroupListFilters {
   court_id?: string;
   time_start?: string;
   time_end?: string;
+  group_name?: string;
+  creator_nickname?: string;
+  match_mode?: MatchMode;
 }
 
 /** Centralized API layer for the join-group feature (004). Also owns
@@ -41,6 +44,15 @@ export class GroupJoinService {
     if (filters.time_start && filters.time_end) {
       params.set('time_start', filters.time_start);
       params.set('time_end', filters.time_end);
+    }
+    if (filters.group_name) {
+      params.set('group_name', filters.group_name);
+    }
+    if (filters.creator_nickname) {
+      params.set('creator_nickname', filters.creator_nickname);
+    }
+    if (filters.match_mode) {
+      params.set('match_mode', filters.match_mode);
     }
     return this.api.get<GroupListResponse>(`/groups?${params.toString()}`, this.authHeader());
   }

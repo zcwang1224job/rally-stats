@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { GroupListItem } from '../../../core/api/group-join.models';
 import { AuthService } from '../../auth/auth.service';
+import { MatchMode } from '../../group-admin/group-admin.models';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { GroupJoinService } from '../group-join.service';
 
@@ -33,6 +34,9 @@ export class GroupListComponent {
     court_id: [''],
     time_start: [''],
     time_end: [''],
+    group_name: [''],
+    creator_nickname: [''],
+    match_mode: [''],
   });
 
   // Verified once per page visit (not re-checked on every filter/page
@@ -74,6 +78,9 @@ export class GroupListComponent {
         court_id: raw.court_id || undefined,
         time_start: raw.time_start || undefined,
         time_end: raw.time_end || undefined,
+        group_name: raw.group_name || undefined,
+        creator_nickname: raw.creator_nickname || undefined,
+        match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
       })
       .subscribe((response) => {
         this.loading.set(false);

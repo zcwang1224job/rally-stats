@@ -57,3 +57,19 @@ async def test_list_groups_joined_by_me_is_null_when_unauthenticated(
     assert response.status_code == 200
     item = next(g for g in response.json()["groups"] if g["name"] == "未登入檢視團")
     assert item["joined_by_me"] is None
+
+
+async def test_list_groups_item_includes_court_id_and_name(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    created = await _create_group(client, valid_turnstile_token, "場地資訊團")
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    court_response = await client.post(
+        f"/groups/{created['group_id']}/courts", headers=headers, json={"name": "1號場"}
+    )
+    court_id = court_response.json()["court_id"]
+
+    response = await client.get("/groups")
+    assert response.status_code == 200
+    item = next(g for g in response.json()["groups"] if g["name"] == "場地資訊團")
+    assert item["courts"] == [{"court_id": court_id, "name": "1號場"}]

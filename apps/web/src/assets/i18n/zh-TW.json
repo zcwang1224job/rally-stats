@@ -70,7 +70,12 @@
     "courtIdFilter": "場地 ID",
     "timeStartFilter": "活動時間（起）",
     "timeEndFilter": "活動時間（迄）",
-    "applyFilters": "套用篩選"
+    "groupNameFilter": "組團名稱",
+    "creatorNicknameFilter": "開團者",
+    "matchModeFilter": "賽制",
+    "matchModeFilterAny": "不限",
+    "applyFilters": "套用篩選",
+    "courtIdLabel": "ID"
   },
   "friends": {
     "listTitle": "好友列表",
