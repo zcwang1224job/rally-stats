@@ -1,4 +1,4 @@
-@use '../../../../styles/tokens';
+@use '../../../../styles/breakpoints';
 
 :host {
   display: block;
@@ -42,7 +42,7 @@
   grid-template-columns: 1fr;
   gap: var(--space-md);
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -90,11 +90,11 @@
   grid-template-columns: 1fr;
   gap: var(--space-md);
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  @media (min-width: tokens.$breakpoint-desktop) {
+  @media (min-width: breakpoints.$breakpoint-desktop) {
     grid-template-columns: repeat(3, 1fr);
   }
 }

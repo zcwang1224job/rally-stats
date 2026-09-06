@@ -3,7 +3,7 @@
   "short_name": "Rally Stats",
   "display": "fullscreen",
   "background_color": "#000000",
-  "theme_color": "#ff5a1f",
+  "theme_color": "#e2551a",
   "icons": [
     {
       "src": "icons/icon-192.png",

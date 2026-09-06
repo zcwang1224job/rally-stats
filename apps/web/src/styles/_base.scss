@@ -11,7 +11,7 @@
   min-width: var(--touch-target-min);
   min-height: var(--touch-target-min);
   padding: var(--space-sm) var(--space-md);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--color-brand-primary);
   color: var(--color-brand-primary-contrast);
@@ -19,9 +19,24 @@
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
   transition:
     transform 0.05s ease-out,
+    background-color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
     opacity 0.15s ease-out;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: var(--color-brand-primary-hover);
+      box-shadow: var(--shadow-md);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
 
   &:active {
     transform: scale(0.97);
@@ -30,17 +45,34 @@
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    box-shadow: none;
   }
 }
 
 .btn--danger {
   background: var(--color-danger);
   color: var(--color-danger-contrast);
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--color-danger) 85%, black);
+    }
+  }
 }
 
 .btn--secondary {
-  background: var(--color-surface-alt);
+  background: var(--color-surface);
+  border-color: var(--color-border);
   color: var(--color-text-primary);
+  box-shadow: none;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: var(--color-surface-alt);
+      border-color: var(--color-text-muted);
+      box-shadow: none;
+    }
+  }
 }
 
 .card {
@@ -48,6 +80,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-md);
+  box-shadow: var(--shadow-sm);
 }
 
 // Status text MUST NOT rely on color alone (constitution VII) — every
@@ -59,6 +92,7 @@
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-bold);
@@ -67,11 +101,13 @@
 
   &--success {
     background: color-mix(in srgb, var(--color-brand-accent) 15%, white);
+    border-color: color-mix(in srgb, var(--color-brand-accent) 30%, white);
     color: var(--color-brand-accent);
   }
 
   &--danger {
     background: color-mix(in srgb, var(--color-danger) 12%, white);
+    border-color: color-mix(in srgb, var(--color-danger) 28%, white);
     color: var(--color-danger);
   }
 
@@ -119,15 +155,26 @@ p[role='alert'] {
   select {
     min-height: var(--touch-target-min);
     padding: var(--space-sm);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
     font-family: var(--font-family-base);
     font-size: var(--font-size-body);
     color: var(--color-text-primary);
+    transition:
+      border-color 0.15s ease-out,
+      box-shadow 0.15s ease-out;
+
+    @media (hover: hover) {
+      &:hover {
+        border-color: var(--color-text-muted);
+      }
+    }
 
     &:focus {
-      outline: 2px solid var(--color-brand-primary);
-      outline-offset: 1px;
+      border-color: var(--color-brand-primary);
+      outline: none;
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
     }
   }
 }

@@ -64,16 +64,19 @@ h3 {
 .round-matches-list .status-badge {
   &[data-status='in_progress'] {
     background: color-mix(in srgb, var(--color-brand-accent) 15%, white);
+    border-color: color-mix(in srgb, var(--color-brand-accent) 30%, white);
     color: var(--color-brand-accent);
   }
 
   &[data-status='completed'] {
     background: color-mix(in srgb, var(--color-text-muted) 15%, white);
+    border-color: color-mix(in srgb, var(--color-text-muted) 30%, white);
     color: var(--color-text-muted);
   }
 
   &[data-status='abandoned'] {
     background: color-mix(in srgb, var(--color-danger) 12%, white);
+    border-color: color-mix(in srgb, var(--color-danger) 28%, white);
     color: var(--color-danger);
   }
 }

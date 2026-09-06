@@ -1,4 +1,4 @@
-@use '../../../../styles/tokens';
+@use '../../../../styles/breakpoints';
 
 :host {
   display: block;
@@ -17,7 +17,7 @@ h1 {
   flex-direction: column;
   margin-bottom: var(--space-md);
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: flex-end;

@@ -1,4 +1,4 @@
-@use '../../../styles/tokens';
+@use '../../../styles/breakpoints';
 
 :host {
   // Same hex values as scoreboard.component.scss's --scoreboard-team-*-bg/
@@ -40,7 +40,7 @@ h1 {
   gap: var(--space-md);
   margin: var(--space-lg) 0;
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     gap: var(--space-xl);
   }
 }

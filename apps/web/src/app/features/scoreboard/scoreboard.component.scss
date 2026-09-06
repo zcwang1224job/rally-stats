@@ -1,4 +1,4 @@
-@use '../../../styles/tokens';
+@use '../../../styles/breakpoints';
 
 // Scoreboard-only dark theme + team colors (010-app-wide-ui-redesign
 // research.md Decision 1). Deliberately NOT added to the global
@@ -99,7 +99,7 @@ h1 {
   line-height: 1;
   color: #ffffff;
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     font-size: 10rem;
   }
 }

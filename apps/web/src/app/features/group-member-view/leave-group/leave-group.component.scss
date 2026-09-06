@@ -1,4 +1,4 @@
-@use '../../../../styles/tokens';
+@use '../../../../styles/breakpoints';
 
 :host {
   display: contents;
@@ -23,7 +23,7 @@
   white-space: nowrap;
   cursor: pointer;
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     width: 100%;
     text-align: left;
     font-size: var(--font-size-body);

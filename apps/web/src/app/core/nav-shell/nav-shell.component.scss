@@ -1,4 +1,4 @@
-@use '../../../styles/tokens';
+@use '../../../styles/breakpoints';
 
 :host {
   display: block;
@@ -7,6 +7,10 @@
   z-index: 20;
 }
 
+// A navy chrome bar (vs. the previous plain white-on-border header) reads
+// as the app's one piece of "structural" furniture — every other surface
+// in the app stays light, so this is the sole place --color-ink appears
+// as a background rather than just seeding the neutral palette's tint.
 .nav-shell {
   display: flex;
   align-items: center;
@@ -14,13 +18,13 @@
   flex-wrap: wrap;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  background: var(--color-ink);
+  box-shadow: var(--shadow-sm);
 }
 
 .nav-shell__brand {
   font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
+  color: var(--color-ink-text);
   text-decoration: none;
 }
 
@@ -32,8 +36,9 @@
   min-height: var(--touch-target-min);
   border: none;
   background: transparent;
+  color: var(--color-ink-text);
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     display: none;
   }
 }
@@ -64,16 +69,23 @@
     display: flex;
     align-items: center;
     text-decoration: none;
-    color: var(--color-text-primary);
+    color: var(--color-ink-text);
     background: transparent;
     border: none;
     text-align: left;
     font: inherit;
     padding: var(--space-xs) 0;
+    transition: color 0.15s ease-out;
+
+    @media (hover: hover) {
+      &:hover {
+        color: var(--color-brand-primary);
+      }
+    }
   }
 
   // Tablet/desktop (>= 768px): persistent horizontal bar, no collapse.
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     flex-basis: auto;
     flex-direction: row;
     align-items: center;
@@ -88,6 +100,16 @@
   }
 }
 
-.nav-shell__logout {
+// Specificity note: `.nav-shell__links a, .nav-shell__links button` above
+// is (0,1,1) — a bare `.nav-shell__logout` (0,1,0) loses to it regardless
+// of source order, so this never actually painted red. Qualifying the
+// selector with the parent class matches that specificity and fixes it.
+.nav-shell__links .nav-shell__logout {
   color: var(--color-danger);
+
+  @media (hover: hover) {
+    &:hover {
+      color: color-mix(in srgb, var(--color-danger) 80%, white);
+    }
+  }
 }

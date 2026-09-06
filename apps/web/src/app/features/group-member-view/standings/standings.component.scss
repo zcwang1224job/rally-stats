@@ -31,11 +31,13 @@ th {
 .status-badge {
   &[data-status='won'] {
     background: color-mix(in srgb, var(--color-brand-accent) 15%, white);
+    border-color: color-mix(in srgb, var(--color-brand-accent) 30%, white);
     color: var(--color-brand-accent);
   }
 
   &[data-status='lost'] {
     background: color-mix(in srgb, var(--color-danger) 12%, white);
+    border-color: color-mix(in srgb, var(--color-danger) 28%, white);
     color: var(--color-danger);
   }
 
@@ -45,6 +47,7 @@ th {
   // one-match-per-round mode.
   &[data-status='mixed'] {
     background: color-mix(in srgb, var(--color-text-primary) 8%, white);
+    border-color: color-mix(in srgb, var(--color-text-primary) 20%, white);
     color: var(--color-text-primary);
   }
 

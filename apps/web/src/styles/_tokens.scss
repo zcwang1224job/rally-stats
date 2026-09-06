@@ -1,29 +1,56 @@
 // Design tokens for the "運動簡約風" (sport-minimalist) visual language.
 // CSS custom properties are consumed at runtime via var(...) from any
-// component stylesheet; the two breakpoints are SCSS variables instead,
-// since media queries can't take a var() value.
+// component stylesheet.
 //
 // 008-sport-minimalist-ui data-model.md is the source of truth for token
 // names/purposes — this file only fills in concrete values.
-
-// Breakpoints (research.md #2) — @use this file `as tokens` and reference
-// tokens.$breakpoint-tablet / tokens.$breakpoint-desktop from media queries.
-$breakpoint-tablet: 768px;
-$breakpoint-desktop: 1024px;
+//
+// Breakpoints live in the separate _breakpoints.scss partial, not here —
+// a component that `@use`s this file for a color/shadow/etc. would
+// otherwise re-emit this entire :root block into its own compiled
+// stylesheet (Angular compiles each component's SCSS independently, so
+// `@use` doesn't dedupe CSS the way it dedupes a single Sass compilation's
+// output). Re-exported below via @forward so `@use '.../tokens'` callers
+// that only ever wanted `tokens.$breakpoint-*` keep working unchanged.
+@forward 'breakpoints';
 
 :root {
-  // Color — bold, high-contrast, single vivid accent (research.md #1).
-  --color-brand-primary: #ff5a1f;
+  // Color — bold, high-contrast, single vivid accent (research.md #1),
+  // refined toward a more considered/professional register: a deeper,
+  // less neon primary; neutrals carry a slight cool (navy) hue bias
+  // instead of pure gray, so they read as chosen rather than inherited;
+  // --color-ink anchors the "professional" half (nav-shell chrome) and
+  // also seeds the tint in --color-text-*/--color-border below, so the
+  // whole neutral family shares one hue.
+  --color-ink: #10192e;
+  --color-brand-primary: #e2551a;
+  --color-brand-primary-hover: #c2470f;
   --color-brand-primary-contrast: #ffffff;
   --color-brand-accent: #16a34a; // "won" state, success
   --color-danger: #dc2626;
   --color-danger-contrast: #ffffff;
 
   --color-surface: #ffffff;
-  --color-surface-alt: #f3f4f6;
-  --color-text-primary: #111417;
-  --color-text-muted: #6b7280;
-  --color-border: #e2e4e8;
+  --color-surface-alt: #f2f3f7;
+  --color-text-primary: #161c2c;
+  --color-text-muted: #5c6478;
+  --color-border: #dfe2ea;
+
+  // Chrome that sits directly on --color-ink (the nav-shell) needs its own
+  // text colors — --color-text-primary/-muted are tuned for light surfaces
+  // and would be near-invisible on navy.
+  --color-ink-text: #e8ebf3;
+  --color-ink-text-muted: #a7aec2;
+
+  // Elevation — every shadow keys off --color-ink so cards/buttons/the
+  // nav-shell all "light" from the same neutral, rather than each picking
+  // its own gray.
+  --shadow-sm:
+    0 1px 2px rgb(16 25 46 / 6%),
+    0 1px 3px rgb(16 25 46 / 8%);
+  --shadow-md:
+    0 2px 6px rgb(16 25 46 / 8%),
+    0 8px 24px rgb(16 25 46 / 12%);
 
   // Typography — bold weights lean into the "sporty" half of the language;
   // system font stack avoids an extra network request (research.md #8's
@@ -48,6 +75,7 @@ $breakpoint-desktop: 1024px;
   // Shape.
   --radius-sm: 6px;
   --radius-md: 10px;
+  --radius-lg: 16px;
 
   // Touch target minimum (WCAG 2.5.5, research.md #3).
   --touch-target-min: 44px;

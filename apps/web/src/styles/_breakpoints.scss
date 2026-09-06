@@ -1,0 +1,9 @@
+// Split out of _tokens.scss: these are compile-time Sass variables (media
+// queries can't take a CSS var()), not runtime CSS. Kept in their own
+// partial so a component that only needs a breakpoint doesn't drag
+// _tokens.scss's `:root { ... }` custom-property block along with it —
+// Angular compiles each component stylesheet independently, so an `@use`
+// of a partial that contains actual CSS re-emits that CSS into every
+// component that uses it, not just once globally.
+$breakpoint-tablet: 768px;
+$breakpoint-desktop: 1024px;

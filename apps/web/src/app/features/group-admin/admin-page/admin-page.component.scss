@@ -1,4 +1,4 @@
-@use '../../../../styles/tokens';
+@use '../../../../styles/breakpoints';
 
 :host {
   display: block;
@@ -9,7 +9,7 @@
   // Desktop / tablet-landscape: wide enough that stacking every court's
   // control block and both link cards in a single column wastes the
   // available width (research.md #2's second breakpoint).
-  @media (min-width: tokens.$breakpoint-desktop) {
+  @media (min-width: breakpoints.$breakpoint-desktop) {
     max-width: 960px;
   }
 }
@@ -47,7 +47,7 @@ section.card {
   flex-direction: column;
   gap: var(--space-md);
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     flex-direction: row;
     align-items: flex-start;
   }
@@ -77,7 +77,7 @@ section.card {
     }
   }
 
-  @media (min-width: tokens.$breakpoint-tablet) {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
     flex-direction: column;
     overflow-x: visible;
     flex: 0 0 200px;
@@ -95,7 +95,7 @@ section.card {
 }
 
 .links-section {
-  @media (min-width: tokens.$breakpoint-desktop) {
+  @media (min-width: breakpoints.$breakpoint-desktop) {
     display: flex;
     gap: var(--space-lg);
 
