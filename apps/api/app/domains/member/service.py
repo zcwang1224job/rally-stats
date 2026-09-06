@@ -251,6 +251,8 @@ async def _build_member_match_record_summaries(
                 score_a=match.score_a,
                 score_b=match.score_b,
                 winner_team=match.winner_team,
+                started_at=match.started_at,
+                ended_at=match.ended_at,
                 group_id=str(match.group_id),
                 group_name=group_name_by_id.get(match.group_id, ""),
             )

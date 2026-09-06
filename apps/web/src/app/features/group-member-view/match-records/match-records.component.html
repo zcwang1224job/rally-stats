@@ -8,6 +8,9 @@
       @for (match of r.matches; track match.match_id) {
         <li class="card">
           <span class="round-tag status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
+          @if (match.started_at && match.ended_at) {
+            <span class="time-range">🕐 {{ match.started_at | date: 'HH:mm' }} - {{ match.ended_at | date: 'HH:mm' }}</span>
+          }
           <span class="teams">
             @for (p of match.team_a; track p.roster_entry_id) {
               {{ p.nickname }}

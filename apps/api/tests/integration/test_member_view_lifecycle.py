@@ -126,6 +126,8 @@ async def test_member_view_full_lifecycle(
     records = records_response.json()["matches"]
     assert [m["match_id"] for m in records] == [match2_id]
     assert records[0]["winner_team"] == "A"
+    assert records[0]["started_at"] is not None  # set on manual-assign (-> in_progress)
+    assert records[0]["ended_at"] is not None  # set explicitly above
 
     # US4: P1 leaves -> Guest token immediately invalid, no round regeneration.
     leave_response = await client.post(

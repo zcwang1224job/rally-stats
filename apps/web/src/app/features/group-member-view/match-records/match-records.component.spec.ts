@@ -21,6 +21,8 @@ const recordsResponse: GroupMatchRecordsResponse = {
       score_a: 21,
       score_b: 15,
       winner_team: 'A',
+      started_at: '2026-01-01T10:00:00Z',
+      ended_at: '2026-01-01T10:15:00Z',
     },
     {
       match_id: 'm2',
@@ -30,6 +32,8 @@ const recordsResponse: GroupMatchRecordsResponse = {
       score_a: 10,
       score_b: 21,
       winner_team: 'B',
+      started_at: null,
+      ended_at: null,
     },
   ],
   page: 1,
@@ -76,5 +80,24 @@ describe('MatchRecordsComponent winner-by-name', () => {
     expect(text).toContain('小明、小華 獲勝');
     expect(text).not.toContain('A 方');
     expect(text).not.toContain('B 方');
+  });
+});
+
+describe('MatchRecordsComponent start/end time', () => {
+  it('shows a time range for a match with both timestamps', () => {
+    const fixture = setup();
+
+    const items = fixture.nativeElement.querySelectorAll('.record-list li');
+    const firstTimeRange = items[0].querySelector('.time-range');
+    expect(firstTimeRange).not.toBeNull();
+    expect(firstTimeRange.textContent).toContain(':'); // some HH:mm was rendered
+    expect(firstTimeRange.textContent).toContain('-');
+  });
+
+  it('shows no time range when either timestamp is missing', () => {
+    const fixture = setup();
+
+    const items = fixture.nativeElement.querySelectorAll('.record-list li');
+    expect(items[1].querySelector('.time-range')).toBeNull();
   });
 });

@@ -1,7 +1,7 @@
 """Pydantic request/response schemas for the group domain, per
 specs/001-create-manage-group/contracts/groups-api.md."""
 
-from datetime import time
+from datetime import datetime, time
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -363,6 +363,14 @@ class MatchRecordSummary(BaseModel):
     score_a: int
     score_b: int
     winner_team: Literal["A", "B"]
+    # Only completed matches ever reach this schema (_completed_matches_query
+    # filters on status == "completed"), and a match can't reach "completed"
+    # without having been pulled onto a court (started_at set) and finished
+    # (ended_at set) — so both are always populated here in practice, even
+    # though the column itself is nullable for queued/abandoned-before-start
+    # matches elsewhere.
+    started_at: datetime | None
+    ended_at: datetime | None
 
 
 class GroupMatchRecordsResponse(BaseModel):

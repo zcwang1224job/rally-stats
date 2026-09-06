@@ -39,6 +39,8 @@ export interface MatchRecordSummary {
   score_a: number;
   score_b: number;
   winner_team: Team;
+  started_at: string | null;
+  ended_at: string | null;
 }
 
 export interface GroupMatchRecordsResponse {

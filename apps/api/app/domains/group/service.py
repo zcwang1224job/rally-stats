@@ -939,6 +939,8 @@ async def _build_match_record_summaries(
                 score_a=match.score_a,
                 score_b=match.score_b,
                 winner_team=match.winner_team,
+                started_at=match.started_at,
+                ended_at=match.ended_at,
             )
         )
     return summaries

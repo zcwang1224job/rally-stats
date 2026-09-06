@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
@@ -10,7 +11,7 @@ import { GroupMemberViewService } from '../group-member-view.service';
 /** US3 (FR-011/012): 團內對戰紀錄——逐場列表，僅限本團，載入時查詢。 */
 @Component({
   selector: 'app-match-records',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, DatePipe],
   templateUrl: './match-records.component.html',
   styleUrl: './match-records.component.scss',
 })
