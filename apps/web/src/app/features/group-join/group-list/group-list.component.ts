@@ -81,9 +81,12 @@ export class GroupListComponent {
         return;
       }
     }
-    // 已是這個團的成員（登入會員）時，直接進團內視圖即可——不需要再走一次
-    // 密碼/暱稱流程，避免已加入者被要求重新輸入通關密碼。
-    if (group.joined_by_me === true) {
+    // 已是這個團的成員（登入會員，或——同一瀏覽器——訪客）時，直接進團內
+    // 視圖即可——不需要再走一次密碼/暱稱流程，避免已加入者被要求重新輸入
+    // 通關密碼。訪客的 member-view 存取本來就是靠這個團自己的
+    // guest_session_token（尚未被清除，因為還沒離開），跟會員走 Bearer
+    // token 是平行的兩條路徑，member-view 頁面本身兩者都支援。
+    if (group.joined_by_me === true || this.isOwnGroupForGuest(group)) {
       void this.router.navigate(['/groups', group.group_id, 'member-view']);
       return;
     }
@@ -91,10 +94,52 @@ export class GroupListComponent {
     if (group.current_member_count >= group.max_members) {
       return;
     }
+    // Front-check for the one-active-group rule — the template already
+    // hides the join button for this case, but guard here too in case the
+    // list is stale (e.g. joined another group in a different tab since
+    // this page loaded). The backend still enforces this regardless for a
+    // Member (ALREADY_ACTIVE_IN_ANOTHER_GROUP) if this front-check is ever
+    // wrong — for a Guest, this front-check IS the enforcement (see
+    // isBlockedElsewhere()'s docstring).
+    if (this.isBlockedElsewhere(group)) {
+      return;
+    }
     void this.router.navigate(['/groups', group.group_id, 'join']);
   }
 
   isFull(group: GroupListItem): boolean {
     return group.current_member_count >= group.max_members;
+  }
+
+  /** `joined_by_me`'s Guest equivalent — the backend never computes that
+   * field for an anonymous request (no Member to check against), so a
+   * Guest browsing the list otherwise sees a plain "加入" button even for
+   * the one group they're already in, as if they'd never joined. Same
+   * same-browser-only localStorage marker as isBlockedElsewhere() — the
+   * two are mutually exclusive for a given item (this one being true means
+   * that one is false, since the tracked group matches this item). */
+  isOwnGroupForGuest(group: GroupListItem): boolean {
+    if (this.auth.isLoggedIn()) {
+      return false;
+    }
+    return this.joinService.getActiveGuestGroupId() === group.group_id;
+  }
+
+  /** Backend-computed for a Member (`member_active_elsewhere`, enforced
+   * server-side regardless of this check). For a Guest, the backend has no
+   * way to know — there's no cross-group identity to check against (see
+   * group/service.py `_raise_if_active_elsewhere`'s docstring) — so this
+   * falls back to the same-browser-only localStorage marker instead. That
+   * marker is a UI nicety only: a different browser, an incognito window,
+   * or cleared storage all trivially bypass it, unlike the Member case. */
+  isBlockedElsewhere(group: GroupListItem): boolean {
+    if (group.member_active_elsewhere === true) {
+      return true;
+    }
+    if (this.auth.isLoggedIn()) {
+      return false;
+    }
+    const activeGuestGroupId = this.joinService.getActiveGuestGroupId();
+    return activeGuestGroupId !== null && activeGuestGroupId !== group.group_id;
   }
 }

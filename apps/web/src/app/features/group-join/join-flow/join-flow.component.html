@@ -5,6 +5,11 @@
     }
     @case ('error') {
       <p role="alert">{{ (errorKey() ?? 'errors.UNKNOWN_ERROR') | translate }}</p>
+      @if (alreadyActiveElsewhere()) {
+        <button type="button" class="btn" (click)="goToGroupList()">
+          {{ 'groupJoin.backToList' | translate }}
+        </button>
+      }
     }
     @case ('password') {
       <form class="form" [formGroup]="passwordForm" (ngSubmit)="submitPassword()">

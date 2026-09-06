@@ -9,6 +9,7 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { Observable, catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from '../../features/auth/auth.service';
+import { GroupJoinService } from '../../features/group-join/group-join.service';
 import { ApiError } from './api-error';
 
 function toApiError(response: HttpErrorResponse): ApiError {
@@ -39,11 +40,17 @@ function toApiError(response: HttpErrorResponse): ApiError {
  * endpoint — schedule/standings/match-records) and means "the viewer's own
  * RosterEntry stopped being active" — left elsewhere, or kicked, mid-
  * session. Handling it here once covers all three tabs, whichever is
- * active when it happens, instead of each duplicating its own redirect. */
+ * active when it happens, instead of each duplicating its own redirect.
+ * Also clears the Guest active-group marker unconditionally (not just when
+ * it matches this request's group) — this error already means SOME
+ * RosterEntry of the caller's stopped being active, so keeping a
+ * possibly-stale marker around only risks under-blocking a Guest's next
+ * join attempt (the safe direction to fail in), never over-blocking one. */
 function handle(
   req: HttpRequest<unknown>,
   next: HttpHandlerFn,
   authService: AuthService,
+  groupJoinService: GroupJoinService,
   router: Router,
   alreadyRetried: boolean,
 ): Observable<HttpEvent<unknown>> {
@@ -55,6 +62,7 @@ function handle(
 
       const apiError = toApiError(response);
       if (apiError.errorCode === 'MEMBERSHIP_REQUIRED') {
+        groupJoinService.clearActiveGuestGroupId();
         void router.navigate(['/groups']);
       }
 
@@ -73,7 +81,7 @@ function handle(
           const retried = req.clone({
             setHeaders: { Authorization: `Bearer ${refreshed.access_token}` },
           });
-          return handle(retried, next, authService, router, true);
+          return handle(retried, next, authService, groupJoinService, router, true);
         }),
         catchError(() => {
           authService.logout();
@@ -86,6 +94,7 @@ function handle(
 
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
+  const groupJoinService = inject(GroupJoinService);
   const router = inject(Router);
-  return handle(req, next, authService, router, false);
+  return handle(req, next, authService, groupJoinService, router, false);
 };

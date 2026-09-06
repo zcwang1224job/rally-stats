@@ -16,6 +16,7 @@ function setup(options: {
   alreadyJoined?: boolean;
   joinError?: ApiError;
   navigate?: (...args: unknown[]) => Promise<boolean>;
+  activeGuestGroupId?: string | null;
 }) {
   TestBed.configureTestingModule({
     imports: [JoinFlowComponent],
@@ -45,6 +46,7 @@ function setup(options: {
         provide: GroupJoinService,
         useValue: {
           getGuestSessionToken: () => options.existingGuestToken ?? null,
+          getActiveGuestGroupId: () => options.activeGuestGroupId ?? null,
           resolveGuestSession: () => of({ nickname: '訪客' }),
           clearGuestSessionToken: () => undefined,
           verifyPassword: () => of({ correct: true }),
@@ -152,5 +154,56 @@ describe('JoinFlowComponent: ALREADY_ACTIVE_IN_ANOTHER_GROUP on the confirm step
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
     const buttonText = (dialog.querySelector('button') as HTMLButtonElement).textContent ?? '';
     expect(buttonText).toContain('groupJoin.joinSubmit');
+  });
+});
+
+/** Same-browser-only Guest nicety (research: one-active-group-per-Member
+ * follow-up) — there's no cross-group identity to check server-side for a
+ * Guest, so this is enforced entirely client-side via a localStorage
+ * marker (group-join.service.ts's setActiveGuestGroupId()). Blocks before
+ * the Guest even fills in a nickname, since submitting would just fail
+ * anyway once it reached the backend (nothing there would reject it any
+ * earlier for a Guest). */
+describe('JoinFlowComponent: Guest already active in a different group (same browser)', () => {
+  it('shows the error step with a back-to-list button, skipping the nickname form entirely', () => {
+    const navigateCalls: unknown[][] = [];
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: false,
+      activeGuestGroupId: 'some-other-group',
+      navigate: (...args: unknown[]) => {
+        navigateCalls.push(args);
+        return Promise.resolve(true);
+      },
+    });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('input[formcontrolname="nickname"]')).toBeNull();
+    expect(dialog.textContent).toContain('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
+
+    (dialog.querySelector('button') as HTMLButtonElement).click();
+    expect(navigateCalls).toEqual([[['/groups']]]);
+  });
+
+  it('does not block a Guest whose tracked active group IS this one', () => {
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: false,
+      activeGuestGroupId: 'g1',
+    });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('input[formcontrolname="nickname"]')).not.toBeNull();
+  });
+
+  it('does not block a Guest with no tracked active group', () => {
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: false,
+      activeGuestGroupId: null,
+    });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('input[formcontrolname="nickname"]')).not.toBeNull();
   });
 });

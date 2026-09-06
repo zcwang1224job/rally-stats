@@ -91,6 +91,20 @@ export class JoinFlowComponent implements AfterViewInit {
       return;
     }
 
+    // Same-browser-only Guest nicety (no cross-group identity exists to
+    // check server-side — see group-join.service.ts's
+    // setActiveGuestGroupId() docstring): if this browser is already
+    // tracked as active in a DIFFERENT group, don't even let the Guest
+    // fill in a nickname for this one, since the join would just fail
+    // anyway once submitted (and for a Guest, nothing server-side would
+    // have rejected it earlier than that).
+    const activeGuestGroupId = this.joinService.getActiveGuestGroupId();
+    if (activeGuestGroupId !== null && activeGuestGroupId !== this.groupId) {
+      this.step.set('error');
+      this.errorKey.set('errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP');
+      return;
+    }
+
     const existingToken = this.joinService.getGuestSessionToken(this.groupId);
     if (existingToken) {
       this.joinService.resolveGuestSession(existingToken).subscribe({

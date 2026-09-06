@@ -12,6 +12,7 @@ import {
 import { AuthService } from '../auth/auth.service';
 
 const GUEST_TOKEN_KEY_PREFIX = 'rally-stats:guest-session-token:';
+const ACTIVE_GUEST_GROUP_KEY = 'rally-stats:guest-active-group-id';
 
 export interface GroupListFilters {
   court_name?: string;
@@ -60,6 +61,11 @@ export class GroupJoinService {
         tap((response) => {
           if (response.guest_session_token) {
             this.setGuestSessionToken(groupId, response.guest_session_token);
+            // A guest_session_token only ever comes back for a Guest join
+            // (a Member's is always null) — this is the one place every
+            // Guest join path funnels through, so it's the right spot to
+            // record "this browser is now active in this group" too.
+            this.setActiveGuestGroupId(groupId);
           }
         }),
       );
@@ -79,6 +85,27 @@ export class GroupJoinService {
 
   clearGuestSessionToken(groupId: string): void {
     localStorage.removeItem(GUEST_TOKEN_KEY_PREFIX + groupId);
+  }
+
+  /** Best-effort, same-browser-only tracking of "which group is this
+   * Guest currently active in" — deliberately separate from the per-group
+   * guest_session_token above (that's scoped to resuming ONE group's
+   * session on reload, and today is never cleared on leaving it, so it
+   * isn't a reliable "currently active" signal by itself). This can't
+   * enforce the one-active-group rule the way the backend does for
+   * Members (a different browser, incognito window, or cleared storage
+   * trivially bypasses it) — it's a UI nicety for the common case of the
+   * same guest, same browser, forgetting they're already in a group. */
+  setActiveGuestGroupId(groupId: string): void {
+    localStorage.setItem(ACTIVE_GUEST_GROUP_KEY, groupId);
+  }
+
+  getActiveGuestGroupId(): string | null {
+    return localStorage.getItem(ACTIVE_GUEST_GROUP_KEY);
+  }
+
+  clearActiveGuestGroupId(): void {
+    localStorage.removeItem(ACTIVE_GUEST_GROUP_KEY);
   }
 
   private authHeader(): Record<string, string> {

@@ -1,6 +1,9 @@
 """Unit test: GET /groups' joined_by_me field — null when unauthenticated,
 false when logged in but not a member of that group, true when an active
-member (US6, FR-006)."""
+member (US6, FR-006). Also member_active_elsewhere — the one-active-group
+invariant's read-side counterpart, letting the browse list disable "加入"
+for every OTHER group up front instead of only failing after the Member
+picks one and confirms."""
 
 import pytest
 from httpx import AsyncClient
@@ -78,3 +81,41 @@ async def test_joined_by_me_true_when_active_member(
     )
     item = next(g for g in response.json()["groups"] if g["name"] == "個人化測試-已加入")
     assert item["joined_by_me"] is True
+
+
+async def test_member_active_elsewhere_null_when_unauthenticated(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    await _make_group(client, valid_turnstile_token, "elsewhere-未登入")
+
+    response = await client.get("/groups")
+    item = next(g for g in response.json()["groups"] if g["name"] == "elsewhere-未登入")
+    assert item["member_active_elsewhere"] is None
+
+
+async def test_member_active_elsewhere_false_for_own_group_and_true_for_others(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    own_group = await _make_group(client, valid_turnstile_token, "elsewhere-自己的團")
+    other_group = await _make_group(client, valid_turnstile_token, "elsewhere-別人的團")
+    access_token = await _register_and_login(client, db_session, "elsewhere@example.com")
+
+    join_response = await client.post(
+        f"/groups/{own_group['group_id']}/join",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={},
+    )
+    assert join_response.status_code == 201
+
+    response = await client.get(
+        "/groups", headers={"Authorization": f"Bearer {access_token}"}
+    )
+    groups_by_name = {g["name"]: g for g in response.json()["groups"]}
+
+    own_item = groups_by_name["elsewhere-自己的團"]
+    assert own_item["joined_by_me"] is True
+    assert own_item["member_active_elsewhere"] is False
+
+    other_item = groups_by_name["elsewhere-別人的團"]
+    assert other_item["joined_by_me"] is False
+    assert other_item["member_active_elsewhere"] is True

@@ -248,6 +248,14 @@ class GroupListItem(BaseModel):
     # roster too) — lets "回到我的團" route the creator straight to the
     # admin page instead of the read-only member view.
     created_by_me: bool | None = None
+    # True when the logged-in Member has an active RosterEntry in a
+    # DIFFERENT group (never true alongside joined_by_me for the same
+    # item — they're mutually exclusive by the one-active-group invariant).
+    # Lets the browse list disable "加入" for every other group up front
+    # instead of only failing after the Member picks one and confirms
+    # (ALREADY_ACTIVE_IN_ANOTHER_GROUP would still reject it server-side
+    # either way — this is a UI nicety, not the enforcement).
+    member_active_elsewhere: bool | None = None
 
 
 class GroupListResponse(BaseModel):

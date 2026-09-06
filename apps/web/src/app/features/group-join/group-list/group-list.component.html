@@ -52,15 +52,18 @@
             >🔓 {{ 'groupJoin.noPasswordLabel' | translate }}</span
           >
         }
-        @if (group.joined_by_me === true) {
+        @if (group.joined_by_me === true || isOwnGroupForGuest(group)) {
           <span class="status-badge">{{ 'groupJoin.alreadyJoinedLabel' | translate }}</span>
-          <!-- 已加入的會員即使團已滿也要有路回去（不受 isFull 影響），且不需
-               要再走一次密碼流程（clickJoin 內已處理）。 -->
+          <!-- 已加入者（會員或同一瀏覽器的訪客）即使團已滿也要有路回去
+               （不受 isFull 影響），且不需要再走一次密碼流程（clickJoin
+               內已處理）。 -->
           <button type="button" class="btn" (click)="clickJoin(group)">
             {{ 'groupJoin.returnButton' | translate }}
           </button>
         } @else if (isFull(group)) {
           <span role="status" class="status-badge status-badge--danger">{{ 'errors.GROUP_FULL' | translate }}</span>
+        } @else if (isBlockedElsewhere(group)) {
+          <span role="status" class="status-badge status-badge--danger">{{ 'groupJoin.activeElsewhereLabel' | translate }}</span>
         } @else {
           <button type="button" class="btn" (click)="clickJoin(group)">
             {{ 'groupJoin.joinButton' | translate }}

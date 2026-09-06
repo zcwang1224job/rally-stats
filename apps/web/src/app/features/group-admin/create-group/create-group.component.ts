@@ -13,6 +13,7 @@ import {
 } from '../shared/group-form-validators';
 import { ApiError } from '../../../core/api/api-error';
 import { AuthService } from '../../auth/auth.service';
+import { GroupJoinService } from '../../group-join/group-join.service';
 
 @Component({
   selector: 'app-create-group',
@@ -26,6 +27,7 @@ export class CreateGroupComponent {
   private readonly router = inject(Router);
   private readonly translate = inject(TranslateService);
   private readonly auth = inject(AuthService);
+  private readonly groupJoin = inject(GroupJoinService);
 
   readonly submitting = signal(false);
   readonly errorKey = signal<string | null>(null);
@@ -147,6 +149,7 @@ export class CreateGroupComponent {
           this.groupAdmin.setAdminToken(response.group_id, response.admin_token);
           if (this.memberNickname() === null) {
             this.groupAdmin.setLastCreatedGroupId(response.group_id);
+            this.groupJoin.setActiveGuestGroupId(response.group_id);
           }
           this.result.set(response);
         },

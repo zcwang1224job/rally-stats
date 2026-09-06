@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { GroupMemberViewService } from './group-member-view.service';
 import { GroupMemberViewComponent } from './group-member-view.component';
 import { RealtimeService } from '../../core/realtime/ably.service';
+import { GroupJoinService } from '../group-join/group-join.service';
 import { signal } from '@angular/core';
 
 const scheduleResponse = {
@@ -38,6 +39,10 @@ describe('GroupMemberViewComponent nav (SC-001)', () => {
         {
           provide: GroupMemberViewService,
           useValue: { getMemberSchedule: () => of(scheduleResponse) },
+        },
+        {
+          provide: GroupJoinService,
+          useValue: { getActiveGuestGroupId: () => null, clearActiveGuestGroupId: () => undefined },
         },
       ],
     });
@@ -91,6 +96,10 @@ describe('GroupMemberViewComponent nav renders as a bottom nav on mobile (FR-007
         {
           provide: GroupMemberViewService,
           useValue: { getMemberSchedule: () => of(scheduleResponse) },
+        },
+        {
+          provide: GroupJoinService,
+          useValue: { getActiveGuestGroupId: () => null, clearActiveGuestGroupId: () => undefined },
         },
       ],
     });

@@ -21,6 +21,12 @@ export interface GroupListItem {
   // True only when the logged-in Member created this group — a subset of
   // joined_by_me, lets "回到我的團" route the creator to the admin page.
   created_by_me?: boolean | null;
+  // True when the logged-in Member has an active RosterEntry in a
+  // DIFFERENT group — never true alongside joined_by_me for the same item.
+  // Lets the list disable "加入" for every other group up front instead of
+  // only failing after the Member picks one and confirms (the backend
+  // still enforces this regardless — ALREADY_ACTIVE_IN_ANOTHER_GROUP).
+  member_active_elsewhere?: boolean | null;
 }
 
 export interface GroupListResponse {

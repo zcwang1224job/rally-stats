@@ -150,16 +150,27 @@ async def list_groups(
         time_start=time_start,
         time_end=time_end,
     )
+    # Computed once for the whole list, not per item — a Member has at most
+    # one active RosterEntry anywhere (the one-active-group invariant), so
+    # this single lookup already answers "is it in THIS item's group or a
+    # different one" for every item below.
+    active_group_id = (
+        await service.get_active_group_id_for_member(session, member.id)
+        if member is not None
+        else None
+    )
     items = []
     for group in groups:
         court_names = await service.court_names_for_group(session, group.id)
         creator_nickname = await service.creator_nickname_for_group(session, group.id)
         joined_by_me = None
         created_by_me = None
+        member_active_elsewhere = None
         if member is not None:
             existing = await service.active_roster_entry_for_member(session, group.id, member.id)
             joined_by_me = existing is not None
             created_by_me = group.created_by_member_id == member.id
+            member_active_elsewhere = active_group_id is not None and active_group_id != group.id
         items.append(
             GroupListItem(
                 **_to_public(group).model_dump(),
@@ -167,6 +178,7 @@ async def list_groups(
                 creator_nickname=creator_nickname,
                 joined_by_me=joined_by_me,
                 created_by_me=created_by_me,
+                member_active_elsewhere=member_active_elsewhere,
             )
         )
     return GroupListResponse(groups=items, page=page, total_pages=total_pages)

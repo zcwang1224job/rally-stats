@@ -3,6 +3,7 @@ import { provideRouter, Router } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
+import { GroupJoinService } from '../../group-join/group-join.service';
 import { GroupAdminService } from '../group-admin.service';
 import { CreateGroupComponent } from './create-group.component';
 
@@ -45,6 +46,7 @@ describe('CreateGroupComponent', () => {
           },
         },
         { provide: AuthService, useValue: auth },
+        { provide: GroupJoinService, useValue: { setActiveGuestGroupId: () => undefined } },
       ],
     });
     const fixture = TestBed.createComponent(CreateGroupComponent);
@@ -114,6 +116,7 @@ describe('CreateGroupComponent', () => {
           provide: AuthService,
           useValue: { isLoggedIn: () => true, getMe: () => of(noNicknameMember) },
         },
+        { provide: GroupJoinService, useValue: { setActiveGuestGroupId: () => undefined } },
       ],
     });
     const fixture = TestBed.createComponent(CreateGroupComponent);

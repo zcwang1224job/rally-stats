@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { AuthService } from '../../features/auth/auth.service';
+import { GroupJoinService } from '../../features/group-join/group-join.service';
 import { errorInterceptor } from './error-interceptor';
 
 /** MEMBERSHIP_REQUIRED has exactly one source across the whole backend
@@ -11,10 +12,13 @@ import { errorInterceptor } from './error-interceptor';
  * viewer's own RosterEntry stopped being active mid-session — left
  * elsewhere, or kicked. A global redirect here covers all three tabs
  * (schedule/standings/match-records), whichever is active when it
- * happens, without each duplicating its own redirect logic. */
+ * happens, without each duplicating its own redirect logic. It also
+ * clears the Guest active-group marker unconditionally, since this error
+ * already means some RosterEntry of the caller's stopped being active. */
 describe('errorInterceptor: MEMBERSHIP_REQUIRED redirect', () => {
   function setup() {
     const navigateCalls: unknown[][] = [];
+    let clearedActiveGuestGroupId = false;
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(withInterceptors([errorInterceptor])),
@@ -29,12 +33,21 @@ describe('errorInterceptor: MEMBERSHIP_REQUIRED redirect', () => {
             },
           },
         },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            clearActiveGuestGroupId: () => {
+              clearedActiveGuestGroupId = true;
+            },
+          },
+        },
       ],
     });
     return {
       http: TestBed.inject(HttpClient),
       httpMock: TestBed.inject(HttpTestingController),
       navigateCalls,
+      wasActiveGuestGroupIdCleared: () => clearedActiveGuestGroupId,
     };
   }
 
@@ -54,8 +67,20 @@ describe('errorInterceptor: MEMBERSHIP_REQUIRED redirect', () => {
     expect(caughtError?.errorCode).toBe('MEMBERSHIP_REQUIRED');
   });
 
-  it('does not navigate for an unrelated error code', () => {
-    const { http, httpMock, navigateCalls } = setup();
+  it('clears the Guest active-group marker on MEMBERSHIP_REQUIRED', () => {
+    const { http, httpMock, wasActiveGuestGroupIdCleared } = setup();
+
+    http.get('/api/groups/g1/standings').subscribe({ error: () => undefined });
+
+    httpMock
+      .expectOne('/api/groups/g1/standings')
+      .flush({ error_code: 'MEMBERSHIP_REQUIRED', detail: {} }, { status: 403, statusText: 'Forbidden' });
+
+    expect(wasActiveGuestGroupIdCleared()).toBe(true);
+  });
+
+  it('does not navigate or clear anything for an unrelated error code', () => {
+    const { http, httpMock, navigateCalls, wasActiveGuestGroupIdCleared } = setup();
 
     http.get('/api/groups/g1/standings').subscribe({ error: () => undefined });
 
@@ -64,5 +89,6 @@ describe('errorInterceptor: MEMBERSHIP_REQUIRED redirect', () => {
       .flush({ error_code: 'GROUP_NOT_FOUND', detail: {} }, { status: 404, statusText: 'Not Found' });
 
     expect(navigateCalls).toEqual([]);
+    expect(wasActiveGuestGroupIdCleared()).toBe(false);
   });
 });

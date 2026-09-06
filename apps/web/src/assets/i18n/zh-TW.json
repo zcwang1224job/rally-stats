@@ -52,6 +52,7 @@
     "hasPasswordLabel": "需要密碼",
     "noPasswordLabel": "公開",
     "alreadyJoinedLabel": "已加入",
+    "activeElsewhereLabel": "您已在其他團",
     "joinButton": "加入",
     "returnButton": "回到我的團",
     "passwordTitle": "輸入通關密碼",

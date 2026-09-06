@@ -29,6 +29,8 @@ function setup(
   groups: unknown[] = [group],
   options: {
     getCreatorAdminToken?: () => Observable<{ admin_token: string; group_id: string }>;
+    isLoggedIn?: boolean;
+    activeGuestGroupId?: string | null;
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -40,6 +42,7 @@ function setup(
         provide: GroupJoinService,
         useValue: {
           listGroups: () => of({ groups, page: 1, total_pages: totalPages }),
+          getActiveGuestGroupId: () => options.activeGuestGroupId ?? null,
         },
       },
       {
@@ -53,7 +56,10 @@ function setup(
       },
       {
         provide: AuthService,
-        useValue: { getAccessToken: () => 'fake-member-token' },
+        useValue: {
+          getAccessToken: () => 'fake-member-token',
+          isLoggedIn: () => options.isLoggedIn ?? true,
+        },
       },
     ],
   });
@@ -122,5 +128,58 @@ describe('GroupListComponent', () => {
     });
     expect(setAdminTokenSpy).toHaveBeenCalledWith('g1', 'fresh-admin-token');
     expect(navigateSpy).toHaveBeenCalledWith(['/groups', 'g1', 'admin']);
+  });
+
+  it('a Member active in another group sees a badge instead of a join button for this one', () => {
+    const blockedGroup = { ...group, member_active_elsewhere: true };
+    const fixture = setup(1, [blockedGroup]);
+
+    const li = fixture.nativeElement.querySelector('li');
+    expect(li.textContent).toContain('groupJoin.activeElsewhereLabel');
+    expect(li.querySelector('button')).toBeNull();
+  });
+
+  it('clickJoin() is a no-op front-check for member_active_elsewhere, even if called directly', () => {
+    const blockedGroup = { ...group, member_active_elsewhere: true };
+    const fixture = setup(1, [blockedGroup]);
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    fixture.componentInstance.clickJoin(blockedGroup);
+
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('a Guest active in another group (same browser) sees the same badge instead of a join button', () => {
+    const otherGroup = { ...group, group_id: 'g2' };
+    const fixture = setup(1, [otherGroup], { isLoggedIn: false, activeGuestGroupId: 'g1' });
+
+    const li = fixture.nativeElement.querySelector('li');
+    expect(li.textContent).toContain('groupJoin.activeElsewhereLabel');
+    expect(li.querySelector('button')).toBeNull();
+  });
+
+  it('a Guest active in THIS group sees "已加入"/"返回組團" instead of a join button, and it navigates to member-view', () => {
+    const fixture = setup(1, [group], { isLoggedIn: false, activeGuestGroupId: 'g1' });
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    const li = fixture.nativeElement.querySelector('li');
+    expect(li.textContent).not.toContain('groupJoin.activeElsewhereLabel');
+    expect(li.textContent).toContain('groupJoin.alreadyJoinedLabel');
+    expect(li.textContent).toContain('groupJoin.returnButton');
+    expect(li.textContent).not.toContain('groupJoin.joinButton');
+
+    (li.querySelector('button') as HTMLButtonElement).click();
+
+    expect(navigateSpy).toHaveBeenCalledWith(['/groups', 'g1', 'member-view']);
+  });
+
+  it('a Guest with no tracked active group is not blocked', () => {
+    const fixture = setup(1, [group], { isLoggedIn: false, activeGuestGroupId: null });
+
+    const li = fixture.nativeElement.querySelector('li');
+    expect(li.textContent).not.toContain('groupJoin.activeElsewhereLabel');
+    expect(li.querySelector('button')).not.toBeNull();
   });
 });

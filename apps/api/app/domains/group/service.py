@@ -59,6 +59,22 @@ async def _touch_activity(session: AsyncSession, group: Group) -> None:
     group.last_activity_at = datetime.now(UTC)
 
 
+async def get_active_group_id_for_member(
+    session: AsyncSession, member_id: uuid.UUID
+) -> uuid.UUID | None:
+    """The one Group a Member currently has an active RosterEntry in, if
+    any — the read-side counterpart of `_raise_if_active_elsewhere`'s
+    write-time guard, reused by the browse list (US: proactively disabling
+    "加入" for every OTHER group there instead of only failing after the
+    Member picks one and confirms)."""
+    result = await session.execute(
+        select(RosterEntry.group_id).where(
+            RosterEntry.member_id == member_id, RosterEntry.status == "active"
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def _raise_if_active_elsewhere(
     session: AsyncSession, member_id: uuid.UUID, *, exclude_group_id: uuid.UUID | None = None
 ) -> None:
@@ -66,18 +82,12 @@ async def _raise_if_active_elsewhere(
     a Guest's identity (`guest_session_token`) is already scoped to a single
     group by design (FR-022, `RosterEntry.member_id` null) and has no
     cross-group identity to check against, so this can't be enforced for
-    Guests at all. `member_id` alone (no `group_id`) finds an active
-    RosterEntry in ANY group; `exclude_group_id` only matters for
-    `join_group`'s FR-020a same-group idempotency case, where the caller
-    already knows about (and allows) their own existing entry in THIS
-    group — `create_group` never has one yet, so it never passes this."""
-    query = select(RosterEntry.id).where(
-        RosterEntry.member_id == member_id, RosterEntry.status == "active"
-    )
-    if exclude_group_id is not None:
-        query = query.where(RosterEntry.group_id != exclude_group_id)
-    result = await session.execute(query)
-    if result.scalar_one_or_none() is not None:
+    Guests at all. `exclude_group_id` only matters for `join_group`'s
+    FR-020a same-group idempotency case, where the caller already knows
+    about (and allows) their own existing entry in THIS group —
+    `create_group` never has one yet, so it never passes this."""
+    active_group_id = await get_active_group_id_for_member(session, member_id)
+    if active_group_id is not None and active_group_id != exclude_group_id:
         raise ApiError("ALREADY_ACTIVE_IN_ANOTHER_GROUP", status_code=409)
 
 
