@@ -7,49 +7,99 @@
   margin: 0 auto;
 }
 
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+
+  h1 {
+    margin: 0;
+    font-size: var(--font-size-heading);
+    font-weight: var(--font-weight-bold);
+  }
+}
+
+.filters-panel {
+  margin-bottom: var(--space-md);
 }
 
 .filter-form {
   max-width: none;
-  flex-direction: column;
-  margin-bottom: var(--space-md);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
 
   @media (min-width: breakpoints.$breakpoint-tablet) {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-end;
-
-    label {
-      flex: 1;
-      min-width: 140px;
-    }
+    grid-template-columns: repeat(2, 1fr);
   }
+}
+
+.filters-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--color-text-muted);
 }
 
 .friend-list {
   list-style: none;
   padding: 0;
-  margin: var(--space-md) 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
 }
 
-.friend-list li {
+.friend-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
 }
 
+// A simple initial-letter avatar gives each row a visual anchor instead of
+// two lines of plain text — cheap to render (no image upload/storage
+// needed) while still giving the list some identity per person, matching
+// the app's "bold, high-contrast, single vivid accent" language.
+.friend-row__avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
+}
+
+.friend-row__identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .nickname {
   font-weight: var(--font-weight-bold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .user-number {
+  font-size: var(--font-size-caption);
   color: var(--color-text-muted);
 }
 

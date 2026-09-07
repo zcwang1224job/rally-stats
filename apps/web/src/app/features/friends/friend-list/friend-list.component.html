@@ -1,19 +1,45 @@
 <main>
-  <h1>{{ 'friends.listTitle' | translate }}</h1>
+  <header class="page-header">
+    <h1>{{ 'friends.listTitle' | translate }}</h1>
+    <a
+      class="btn btn--icon"
+      routerLink="/friends/add"
+      [attr.aria-label]="'friends.addButton' | translate"
+      [attr.title]="'friends.addButton' | translate"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <line x1="19" y1="8" x2="19" y2="14" />
+        <line x1="22" y1="11" x2="16" y2="11" />
+      </svg>
+    </a>
+  </header>
 
-  <form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
-    <label>
-      {{ 'friends.filterNickname' | translate }}
-      <input type="text" formControlName="nickname" />
-    </label>
-    <label>
-      {{ 'friends.filterUserNumber' | translate }}
-      <input type="text" formControlName="user_number" />
-    </label>
-    <button type="submit" class="btn">{{ 'groupJoin.applyFilters' | translate }}</button>
-  </form>
-
-  <a class="btn btn--secondary" routerLink="/friends/add">{{ 'friends.addButton' | translate }}</a>
+  <section class="filters-panel card">
+    <form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <div class="filters-grid">
+        <label>
+          {{ 'friends.filterNickname' | translate }}
+          <input type="text" formControlName="nickname" />
+        </label>
+        <label>
+          {{ 'friends.filterUserNumber' | translate }}
+          <input type="text" formControlName="user_number" />
+        </label>
+      </div>
+      <div class="filters-actions">
+        <button type="submit" class="btn btn--secondary">
+          {{ 'groupJoin.applyFilters' | translate }}
+        </button>
+        @if (hasActiveFilters()) {
+          <button type="button" class="btn btn--secondary" (click)="clearFilters()">
+            {{ 'groupJoin.clearFilters' | translate }}
+          </button>
+        }
+      </div>
+    </form>
+  </section>
 
   @if (errorKey(); as key) {
     <p role="alert">{{ key | translate }}</p>
@@ -22,15 +48,33 @@
   @if (loading()) {
     <p>{{ 'common.loading' | translate }}</p>
   } @else if (items().length === 0) {
-    <p>{{ 'friends.emptyList' | translate }}</p>
+    <div class="empty-state card">
+      <p>{{ 'friends.emptyList' | translate }}</p>
+    </div>
   } @else {
     <ul class="friend-list">
       @for (friend of items(); track friend.member_id) {
-        <li class="card">
-          <span class="nickname">{{ friend.nickname }}</span>
-          <span class="user-number">{{ friend.user_number }}</span>
-          <button type="button" class="btn btn--danger" (click)="openUnfriendDialog(friend)">
-            {{ 'friends.unfriendButton' | translate }}
+        <li class="card friend-row">
+          <span class="friend-row__avatar" aria-hidden="true">
+            {{ (friend.nickname || friend.user_number).charAt(0) }}
+          </span>
+          <span class="friend-row__identity">
+            <span class="nickname">{{ friend.nickname }}</span>
+            <span class="user-number">{{ friend.user_number }}</span>
+          </span>
+          <button
+            type="button"
+            class="btn btn--danger btn--icon"
+            (click)="openUnfriendDialog(friend)"
+            [attr.aria-label]="'friends.unfriendButtonAriaLabel' | translate: { nickname: friend.nickname }"
+            [attr.title]="'friends.unfriendButton' | translate"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <line x1="17" y1="8" x2="22" y2="13" />
+              <line x1="22" y1="8" x2="17" y2="13" />
+            </svg>
           </button>
         </li>
       }

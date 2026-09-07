@@ -37,6 +37,15 @@ export class FriendListComponent {
     user_number: [''],
   });
 
+  /** Snapshot of the filters a load() call actually used — separate from
+   * the live filterForm value so "clear filters" only shows once a filter
+   * has actually been applied, not just typed (matches the group-list /
+   * match-history filter panel convention). */
+  private readonly appliedFilters = signal(this.filterForm.getRawValue());
+  readonly hasActiveFilters = computed(
+    () => !!(this.appliedFilters().nickname || this.appliedFilters().user_number),
+  );
+
   constructor() {
     this.load();
   }
@@ -44,6 +53,11 @@ export class FriendListComponent {
   applyFilters(): void {
     this.page.set(1);
     this.load();
+  }
+
+  clearFilters(): void {
+    this.filterForm.reset({ nickname: '', user_number: '' });
+    this.applyFilters();
   }
 
   goToPage(page: number): void {
@@ -54,6 +68,7 @@ export class FriendListComponent {
   private load(): void {
     this.loading.set(true);
     const raw = this.filterForm.getRawValue();
+    this.appliedFilters.set(raw);
     this.friends
       .listFriends(this.page(), {
         nickname: raw.nickname || undefined,

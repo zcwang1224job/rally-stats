@@ -75,6 +75,21 @@
   }
 }
 
+// Square, icon-only variant — same touch-target/hover/active behavior as
+// `.btn`, just without the text label pushing its width out. The icon
+// itself carries no meaning on its own; every use MUST pair it with an
+// `aria-label` (constitution VII — a shape/color alone is never the only
+// way a control's purpose is conveyed).
+.btn--icon {
+  padding: var(--space-sm);
+  gap: 0;
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
