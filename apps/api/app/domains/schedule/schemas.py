@@ -42,6 +42,7 @@ class RosterScheduleStatus(BaseModel):
     status: str
     wait_count: int | None
     currently_playing: bool
+    is_creator: bool
 
 
 class ScheduleResponse(BaseModel):

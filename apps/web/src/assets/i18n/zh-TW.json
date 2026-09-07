@@ -342,6 +342,7 @@
     "waitCountLabel": "已等待 {{count}} 輪",
     "currentlyPlaying": "比賽中",
     "kickMember": "踢除",
+    "kickMemberAriaLabel": "踢除 {{nickname}}",
     "kickMemberConfirmTitle": "確定踢除 {{nickname}}？",
     "kickMemberConfirmBody": "此成員將自輪替名單移除，尚未開始的相關比賽將自動取消；進行中的比賽不受影響。"
   },
@@ -411,6 +412,7 @@
     "AUTO_NEXT_ROUND_NOT_SUPPORTED_IN_MANUAL_MODE": "手動安排模式不支援自動進入下一輪",
     "ROSTER_ENTRY_NOT_FOUND": "找不到此輪替名單成員",
     "ROSTER_ENTRY_ALREADY_LEFT": "此成員已離開或已被踢除",
+    "CANNOT_KICK_CREATOR": "無法踢除團長本人",
     "MEMBERSHIP_REQUIRED": "請先加入此團才能查看",
     "GROUP_FULL": "此團人數已滿",
     "GROUP_PASSWORD_INCORRECT": "通關密碼錯誤",

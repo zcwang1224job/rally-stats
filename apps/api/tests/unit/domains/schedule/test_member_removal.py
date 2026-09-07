@@ -229,6 +229,25 @@ async def test_kick_member_rejects_already_left_entry(db_session: AsyncSession) 
 
 
 @pytest.mark.asyncio
+async def test_kick_member_rejects_the_creators_own_entry(db_session: AsyncSession) -> None:
+    """The admin page hides the kick button for the creator's own row, but
+    that's UI-only — the invariant MUST also hold if the request is sent
+    directly (e.g. a stale UI, or bypassing the frontend entirely)."""
+    group = await _make_group(db_session)
+    creator = await _make_roster_entry(db_session, group, "團長")
+    creator.is_creator = True
+    await db_session.commit()
+
+    from app.core.errors import ApiError
+
+    with pytest.raises(ApiError) as exc_info:
+        await kick_member(db_session, group, creator)
+    assert exc_info.value.error_code == "CANNOT_KICK_CREATOR"
+    await db_session.refresh(creator)
+    assert creator.status == "active"
+
+
+@pytest.mark.asyncio
 async def test_kick_member_rejects_entry_from_a_different_group(db_session: AsyncSession) -> None:
     """Security review (T078): kicking a roster_entry_id that belongs to a
     different group MUST NOT succeed, even with a valid admin token for the

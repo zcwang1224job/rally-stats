@@ -847,6 +847,7 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             status=entry.status,
             wait_count=entry.wait_count,
             currently_playing=entry.id in playing_roster_ids,
+            is_creator=entry.is_creator,
         )
         for entry in roster_result.scalars()
     ]
@@ -1166,9 +1167,15 @@ async def handle_member_left(
 
 async def kick_member(session: AsyncSession, group: Group, entry: RosterEntry) -> RosterEntry:
     """FR-037: admin-triggered removal — identical convergence rules to a
-    member leaving on their own (FR-039/040/041), only the trigger differs."""
+    member leaving on their own (FR-039/040/041), only the trigger differs.
+    The creator's own roster entry MUST NOT be kickable — the admin page
+    hides the button for that row, but that's UI-only, so the invariant is
+    enforced here too rather than relying on the frontend never sending
+    the request."""
     if entry.group_id != group.id:
         raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    if entry.is_creator:
+        raise ApiError("CANNOT_KICK_CREATOR", status_code=403)
     if entry.status != "active":
         raise ApiError("ROSTER_ENTRY_ALREADY_LEFT", status_code=409)
 

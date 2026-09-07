@@ -45,6 +45,7 @@ export interface RosterScheduleStatus {
   status: string;
   wait_count: number | null;
   currently_playing: boolean;
+  is_creator: boolean;
 }
 
 export interface ScheduleResponse {

@@ -169,7 +169,7 @@ async def kick_member(
     """Kicks a member from the roster (FR-037), converging the current
     round's schedule per FR-039~041 and publishing `member.left`. Errors:
     `ADMIN_TOKEN_INVALID`, `ROSTER_ENTRY_NOT_FOUND`,
-    `ROSTER_ENTRY_ALREADY_LEFT`."""
+    `ROSTER_ENTRY_ALREADY_LEFT`, `CANNOT_KICK_CREATOR`."""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
