@@ -116,7 +116,8 @@
       "resultWinBadge": "勝",
       "resultLossBadge": "敗",
       "filters": {
-        "opponent1": "對手暱稱 1",
+        "opponent1": "對手暱稱",
+        "opponentPlaceholder": "快速搜尋對手",
         "opponent2": "對手暱稱 2（雙打）",
         "partner1": "隊友暱稱 1",
         "partner2": "隊友暱稱 2（雙打）",
@@ -124,6 +125,7 @@
         "resultAny": "不限",
         "resultWin": "只看勝場",
         "resultLoss": "只看敗場",
+        "moreFilters": "進階篩選",
         "dateFrom": "日期（起）",
         "dateTo": "日期（迄）",
         "roundFrom": "輪次（起）",
@@ -137,25 +139,25 @@
         "apply": "套用篩選",
         "clear": "清除篩選"
       },
+      "tier": {
+        "elite": "常勝軍",
+        "strong": "穩定輸出",
+        "rising": "持續進步中",
+        "building": "蓄勢待發"
+      },
       "stats": {
-        "total": "總場次",
-        "wins": "勝場",
-        "losses": "敗場",
-        "winRate": "勝率"
+        "winRate": "勝率",
+        "winShort": "勝",
+        "lossShort": "敗",
+        "totalSuffix": "共 {{total}} 場對戰紀錄"
       },
       "charts": {
-        "winLossTitle": "勝率分布",
         "roundTrendTitle": "各輪勝率趨勢",
         "roundTrendEmpty": "尚無可繪製的輪次資料"
       },
       "opponentRanking": {
         "title": "對戰對象戰績排行",
-        "empty": "尚無對戰對象資料",
-        "nickname": "對手",
-        "matches": "場次",
-        "wins": "勝",
-        "losses": "敗",
-        "winRate": "勝率"
+        "empty": "尚無對戰對象資料"
       }
     },
     "nicknameSectionTitle": "暱稱",
