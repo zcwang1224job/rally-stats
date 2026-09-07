@@ -1,0 +1,70 @@
+<main>
+  <h1>{{ 'notifications.list.title' | translate }}</h1>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  } @else if (records(); as r) {
+    @if (r.unread_count > 0) {
+      <div class="list-actions">
+        <button type="button" class="btn btn--secondary" (click)="markAllRead()">
+          {{ 'notifications.list.markAllRead' | translate }}
+        </button>
+      </div>
+    }
+
+    @if (r.notifications.length === 0) {
+      <p>{{ 'notifications.list.empty' | translate }}</p>
+    } @else {
+      <ul class="notification-list">
+        @for (notification of r.notifications; track notification.notification_id) {
+          <li class="card">
+            <button
+              type="button"
+              class="notification-item"
+              [class.notification-item--unread]="!notification.read"
+              (click)="open(notification)"
+            >
+              <span class="status-badge" [class.status-badge--success]="notification.read">
+                {{
+                  (notification.read
+                    ? 'notifications.list.readBadge'
+                    : 'notifications.list.unreadBadge'
+                  ) | translate
+                }}
+              </span>
+              @if (notification.friend_request; as fr) {
+                <span class="notification-item__body">
+                  {{
+                    'notifications.list.friendRequestBody'
+                      | translate: { nickname: fr.requester.nickname }
+                  }}
+                </span>
+              }
+              <span class="notification-item__time">
+                {{ notification.created_at | date: 'M/d HH:mm' }}
+              </span>
+            </button>
+          </li>
+        }
+      </ul>
+
+      @if (r.total_pages > 1) {
+        <nav class="pagination">
+          @for (p of pageNumbers(); track p) {
+            <button
+              type="button"
+              class="btn"
+              [class.btn--secondary]="p !== page()"
+              [disabled]="p === page()"
+              (click)="goToPage(p)"
+            >
+              {{ p }}
+            </button>
+          }
+        </nav>
+      }
+    }
+  } @else {
+    <p>{{ 'common.loading' | translate }}</p>
+  }
+</main>

@@ -18,6 +18,10 @@ from app.domains.friend.schemas import (
     IncomingFriendRequestsResponse,
 )
 from app.domains.member.models import Member
+from app.domains.notification.service import (
+    create_friend_request_notification,
+    publish_notification_created,
+)
 
 _FRIEND_LIST_PAGE_SIZE = 20
 
@@ -80,11 +84,15 @@ async def create_friend_request(
     friend_request = FriendRequest(requester_id=requester_id, addressee_id=addressee.id)
     session.add(friend_request)
     try:
+        await session.flush()
+        notification = create_friend_request_notification(friend_request)
+        session.add(notification)
         await session.commit()
     except IntegrityError:
         await session.rollback()
         raise ApiError("FRIEND_REQUEST_ALREADY_PENDING", status_code=409) from None
     await session.refresh(friend_request)
+    await publish_notification_created(notification)
     return FriendRequestResponse(
         friend_request_id=str(friend_request.id), status=friend_request.status
     )

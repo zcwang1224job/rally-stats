@@ -28,6 +28,12 @@
   text-decoration: none;
 }
 
+// Pushes the bell to sit right before the toggle/links (right edge) rather
+// than floating in the middle of the `space-between` row's free space.
+.nav-shell__bell {
+  margin-left: auto;
+}
+
 .nav-shell__toggle {
   display: inline-flex;
   align-items: center;

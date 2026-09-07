@@ -21,6 +21,7 @@ import {
 
 const ACCESS_TOKEN_KEY = 'rally-stats:member-access-token';
 const REFRESH_TOKEN_KEY = 'rally-stats:member-refresh-token';
+const MEMBER_ID_KEY = 'rally-stats:member-id';
 
 /** Centralized API layer for the member-auth feature (006), plus member
  * token storage in localStorage (unlike group-admin's per-group
@@ -40,9 +41,12 @@ export class AuthService {
   }
 
   login(payload: LoginRequest): Observable<LoginResponse> {
-    return this.api
-      .post<LoginResponse>('/auth/login', payload)
-      .pipe(tap((response) => this.setTokens(response.access_token, response.refresh_token)));
+    return this.api.post<LoginResponse>('/auth/login', payload).pipe(
+      tap((response) => {
+        this.setTokens(response.access_token, response.refresh_token);
+        this.setCachedMemberId(response.member.member_id);
+      }),
+    );
   }
 
   refresh(): Observable<RefreshResponse> {
@@ -64,7 +68,9 @@ export class AuthService {
   }
 
   getMe(): Observable<MemberPublic> {
-    return this.api.get<MemberPublic>('/members/me', this.authHeader());
+    return this.api
+      .get<MemberPublic>('/members/me', this.authHeader())
+      .pipe(tap((member) => this.setCachedMemberId(member.member_id)));
   }
 
   forgotPassword(email: string): Observable<ForgotPasswordResponse> {
@@ -141,6 +147,19 @@ export class AuthService {
   clearTokens(): void {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(MEMBER_ID_KEY);
+  }
+
+  /** Cached at login/`getMe()` time so features that only need the signed-in
+   * member's own id (e.g. subscribing to their notification channel) don't
+   * have to call `getMe()` on every page load just to learn it
+   * (specs/012-realtime-notifications/research.md #2). */
+  setCachedMemberId(memberId: string): void {
+    localStorage.setItem(MEMBER_ID_KEY, memberId);
+  }
+
+  getCachedMemberId(): string | null {
+    return localStorage.getItem(MEMBER_ID_KEY);
   }
 
   isLoggedIn(): boolean {

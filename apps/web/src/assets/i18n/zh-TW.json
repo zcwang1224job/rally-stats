@@ -99,6 +99,19 @@
     "requestsTitle": "回覆好友申請",
     "emptyRequests": "目前沒有待處理的好友申請"
   },
+  "notifications": {
+    "bell": {
+      "ariaLabel": "通知，{{count}} 則未讀"
+    },
+    "list": {
+      "title": "通知",
+      "markAllRead": "全部標示已讀",
+      "empty": "尚無通知",
+      "unreadBadge": "● 未讀",
+      "readBadge": "✓ 已讀",
+      "friendRequestBody": "{{nickname}} 向您送出好友申請"
+    }
+  },
   "myGroups": {
     "title": "我的團",
     "empty": "尚無您建立過的團",
@@ -423,6 +436,7 @@
     "FRIEND_REQUEST_NOT_FOUND": "找不到此好友邀請",
     "FRIEND_REQUEST_NOT_PENDING": "此邀請已被處理過",
     "FRIEND_REQUEST_NOT_ACCEPTED": "此關係目前並非好友狀態",
-    "NOT_GROUP_CREATOR": "此團並非由您本人建立，無法使用此復原功能"
+    "NOT_GROUP_CREATOR": "此團並非由您本人建立，無法使用此復原功能",
+    "NOTIFICATION_NOT_FOUND": "找不到此通知"
   }
 }

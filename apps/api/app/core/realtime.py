@@ -59,3 +59,7 @@ def court_channel(group_id: str, court_id: str) -> str:
 
 def group_notifications_channel(group_id: str) -> str:
     return f"group:{group_id}:notifications"
+
+
+def member_notifications_channel(member_id: str) -> str:
+    return f"member:{member_id}:notifications"

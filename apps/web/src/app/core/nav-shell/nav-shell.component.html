@@ -3,6 +3,10 @@
     {{ 'nav.home' | translate }}
   </a>
 
+  @if (loggedIn()) {
+    <app-notification-bell class="nav-shell__bell" (click)="closeMenu()" />
+  }
+
   <button
     type="button"
     class="nav-shell__toggle tap-target"

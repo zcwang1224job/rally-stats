@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { AuthService } from '../../features/auth/auth.service';
+import { NotificationService } from '../../features/notifications/notification.service';
 import { NavShellComponent } from './nav-shell.component';
 
 describe('NavShellComponent', () => {
@@ -26,6 +27,10 @@ describe('NavShellComponent', () => {
               loggedIn.set(false);
             },
           },
+        },
+        {
+          provide: NotificationService,
+          useValue: { unreadCount: signal(0), init: () => undefined },
         },
       ],
     });

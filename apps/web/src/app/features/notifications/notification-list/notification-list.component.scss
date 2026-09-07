@@ -1,0 +1,70 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+}
+
+.list-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-md);
+}
+
+.notification-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.notification-list .card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.notification-item {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--touch-target-min);
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--color-surface-alt);
+    }
+  }
+}
+
+// Unread rows read heavier — backed by the explicit badge text, never
+// color/weight alone (constitution VII).
+.notification-item--unread .notification-item__body {
+  font-weight: var(--font-weight-bold);
+}
+
+.notification-item__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-item__time {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.pagination {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}

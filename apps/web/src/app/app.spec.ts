@@ -1,8 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { AuthService } from './features/auth/auth.service';
+import { NotificationService } from './features/notifications/notification.service';
 import { App } from './app';
 
 @Component({ selector: 'app-stub', template: '' })
@@ -20,6 +21,10 @@ describe('App', () => {
         ]),
         provideTranslateService({}),
         { provide: AuthService, useValue: { loggedIn: () => false, logout: () => undefined } },
+        {
+          provide: NotificationService,
+          useValue: { unreadCount: signal(0), init: () => undefined },
+        },
       ],
     }).compileComponents();
 

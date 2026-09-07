@@ -82,6 +82,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'notifications',
+    loadComponent: () =>
+      import('./features/notifications/notification-list/notification-list.component').then(
+        (m) => m.NotificationListComponent,
+      ),
+  },
+  {
     path: 'friends',
     loadComponent: () =>
       import('./features/friends/friend-list/friend-list.component').then(

@@ -18,6 +18,7 @@ from app.domains.friend.router import router as friend_router
 from app.domains.group.router import join_router
 from app.domains.group.router import router as group_router
 from app.domains.member.router import router as member_router
+from app.domains.notification.router import router as notification_router
 from app.domains.schedule.router import router as schedule_router
 from app.scheduler.auto_disband import start_scheduler, stop_scheduler
 
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(schedule_router)
     app.include_router(member_router)
     app.include_router(friend_router)
+    app.include_router(notification_router)
     app.include_router(realtime_router)
 
     @app.get("/health")
