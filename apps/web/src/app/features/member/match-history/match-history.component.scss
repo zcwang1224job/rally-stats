@@ -27,6 +27,15 @@
   }
 }
 
+// The two filters most people reach for first (who did I play, did I win)
+// stay in view; everything else is one tap away behind "進階篩選" — fewer
+// fields on first paint reads as friendlier than a wall of inputs.
+.filters-grid--quick {
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    grid-template-columns: 2fr 1fr;
+  }
+}
+
 .advanced-filters {
   margin-top: var(--space-md);
 
@@ -40,6 +49,26 @@
 
   &[open] summary {
     margin-bottom: var(--space-sm);
+  }
+
+  .filters-grid {
+    @media (min-width: breakpoints.$breakpoint-tablet) {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+}
+
+.score-filter-row {
+  display: flex;
+  gap: var(--space-xs);
+
+  select {
+    flex: 2;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
   }
 }
 
