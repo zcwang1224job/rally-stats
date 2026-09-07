@@ -1,19 +1,170 @@
+<h1 class="page-title">{{ 'nav.matchHistory' | translate }}</h1>
+
+<section class="filters-panel card">
+  <form class="filters-form form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+    <label>
+      {{ 'member.matchHistory.filters.q' | translate }}
+      <input
+        type="text"
+        formControlName="q"
+        [attr.placeholder]="'member.matchHistory.filters.qPlaceholder' | translate"
+      />
+    </label>
+
+    <div class="filters-grid">
+      <label>
+        {{ 'member.matchHistory.filters.result' | translate }}
+        <select formControlName="result">
+          <option value="">{{ 'member.matchHistory.filters.resultAny' | translate }}</option>
+          <option value="win">{{ 'member.matchHistory.filters.resultWin' | translate }}</option>
+          <option value="loss">{{ 'member.matchHistory.filters.resultLoss' | translate }}</option>
+        </select>
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.dateFrom' | translate }}
+        <input type="date" formControlName="date_from" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.dateTo' | translate }}
+        <input type="date" formControlName="date_to" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.roundFrom' | translate }}
+        <input type="number" min="1" formControlName="round_from" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.roundTo' | translate }}
+        <input type="number" min="1" formControlName="round_to" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.scoreCmp' | translate }}
+        <select formControlName="score_cmp">
+          <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+          <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+          <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+          <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="filters-actions">
+      <button type="submit" class="btn">
+        {{ 'member.matchHistory.filters.apply' | translate }}
+      </button>
+      @if (hasActiveFilters()) {
+        <button type="button" class="btn btn--secondary" (click)="clearFilters()">
+          {{ 'member.matchHistory.filters.clear' | translate }}
+        </button>
+      }
+    </div>
+  </form>
+</section>
+
 @if (errorKey()) {
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (records(); as r) {
-  <section class="card summary">
-    <p>
-      {{
-        'member.matchHistory.summary'
-          | translate: {
-              total: r.total_matches,
-              wins: r.total_wins,
-              losses: r.total_losses,
-              winRate: (r.win_rate * 100).toFixed(0)
-            }
-      }}
-    </p>
+  <section class="stat-cards">
+    <div class="card stat-card">
+      <span class="stat-card__value">{{ r.total_matches }}</span>
+      <span class="stat-card__label">{{ 'member.matchHistory.stats.total' | translate }}</span>
+    </div>
+    <div class="card stat-card stat-card--win">
+      <span class="stat-card__value">{{ r.total_wins }}</span>
+      <span class="stat-card__label">{{ 'member.matchHistory.stats.wins' | translate }}</span>
+    </div>
+    <div class="card stat-card stat-card--loss">
+      <span class="stat-card__value">{{ r.total_losses }}</span>
+      <span class="stat-card__label">{{ 'member.matchHistory.stats.losses' | translate }}</span>
+    </div>
+    <div class="card stat-card">
+      <span class="stat-card__value">{{ (r.win_rate * 100).toFixed(0) }}%</span>
+      <span class="stat-card__label">{{ 'member.matchHistory.stats.winRate' | translate }}</span>
+    </div>
   </section>
+
+  @if (r.total_matches > 0) {
+    <section class="charts-grid">
+      <div class="card chart-card">
+        <h2>{{ 'member.matchHistory.charts.winLossTitle' | translate }}</h2>
+        <div class="donut-chart-row">
+          <div class="donut-chart" [style.background]="winLossGradient()"></div>
+          <ul class="chart-legend">
+            <li>
+              <span class="legend-swatch legend-swatch--win"></span>
+              {{ 'member.matchHistory.stats.wins' | translate }}：{{ r.total_wins }}
+            </li>
+            <li>
+              <span class="legend-swatch legend-swatch--loss"></span>
+              {{ 'member.matchHistory.stats.losses' | translate }}：{{ r.total_losses }}
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <h2>{{ 'member.matchHistory.charts.roundTrendTitle' | translate }}</h2>
+        @if (roundTrendPoints().length > 0) {
+          <svg
+            class="trend-chart"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            role="img"
+            [attr.aria-label]="'member.matchHistory.charts.roundTrendTitle' | translate"
+          >
+            <line x1="0" y1="50" x2="100" y2="50" class="trend-chart__midline" />
+            <polyline [attr.points]="roundTrendPolyline()" class="trend-chart__line" />
+            @for (point of roundTrendPoints(); track point.round) {
+              <circle [attr.cx]="point.x" [attr.cy]="point.y" r="2.5" class="trend-chart__dot" />
+            }
+          </svg>
+          <ul class="trend-legend">
+            @for (point of roundTrendPoints(); track point.round) {
+              <li>
+                {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: point.round } }}：{{
+                  (point.winRate * 100).toFixed(0)
+                }}%
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="chart-empty">{{ 'member.matchHistory.charts.roundTrendEmpty' | translate }}</p>
+        }
+      </div>
+    </section>
+
+    <section class="card opponent-ranking">
+      <h2>{{ 'member.matchHistory.opponentRanking.title' | translate }}</h2>
+      @if (r.opponent_records.length === 0) {
+        <p class="chart-empty">{{ 'member.matchHistory.opponentRanking.empty' | translate }}</p>
+      } @else {
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>{{ 'member.matchHistory.opponentRanking.nickname' | translate }}</th>
+                <th>{{ 'member.matchHistory.opponentRanking.matches' | translate }}</th>
+                <th>{{ 'member.matchHistory.opponentRanking.wins' | translate }}</th>
+                <th>{{ 'member.matchHistory.opponentRanking.losses' | translate }}</th>
+                <th>{{ 'member.matchHistory.opponentRanking.winRate' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (opponent of r.opponent_records; track opponent.nickname) {
+                <tr>
+                  <td>{{ opponent.nickname }}</td>
+                  <td>{{ opponent.matches }}</td>
+                  <td>{{ opponent.wins }}</td>
+                  <td>{{ opponent.losses }}</td>
+                  <td>{{ (opponent.win_rate * 100).toFixed(0) }}%</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+  }
+
   @if (r.matches.length === 0) {
     <p>{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
   } @else {
@@ -32,6 +183,15 @@
             }
           </span>
           <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+          @if (match.won) {
+            <span class="status-badge status-badge--success">
+              ✓ {{ 'member.matchHistory.resultWinBadge' | translate }}
+            </span>
+          } @else {
+            <span class="status-badge status-badge--danger">
+              ✕ {{ 'member.matchHistory.resultLossBadge' | translate }}
+            </span>
+          }
         </li>
       }
     </ul>

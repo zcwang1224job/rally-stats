@@ -382,6 +382,30 @@ class GroupMatchRecordsResponse(BaseModel):
 class MemberMatchRecordSummary(MatchRecordSummary):
     group_id: str
     group_name: str
+    won: bool
+
+
+class RoundWinRatePoint(BaseModel):
+    """One point on the "各輪勝率趨勢" line chart — matches sharing the same
+    `round_number` are bucketed together across every group the member has
+    played in, since a member's own round numbering only resets per group."""
+
+    round_number: int
+    wins: int
+    losses: int
+    win_rate: float
+
+
+class OpponentRecord(BaseModel):
+    """One row of the "對戰對象戰績排行" table — every distinct opponent
+    nickname the member has faced (doubles counts each of the two opposing
+    players separately), aggregated over whatever filters are active."""
+
+    nickname: str
+    wins: int
+    losses: int
+    matches: int
+    win_rate: float
 
 
 class MemberMatchRecordsResponse(BaseModel):
@@ -390,6 +414,8 @@ class MemberMatchRecordsResponse(BaseModel):
     total_wins: int
     total_losses: int
     win_rate: float
+    round_win_rates: list[RoundWinRatePoint]
+    opponent_records: list[OpponentRecord]
     page: int
     total_pages: int
 

@@ -125,6 +125,117 @@ async def test_win_rate_zero_when_no_matches(db_session: AsyncSession) -> None:
     assert response.win_rate == 0.0
 
 
+async def test_filters_by_result(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-result@example.com")
+    group = await _make_group(db_session, "Filter Group")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    opp1 = await _make_entry(db_session, group, "對手1", None)
+    opp2 = await _make_entry(db_session, group, "對手2", None)
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A", team_a=[me.id], team_b=[opp1.id]
+    )
+    await _make_completed_match(
+        db_session, group, round_number=2, winner_team="B", team_a=[me.id], team_b=[opp2.id]
+    )
+
+    wins_only = await build_member_match_records(db_session, member.id, result="win")
+    assert wins_only.total_matches == 1
+    assert wins_only.matches[0].round_number == 1
+
+    losses_only = await build_member_match_records(db_session, member.id, result="loss")
+    assert losses_only.total_matches == 1
+    assert losses_only.matches[0].round_number == 2
+
+
+async def test_filters_by_opponent_nickname(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-opponent@example.com")
+    group = await _make_group(db_session, "Filter Group 2")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    opp1 = await _make_entry(db_session, group, "阿強", None)
+    opp2 = await _make_entry(db_session, group, "小美", None)
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A", team_a=[me.id], team_b=[opp1.id]
+    )
+    await _make_completed_match(
+        db_session, group, round_number=2, winner_team="A", team_a=[me.id], team_b=[opp2.id]
+    )
+
+    response = await build_member_match_records(db_session, member.id, opponent_or_partner="阿強")
+
+    assert response.total_matches == 1
+    assert response.matches[0].team_b[0].nickname == "阿強"
+
+
+async def test_filters_by_round_range(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-round@example.com")
+    group = await _make_group(db_session, "Filter Group 3")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    opp = await _make_entry(db_session, group, "對手", None)
+    for round_number in (1, 2, 3):
+        await _make_completed_match(
+            db_session, group, round_number=round_number, winner_team="A",
+            team_a=[me.id], team_b=[opp.id],
+        )
+
+    response = await build_member_match_records(
+        db_session, member.id, round_from=2, round_to=3
+    )
+
+    assert response.total_matches == 2
+    assert {m.round_number for m in response.matches} == {2, 3}
+
+
+async def test_filters_by_score_comparison(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-score@example.com")
+    group = await _make_group(db_session, "Filter Group 4")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    opp = await _make_entry(db_session, group, "對手", None)
+    # _make_completed_match always sets score_a=11, score_b=5.
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A", team_a=[me.id], team_b=[opp.id]
+    )
+    await _make_completed_match(
+        db_session, group, round_number=2, winner_team="B", team_a=[opp.id], team_b=[me.id]
+    )
+
+    self_ahead = await build_member_match_records(db_session, member.id, score_cmp="gt")
+    assert self_ahead.total_matches == 1
+    assert self_ahead.matches[0].round_number == 1
+
+    self_behind = await build_member_match_records(db_session, member.id, score_cmp="lt")
+    assert self_behind.total_matches == 1
+    assert self_behind.matches[0].round_number == 2
+
+
+async def test_round_win_rates_and_opponent_records(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "aggregates@example.com")
+    group = await _make_group(db_session, "Aggregates Group")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    opp1 = await _make_entry(db_session, group, "阿強", None)
+    opp2 = await _make_entry(db_session, group, "小美", None)
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A", team_a=[me.id], team_b=[opp1.id]
+    )
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="B", team_a=[me.id], team_b=[opp2.id]
+    )
+    await _make_completed_match(
+        db_session, group, round_number=2, winner_team="A", team_a=[me.id], team_b=[opp1.id]
+    )
+
+    response = await build_member_match_records(db_session, member.id)
+
+    assert [(p.round_number, p.wins, p.losses) for p in response.round_win_rates] == [
+        (1, 1, 1),
+        (2, 1, 0),
+    ]
+    records_by_name = {r.nickname: r for r in response.opponent_records}
+    assert records_by_name["阿強"].wins == 2
+    assert records_by_name["阿強"].losses == 0
+    assert records_by_name["小美"].wins == 0
+    assert records_by_name["小美"].losses == 1
+
+
 async def test_guest_matches_never_included(db_session: AsyncSession) -> None:
     member = await _make_member(db_session, "was-a-guest@example.com")
     group = await _make_group(db_session, "Guest Group")

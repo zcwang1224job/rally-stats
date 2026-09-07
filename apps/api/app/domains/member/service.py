@@ -3,7 +3,8 @@ Per specs/006-member-friends/plan.md."""
 
 import uuid
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,12 @@ from app.core.email import send_email
 from app.core.errors import ApiError
 from app.domains.friend.service import get_friendship_status
 from app.domains.group.models import Group
-from app.domains.group.schemas import MemberMatchRecordsResponse, MemberMatchRecordSummary
+from app.domains.group.schemas import (
+    MemberMatchRecordsResponse,
+    MemberMatchRecordSummary,
+    OpponentRecord,
+    RoundWinRatePoint,
+)
 from app.domains.group.service import _completed_matches_query
 from app.domains.member.models import EmailVerificationToken, Member, PasswordResetToken
 from app.domains.member.schemas import MyGroupsResponse, MyGroupSummary, SearchMemberResponse
@@ -211,7 +217,9 @@ async def change_password(
 
 
 async def _build_member_match_record_summaries(
-    session: AsyncSession, matches: list[Match]
+    session: AsyncSession,
+    matches: list[Match],
+    my_team_by_match: dict[uuid.UUID, str],
 ) -> list[MemberMatchRecordSummary]:
     if not matches:
         return []
@@ -255,21 +263,36 @@ async def _build_member_match_record_summaries(
                 ended_at=match.ended_at,
                 group_id=str(match.group_id),
                 group_name=group_name_by_id.get(match.group_id, ""),
+                won=my_team_by_match.get(match.id) == match.winner_team,
             )
         )
     return summaries
 
 
 async def build_member_match_records(
-    session: AsyncSession, member_id: uuid.UUID, page: int = 1
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    page: int = 1,
+    *,
+    opponent_or_partner: str | None = None,
+    result: Literal["win", "loss"] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    round_from: int | None = None,
+    round_to: int | None = None,
+    score_cmp: Literal["gt", "eq", "lt"] | None = None,
 ) -> MemberMatchRecordsResponse:
-    """005-member-view US5 (FR-017~020): a member's completed matches across
-    every group they've ever joined as a Member (never as a Guest —
-    research.md #9, `roster_entries.member_id IS NULL` for Guest entries
-    naturally excludes them, no extra guard needed), plus aggregate
-    win/loss/win-rate stats over the *entire* result set (not just the
-    current page — plan.md Scale/Scope: a single member's group count is
-    small enough that this is cheap)."""
+    """005-member-view US5 (FR-017~020), extended with filters/statistics: a
+    member's completed matches across every group they've ever joined as a
+    Member (never as a Guest — research.md #9, `roster_entries.member_id IS
+    NULL` for Guest entries naturally excludes them, no extra guard needed).
+
+    Filters and every aggregate below (win/loss counts, the round-by-round
+    win-rate trend, the opponent leaderboard) are all computed over the
+    *entire* filtered result set, not just the current page — same
+    plan.md Scale/Scope reasoning as before: a single member's total match
+    count is small enough that loading it all into Python is cheap, and
+    doing it this way avoids duplicating the nickname/score logic in SQL."""
     participant_exists = (
         select(MatchParticipant.id)
         .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
@@ -282,37 +305,123 @@ async def build_member_match_records(
         base_query.order_by(Match.round_number.desc(), Match.ended_at.desc())
     )
     all_matches = list(all_matches_result.scalars())
-    total_matches = len(all_matches)
-    total_pages = max(
-        1, (total_matches + _MEMBER_MATCH_RECORDS_PAGE_SIZE - 1) // _MEMBER_MATCH_RECORDS_PAGE_SIZE
-    )
 
     my_team_by_match: dict[uuid.UUID, str] = {}
+    my_entry_by_match: dict[uuid.UUID, uuid.UUID] = {}
     if all_matches:
         match_ids = [match.id for match in all_matches]
         participation_result = await session.execute(
-            select(MatchParticipant.match_id, MatchParticipant.team)
+            select(
+                MatchParticipant.match_id,
+                MatchParticipant.team,
+                MatchParticipant.roster_entry_id,
+            )
             .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
             .where(MatchParticipant.match_id.in_(match_ids), RosterEntry.member_id == member_id)
         )
-        my_team_by_match = {row[0]: row[1] for row in participation_result.all()}
+        for match_id, team, roster_entry_id in participation_result.all():
+            my_team_by_match[match_id] = team
+            my_entry_by_match[match_id] = roster_entry_id
 
-    total_wins = sum(
-        1 for match in all_matches if my_team_by_match.get(match.id) == match.winner_team
-    )
+    summaries = await _build_member_match_record_summaries(session, all_matches, my_team_by_match)
+
+    search = opponent_or_partner.strip().lower() if opponent_or_partner else None
+    filtered: list[tuple[Match, MemberMatchRecordSummary, bool]] = []
+    for match, summary in zip(all_matches, summaries, strict=True):
+        my_team = my_team_by_match.get(match.id)
+        if my_team is None:
+            continue
+        my_entry_id = str(my_entry_by_match[match.id])
+        opponents = summary.team_b if my_team == "A" else summary.team_a
+        partners = [
+            p for p in (summary.team_a if my_team == "A" else summary.team_b)
+            if p.roster_entry_id != my_entry_id
+        ]
+        self_score = match.score_a if my_team == "A" else match.score_b
+        opponent_score = match.score_b if my_team == "A" else match.score_a
+        won = summary.won
+
+        if search is not None and not any(
+            search in p.nickname.lower() for p in [*opponents, *partners]
+        ):
+            continue
+        if result is not None and won != (result == "win"):
+            continue
+        if match.ended_at is not None:
+            match_date = match.ended_at.date()
+            if date_from is not None and match_date < date_from:
+                continue
+            if date_to is not None and match_date > date_to:
+                continue
+        if round_from is not None and match.round_number < round_from:
+            continue
+        if round_to is not None and match.round_number > round_to:
+            continue
+        if score_cmp == "gt" and not (self_score > opponent_score):
+            continue
+        if score_cmp == "eq" and not (self_score == opponent_score):
+            continue
+        if score_cmp == "lt" and not (self_score < opponent_score):
+            continue
+
+        filtered.append((match, summary, won))
+
+    total_matches = len(filtered)
+    total_wins = sum(1 for _, _, won in filtered if won)
     total_losses = total_matches - total_wins
     win_rate = (total_wins / total_matches) if total_matches else 0.0
 
+    round_tallies: dict[int, list[int]] = defaultdict(lambda: [0, 0])
+    opponent_tallies: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for match, summary, won in filtered:
+        bucket = round_tallies[match.round_number]
+        bucket[0 if won else 1] += 1
+
+        my_team = my_team_by_match[match.id]
+        opponents = summary.team_b if my_team == "A" else summary.team_a
+        for opponent in opponents:
+            tally = opponent_tallies[opponent.nickname]
+            tally[0 if won else 1] += 1
+
+    round_win_rates = [
+        RoundWinRatePoint(
+            round_number=round_number,
+            wins=wins,
+            losses=losses,
+            win_rate=(wins / (wins + losses)) if (wins + losses) else 0.0,
+        )
+        for round_number, (wins, losses) in sorted(round_tallies.items())
+    ]
+    opponent_records = sorted(
+        (
+            OpponentRecord(
+                nickname=nickname,
+                wins=wins,
+                losses=losses,
+                matches=wins + losses,
+                win_rate=(wins / (wins + losses)) if (wins + losses) else 0.0,
+            )
+            for nickname, (wins, losses) in opponent_tallies.items()
+        ),
+        key=lambda record: record.matches,
+        reverse=True,
+    )
+
+    total_pages = max(
+        1, (total_matches + _MEMBER_MATCH_RECORDS_PAGE_SIZE - 1) // _MEMBER_MATCH_RECORDS_PAGE_SIZE
+    )
     start = (page - 1) * _MEMBER_MATCH_RECORDS_PAGE_SIZE
-    page_matches = all_matches[start : start + _MEMBER_MATCH_RECORDS_PAGE_SIZE]
-    summaries = await _build_member_match_record_summaries(session, page_matches)
+    end = start + _MEMBER_MATCH_RECORDS_PAGE_SIZE
+    page_matches = [summary for _, summary, _ in filtered[start:end]]
 
     return MemberMatchRecordsResponse(
-        matches=summaries,
+        matches=page_matches,
         total_matches=total_matches,
         total_wins=total_wins,
         total_losses=total_losses,
         win_rate=win_rate,
+        round_win_rates=round_win_rates,
+        opponent_records=opponent_records,
         page=page,
         total_pages=total_pages,
     )

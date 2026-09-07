@@ -1,7 +1,10 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
-import { MemberMatchRecordsResponse } from '../../core/api/group-member-view.models';
+import {
+  MemberMatchRecordFilters,
+  MemberMatchRecordsResponse,
+} from '../../core/api/group-member-view.models';
 import {
   ChangePasswordResponse,
   ForgotPasswordResponse,
@@ -79,9 +82,18 @@ export class AuthService {
     });
   }
 
-  getMatchRecords(page = 1): Observable<MemberMatchRecordsResponse> {
+  getMatchRecords(
+    page = 1,
+    filters: MemberMatchRecordFilters = {},
+  ): Observable<MemberMatchRecordsResponse> {
+    const params = new URLSearchParams({ page: String(page) });
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') {
+        params.set(key, String(value));
+      }
+    }
     return this.api.get<MemberMatchRecordsResponse>(
-      `/members/me/match-records?page=${page}`,
+      `/members/me/match-records?${params.toString()}`,
       this.authHeader(),
     );
   }

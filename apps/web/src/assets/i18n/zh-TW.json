@@ -113,7 +113,47 @@
     "myGroupsLink": "我的團",
     "matchHistoryLink": "對戰紀錄",
     "matchHistory": {
-      "summary": "總場次 {{total}}．勝 {{wins}}．敗 {{losses}}．勝率 {{winRate}}%"
+      "resultWinBadge": "勝",
+      "resultLossBadge": "敗",
+      "filters": {
+        "q": "對手／隊友暱稱",
+        "qPlaceholder": "搜尋對手或隊友",
+        "result": "勝負結果",
+        "resultAny": "不限",
+        "resultWin": "只看勝場",
+        "resultLoss": "只看敗場",
+        "dateFrom": "日期（起）",
+        "dateTo": "日期（迄）",
+        "roundFrom": "輪次（起）",
+        "roundTo": "輪次（迄）",
+        "scoreCmp": "比分",
+        "scoreCmpAny": "不限",
+        "scoreCmpGt": "比分領先",
+        "scoreCmpEq": "比分平手",
+        "scoreCmpLt": "比分落後",
+        "apply": "套用篩選",
+        "clear": "清除篩選"
+      },
+      "stats": {
+        "total": "總場次",
+        "wins": "勝場",
+        "losses": "敗場",
+        "winRate": "勝率"
+      },
+      "charts": {
+        "winLossTitle": "勝率分布",
+        "roundTrendTitle": "各輪勝率趨勢",
+        "roundTrendEmpty": "尚無可繪製的輪次資料"
+      },
+      "opponentRanking": {
+        "title": "對戰對象戰績排行",
+        "empty": "尚無對戰對象資料",
+        "nickname": "對手",
+        "matches": "場次",
+        "wins": "勝",
+        "losses": "敗",
+        "winRate": "勝率"
+      }
     },
     "nicknameSectionTitle": "暱稱",
     "nickname": "暱稱",

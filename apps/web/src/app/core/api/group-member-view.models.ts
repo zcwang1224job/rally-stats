@@ -52,6 +52,22 @@ export interface GroupMatchRecordsResponse {
 export interface MemberMatchRecordSummary extends MatchRecordSummary {
   group_id: string;
   group_name: string;
+  won: boolean;
+}
+
+export interface RoundWinRatePoint {
+  round_number: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+}
+
+export interface OpponentRecord {
+  nickname: string;
+  wins: number;
+  losses: number;
+  matches: number;
+  win_rate: number;
 }
 
 export interface MemberMatchRecordsResponse {
@@ -60,8 +76,23 @@ export interface MemberMatchRecordsResponse {
   total_wins: number;
   total_losses: number;
   win_rate: number;
+  round_win_rates: RoundWinRatePoint[];
+  opponent_records: OpponentRecord[];
   page: number;
   total_pages: number;
+}
+
+export type MatchRecordResultFilter = 'win' | 'loss';
+export type MatchRecordScoreComparison = 'gt' | 'eq' | 'lt';
+
+export interface MemberMatchRecordFilters {
+  q?: string;
+  result?: MatchRecordResultFilter;
+  date_from?: string;
+  date_to?: string;
+  round_from?: number;
+  round_to?: number;
+  score_cmp?: MatchRecordScoreComparison;
 }
 
 export interface LeaveGroupResponse {
