@@ -50,8 +50,7 @@ export class MatchHistoryComponent {
   readonly filterForm = this.fb.nonNullable.group({
     opponent1: [''],
     opponent2: [''],
-    partner1: [''],
-    partner2: [''],
+    partner: [''],
     result: [''],
     date_from: [''],
     date_to: [''],
@@ -153,8 +152,7 @@ export class MatchHistoryComponent {
     this.filterForm.reset({
       opponent1: '',
       opponent2: '',
-      partner1: '',
-      partner2: '',
+      partner: '',
       result: '',
       date_from: '',
       date_to: '',
@@ -178,8 +176,7 @@ export class MatchHistoryComponent {
     const filters: MemberMatchRecordFilters = {
       opponent1: raw.opponent1 || undefined,
       opponent2: raw.opponent2 || undefined,
-      partner1: raw.partner1 || undefined,
-      partner2: raw.partner2 || undefined,
+      partner: raw.partner || undefined,
       result: (raw.result || undefined) as MatchRecordResultFilter | undefined,
       date_from: raw.date_from || undefined,
       date_to: raw.date_to || undefined,

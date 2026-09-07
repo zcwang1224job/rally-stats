@@ -88,8 +88,7 @@ export type MatchRecordScoreComparison = 'gt' | 'eq' | 'lt';
 export interface MemberMatchRecordFilters {
   opponent1?: string;
   opponent2?: string;
-  partner1?: string;
-  partner2?: string;
+  partner?: string;
   result?: MatchRecordResultFilter;
   date_from?: string;
   date_to?: string;

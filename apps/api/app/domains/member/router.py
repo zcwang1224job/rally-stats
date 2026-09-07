@@ -200,8 +200,7 @@ async def get_member_match_records(
     page: Annotated[int, Query(ge=1)] = 1,
     opponent1: Annotated[str | None, Query(max_length=20)] = None,
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
-    partner1: Annotated[str | None, Query(max_length=20)] = None,
-    partner2: Annotated[str | None, Query(max_length=20)] = None,
+    partner: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
     date_from: Annotated[date | None, Query()] = None,
     date_to: Annotated[date | None, Query()] = None,
@@ -214,9 +213,10 @@ async def get_member_match_records(
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計；未鎖定
     於信箱驗證（比照 `GET /members/me` 之既有寬鬆基準）。`opponent1`/
-    `opponent2`、`partner1`/`partner2` 分開篩選對手與隊友暱稱（子字串、不
-    分大小寫）——雙打時兩個欄位須各自對應到不同的對手/隊友，不能同一人滿
-    足兩欄。`self_score_cmp`+`self_score`、`opponent_score_cmp`+
+    `opponent2` 分開篩選兩位對手暱稱（子字串、不分大小寫）——雙打時兩個
+    欄位須各自對應到不同的對手，不能同一人滿足兩欄。`partner` 篩選隊友
+    暱稱，僅一個欄位——雙打隊伍除自己外只有一位隊友，不像對手一次面對兩
+    人。`self_score_cmp`+`self_score`、`opponent_score_cmp`+
     `opponent_score` 各自篩選自己/對手的比分（與指定數值比較，而非兩者互
     比）。`result`/`date_from`/`date_to`/`round_from`/`round_to` 篩選勝負、
     日期、輪次區間 —— 所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
@@ -227,7 +227,7 @@ async def get_member_match_records(
         member.id,
         page,
         opponents=[name for name in (opponent1, opponent2) if name],
-        partners=[name for name in (partner1, partner2) if name],
+        partners=[partner] if partner else [],
         result=result,
         date_from=date_from,
         date_to=date_to,
