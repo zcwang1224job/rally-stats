@@ -18,11 +18,11 @@ from app.domains.schedule.models import Match, MatchParticipant
 pytestmark = pytest.mark.asyncio
 
 
-async def _make_group(session: AsyncSession, name: str) -> Group:
+async def _make_group(session: AsyncSession, name: str, match_mode: str = "singles") -> Group:
     group = Group(
         name=name,
         max_members=8,
-        match_mode="singles",
+        match_mode=match_mode,
         scheduling_mechanism="manual",
         current_member_count=1,
         status="active",
@@ -160,10 +160,61 @@ async def test_filters_by_opponent_nickname(db_session: AsyncSession) -> None:
         db_session, group, round_number=2, winner_team="A", team_a=[me.id], team_b=[opp2.id]
     )
 
-    response = await build_member_match_records(db_session, member.id, opponent_or_partner="阿強")
+    response = await build_member_match_records(db_session, member.id, opponents=["阿強"])
 
     assert response.total_matches == 1
     assert response.matches[0].team_b[0].nickname == "阿強"
+
+
+async def test_filters_by_two_opponent_nicknames_requires_distinct_players(
+    db_session: AsyncSession,
+) -> None:
+    member = await _make_member(db_session, "filter-two-opponents@example.com")
+    group = await _make_group(db_session, "Filter Doubles Group", match_mode="doubles")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    partner = await _make_entry(db_session, group, "隊友", None)
+    opp_a = await _make_entry(db_session, group, "阿強", None)
+    opp_b = await _make_entry(db_session, group, "阿美", None)
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A",
+        team_a=[me.id, partner.id], team_b=[opp_a.id, opp_b.id],
+    )
+
+    both_named = await build_member_match_records(
+        db_session, member.id, opponents=["阿強", "阿美"]
+    )
+    assert both_named.total_matches == 1
+
+    # Both search terms matching the *same* single opponent must not count —
+    # doubles has two distinct opponents, and "against 阿強 and 阿強" is a
+    # different (impossible, here) query than "against 阿強".
+    same_name_twice = await build_member_match_records(
+        db_session, member.id, opponents=["阿強", "阿強"]
+    )
+    assert same_name_twice.total_matches == 0
+
+
+async def test_filters_by_partner_nickname(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-partner@example.com")
+    group = await _make_group(db_session, "Filter Partner Group", match_mode="doubles")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    partner1 = await _make_entry(db_session, group, "隊友甲", None)
+    partner2 = await _make_entry(db_session, group, "隊友乙", None)
+    opp1 = await _make_entry(db_session, group, "對手1", None)
+    opp2 = await _make_entry(db_session, group, "對手2", None)
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A",
+        team_a=[me.id, partner1.id], team_b=[opp1.id],
+    )
+    await _make_completed_match(
+        db_session, group, round_number=2, winner_team="A",
+        team_a=[me.id, partner2.id], team_b=[opp2.id],
+    )
+
+    response = await build_member_match_records(db_session, member.id, partners=["隊友甲"])
+
+    assert response.total_matches == 1
+    assert response.matches[0].round_number == 1
 
 
 async def test_filters_by_round_range(db_session: AsyncSession) -> None:
@@ -185,8 +236,8 @@ async def test_filters_by_round_range(db_session: AsyncSession) -> None:
     assert {m.round_number for m in response.matches} == {2, 3}
 
 
-async def test_filters_by_score_comparison(db_session: AsyncSession) -> None:
-    member = await _make_member(db_session, "filter-score@example.com")
+async def test_filters_by_self_score(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-self-score@example.com")
     group = await _make_group(db_session, "Filter Group 4")
     me = await _make_entry(db_session, group, "小明", member.id)
     opp = await _make_entry(db_session, group, "對手", None)
@@ -198,13 +249,45 @@ async def test_filters_by_score_comparison(db_session: AsyncSession) -> None:
         db_session, group, round_number=2, winner_team="B", team_a=[opp.id], team_b=[me.id]
     )
 
-    self_ahead = await build_member_match_records(db_session, member.id, score_cmp="gt")
-    assert self_ahead.total_matches == 1
-    assert self_ahead.matches[0].round_number == 1
+    scored_11 = await build_member_match_records(
+        db_session, member.id, self_score_cmp="eq", self_score=11
+    )
+    assert scored_11.total_matches == 1
+    assert scored_11.matches[0].round_number == 1
 
-    self_behind = await build_member_match_records(db_session, member.id, score_cmp="lt")
-    assert self_behind.total_matches == 1
-    assert self_behind.matches[0].round_number == 2
+    scored_below_10 = await build_member_match_records(
+        db_session, member.id, self_score_cmp="lt", self_score=10
+    )
+    assert scored_below_10.total_matches == 1
+    assert scored_below_10.matches[0].round_number == 2
+
+
+async def test_filters_by_opponent_score(db_session: AsyncSession) -> None:
+    member = await _make_member(db_session, "filter-opponent-score@example.com")
+    group = await _make_group(db_session, "Filter Group 5")
+    me = await _make_entry(db_session, group, "小明", member.id)
+    opp = await _make_entry(db_session, group, "對手", None)
+    # _make_completed_match always sets score_a=11, score_b=5 — round 1 has
+    # me on team_a (my opponent scored 5), round 2 has me on team_b (my
+    # opponent scored 11).
+    await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A", team_a=[me.id], team_b=[opp.id]
+    )
+    await _make_completed_match(
+        db_session, group, round_number=2, winner_team="A", team_a=[opp.id], team_b=[me.id]
+    )
+
+    opponent_scored_low = await build_member_match_records(
+        db_session, member.id, opponent_score_cmp="lt", opponent_score=10
+    )
+    assert opponent_scored_low.total_matches == 1
+    assert opponent_scored_low.matches[0].round_number == 1
+
+    opponent_scored_high = await build_member_match_records(
+        db_session, member.id, opponent_score_cmp="gt", opponent_score=10
+    )
+    assert opponent_scored_high.total_matches == 1
+    assert opponent_scored_high.matches[0].round_number == 2
 
 
 async def test_round_win_rates_and_opponent_records(db_session: AsyncSession) -> None:

@@ -86,13 +86,19 @@ export type MatchRecordResultFilter = 'win' | 'loss';
 export type MatchRecordScoreComparison = 'gt' | 'eq' | 'lt';
 
 export interface MemberMatchRecordFilters {
-  q?: string;
+  opponent1?: string;
+  opponent2?: string;
+  partner1?: string;
+  partner2?: string;
   result?: MatchRecordResultFilter;
   date_from?: string;
   date_to?: string;
   round_from?: number;
   round_to?: number;
-  score_cmp?: MatchRecordScoreComparison;
+  self_score_cmp?: MatchRecordScoreComparison;
+  self_score?: number;
+  opponent_score_cmp?: MatchRecordScoreComparison;
+  opponent_score?: number;
 }
 
 export interface LeaveGroupResponse {

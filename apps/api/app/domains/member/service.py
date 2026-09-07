@@ -4,6 +4,7 @@ Per specs/006-member-friends/plan.md."""
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from itertools import permutations
 from typing import Literal
 
 from sqlalchemy import func, select
@@ -269,18 +270,49 @@ async def _build_member_match_record_summaries(
     return summaries
 
 
+def _matches_distinct_terms(terms: list[str] | None, candidates: list[str]) -> bool:
+    """True if every search term in `terms` can be matched (case-insensitive
+    substring) against a *distinct* nickname in `candidates` — doubles has
+    (at most) two opponents/partners, and two search terms filtering for
+    "against these two specific people" must not both be satisfied by the
+    same one person. With at most 2 terms and 2 candidates in practice,
+    brute-forcing every assignment is cheap."""
+    cleaned = [t.strip().lower() for t in (terms or []) if t and t.strip()]
+    if not cleaned:
+        return True
+    if len(cleaned) > len(candidates):
+        return False
+    lowered = [c.lower() for c in candidates]
+    return any(
+        all(term in candidate for term, candidate in zip(cleaned, combo, strict=True))
+        for combo in permutations(lowered, len(cleaned))
+    )
+
+
+def _compare(value: int, cmp: Literal["gt", "eq", "lt"], target: int) -> bool:
+    if cmp == "gt":
+        return value > target
+    if cmp == "eq":
+        return value == target
+    return value < target
+
+
 async def build_member_match_records(
     session: AsyncSession,
     member_id: uuid.UUID,
     page: int = 1,
     *,
-    opponent_or_partner: str | None = None,
+    opponents: list[str] | None = None,
+    partners: list[str] | None = None,
     result: Literal["win", "loss"] | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
     round_from: int | None = None,
     round_to: int | None = None,
-    score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    self_score: int | None = None,
+    opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    opponent_score: int | None = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020), extended with filters/statistics: a
     member's completed matches across every group they've ever joined as a
@@ -325,25 +357,24 @@ async def build_member_match_records(
 
     summaries = await _build_member_match_record_summaries(session, all_matches, my_team_by_match)
 
-    search = opponent_or_partner.strip().lower() if opponent_or_partner else None
     filtered: list[tuple[Match, MemberMatchRecordSummary, bool]] = []
     for match, summary in zip(all_matches, summaries, strict=True):
         my_team = my_team_by_match.get(match.id)
         if my_team is None:
             continue
         my_entry_id = str(my_entry_by_match[match.id])
-        opponents = summary.team_b if my_team == "A" else summary.team_a
-        partners = [
+        match_opponents = summary.team_b if my_team == "A" else summary.team_a
+        match_partners = [
             p for p in (summary.team_a if my_team == "A" else summary.team_b)
             if p.roster_entry_id != my_entry_id
         ]
-        self_score = match.score_a if my_team == "A" else match.score_b
-        opponent_score = match.score_b if my_team == "A" else match.score_a
+        my_score = match.score_a if my_team == "A" else match.score_b
+        their_score = match.score_b if my_team == "A" else match.score_a
         won = summary.won
 
-        if search is not None and not any(
-            search in p.nickname.lower() for p in [*opponents, *partners]
-        ):
+        if not _matches_distinct_terms(opponents, [p.nickname for p in match_opponents]):
+            continue
+        if not _matches_distinct_terms(partners, [p.nickname for p in match_partners]):
             continue
         if result is not None and won != (result == "win"):
             continue
@@ -357,11 +388,13 @@ async def build_member_match_records(
             continue
         if round_to is not None and match.round_number > round_to:
             continue
-        if score_cmp == "gt" and not (self_score > opponent_score):
+        if self_score_cmp is not None and self_score is not None and not _compare(
+            my_score, self_score_cmp, self_score
+        ):
             continue
-        if score_cmp == "eq" and not (self_score == opponent_score):
-            continue
-        if score_cmp == "lt" and not (self_score < opponent_score):
+        if opponent_score_cmp is not None and opponent_score is not None and not _compare(
+            their_score, opponent_score_cmp, opponent_score
+        ):
             continue
 
         filtered.append((match, summary, won))
@@ -378,8 +411,8 @@ async def build_member_match_records(
         bucket[0 if won else 1] += 1
 
         my_team = my_team_by_match[match.id]
-        opponents = summary.team_b if my_team == "A" else summary.team_a
-        for opponent in opponents:
+        match_opponents = summary.team_b if my_team == "A" else summary.team_a
+        for opponent in match_opponents:
             tally = opponent_tallies[opponent.nickname]
             tally[0 if won else 1] += 1
 

@@ -21,9 +21,32 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--space-md);
+  margin-top: var(--space-md);
 
   @media (min-width: breakpoints.$breakpoint-tablet) {
     grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.filters-grid--names {
+  margin-top: 0;
+
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.score-filter-row {
+  display: flex;
+  gap: var(--space-xs);
+
+  select {
+    flex: 2;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
   }
 }
 
@@ -213,6 +236,12 @@ table {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-sm);
+}
+
+.time-range {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .teams {

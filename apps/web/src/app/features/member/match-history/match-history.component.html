@@ -2,14 +2,24 @@
 
 <section class="filters-panel card">
   <form class="filters-form form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
-    <label>
-      {{ 'member.matchHistory.filters.q' | translate }}
-      <input
-        type="text"
-        formControlName="q"
-        [attr.placeholder]="'member.matchHistory.filters.qPlaceholder' | translate"
-      />
-    </label>
+    <div class="filters-grid filters-grid--names">
+      <label>
+        {{ 'member.matchHistory.filters.opponent1' | translate }}
+        <input type="text" formControlName="opponent1" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.opponent2' | translate }}
+        <input type="text" formControlName="opponent2" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.partner1' | translate }}
+        <input type="text" formControlName="partner1" />
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.partner2' | translate }}
+        <input type="text" formControlName="partner2" />
+      </label>
+    </div>
 
     <div class="filters-grid">
       <label>
@@ -37,13 +47,28 @@
         <input type="number" min="1" formControlName="round_to" />
       </label>
       <label>
-        {{ 'member.matchHistory.filters.scoreCmp' | translate }}
-        <select formControlName="score_cmp">
-          <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
-          <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
-          <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
-          <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
-        </select>
+        {{ 'member.matchHistory.filters.selfScoreCmp' | translate }}
+        <div class="score-filter-row">
+          <select formControlName="self_score_cmp">
+            <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+            <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+            <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+            <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+          </select>
+          <input type="number" min="0" formControlName="self_score" />
+        </div>
+      </label>
+      <label>
+        {{ 'member.matchHistory.filters.opponentScoreCmp' | translate }}
+        <div class="score-filter-row">
+          <select formControlName="opponent_score_cmp">
+            <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+            <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+            <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+            <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+          </select>
+          <input type="number" min="0" formControlName="opponent_score" />
+        </div>
       </label>
     </div>
 
@@ -173,6 +198,11 @@
         <li class="card">
           <span class="status-badge">{{ match.group_name }}</span>
           <span class="status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
+          @if (match.started_at && match.ended_at) {
+            <span class="time-range">
+              🕐 {{ match.started_at | date: 'M/d HH:mm' }} - {{ match.ended_at | date: 'M/d HH:mm' }}
+            </span>
+          }
           <span class="teams">
             @for (p of match.team_a; track p.roster_entry_id) {
               {{ p.nickname }}

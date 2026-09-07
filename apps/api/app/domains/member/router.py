@@ -198,29 +198,43 @@ async def get_member_match_records(
     member: Annotated[Member, Depends(security.require_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
-    q: Annotated[str | None, Query(max_length=20)] = None,
+    opponent1: Annotated[str | None, Query(max_length=20)] = None,
+    opponent2: Annotated[str | None, Query(max_length=20)] = None,
+    partner1: Annotated[str | None, Query(max_length=20)] = None,
+    partner2: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
     date_from: Annotated[date | None, Query()] = None,
     date_to: Annotated[date | None, Query()] = None,
     round_from: Annotated[int | None, Query(ge=1)] = None,
     round_to: Annotated[int | None, Query(ge=1)] = None,
-    score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    self_score: Annotated[int | None, Query(ge=0)] = None,
+    opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    opponent_score: Annotated[int | None, Query(ge=0)] = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計；未鎖定
-    於信箱驗證（比照 `GET /members/me` 之既有寬鬆基準）。`q` 篩選對手/隊友暱
-    稱（子字串、不分大小寫），`result`/`date_from`/`date_to`/`round_from`/
-    `round_to`/`score_cmp` 篩選勝負、日期、輪次、比分區間 —— 所有彙總統計
-    （場次/勝敗/勝率/各輪趨勢/對戰對象排行）皆以篩選後的完整結果集計算，
-    而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`。"""
+    於信箱驗證（比照 `GET /members/me` 之既有寬鬆基準）。`opponent1`/
+    `opponent2`、`partner1`/`partner2` 分開篩選對手與隊友暱稱（子字串、不
+    分大小寫）——雙打時兩個欄位須各自對應到不同的對手/隊友，不能同一人滿
+    足兩欄。`self_score_cmp`+`self_score`、`opponent_score_cmp`+
+    `opponent_score` 各自篩選自己/對手的比分（與指定數值比較，而非兩者互
+    比）。`result`/`date_from`/`date_to`/`round_from`/`round_to` 篩選勝負、
+    日期、輪次區間 —— 所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
+    皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`。
+    """
     return await service.build_member_match_records(
         session,
         member.id,
         page,
-        opponent_or_partner=q,
+        opponents=[name for name in (opponent1, opponent2) if name],
+        partners=[name for name in (partner1, partner2) if name],
         result=result,
         date_from=date_from,
         date_to=date_to,
         round_from=round_from,
         round_to=round_to,
-        score_cmp=score_cmp,
+        self_score_cmp=self_score_cmp,
+        self_score=self_score,
+        opponent_score_cmp=opponent_score_cmp,
+        opponent_score=opponent_score,
     )

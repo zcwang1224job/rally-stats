@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -23,7 +24,7 @@ interface RoundTrendPoint {
  * 片與圖表都反映篩選後的完整結果集，而非僅目前頁面。 */
 @Component({
   selector: 'app-match-history',
-  imports: [TranslatePipe, ReactiveFormsModule],
+  imports: [TranslatePipe, ReactiveFormsModule, DatePipe],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
 })
@@ -40,13 +41,19 @@ export class MatchHistoryComponent {
   });
 
   readonly filterForm = this.fb.nonNullable.group({
-    q: [''],
+    opponent1: [''],
+    opponent2: [''],
+    partner1: [''],
+    partner2: [''],
     result: [''],
     date_from: [''],
     date_to: [''],
     round_from: [''],
     round_to: [''],
-    score_cmp: [''],
+    self_score_cmp: [''],
+    self_score: [''],
+    opponent_score_cmp: [''],
+    opponent_score: [''],
   });
 
   private readonly appliedFilters = signal<MemberMatchRecordFilters>({});
@@ -103,13 +110,19 @@ export class MatchHistoryComponent {
 
   clearFilters(): void {
     this.filterForm.reset({
-      q: '',
+      opponent1: '',
+      opponent2: '',
+      partner1: '',
+      partner2: '',
       result: '',
       date_from: '',
       date_to: '',
       round_from: '',
       round_to: '',
-      score_cmp: '',
+      self_score_cmp: '',
+      self_score: '',
+      opponent_score_cmp: '',
+      opponent_score: '',
     });
     this.applyFilters();
   }
@@ -122,13 +135,21 @@ export class MatchHistoryComponent {
   private load(page: number): void {
     const raw = this.filterForm.getRawValue();
     const filters: MemberMatchRecordFilters = {
-      q: raw.q || undefined,
+      opponent1: raw.opponent1 || undefined,
+      opponent2: raw.opponent2 || undefined,
+      partner1: raw.partner1 || undefined,
+      partner2: raw.partner2 || undefined,
       result: (raw.result || undefined) as MatchRecordResultFilter | undefined,
       date_from: raw.date_from || undefined,
       date_to: raw.date_to || undefined,
       round_from: raw.round_from ? Number(raw.round_from) : undefined,
       round_to: raw.round_to ? Number(raw.round_to) : undefined,
-      score_cmp: (raw.score_cmp || undefined) as MatchRecordScoreComparison | undefined,
+      self_score_cmp: (raw.self_score_cmp || undefined) as MatchRecordScoreComparison | undefined,
+      self_score: raw.self_score ? Number(raw.self_score) : undefined,
+      opponent_score_cmp: (raw.opponent_score_cmp || undefined) as
+        | MatchRecordScoreComparison
+        | undefined,
+      opponent_score: raw.opponent_score ? Number(raw.opponent_score) : undefined,
     };
     this.appliedFilters.set(filters);
     this.auth.getMatchRecords(page, filters).subscribe({
