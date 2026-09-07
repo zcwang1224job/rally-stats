@@ -2,7 +2,7 @@
 
 <section class="filters-panel card">
   <form class="filters-form form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
-    <div class="filters-grid filters-grid--quick">
+    <div class="filters-grid">
       <label>
         {{ 'member.matchHistory.filters.opponent1' | translate }}
         <input
@@ -50,27 +50,29 @@
         </label>
         <label>
           {{ 'member.matchHistory.filters.selfScoreCmp' | translate }}
-          <div class="score-filter-row">
-            <select formControlName="self_score_cmp">
-              <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
-              <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
-              <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
-              <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
-            </select>
-            <input type="number" min="0" formControlName="self_score" />
-          </div>
+          <select formControlName="self_score_cmp">
+            <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+            <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+            <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+            <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+          </select>
+        </label>
+        <label>
+          {{ 'member.matchHistory.filters.selfScoreValue' | translate }}
+          <input type="number" min="0" formControlName="self_score" />
         </label>
         <label>
           {{ 'member.matchHistory.filters.opponentScoreCmp' | translate }}
-          <div class="score-filter-row">
-            <select formControlName="opponent_score_cmp">
-              <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
-              <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
-              <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
-              <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
-            </select>
-            <input type="number" min="0" formControlName="opponent_score" />
-          </div>
+          <select formControlName="opponent_score_cmp">
+            <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+            <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+            <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+            <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+          </select>
+        </label>
+        <label>
+          {{ 'member.matchHistory.filters.opponentScoreValue' | translate }}
+          <input type="number" min="0" formControlName="opponent_score" />
         </label>
       </div>
     </details>
