@@ -48,6 +48,15 @@ export class NotificationListComponent {
       this.load(this.page());
       if (notification.type === 'friend_request') {
         void this.router.navigateByUrl('/friends/requests');
+      } else if (notification.type === 'group_invite' && notification.group_invite) {
+        void this.router.navigateByUrl(`/group-invites/${notification.group_invite.invite_id}`);
+      } else if (notification.type === 'group_invite_capacity_full' && notification.group_invite) {
+        // The inviter (团长) is directed to the admin page's invite-status
+        // section rather than the invitee's accept/decline screen — this
+        // notification is informational only, there's nothing to accept.
+        void this.router.navigateByUrl(
+          `/groups/${notification.group_invite.group_id}/admin?section=invites`,
+        );
       }
     });
   }

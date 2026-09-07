@@ -137,6 +137,11 @@ class GroupPublicResponse(BaseModel):
     # already has an active roster entry in this group (FR-020a short-
     # circuit), same signal as GroupListItem.joined_by_me.
     already_joined: bool | None = None
+    # 013-group-invite-friends: True only for a group created by a logged-in
+    # Member (Group.created_by_member_id is not None) — gates whether the
+    # admin page's "邀請好友" section is offered at all (FR-012). Not
+    # sensitive (a boolean, never reveals which member).
+    created_by_member: bool = False
 
 
 class ReauthRequest(BaseModel):

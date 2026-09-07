@@ -46,6 +46,11 @@ from app.domains.schedule.service import handle_member_joined, handle_member_lef
 from app.system_config.service import get_max_group_members
 
 AbandonMatchesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
+# 013-group-invite-friends research.md #2: same optional-hook pattern as
+# AbandonMatchesHook above, wired in by group_invite/router.py's disband
+# endpoint (and the auto-disband sweep) so group.service never has to
+# import group_invite.service directly.
+InvalidatePendingInvitesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
 
 _MATCH_RECORDS_PAGE_SIZE = 20
 
@@ -355,6 +360,7 @@ async def disband_group(
     group: Group,
     *,
     abandon_unfinished_matches: AbandonMatchesHook | None = None,
+    invalidate_pending_invites: InvalidatePendingInvitesHook | None = None,
 ) -> Group:
     """Disband (manual or auto-triggered). Idempotent: re-disbanding an already
     disbanded group is a no-op rather than an error, since the auto-disband
@@ -367,6 +373,8 @@ async def disband_group(
 
     if abandon_unfinished_matches is not None:
         await abandon_unfinished_matches(session, group.id)
+    if invalidate_pending_invites is not None:
+        await invalidate_pending_invites(session, group.id)
 
     await session.commit()
     await session.refresh(group)
@@ -638,6 +646,7 @@ async def join_group(
     member: Member | None,
     password: str | None,
     nickname: str | None,
+    skip_password: bool = False,
 ) -> tuple[RosterEntry, bool]:
     """FR-011~027: the core join write path, shared by every join entry
     point (list, join-link, guest reconnect is separate). Returns
@@ -656,6 +665,15 @@ async def join_group(
     below (disbanded/full/password) — none of those matter if the Member
     isn't eligible to join a second group at all. Guest joins are exempt;
     see that function's docstring for why.
+
+    `skip_password` (013-group-invite-friends, FR-007/Clarifications Q1):
+    keyword-only, defaults to `False` — every pre-existing caller (list
+    join, join-link, guest reconnect) omits it and keeps validating the
+    password exactly as before. Only `group_invite.service.accept_invite()`
+    passes `skip_password=True` — an invite is itself the creator's
+    per-friend authorization, so the invitee never needs to know or enter
+    the group's password (research.md #3). This intentionally does not read
+    `group.password_ciphertext`/`password_nonce` at all in that path.
     """
     if member is not None:
         existing_result = await session.execute(
@@ -677,7 +695,7 @@ async def join_group(
     if group.current_member_count >= group.max_members:
         raise ApiError("GROUP_FULL", status_code=409)
 
-    if not verify_password(group, password or ""):
+    if not skip_password and not verify_password(group, password or ""):
         raise ApiError("GROUP_PASSWORD_INCORRECT", status_code=401)
 
     if member is not None:

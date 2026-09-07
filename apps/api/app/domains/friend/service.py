@@ -2,6 +2,7 @@
 Per specs/006-member-friends/plan.md."""
 
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, or_, select
@@ -24,6 +25,14 @@ from app.domains.notification.service import (
 )
 
 _FRIEND_LIST_PAGE_SIZE = 20
+
+# 013-group-invite-friends research.md #2: same optional-hook pattern as
+# group.service's AbandonMatchesHook, wired in by group_invite/router.py's
+# unfriend endpoint so friend.service never has to import group_invite.service
+# directly.
+InvalidatePendingInvitesForPairHook = Callable[
+    [AsyncSession, uuid.UUID, uuid.UUID], Awaitable[None]
+]
 
 
 async def get_friendship_status(
@@ -215,11 +224,20 @@ async def respond_friend_request(
 
 
 async def unfriend(
-    session: AsyncSession, member_id: uuid.UUID, friend_request_id: uuid.UUID
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    friend_request_id: uuid.UUID,
+    *,
+    invalidate_pending_invites: InvalidatePendingInvitesForPairHook | None = None,
 ) -> FriendRequestResponse:
     """FR-043~046: `accepted -> unfriended`. Deliberately does not publish
     any Ably event or send any notification — the other member only learns
-    of this the next time they load their own `GET /friends` (FR-045)."""
+    of this the next time they load their own `GET /friends` (FR-045).
+
+    `invalidate_pending_invites` (013-group-invite-friends, FR-014): optional
+    hook, called with both members' ids in the same transaction so any
+    pending `GroupInvite` between them auto-invalidates the moment the
+    friendship that authorized it is dissolved (research.md #2)."""
     result = await session.execute(
         select(FriendRequest).where(FriendRequest.id == friend_request_id)
     )
@@ -234,6 +252,10 @@ async def unfriend(
 
     friend_request.status = "unfriended"
     friend_request.updated_at = datetime.now(UTC)
+    if invalidate_pending_invites is not None:
+        await invalidate_pending_invites(
+            session, friend_request.requester_id, friend_request.addressee_id
+        )
     await session.commit()
     await session.refresh(friend_request)
     return FriendRequestResponse(

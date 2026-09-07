@@ -15,6 +15,7 @@ from app.domains.friend.schemas import (
     FriendRequestResponse,
     IncomingFriendRequestsResponse,
 )
+from app.domains.group_invite.service import invalidate_pending_invites_for_member_pair
 from app.domains.member.models import Member
 from app.domains.member.security import require_verified_member
 
@@ -83,4 +84,9 @@ async def unfriend(
 ) -> FriendRequestResponse:
     """FR-045: MUST NOT notify the other party. Errors:
     `FRIEND_REQUEST_NOT_FOUND`, `FRIEND_REQUEST_NOT_ACCEPTED`."""
-    return await service.unfriend(session, member.id, friend_request_id)
+    return await service.unfriend(
+        session,
+        member.id,
+        friend_request_id,
+        invalidate_pending_invites=invalidate_pending_invites_for_member_pair,
+    )

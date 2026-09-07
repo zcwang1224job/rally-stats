@@ -7,6 +7,7 @@ import { QRCodeComponent } from 'angularx-qrcode';
 import { interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
+import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { GroupAdminService } from '../group-admin.service';
 import {
@@ -40,7 +41,7 @@ const HEARTBEAT_INTERVAL_MS = 30_000; // spec FR-035: 30s heartbeat fallback cei
  * version) — splitting the form's DOM across two @switch cases is safe
  * because Angular's FormGroup holds every control's current value
  * independent of which one is currently attached to the DOM. */
-type AdminSection = 'courts' | 'schedule' | 'roster' | 'name' | 'access' | 'settings';
+type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'name' | 'access' | 'settings';
 
 @Component({
   selector: 'app-admin-page',
@@ -68,7 +69,17 @@ export class AdminPageComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly groupId = this.route.snapshot.paramMap.get('groupId')!;
-  readonly activeSection = signal<AdminSection>('courts');
+  // 013-group-invite-friends: a `?section=invites` query param lets the
+  // group_invite_capacity_full notification deep-link straight into the
+  // invites tab — a narrow, deliberate exception to this signal otherwise
+  // never being reflected in/read from the URL (it is not kept in sync on
+  // further tab switches, only read once as the initial value).
+  readonly activeSection = signal<AdminSection>(
+    this.route.snapshot.queryParamMap.get('section') === 'invites' ? 'invites' : 'courts',
+  );
+  readonly invitableFriends = signal<InvitableFriendSummary[] | null>(null);
+  readonly invitesErrorKey = signal<string | null>(null);
+  readonly sendingInviteToMemberId = signal<string | null>(null);
   readonly adminView = signal<AdminGroupResponse | null>(null);
   readonly loading = signal(true);
   readonly errorKey = signal<string | null>(null);
@@ -148,6 +159,9 @@ export class AdminPageComponent {
         if (!view.read_only) {
           this.patchForms(view);
           this.loadSchedule();
+          if (view.group.created_by_member) {
+            this.loadInvitableFriends();
+          }
         }
       },
       error: (error: ApiError) => this.handleAuthFailure(error),
@@ -161,6 +175,42 @@ export class AdminPageComponent {
     this.scheduleService.getSchedule(this.groupId).subscribe({
       next: (response) => this.schedule.set(response),
       error: () => this.schedule.set(null),
+    });
+  }
+
+  /** 013-group-invite-friends US1/US3: the "邀請好友" tab's data — only
+   * ever called for a member-created group (FR-012), gated by the caller
+   * above. */
+  loadInvitableFriends(): void {
+    this.invitesErrorKey.set(null);
+    this.groupAdmin.listInvitableFriends(this.groupId).subscribe({
+      next: (response) => this.invitableFriends.set(response.friends),
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.invitesErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  sendInvite(friend: InvitableFriendSummary): void {
+    this.invitesErrorKey.set(null);
+    this.sendingInviteToMemberId.set(friend.member_id);
+    this.groupAdmin.sendInvite(this.groupId, friend.member_id).subscribe({
+      next: () => {
+        this.sendingInviteToMemberId.set(null);
+        this.loadInvitableFriends();
+      },
+      error: (error: ApiError) => {
+        this.sendingInviteToMemberId.set(null);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.invitesErrorKey.set(error.i18nKey);
+      },
     });
   }
 

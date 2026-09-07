@@ -40,6 +40,21 @@
                   }}
                 </span>
               }
+              @if (notification.group_invite; as gi) {
+                <span class="notification-item__body">
+                  @if (notification.type === 'group_invite') {
+                    {{
+                      'notifications.list.groupInviteBody'
+                        | translate: { nickname: gi.inviter.nickname, groupName: gi.group_name }
+                    }}
+                  } @else {
+                    {{
+                      'notifications.list.groupInviteCapacityFullBody'
+                        | translate: { nickname: gi.invitee.nickname, groupName: gi.group_name }
+                    }}
+                  }
+                </span>
+              }
               <span class="notification-item__time">
                 {{ notification.created_at | date: 'M/d HH:mm' }}
               </span>

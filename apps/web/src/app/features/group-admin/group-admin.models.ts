@@ -57,6 +57,9 @@ export interface GroupPublic {
   // Only set by GET /groups/{group_id} when called with a logged-in
   // Member's Bearer token — null for Guests/unauthenticated callers.
   already_joined?: boolean | null;
+  // 013-group-invite-friends: true only for a group created by a logged-in
+  // Member — gates whether the admin page's "邀請好友" section is offered.
+  created_by_member: boolean;
 }
 
 export interface ReauthResponse {

@@ -1,0 +1,40 @@
+<main>
+  <h1>{{ 'groupInvite.detailTitle' | translate }}</h1>
+
+  @if (loading()) {
+    <p>{{ 'common.loading' | translate }}</p>
+  } @else if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  } @else if (detail(); as d) {
+    <section class="card invite-detail">
+      <p class="invite-detail__group-name">{{ d.group_name }}</p>
+      <p>
+        {{ 'groupInvite.inviterLabel' | translate }}：{{ d.inviter_nickname }}
+      </p>
+      <span
+        class="status-badge"
+        [class.status-badge--success]="d.status === 'accepted'"
+        [class.status-badge--danger]="d.status === 'declined' || d.status === 'invalidated'"
+      >
+        {{ ('groupInvite.status.' + d.status) | translate }}
+      </span>
+
+      @if (actionErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
+
+      @if (d.status === 'pending') {
+        <div class="invite-detail__actions">
+          <button type="button" class="btn" (click)="accept()">
+            {{ 'groupInvite.acceptButton' | translate }}
+          </button>
+          <button type="button" class="btn btn--secondary" (click)="decline()">
+            {{ 'groupInvite.declineButton' | translate }}
+          </button>
+        </div>
+      }
+    </section>
+  }
+
+  <a class="tap-target" routerLink="/notifications">{{ 'groupInvite.backToNotifications' | translate }}</a>
+</main>

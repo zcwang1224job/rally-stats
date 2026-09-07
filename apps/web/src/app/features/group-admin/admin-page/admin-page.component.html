@@ -27,6 +27,11 @@
       <button type="button" class="tap-target" [class.is-active]="activeSection() === 'roster'" (click)="activeSection.set('roster')">
         {{ 'adminPage.section.roster' | translate }}
       </button>
+      @if (view.group.created_by_member) {
+        <button type="button" class="tap-target" [class.is-active]="activeSection() === 'invites'" (click)="activeSection.set('invites')">
+          {{ 'adminPage.section.invites' | translate }}
+        </button>
+      }
       <button type="button" class="tap-target" [class.is-active]="activeSection() === 'name'" (click)="activeSection.set('name')">
         {{ 'adminPage.section.name' | translate }}
       </button>
@@ -196,6 +201,47 @@
                     </li>
                   }
                 </ul>
+              }
+            </section>
+          }
+
+          @case ('invites') {
+            <section class="card">
+              <h3>{{ 'inviteSection.title' | translate }}</h3>
+              @if (invitesErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+              @if (invitableFriends(); as friends) {
+                @if (friends.length === 0) {
+                  <p>{{ 'inviteSection.empty' | translate }}</p>
+                } @else {
+                  <ul class="invite-friend-list">
+                    @for (friend of friends; track friend.member_id) {
+                      <li>
+                        <span class="invite-friend-list__nickname">{{ friend.nickname }}</span>
+                        <span
+                          class="status-badge"
+                          [class.status-badge--success]="friend.invite_status === 'accepted' || friend.invite_status === 'already_member'"
+                          [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated'"
+                        >
+                          {{ ('inviteSection.status.' + friend.invite_status) | translate }}
+                        </span>
+                        @if (friend.invite_status === 'not_invited' || friend.invite_status === 'declined' || friend.invite_status === 'invalidated') {
+                          <button
+                            type="button"
+                            class="btn btn--secondary"
+                            [disabled]="sendingInviteToMemberId() === friend.member_id"
+                            (click)="sendInvite(friend)"
+                          >
+                            {{ 'inviteSection.inviteButton' | translate }}
+                          </button>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              } @else {
+                <p>{{ 'common.loading' | translate }}</p>
               }
             </section>
           }

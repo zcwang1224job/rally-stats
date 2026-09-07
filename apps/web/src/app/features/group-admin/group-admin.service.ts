@@ -2,6 +2,10 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
 import {
+  InvitableFriendsResponse,
+  SendGroupInviteResponse,
+} from '../../core/api/group-invite.models';
+import {
   AdminGroupResponse,
   CreateGroupRequest,
   CreateGroupResponse,
@@ -106,6 +110,23 @@ export class GroupAdminService {
     return this.api.post<RegenerateAllCourtsLinkResponse>(
       `/groups/${groupId}/regenerate-all-courts-link`,
       { expected_version: expectedVersion },
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 013-group-invite-friends US1/US3: the creator's full friend list, each
+   * annotated with its current invite status. */
+  listInvitableFriends(groupId: string): Observable<InvitableFriendsResponse> {
+    return this.api.get<InvitableFriendsResponse>(
+      `/groups/${groupId}/invitable-friends`,
+      this.authHeader(groupId),
+    );
+  }
+
+  sendInvite(groupId: string, inviteeMemberId: string): Observable<SendGroupInviteResponse> {
+    return this.api.post<SendGroupInviteResponse>(
+      `/groups/${groupId}/invites`,
+      { invitee_member_id: inviteeMemberId },
       this.authHeader(groupId),
     );
   }

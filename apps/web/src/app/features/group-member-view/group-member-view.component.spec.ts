@@ -30,6 +30,7 @@ const groupPublic = {
   activity_time_start: null,
   activity_time_end: null,
   status: 'active' as const,
+  created_by_member: false,
 };
 
 function realtimeStub() {

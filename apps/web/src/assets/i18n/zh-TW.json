@@ -110,7 +110,35 @@
       "empty": "尚無通知",
       "unreadBadge": "● 未讀",
       "readBadge": "✓ 已讀",
-      "friendRequestBody": "{{nickname}} 向您送出好友申請"
+      "friendRequestBody": "{{nickname}} 向您送出好友申請",
+      "groupInviteBody": "{{nickname}} 邀請您加入「{{groupName}}」",
+      "groupInviteCapacityFullBody": "{{nickname}} 嘗試接受您邀請加入「{{groupName}}」的邀請，但目前已達人數上限"
+    }
+  },
+  "groupInvite": {
+    "detailTitle": "組團邀請",
+    "inviterLabel": "邀請人",
+    "status": {
+      "pending": "待回覆",
+      "accepted": "已接受",
+      "declined": "已拒絕",
+      "invalidated": "已失效"
+    },
+    "acceptButton": "接受邀請",
+    "declineButton": "拒絕邀請",
+    "backToNotifications": "返回通知列表"
+  },
+  "inviteSection": {
+    "title": "邀請好友加入",
+    "empty": "尚無好友可邀請",
+    "inviteButton": "送出邀請",
+    "status": {
+      "not_invited": "尚未邀請",
+      "pending": "待回覆",
+      "accepted": "已接受",
+      "declined": "已拒絕",
+      "invalidated": "已失效",
+      "already_member": "已在團內"
     }
   },
   "myGroups": {
@@ -249,6 +277,7 @@
       "courts": "場地",
       "schedule": "賽程",
       "roster": "輪替名單",
+      "invites": "邀請好友",
       "name": "團名",
       "access": "管理權限資訊",
       "settings": "管理員設定"
@@ -440,6 +469,12 @@
     "FRIEND_REQUEST_NOT_PENDING": "此邀請已被處理過",
     "FRIEND_REQUEST_NOT_ACCEPTED": "此關係目前並非好友狀態",
     "NOT_GROUP_CREATOR": "此團並非由您本人建立，無法使用此復原功能",
-    "NOTIFICATION_NOT_FOUND": "找不到此通知"
+    "NOTIFICATION_NOT_FOUND": "找不到此通知",
+    "GROUP_NOT_MEMBER_CREATED": "此團並非由會員身分建立，無法使用邀請好友功能",
+    "NOT_FRIENDS": "僅能邀請已確立的好友關係",
+    "ALREADY_GROUP_MEMBER": "此好友已在團內，無需再邀請",
+    "INVITE_ALREADY_PENDING": "已對此好友送出過邀請，正在等待回覆中",
+    "GROUP_INVITE_NOT_FOUND": "找不到此組團邀請",
+    "GROUP_INVITE_NOT_PENDING": "此邀請已被處理過"
   }
 }

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import get_settings
 from app.domains.group.models import Group
 from app.domains.group.service import disband_group
+from app.domains.group_invite.service import invalidate_pending_invites_for_group
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,9 @@ async def sweep_idle_groups(
         idle_groups = result.scalars().all()
         for group in idle_groups:
             logger.info("auto-disbanding idle group %s", group.id)
-            await disband_group(session, group)
+            await disband_group(
+                session, group, invalidate_pending_invites=invalidate_pending_invites_for_group
+            )
 
 
 def start_scheduler() -> None:

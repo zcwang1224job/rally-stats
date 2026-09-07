@@ -89,6 +89,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'group-invites/:inviteId',
+    loadComponent: () =>
+      import('./features/group-invites/group-invite-detail/group-invite-detail.component').then(
+        (m) => m.GroupInviteDetailComponent,
+      ),
+  },
+  {
     path: 'friends',
     loadComponent: () =>
       import('./features/friends/friend-list/friend-list.component').then(

@@ -45,6 +45,7 @@ from app.domains.group.schemas import (
     VerifyPasswordResponse,
 )
 from app.domains.group.security import issue_admin_token, require_admin
+from app.domains.group_invite.service import invalidate_pending_invites_for_group
 from app.domains.member.models import Member
 from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
@@ -86,6 +87,7 @@ def _to_public(group: Group) -> GroupPublicResponse:
         activity_time_start=group.activity_time_start,
         activity_time_end=group.activity_time_end,
         status=group.status,
+        created_by_member=group.created_by_member_id is not None,
     )
 
 
@@ -355,7 +357,10 @@ async def disband(
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     updated = await service.disband_group(
-        session, group, abandon_unfinished_matches=abandon_group_matches
+        session,
+        group,
+        abandon_unfinished_matches=abandon_group_matches,
+        invalidate_pending_invites=invalidate_pending_invites_for_group,
     )
     return _to_public(updated)
 

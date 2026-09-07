@@ -25,6 +25,7 @@ const adminGroupResponse: AdminGroupResponse = {
     activity_time_start: null,
     activity_time_end: null,
     status: 'active',
+    created_by_member: false,
   },
   password_plaintext: null,
   read_only: false,
@@ -56,7 +57,12 @@ describe('AdminPageComponent', () => {
         provideTranslateService({}),
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { paramMap: convertToParamMap({ groupId: 'g1' }) } },
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ groupId: 'g1' }),
+              queryParamMap: convertToParamMap({}),
+            },
+          },
         },
         {
           provide: GroupAdminService,
