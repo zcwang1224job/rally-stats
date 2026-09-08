@@ -25,6 +25,14 @@
       <summary>{{ 'member.matchHistory.filters.moreFilters' | translate }}</summary>
       <div class="filters-grid">
         <label>
+          {{ 'groupJoin.matchModeFilter' | translate }}
+          <select formControlName="match_mode">
+            <option value="">{{ 'groupJoin.matchModeFilterAny' | translate }}</option>
+            <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
+            <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
+          </select>
+        </label>
+        <label>
           {{ 'member.matchHistory.filters.opponent2' | translate }}
           <input type="text" formControlName="opponent2" />
         </label>

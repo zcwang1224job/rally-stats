@@ -325,6 +325,7 @@ async def build_member_match_records(
     opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
     opponent_score: int | None = None,
     group_id: uuid.UUID | None = None,
+    match_mode: Literal["singles", "doubles"] | None = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020), extended with filters/statistics: a
     member's completed matches across every group they've ever joined as a
@@ -343,7 +344,13 @@ async def build_member_match_records(
     `/members/me/match-records` endpoint) omits it and keeps its existing
     behavior unchanged. Only `get_member_group_history()` passes it, to
     narrow this same aggregate logic down to one group's worth of matches
-    rather than duplicating the win/loss-counting logic a third time."""
+    rather than duplicating the win/loss-counting logic a third time.
+
+    `match_mode`: keyword-only, defaults to `None`. `Match` itself has no
+    match_mode column (a match's singles/doubles-ness is a property of the
+    group it happened in), so this filters via a join to `Group` rather
+    than the Python post-filter loop below — unlike the nickname/score
+    filters, it can be pushed down to SQL directly."""
     participant_exists = (
         select(MatchParticipant.id)
         .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
@@ -353,6 +360,10 @@ async def build_member_match_records(
     base_query = _completed_matches_query().where(participant_exists)
     if group_id is not None:
         base_query = base_query.where(Match.group_id == group_id)
+    if match_mode is not None:
+        base_query = base_query.join(Group, Group.id == Match.group_id).where(
+            Group.match_mode == match_mode
+        )
 
     all_matches_result = await session.execute(
         base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())

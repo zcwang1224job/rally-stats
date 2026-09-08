@@ -398,3 +398,39 @@ async def test_group_id_omitted_keeps_existing_cross_group_behavior(
 
     response = await build_member_match_records(db_session, member.id)
     assert response.total_matches == 2
+
+
+async def test_match_mode_filter_narrows_to_singles_or_doubles(db_session: AsyncSession) -> None:
+    """match_mode filters by the group's own match_mode (Match itself has
+    no such column) via a join — a member's cross-group history can span
+    both singles and doubles groups."""
+    member = await _make_member(db_session, "match-mode-filter@example.com")
+    singles_group = await _make_group(db_session, "Singles Group", match_mode="singles")
+    doubles_group = await _make_group(db_session, "Doubles Group", match_mode="doubles")
+
+    my_singles_entry = await _make_entry(db_session, singles_group, "小明", member.id)
+    singles_opp = await _make_entry(db_session, singles_group, "對手A", None)
+    await _make_completed_match(
+        db_session, singles_group, round_number=1, winner_team="A",
+        team_a=[my_singles_entry.id], team_b=[singles_opp.id],
+    )
+
+    my_doubles_entry = await _make_entry(db_session, doubles_group, "小明", member.id)
+    doubles_partner = await _make_entry(db_session, doubles_group, "隊友", None)
+    doubles_opp1 = await _make_entry(db_session, doubles_group, "對手B1", None)
+    doubles_opp2 = await _make_entry(db_session, doubles_group, "對手B2", None)
+    await _make_completed_match(
+        db_session, doubles_group, round_number=1, winner_team="B",
+        team_a=[my_doubles_entry.id, doubles_partner.id], team_b=[doubles_opp1.id, doubles_opp2.id],
+    )
+
+    singles_only = await build_member_match_records(db_session, member.id, match_mode="singles")
+    assert singles_only.total_matches == 1
+    assert singles_only.matches[0].group_name == "Singles Group"
+
+    doubles_only = await build_member_match_records(db_session, member.id, match_mode="doubles")
+    assert doubles_only.total_matches == 1
+    assert doubles_only.matches[0].group_name == "Doubles Group"
+
+    unfiltered = await build_member_match_records(db_session, member.id)
+    assert unfiltered.total_matches == 2

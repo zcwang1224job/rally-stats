@@ -98,6 +98,7 @@ export interface MemberMatchRecordFilters {
   self_score?: number;
   opponent_score_cmp?: MatchRecordScoreComparison;
   opponent_score?: number;
+  match_mode?: 'singles' | 'doubles';
 }
 
 export interface LeaveGroupResponse {

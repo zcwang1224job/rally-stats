@@ -238,6 +238,7 @@ async def get_member_match_records(
     self_score: Annotated[int | None, Query(ge=0)] = None,
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
+    match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計；未鎖定
     於信箱驗證（比照 `GET /members/me` 之既有寬鬆基準）。`opponent1`/
@@ -247,7 +248,8 @@ async def get_member_match_records(
     人。`self_score_cmp`+`self_score`、`opponent_score_cmp`+
     `opponent_score` 各自篩選自己/對手的比分（與指定數值比較，而非兩者互
     比）。`result`/`date_from`/`date_to`/`round_from`/`round_to` 篩選勝負、
-    日期、輪次區間 —— 所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
+    日期、輪次區間；`match_mode` 篩選單打/雙打（比賽所屬團的賽制）——
+    所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
     皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`。
     """
     return await service.build_member_match_records(
@@ -265,4 +267,5 @@ async def get_member_match_records(
         self_score=self_score,
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
+        match_mode=match_mode,
     )

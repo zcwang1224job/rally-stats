@@ -10,6 +10,7 @@ import {
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
 import { AuthService } from '../../auth/auth.service';
+import { MatchMode } from '../../group-admin/group-admin.models';
 
 interface RoundTrendPoint {
   round: number;
@@ -60,6 +61,7 @@ export class MatchHistoryComponent {
     self_score: [''],
     opponent_score_cmp: [''],
     opponent_score: [''],
+    match_mode: [''],
   });
 
   private readonly appliedFilters = signal<MemberMatchRecordFilters>({});
@@ -162,6 +164,7 @@ export class MatchHistoryComponent {
       self_score: '',
       opponent_score_cmp: '',
       opponent_score: '',
+      match_mode: '',
     });
     this.applyFilters();
   }
@@ -188,6 +191,7 @@ export class MatchHistoryComponent {
         | MatchRecordScoreComparison
         | undefined,
       opponent_score: raw.opponent_score ? Number(raw.opponent_score) : undefined,
+      match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
     };
     this.appliedFilters.set(filters);
     this.auth.getMatchRecords(page, filters).subscribe({
