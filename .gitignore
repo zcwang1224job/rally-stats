@@ -28,6 +28,7 @@ coverage/
 
 # Local design/scratch files
 /ui/
+/docs/
 
 # OS / editor
 .DS_Store
