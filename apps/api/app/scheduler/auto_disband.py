@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.domains.group.models import Group
 from app.domains.group.service import disband_group
 from app.domains.group_invite.service import invalidate_pending_invites_for_group
+from app.domains.schedule.service import abandon_group_matches
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,10 @@ async def sweep_idle_groups(
         for group in idle_groups:
             logger.info("auto-disbanding idle group %s", group.id)
             await disband_group(
-                session, group, invalidate_pending_invites=invalidate_pending_invites_for_group
+                session,
+                group,
+                abandon_unfinished_matches=abandon_group_matches,
+                invalidate_pending_invites=invalidate_pending_invites_for_group,
             )
 
 

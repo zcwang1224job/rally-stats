@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
+from app.domains.schedule.models import Match
 from app.scheduler.auto_disband import sweep_idle_groups
 from tests.conftest import TEST_DATABASE_URL
 
@@ -54,6 +55,32 @@ async def test_active_group_under_1hr_is_not_disbanded(db_session: AsyncSession)
     await _sweep(db_session)
     await db_session.refresh(active_group)
     assert active_group.status == "active"
+
+
+async def test_idle_group_sweep_abandons_its_unfinished_matches(db_session: AsyncSession) -> None:
+    """The scheduler-triggered disband MUST abandon unfinished matches the
+    same way a manual disband does (constitution III) — previously this
+    hook was silently omitted from the auto-disband call, leaving idle
+    groups' queued/in-progress matches stuck forever."""
+    idle_group = await _make_group(db_session, datetime.now(UTC) - timedelta(minutes=61))
+    queued = Match(
+        group_id=idle_group.id,
+        court_id=None,
+        round_number=1,
+        status="queued",
+        target_score=21,
+        deuce_threshold=20,
+        cap_score=30,
+    )
+    db_session.add(queued)
+    await db_session.commit()
+    queued_id = queued.id
+
+    await _sweep(db_session)
+
+    db_session.expire_all()
+    result = await db_session.execute(select(Match).where(Match.id == queued_id))
+    assert result.scalar_one().status == "abandoned"
 
 
 async def test_sweep_only_touches_active_groups_past_cutoff(db_session: AsyncSession) -> None:
