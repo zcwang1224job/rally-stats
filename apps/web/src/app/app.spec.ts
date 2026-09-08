@@ -23,7 +23,7 @@ describe('App', () => {
         { provide: AuthService, useValue: { loggedIn: () => false, logout: () => undefined } },
         {
           provide: NotificationService,
-          useValue: { unreadCount: signal(0), init: () => undefined },
+          useValue: { unreadCount: signal(0), init: () => undefined, reset: () => undefined },
         },
       ],
     }).compileComponents();

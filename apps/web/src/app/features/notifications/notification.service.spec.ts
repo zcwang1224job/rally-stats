@@ -76,4 +76,29 @@ describe('NotificationService', () => {
 
     expect(apiGet).toHaveBeenCalledTimes(1);
   });
+
+  it('reset() zeroes the count and lets a subsequent init() re-fetch for a different member', () => {
+    const { service, apiGet } = setup([4, 9]);
+
+    service.init();
+    expect(service.unreadCount()).toBe(4);
+
+    service.reset();
+    expect(service.unreadCount()).toBe(0);
+
+    service.init();
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(service.unreadCount()).toBe(9);
+  });
+
+  it('reset() unsubscribes the old notification.created channel — it no longer affects unreadCount', () => {
+    const { service, notificationCreated$ } = setup([0, 99]);
+
+    service.init();
+    service.reset();
+
+    notificationCreated$.next({});
+
+    expect(service.unreadCount()).toBe(0);
+  });
 });

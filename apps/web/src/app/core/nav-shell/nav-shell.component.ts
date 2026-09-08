@@ -1,5 +1,5 @@
 import { Component, effect, inject, signal } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthService } from '../../features/auth/auth.service';
 import { NotificationBellComponent } from '../../features/notifications/notification-bell/notification-bell.component';
@@ -20,7 +20,6 @@ import { NotificationService } from '../../features/notifications/notification.s
 })
 export class NavShellComponent {
   private readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
   private readonly notifications = inject(NotificationService);
 
   readonly loggedIn = this.auth.loggedIn;
@@ -30,6 +29,11 @@ export class NavShellComponent {
     effect(() => {
       if (this.loggedIn()) {
         this.notifications.init();
+      } else {
+        // Logout is a pure client-side state change (no reload) — without
+        // this, a different member logging in on the same tab would stay
+        // wired to the previous member's channel/unread count.
+        this.notifications.reset();
       }
     });
   }
@@ -40,11 +44,5 @@ export class NavShellComponent {
 
   closeMenu(): void {
     this.open.set(false);
-  }
-
-  onLogout(): void {
-    this.auth.logout();
-    this.open.set(false);
-    void this.router.navigateByUrl('/');
   }
 }

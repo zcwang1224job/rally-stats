@@ -8,29 +8,30 @@ import { NavShellComponent } from './nav-shell.component';
 
 describe('NavShellComponent', () => {
   let loggedIn: ReturnType<typeof signal<boolean>>;
-  let logoutCalls: number;
+  let initCalls: number;
+  let resetCalls: number;
 
   function setup() {
     loggedIn = signal(false);
-    logoutCalls = 0;
+    initCalls = 0;
+    resetCalls = 0;
     TestBed.configureTestingModule({
       imports: [NavShellComponent],
       providers: [
         provideRouter([]),
         provideTranslateService({}),
-        {
-          provide: AuthService,
-          useValue: {
-            loggedIn,
-            logout: () => {
-              logoutCalls += 1;
-              loggedIn.set(false);
-            },
-          },
-        },
+        { provide: AuthService, useValue: { loggedIn } },
         {
           provide: NotificationService,
-          useValue: { unreadCount: signal(0), init: () => undefined },
+          useValue: {
+            unreadCount: signal(0),
+            init: () => {
+              initCalls += 1;
+            },
+            reset: () => {
+              resetCalls += 1;
+            },
+          },
         },
       ],
     });
@@ -57,10 +58,9 @@ describe('NavShellComponent', () => {
     expect(links).not.toContain('/member');
     expect(links).not.toContain('/member/settings');
     expect(links).not.toContain('/member/match-history');
-    expect(fixture.nativeElement.querySelector('.nav-shell__logout')).toBeNull();
   });
 
-  it('member state shows home/groups/member-home link + logout, no login/register (contract row 2)', () => {
+  it('member state shows home/groups/member-home link only, no login/register — logout lives on the member hub page instead (contract row 2)', () => {
     const fixture = setup();
     loggedIn.set(true);
     fixture.detectChanges();
@@ -72,32 +72,27 @@ describe('NavShellComponent', () => {
     expect(links).toContain('/member');
     expect(links).not.toContain('/auth/login');
     expect(links).not.toContain('/auth/register');
-    expect(fixture.nativeElement.querySelector('.nav-shell__logout')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.nav-shell__logout')).toBeNull();
   });
 
-  it('activating logout calls AuthService.logout() and the shell falls back to guest links (contract row 5)', () => {
+  it('resets NotificationService on logout so a different member logging in on the same tab starts clean', () => {
     const fixture = setup();
+    // Guest state (setup()'s initial loggedIn=false) already ran the
+    // effect's else-branch once.
+    expect(resetCalls).toBe(1);
+    expect(initCalls).toBe(0);
+
     loggedIn.set(true);
     fixture.detectChanges();
+    expect(initCalls).toBe(1);
+    expect(resetCalls).toBe(1);
 
-    const logoutButton = fixture.nativeElement.querySelector(
-      '.nav-shell__logout',
-    ) as HTMLButtonElement | null;
-    logoutButton?.click();
+    loggedIn.set(false);
     fixture.detectChanges();
+    expect(resetCalls).toBe(2);
 
-    expect(logoutCalls).toBe(1);
-    const links = hrefs(fixture);
-    expect(links).toContain('/auth/login');
-    expect(links).toContain('/auth/register');
-    expect(links).not.toContain('/member');
-  });
-
-  it('logout is reachable regardless of which member route is conceptually active (US3 scenario 2)', () => {
-    const fixture = setup();
     loggedIn.set(true);
     fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('.nav-shell__logout')).not.toBeNull();
+    expect(initCalls).toBe(2);
   });
 });

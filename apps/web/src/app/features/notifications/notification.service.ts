@@ -52,6 +52,19 @@ export class NotificationService {
     );
   }
 
+  /** MUST be called on logout — `init()`'s guard otherwise leaves this
+   * singleton wired to the previous member's Ably channel/unread count if
+   * a different member logs in on the same tab afterward (logout itself
+   * is a pure client-side state change, no page reload to reset this). */
+  reset(): void {
+    for (const subscription of this.subscriptions) {
+      subscription.unsubscribe();
+    }
+    this.subscriptions = [];
+    this.initialized = false;
+    this.unreadCount.set(0);
+  }
+
   private subscribeToChannel(memberId: string): void {
     this.subscriptions.push(
       this.realtime

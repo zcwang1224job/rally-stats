@@ -105,17 +105,3 @@
     }
   }
 }
-
-// Specificity note: `.nav-shell__links a, .nav-shell__links button` above
-// is (0,1,1) — a bare `.nav-shell__logout` (0,1,0) loses to it regardless
-// of source order, so this never actually painted red. Qualifying the
-// selector with the parent class matches that specificity and fixes it.
-.nav-shell__links .nav-shell__logout {
-  color: var(--color-danger);
-
-  @media (hover: hover) {
-    &:hover {
-      color: color-mix(in srgb, var(--color-danger) 80%, white);
-    }
-  }
-}
