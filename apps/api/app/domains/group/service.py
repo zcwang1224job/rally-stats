@@ -369,6 +369,7 @@ async def disband_group(
         return group
 
     group.status = "disbanded"
+    group.disbanded_at = datetime.now(UTC)
     await _touch_activity(session, group)
 
     if abandon_unfinished_matches is not None:

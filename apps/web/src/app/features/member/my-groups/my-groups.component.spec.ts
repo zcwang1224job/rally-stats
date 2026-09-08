@@ -11,11 +11,52 @@ const group = {
   group_number: 1001,
   name: '週三團',
   status: 'active' as const,
+  created_at: '2026-09-01T10:00:00Z',
+  disbanded_at: null,
   is_creator: true,
   member_status: 'active' as const,
 };
 
 describe('MyGroupsComponent', () => {
+  it('shows the group\'s created-at time, and disbanded-at only when the group is disbanded', () => {
+    const disbandedGroup = {
+      ...group,
+      group_id: 'g3',
+      status: 'disbanded' as const,
+      disbanded_at: '2026-09-05T12:00:00Z',
+    };
+    TestBed.configureTestingModule({
+      imports: [MyGroupsComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: FriendsService,
+          useValue: { getMyGroups: () => of({ groups: [group, disbandedGroup] }) },
+        },
+        { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
+        { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(MyGroupsComponent);
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.group-list li');
+    expect(rows[0].textContent).toContain('myGroups.createdAt');
+    expect(rows[0].textContent).not.toContain('myGroups.disbandedAt');
+    expect(rows[1].textContent).toContain('myGroups.createdAt');
+    expect(rows[1].textContent).toContain('myGroups.disbandedAt');
+    // Disbanded groups get a muted row style instead of a red badge — the
+    // 解散時間 text above is the non-color signal (constitution VII).
+    expect(rows[0].classList).not.toContain('group-row--disbanded');
+    expect(rows[1].classList).toContain('group-row--disbanded');
+    expect(rows[1].textContent).not.toContain('myGroups.status.disbanded');
+    // A disbanded group's admin PIN can no longer be regenerated into
+    // anywhere useful — the creator of row 1 (disbanded) should lose the
+    // button that row 0's creator (active) still has.
+    expect(rows[0].querySelectorAll('button').length).toBe(2);
+    expect(rows[1].querySelectorAll('button').length).toBe(1);
+  });
+
   it('renders each group with a forgot-PIN button', () => {
     TestBed.configureTestingModule({
       imports: [MyGroupsComponent],
@@ -39,6 +80,8 @@ describe('MyGroupsComponent', () => {
       group_number: 1002,
       name: '別人開的團',
       status: 'active' as const,
+      created_at: '2026-09-02T10:00:00Z',
+      disbanded_at: null,
       is_creator: false,
       member_status: 'left' as const,
     };
@@ -59,7 +102,9 @@ describe('MyGroupsComponent', () => {
 
     const rows = fixture.nativeElement.querySelectorAll('.group-list li');
     expect(rows[0].textContent).toContain('myGroups.role.creator');
-    expect(rows[0].textContent).toContain('myGroups.status.active');
+    // An active member_status is not called out with its own badge — only
+    // a departure (left/kicked) is worth flagging.
+    expect(rows[0].textContent).not.toContain('myGroups.status.active');
     expect(rows[1].textContent).toContain('myGroups.role.member');
     expect(rows[1].textContent).toContain('myGroups.status.left');
     // Only the creator's own row gets the forgot-PIN button.

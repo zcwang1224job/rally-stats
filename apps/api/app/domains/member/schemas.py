@@ -2,6 +2,7 @@
 specs/006-member-friends/contracts/auth-api.md and member-api.md."""
 
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
@@ -153,6 +154,10 @@ class MyGroupSummary(BaseModel):
     group_number: int
     name: str
     status: str
+    created_at: datetime
+    # NULL for a still-active group, and for a group disbanded before this
+    # column existed (that disband time was never recorded).
+    disbanded_at: datetime | None
     # 014-member-groups-history: whether this member created the group.
     is_creator: bool
     # This member's own most-recent RosterEntry status in this group

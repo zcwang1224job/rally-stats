@@ -577,7 +577,14 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
         return MyGroupsResponse(groups=[])
 
     result = await session.execute(
-        select(Group.id, Group.group_number, Group.name, Group.status)
+        select(
+            Group.id,
+            Group.group_number,
+            Group.name,
+            Group.status,
+            Group.created_at,
+            Group.disbanded_at,
+        )
         .where(Group.id.in_(all_group_ids))
         .order_by(Group.created_at.desc())
     )
@@ -587,6 +594,8 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
             group_number=row.group_number,
             name=row.name,
             status=row.status,
+            created_at=row.created_at,
+            disbanded_at=row.disbanded_at,
             is_creator=row.id in created_group_ids,
             member_status=member_status_by_group[row.id],
         )

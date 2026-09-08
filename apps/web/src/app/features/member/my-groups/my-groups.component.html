@@ -12,7 +12,7 @@
   } @else {
     <ul class="group-list">
       @for (group of groups(); track group.group_id) {
-        <li class="card">
+        <li class="card" [class.group-row--disbanded]="group.status === 'disbanded'">
           <button
             type="button"
             class="group-row-main"
@@ -23,25 +23,24 @@
             <span class="group-row-main__identity">
               <span class="group-name">{{ group.name }}</span>
               <span class="group-number">{{ group.group_number }}</span>
-              <span class="status-badge" [class.status-badge--success]="group.is_creator">
+              <span class="status-badge">
                 {{ (group.is_creator ? 'myGroups.role.creator' : 'myGroups.role.member') | translate }}
               </span>
-              <span
-                class="status-badge"
-                [class.status-badge--success]="group.member_status === 'active'"
-                [class.status-badge--danger]="group.member_status === 'kicked'"
-              >
-                {{ ('myGroups.status.' + group.member_status) | translate }}
-              </span>
-              @if (group.status === 'disbanded') {
-                <span class="status-badge status-badge--danger">
-                  {{ 'myGroups.status.disbanded' | translate }}
+              @if (group.member_status !== 'active') {
+                <span class="status-badge">
+                  {{ ('myGroups.status.' + group.member_status) | translate }}
                 </span>
               }
+              <span class="group-dates">
+                {{ 'myGroups.createdAt' | translate }}：{{ group.created_at | date: 'yyyy/M/d HH:mm' }}
+                @if (group.disbanded_at) {
+                  ・{{ 'myGroups.disbandedAt' | translate }}：{{ group.disbanded_at | date: 'yyyy/M/d HH:mm' }}
+                }
+              </span>
             </span>
             <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
-          @if (group.is_creator) {
+          @if (group.is_creator && group.status !== 'disbanded') {
             <button type="button" class="btn btn--secondary" (click)="openForgotPinDialog(group)">
               {{ 'myGroups.forgotPinButton' | translate }}
             </button>

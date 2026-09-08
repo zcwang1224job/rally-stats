@@ -84,3 +84,28 @@ h1 {
 .group-number {
   color: var(--color-text-muted);
 }
+
+// Forces onto its own line within the wrapping identity row, rather than
+// competing for space with the name/badges above it.
+.group-dates {
+  flex-basis: 100%;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
+// A disbanded group reads as "archived" via a muted, grayscale card instead
+// of a red "已解散" badge — the 解散時間 line (always shown alongside this)
+// is still the non-color signal for why the row looks this way, so this
+// isn't the only cue (constitution VII).
+.group-row--disbanded {
+  background: var(--color-surface-alt);
+
+  .group-name,
+  .group-number {
+    color: var(--color-text-muted);
+  }
+
+  .friend-row__avatar {
+    background: var(--color-text-muted);
+  }
+}

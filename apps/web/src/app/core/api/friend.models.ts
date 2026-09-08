@@ -54,6 +54,10 @@ export interface MyGroupSummary {
   group_number: number;
   name: string;
   status: 'active' | 'disbanded';
+  created_at: string;
+  // null for a still-active group, and for a group disbanded before this
+  // field existed (that disband time was never recorded).
+  disbanded_at: string | null;
   // 014-member-groups-history: whether this member created the group.
   is_creator: boolean;
   // This member's own most-recent roster status in this group — a member

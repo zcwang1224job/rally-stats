@@ -70,6 +70,7 @@ async def test_my_groups_includes_disbanded_groups(db_session: AsyncSession) -> 
 
     assert len(result.groups) == 1
     assert result.groups[0].status == "disbanded"
+    assert result.groups[0].disbanded_at is not None
 
 
 async def test_my_groups_includes_creator_own_entry_flags(db_session: AsyncSession) -> None:
@@ -90,6 +91,8 @@ async def test_my_groups_includes_creator_own_entry_flags(db_session: AsyncSessi
     assert len(result.groups) == 1
     assert result.groups[0].is_creator is True
     assert result.groups[0].member_status == "active"
+    assert result.groups[0].created_at is not None
+    assert result.groups[0].disbanded_at is None
 
 
 async def test_my_groups_includes_group_joined_but_not_created(db_session: AsyncSession) -> None:

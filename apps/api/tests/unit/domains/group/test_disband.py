@@ -29,17 +29,22 @@ async def _make_group(session: AsyncSession) -> Group:
 
 async def test_disband_transitions_status(db_session: AsyncSession) -> None:
     group = await _make_group(db_session)
+    assert group.disbanded_at is None
     updated = await disband_group(db_session, group)
     assert updated.status == "disbanded"
+    assert updated.disbanded_at is not None
 
 
 async def test_disband_is_idempotent(db_session: AsyncSession) -> None:
     group = await _make_group(db_session)
     await disband_group(db_session, group)
+    first_disbanded_at = group.disbanded_at
     # Re-disbanding an already-disbanded group must be a no-op, not an error
-    # (manual disband racing the auto-disband sweep).
+    # (manual disband racing the auto-disband sweep) — including not
+    # bumping disbanded_at a second time.
     result = await disband_group(db_session, group)
     assert result.status == "disbanded"
+    assert result.disbanded_at == first_disbanded_at
 
 
 async def test_disband_invokes_abandon_matches_hook(db_session: AsyncSession) -> None:

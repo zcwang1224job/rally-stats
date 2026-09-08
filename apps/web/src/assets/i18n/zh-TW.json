@@ -150,15 +150,16 @@
     "forgotPinConfirmTitle": "確定重設此團的管理 PIN 碼？",
     "forgotPinConfirmBody": "重設後原本的 PIN 碼將立即失效，此操作無法復原。",
     "viewHistoryAriaLabel": "查看「{{name}}」的比賽紀錄",
+    "createdAt": "開團時間",
+    "disbandedAt": "解散時間",
     "role": {
       "creator": "團長",
       "member": "團員"
     },
     "status": {
       "active": "現役",
-      "left": "已離開",
-      "kicked": "已被踢除",
-      "disbanded": "已解散"
+      "left": "中途離開",
+      "kicked": "已被踢除"
     }
   },
   "memberGroupHistory": {

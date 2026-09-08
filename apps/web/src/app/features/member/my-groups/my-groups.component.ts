@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, inject, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -14,7 +15,7 @@ import { FriendsService } from '../../friends/friends.service';
  * Constitution V treatment as disband/regenerate-PIN. */
 @Component({
   selector: 'app-my-groups',
-  imports: [TranslatePipe, ConfirmDialogComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, DatePipe],
   templateUrl: './my-groups.component.html',
   styleUrl: './my-groups.component.scss',
 })
