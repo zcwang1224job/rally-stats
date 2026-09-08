@@ -10,11 +10,35 @@ h1 {
   font-weight: var(--font-weight-bold);
 }
 
-fieldset {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-md);
+// Groups the form's 10 fields into named sections instead of one long flat
+// list — each is a plain .card so it reads consistently with every other
+// grouped-form page in the app (e.g. admin-page's settings tab).
+.form-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+
+  h2 {
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-bold);
+    margin: 0;
+  }
+}
+
+// Same PIN-readout treatment as admin-page's regenerated-PIN display
+// (component-scoped styles don't leak across components, so it's copied
+// rather than shared) — a copyable, easy-to-read-back monospace code
+// instead of bare text with no way to copy it.
+.link-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.pin-display {
+  font-family: monospace;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.1em;
+  text-align: center;
 }

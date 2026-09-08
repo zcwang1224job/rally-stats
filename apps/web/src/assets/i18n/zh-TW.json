@@ -249,6 +249,12 @@
   },
   "createGroup": {
     "title": "建立揪團場次",
+    "section": {
+      "basics": "基本資訊",
+      "matchAndSchedule": "賽制與排程",
+      "activityTime": "活動時間",
+      "creator": "建立者資訊"
+    },
     "name": "團名",
     "namePlaceholder": "例如：週三夜羽球團",
     "nameRequired": "請輸入團名",

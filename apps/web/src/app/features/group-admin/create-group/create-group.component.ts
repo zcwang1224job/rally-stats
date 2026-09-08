@@ -12,6 +12,7 @@ import {
   schedulingMechanismMatchModeValidator,
 } from '../shared/group-form-validators';
 import { ApiError } from '../../../core/api/api-error';
+import { copyTextToClipboard } from '../../../core/clipboard';
 import { AuthService } from '../../auth/auth.service';
 import { GroupJoinService } from '../../group-join/group-join.service';
 
@@ -33,6 +34,8 @@ export class CreateGroupComponent {
   readonly errorKey = signal<string | null>(null);
   readonly result = signal<CreateGroupResponse | null>(null);
   readonly turnstileToken = signal<string | null>(null);
+  readonly copiedPin = signal(false);
+  readonly copyPinErrorKey = signal<string | null>(null);
   /** Set once a logged-in Member's own nickname is confirmed (constructor).
    * When non-null, the form hides its own nickname field and the submitted
    * group links back to this Member identity instead of creating a Guest
@@ -190,6 +193,19 @@ export class CreateGroupComponent {
           this.errorKey.set(error.i18nKey);
         },
       });
+  }
+
+  async copyAdminPin(): Promise<void> {
+    const pin = this.result()?.admin_pin;
+    if (!pin) {
+      return;
+    }
+    if (await copyTextToClipboard(pin)) {
+      this.copiedPin.set(true);
+      setTimeout(() => this.copiedPin.set(false), 2000);
+    } else {
+      this.copyPinErrorKey.set('courtManagement.copyFailed');
+    }
   }
 
   goToAdmin(): void {

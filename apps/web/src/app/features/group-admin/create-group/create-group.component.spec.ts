@@ -187,6 +187,19 @@ describe('CreateGroupComponent', () => {
     expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
   });
 
+  it('success screen shows the admin PIN in a copyable readout', () => {
+    const { fixture } = setup({ isLoggedIn: () => false });
+
+    fixture.componentInstance.form.patchValue({ name: 'Test', creator_nickname: '小華' });
+    fixture.componentInstance.onTurnstileVerified('tok');
+    fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const pinInput: HTMLInputElement = fixture.nativeElement.querySelector('.pin-display');
+    expect(pinInput.value).toBe('1234');
+    expect(fixture.nativeElement.textContent).toContain('common.copy');
+  });
+
   it('submitting with an empty name and no turnstile token shows the field-level error reasons', () => {
     const { fixture } = setup({ isLoggedIn: () => false });
 
