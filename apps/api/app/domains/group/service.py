@@ -828,6 +828,29 @@ async def resolve_active_roster_membership(
     raise ApiError("MEMBERSHIP_REQUIRED", status_code=403)
 
 
+async def verify_ever_group_member(
+    session: AsyncSession, group_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """014-member-groups-history FR-006 (Clarifications 2026-09-07):
+    authorization boundary for the read-only participation-history feature
+    — passes if this Member has EVER had a `RosterEntry` in this group,
+    regardless of status (active/left/kicked). Deliberately independent of
+    `resolve_active_roster_membership()` above, which requires an ACTIVE
+    entry and backs live-operation endpoints (schedule/standings/leave) —
+    loosening THAT function's threshold would accidentally let a former
+    member call live operations again, a real authorization-boundary bug,
+    not this feature's intent (research.md #3).
+
+    Errors: `GROUP_MEMBERSHIP_NEVER_HELD` (403)."""
+    result = await session.execute(
+        select(RosterEntry.id).where(
+            RosterEntry.group_id == group_id, RosterEntry.member_id == member_id
+        )
+    )
+    if result.scalar_one_or_none() is None:
+        raise ApiError("GROUP_MEMBERSHIP_NEVER_HELD", status_code=403)
+
+
 async def build_group_standings(session: AsyncSession, group: Group) -> GroupStandingsResponse:
     """005-member-view US2 (FR-005~010): per-round win/loss tally per
     research.md #4, extended for 011-round-robin-scheduling's singles full
@@ -965,11 +988,30 @@ async def _build_match_record_summaries(
 
 
 async def build_group_match_records(
-    session: AsyncSession, group_id: uuid.UUID, page: int = 1
+    session: AsyncSession, group_id: uuid.UUID, page: int = 1, *, nickname: str | None = None
 ) -> GroupMatchRecordsResponse:
     """005-member-view US3 (FR-011/012): 本團已完成比賽列表，依 Round 由新
-    到舊排序，僅限本團範圍。"""
+    到舊排序，僅限本團範圍。
+
+    `nickname` (014-member-groups-history follow-up): keyword-only,
+    defaults to `None` — every pre-existing caller (this domain's own admin
+    match-records endpoint) omits it and keeps its existing behavior
+    unchanged. When given, narrows to matches where ANY participant on
+    EITHER team has a nickname containing it (case-insensitive substring)
+    — a generic "who's in this match" search across the whole group's
+    shared history, not scoped to any one viewer's own games."""
     base_query = _completed_matches_query().where(Match.group_id == group_id)
+    if nickname:
+        participant_nickname_exists = (
+            select(MatchParticipant.id)
+            .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+            .where(
+                MatchParticipant.match_id == Match.id,
+                RosterEntry.nickname.ilike(f"%{nickname}%"),
+            )
+            .exists()
+        )
+        base_query = base_query.where(participant_nickname_exists)
 
     count_result = await session.execute(
         select(func.count()).select_from(base_query.subquery())

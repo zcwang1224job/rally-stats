@@ -82,6 +82,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'member/my-groups/:groupId',
+    loadComponent: () =>
+      import('./features/member/my-groups/group-history/group-history.component').then(
+        (m) => m.GroupHistoryComponent,
+      ),
+  },
+  {
     path: 'notifications',
     loadComponent: () =>
       import('./features/notifications/notification-list/notification-list.component').then(

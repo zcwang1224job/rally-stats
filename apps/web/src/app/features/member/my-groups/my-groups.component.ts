@@ -37,6 +37,10 @@ export class MyGroupsComponent {
     });
   }
 
+  openGroupHistory(group: MyGroupSummary): void {
+    void this.router.navigate(['/member/my-groups', group.group_id]);
+  }
+
   openForgotPinDialog(group: MyGroupSummary): void {
     this.forgotPinTarget.set(group);
     this.errorKey.set(null);

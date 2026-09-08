@@ -1,0 +1,299 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+}
+
+.page-title {
+  margin: 0 0 var(--space-md);
+}
+
+.section-title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  margin: var(--space-lg) 0 var(--space-sm);
+}
+
+// ---- 我的戰績 (personal stats, always unfiltered) ----
+
+.hero-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-lg);
+}
+
+.hero-card__ring-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 148px;
+  height: 148px;
+}
+
+.hero-card__ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.hero-card__ring-value {
+  font-size: 2rem;
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+}
+
+.hero-card__ring-caption {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
+.hero-card__info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+}
+
+.tier-badge {
+  display: inline-flex;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-brand-primary) 12%, white);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-caption);
+}
+
+.hero-card__record {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+}
+
+.hero-card__record-wins {
+  color: var(--color-brand-accent);
+}
+
+.hero-card__record-losses {
+  color: var(--color-danger);
+}
+
+.hero-card__record-sep {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-heading);
+}
+
+.hero-card__total {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.chart-card {
+  margin-bottom: var(--space-lg);
+
+  h3 {
+    margin: 0 0 var(--space-md);
+    font-size: var(--font-size-body);
+  }
+}
+
+.chart-empty {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.donut-chart {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 30px), #000 calc(100% - 30px));
+}
+
+.trend-chart {
+  width: 100%;
+  height: 130px;
+  overflow: visible;
+}
+
+.trend-chart__midline {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-chart__area {
+  stroke: none;
+  fill: url(#groupTrendFill);
+}
+
+.trend-chart__stop-start {
+  stop-color: var(--color-brand-primary);
+  stop-opacity: 0.35;
+}
+
+.trend-chart__stop-end {
+  stop-color: var(--color-brand-primary);
+  stop-opacity: 0;
+}
+
+.trend-chart__line {
+  fill: none;
+  stroke: var(--color-brand-primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-chart__dot {
+  fill: var(--color-surface);
+  stroke: var(--color-brand-primary);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-legend {
+  list-style: none;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
+.opponent-ranking {
+  margin-bottom: var(--space-lg);
+
+  h3 {
+    margin: 0 0 var(--space-md);
+    font-size: var(--font-size-body);
+  }
+}
+
+.ranking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.ranking-row {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(4rem, auto) 1fr auto auto;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-caption);
+}
+
+.ranking-row__rank {
+  text-align: center;
+  font-weight: var(--font-weight-bold);
+}
+
+.ranking-row__name {
+  font-weight: var(--font-weight-bold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranking-row__bar-track {
+  height: 6px;
+  min-width: 40px;
+  border-radius: 999px;
+  background: var(--color-surface-alt);
+  overflow: hidden;
+}
+
+.ranking-row__bar-fill {
+  height: 100%;
+  background: var(--color-brand-primary);
+  border-radius: inherit;
+}
+
+.ranking-row__record {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.ranking-row__rate {
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  min-width: 2.5em;
+  text-align: right;
+}
+
+// ---- 對戰紀錄 (group-wide shared match history, filterable) ----
+
+.filters-panel {
+  margin-bottom: var(--space-md);
+}
+
+.filters-form {
+  max-width: none;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+}
+
+.filters-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
+.record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.record-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.time-range {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  white-space: nowrap;
+}
+
+.teams {
+  flex: 1;
+  min-width: 0;
+}
+
+.score {
+  font-weight: var(--font-weight-bold);
+}
+
+.pagination {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}
+
+a.tap-target {
+  display: inline-block;
+  margin-top: var(--space-md);
+}

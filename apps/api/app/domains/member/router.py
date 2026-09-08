@@ -21,6 +21,7 @@ from app.domains.member.schemas import (
     ForgotPasswordResponse,
     LoginRequest,
     LoginResponse,
+    MemberGroupHistoryResponse,
     MemberPublicResponse,
     MyGroupsResponse,
     RefreshRequest,
@@ -188,9 +189,36 @@ async def get_my_groups(
     member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MyGroupsResponse:
-    """FR-028/029: every group this member created (any status), for the
-    "忘記管理 PIN 碼" recovery list."""
+    """014-member-groups-history FR-001~003: every group this member
+    created ∪ every group this member has ever had a roster entry in (any
+    status). Still backs the "忘記管理 PIN 碼" recovery list for the
+    `is_creator=true` rows."""
     return await service.get_my_groups(session, member.id)
+
+
+@router.get(
+    "/members/me/groups/{group_id}/history", response_model=MemberGroupHistoryResponse
+)
+async def get_member_group_history(
+    group_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    nickname: Annotated[str | None, Query(max_length=20)] = None,
+) -> MemberGroupHistoryResponse:
+    """`matches` is the group's own shared match history — every completed
+    match, regardless of who played in it, optionally searched by whether
+    any participant (either team) has a nickname containing `nickname`.
+    `my_stats` is this member's own performance in the group, always
+    unfiltered by that search. `require_member` (not
+    `require_verified_member`) matches the sibling
+    `/members/me/match-records` endpoint's existing looser tier, since
+    email-verification status is unrelated to viewing match history.
+    Errors: `MEMBER_TOKEN_INVALID`, `GROUP_NOT_FOUND`,
+    `GROUP_MEMBERSHIP_NEVER_HELD`."""
+    return await service.get_member_group_history(
+        session, member.id, group_id, page, nickname=nickname
+    )
 
 
 @router.get("/members/me/match-records", response_model=MemberMatchRecordsResponse)

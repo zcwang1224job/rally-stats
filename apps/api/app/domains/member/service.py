@@ -21,9 +21,20 @@ from app.domains.group.schemas import (
     OpponentRecord,
     RoundWinRatePoint,
 )
-from app.domains.group.service import _completed_matches_query
+from app.domains.group.service import (
+    _completed_matches_query,
+    build_group_match_records,
+    get_group_by_id,
+    verify_ever_group_member,
+)
 from app.domains.member.models import EmailVerificationToken, Member, PasswordResetToken
-from app.domains.member.schemas import MyGroupsResponse, MyGroupSummary, SearchMemberResponse
+from app.domains.member.schemas import (
+    MemberGroupHistoryResponse,
+    MemberGroupStatsResponse,
+    MyGroupsResponse,
+    MyGroupSummary,
+    SearchMemberResponse,
+)
 from app.domains.member.security import (
     generate_unique_user_number,
     hash_password,
@@ -313,6 +324,7 @@ async def build_member_match_records(
     self_score: int | None = None,
     opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
     opponent_score: int | None = None,
+    group_id: uuid.UUID | None = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020), extended with filters/statistics: a
     member's completed matches across every group they've ever joined as a
@@ -324,7 +336,14 @@ async def build_member_match_records(
     *entire* filtered result set, not just the current page — same
     plan.md Scale/Scope reasoning as before: a single member's total match
     count is small enough that loading it all into Python is cheap, and
-    doing it this way avoids duplicating the nickname/score logic in SQL."""
+    doing it this way avoids duplicating the nickname/score logic in SQL.
+
+    `group_id` (014-member-groups-history, research.md #2): keyword-only,
+    defaults to `None` — every pre-existing caller (the cross-group
+    `/members/me/match-records` endpoint) omits it and keeps its existing
+    behavior unchanged. Only `get_member_group_history()` passes it, to
+    narrow this same aggregate logic down to one group's worth of matches
+    rather than duplicating the win/loss-counting logic a third time."""
     participant_exists = (
         select(MatchParticipant.id)
         .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
@@ -332,6 +351,8 @@ async def build_member_match_records(
         .exists()
     )
     base_query = _completed_matches_query().where(participant_exists)
+    if group_id is not None:
+        base_query = base_query.where(Match.group_id == group_id)
 
     all_matches_result = await session.execute(
         base_query.order_by(Match.round_number.desc(), Match.ended_at.desc())
@@ -460,6 +481,48 @@ async def build_member_match_records(
     )
 
 
+async def get_member_group_history(
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    group_id: uuid.UUID,
+    page: int = 1,
+    *,
+    nickname: str | None = None,
+) -> MemberGroupHistoryResponse:
+    """014-member-groups-history follow-up: `matches` is the group's own
+    shared match history — EVERY completed match, regardless of who played
+    in it (reuses `build_group_match_records()`, extended with a generic
+    `nickname` search across either team, FR-004/FR-009) — while `my_stats`
+    is this member's own performance in the group (reuses
+    `build_member_match_records(group_id=...)` unfiltered, FR-005). The two
+    intentionally use different queries: a group-wide match list has no
+    single "my team" to filter opponent/partner/score against, so the
+    nickname search here means "does this match involve this player at
+    all," not "was this player my opponent." Errors: `GROUP_NOT_FOUND`,
+    `GROUP_MEMBERSHIP_NEVER_HELD`."""
+    group = await get_group_by_id(session, group_id)
+    await verify_ever_group_member(session, group_id, member_id)
+
+    match_records = await build_group_match_records(session, group_id, page, nickname=nickname)
+    member_records = await build_member_match_records(session, member_id, group_id=group_id)
+
+    return MemberGroupHistoryResponse(
+        group_id=str(group.id),
+        group_name=group.name,
+        my_stats=MemberGroupStatsResponse(
+            total_matches=member_records.total_matches,
+            total_wins=member_records.total_wins,
+            total_losses=member_records.total_losses,
+            win_rate=member_records.win_rate,
+            round_win_rates=member_records.round_win_rates,
+            opponent_records=member_records.opponent_records,
+        ),
+        matches=match_records.matches,
+        page=match_records.page,
+        total_pages=match_records.total_pages,
+    )
+
+
 async def search_member(
     session: AsyncSession, user_number: str, requester_id: uuid.UUID
 ) -> SearchMemberResponse:
@@ -486,17 +549,46 @@ async def search_member(
 
 
 async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroupsResponse:
-    """FR-028/029: every group this member created, regardless of status —
-    anonymously-created groups (`created_by_member_id IS NULL`) are excluded
-    by the `WHERE` clause itself, no extra guard needed."""
+    """014-member-groups-history FR-001~003: every group this member
+    created ∪ every group this member has EVER had a `RosterEntry` in
+    (any status — active/left/kicked), deduplicated by group. Guest-joined
+    participation is naturally excluded (`RosterEntry.member_id IS NULL`
+    for Guest entries), no extra guard needed (FR-003).
+
+    `member_status` reflects each group's MOST RECENT `RosterEntry` for
+    this member (by `joined_at` DESC) — a member can leave and rejoin the
+    same group, producing multiple historical rows (research.md #4)."""
+    roster_result = await session.execute(
+        select(RosterEntry.group_id, RosterEntry.status)
+        .where(RosterEntry.member_id == member_id)
+        .order_by(RosterEntry.joined_at.desc())
+    )
+    member_status_by_group: dict[uuid.UUID, str] = {}
+    for group_id, status in roster_result.all():
+        member_status_by_group.setdefault(group_id, status)  # first seen (newest) wins
+
+    created_result = await session.execute(
+        select(Group.id).where(Group.created_by_member_id == member_id)
+    )
+    created_group_ids = {row[0] for row in created_result.all()}
+
+    all_group_ids = set(member_status_by_group) | created_group_ids
+    if not all_group_ids:
+        return MyGroupsResponse(groups=[])
+
     result = await session.execute(
         select(Group.id, Group.group_number, Group.name, Group.status)
-        .where(Group.created_by_member_id == member_id)
+        .where(Group.id.in_(all_group_ids))
         .order_by(Group.created_at.desc())
     )
     groups = [
         MyGroupSummary(
-            group_id=str(row.id), group_number=row.group_number, name=row.name, status=row.status
+            group_id=str(row.id),
+            group_number=row.group_number,
+            name=row.name,
+            status=row.status,
+            is_creator=row.id in created_group_ids,
+            member_status=member_status_by_group[row.id],
         )
         for row in result.all()
     ]

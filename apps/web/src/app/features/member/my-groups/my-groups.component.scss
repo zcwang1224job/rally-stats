@@ -26,6 +26,24 @@ h1 {
   gap: var(--space-sm);
 }
 
+.group-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--touch-target-min);
+}
+
 .group-name {
   font-weight: var(--font-weight-bold);
 }

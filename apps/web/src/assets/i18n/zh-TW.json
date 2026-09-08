@@ -143,10 +143,25 @@
   },
   "myGroups": {
     "title": "我的團",
-    "empty": "尚無您建立過的團",
+    "empty": "尚無參加過的團",
     "forgotPinButton": "忘記管理 PIN 碼",
     "forgotPinConfirmTitle": "確定重設此團的管理 PIN 碼？",
-    "forgotPinConfirmBody": "重設後原本的 PIN 碼將立即失效，此操作無法復原。"
+    "forgotPinConfirmBody": "重設後原本的 PIN 碼將立即失效，此操作無法復原。",
+    "viewHistoryAriaLabel": "查看「{{name}}」的比賽紀錄",
+    "role": {
+      "creator": "團長",
+      "member": "團員"
+    },
+    "status": {
+      "active": "現役",
+      "left": "已離開",
+      "kicked": "已被踢除",
+      "disbanded": "已解散"
+    }
+  },
+  "memberGroupHistory": {
+    "empty": "尚無比賽紀錄",
+    "backToMyGroups": "返回我的團"
   },
   "member": {
     "unverifiedNotice": "請驗證你的信箱",
@@ -157,7 +172,11 @@
     "matchHistory": {
       "resultWinBadge": "勝",
       "resultLossBadge": "敗",
+      "myStatsTitle": "我的戰績",
+      "groupRecordsTitle": "對戰紀錄",
       "filters": {
+        "nickname": "球員暱稱",
+        "nicknamePlaceholder": "搜尋出現這位球員的比賽",
         "opponent1": "對手暱稱",
         "opponentPlaceholder": "快速搜尋對手",
         "opponent2": "對手暱稱 2（雙打）",
@@ -475,6 +494,7 @@
     "ALREADY_GROUP_MEMBER": "此好友已在團內，無需再邀請",
     "INVITE_ALREADY_PENDING": "已對此好友送出過邀請，正在等待回覆中",
     "GROUP_INVITE_NOT_FOUND": "找不到此組團邀請",
-    "GROUP_INVITE_NOT_PENDING": "此邀請已被處理過"
+    "GROUP_INVITE_NOT_PENDING": "此邀請已被處理過",
+    "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄"
   }
 }

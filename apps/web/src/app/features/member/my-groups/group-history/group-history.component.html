@@ -1,0 +1,163 @@
+@if (history(); as h) {
+  <h1 class="page-title">{{ h.group_name }}</h1>
+} @else {
+  <h1 class="page-title">{{ 'common.loading' | translate }}</h1>
+}
+
+@if (errorKey()) {
+  <p role="alert">{{ errorKey()! | translate }}</p>
+} @else if (history(); as h) {
+  <h2 class="section-title">{{ 'member.matchHistory.myStatsTitle' | translate }}</h2>
+  <section class="card hero-card">
+    <div class="hero-card__ring-wrap">
+      <div class="donut-chart" [style.background]="winLossGradient()"></div>
+      <div class="hero-card__ring-label">
+        <span class="hero-card__ring-value">{{ (h.my_stats.win_rate * 100).toFixed(0) }}%</span>
+        <span class="hero-card__ring-caption">{{ 'member.matchHistory.stats.winRate' | translate }}</span>
+      </div>
+    </div>
+    <div class="hero-card__info">
+      @if (performanceTier(); as tier) {
+        <span class="tier-badge">{{ tier.icon }} {{ tier.labelKey | translate }}</span>
+      }
+      <div class="hero-card__record">
+        <span class="hero-card__record-wins">{{ h.my_stats.total_wins }}{{ 'member.matchHistory.stats.winShort' | translate }}</span>
+        <span class="hero-card__record-sep">–</span>
+        <span class="hero-card__record-losses">{{ h.my_stats.total_losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}</span>
+      </div>
+      <p class="hero-card__total">
+        {{ 'member.matchHistory.stats.totalSuffix' | translate: { total: h.my_stats.total_matches } }}
+      </p>
+    </div>
+  </section>
+
+  @if (h.my_stats.total_matches > 0) {
+    <section class="card chart-card">
+      <h3>{{ 'member.matchHistory.charts.roundTrendTitle' | translate }}</h3>
+      @if (roundTrendPoints().length > 0) {
+        <svg
+          class="trend-chart"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          role="img"
+          [attr.aria-label]="'member.matchHistory.charts.roundTrendTitle' | translate"
+        >
+          <defs>
+            <linearGradient id="groupTrendFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" class="trend-chart__stop-start" />
+              <stop offset="100%" class="trend-chart__stop-end" />
+            </linearGradient>
+          </defs>
+          <line x1="0" y1="50" x2="100" y2="50" class="trend-chart__midline" />
+          <polygon [attr.points]="roundTrendAreaPoints()" class="trend-chart__area" />
+          <polyline [attr.points]="roundTrendPolyline()" class="trend-chart__line" />
+          @for (point of roundTrendPoints(); track point.round) {
+            <circle [attr.cx]="point.x" [attr.cy]="point.y" r="2.5" class="trend-chart__dot" />
+          }
+        </svg>
+        <ul class="trend-legend">
+          @for (point of roundTrendPoints(); track point.round) {
+            <li>
+              {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: point.round } }}：{{
+                (point.winRate * 100).toFixed(0)
+              }}%
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="chart-empty">{{ 'member.matchHistory.charts.roundTrendEmpty' | translate }}</p>
+      }
+    </section>
+
+    <section class="card opponent-ranking">
+      <h3>{{ 'member.matchHistory.opponentRanking.title' | translate }}</h3>
+      @if (h.my_stats.opponent_records.length === 0) {
+        <p class="chart-empty">{{ 'member.matchHistory.opponentRanking.empty' | translate }}</p>
+      } @else {
+        <ol class="ranking-list">
+          @for (opponent of h.my_stats.opponent_records; track opponent.nickname; let i = $index) {
+            <li class="ranking-row">
+              <span class="ranking-row__rank">{{ rankBadge(i) }}</span>
+              <span class="ranking-row__name">{{ opponent.nickname }}</span>
+              <div class="ranking-row__bar-track">
+                <div class="ranking-row__bar-fill" [style.width.%]="opponent.win_rate * 100"></div>
+              </div>
+              <span class="ranking-row__record">
+                {{ opponent.wins }}{{ 'member.matchHistory.stats.winShort' | translate }}
+                {{ opponent.losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}
+              </span>
+              <span class="ranking-row__rate">{{ (opponent.win_rate * 100).toFixed(0) }}%</span>
+            </li>
+          }
+        </ol>
+      }
+    </section>
+  }
+
+  <h2 class="section-title">{{ 'member.matchHistory.groupRecordsTitle' | translate }}</h2>
+  <section class="filters-panel card">
+    <form class="filters-form form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <div class="filters-grid">
+        <label>
+          {{ 'member.matchHistory.filters.nickname' | translate }}
+          <input
+            type="text"
+            formControlName="nickname"
+            [attr.placeholder]="'member.matchHistory.filters.nicknamePlaceholder' | translate"
+          />
+        </label>
+      </div>
+      <div class="filters-actions">
+        <button type="submit" class="btn">
+          {{ 'member.matchHistory.filters.apply' | translate }}
+        </button>
+        @if (hasActiveFilters()) {
+          <button type="button" class="btn btn--secondary" (click)="clearFilters()">
+            {{ 'member.matchHistory.filters.clear' | translate }}
+          </button>
+        }
+      </div>
+    </form>
+  </section>
+
+  @if (h.matches.length === 0) {
+    <p>{{ 'memberGroupHistory.empty' | translate }}</p>
+  } @else {
+    <ul class="record-list">
+      @for (match of h.matches; track match.match_id) {
+        <li class="card">
+          <span class="round-tag status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
+          @if (match.started_at && match.ended_at) {
+            <span class="time-range">🕐 {{ match.started_at | date: 'M/d HH:mm' }} - {{ match.ended_at | date: 'HH:mm' }}</span>
+          }
+          <span class="teams">
+            @for (p of match.team_a; track p.roster_entry_id) {
+              {{ p.nickname }}
+            }
+            vs
+            @for (p of match.team_b; track p.roster_entry_id) {
+              {{ p.nickname }}
+            }
+          </span>
+          <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+          <span class="result status-badge status-badge--success">
+            {{ 'groupMemberView.matchRecords.winnerLabel' | translate: { names: winnerNames(match) } }}
+          </span>
+        </li>
+      }
+    </ul>
+    @if (h.total_pages > 1) {
+      <nav class="pagination">
+        @for (p of pageNumbers(); track p) {
+          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
+            {{ p }}
+          </button>
+        }
+      </nav>
+    }
+  }
+} @else {
+  <p>{{ 'common.loading' | translate }}</p>
+}
+
+<a class="tap-target" routerLink="/member/my-groups">{{ 'memberGroupHistory.backToMyGroups' | translate }}</a>

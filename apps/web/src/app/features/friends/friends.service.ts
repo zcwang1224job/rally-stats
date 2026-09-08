@@ -6,6 +6,7 @@ import {
   FriendRequestResponse,
   ForgotAdminPinResponse,
   IncomingFriendRequestsResponse,
+  MemberGroupHistoryResponse,
   MyGroupsResponse,
   SearchMemberResponse,
 } from '../../core/api/friend.models';
@@ -83,6 +84,26 @@ export class FriendsService {
 
   getMyGroups(): Observable<MyGroupsResponse> {
     return this.api.get<MyGroupsResponse>('/members/me/groups', this.authHeader());
+  }
+
+  /** 014-member-groups-history: the group's own shared match history
+   * (every completed match, any participant) — works even after leaving
+   * or being kicked (FR-006) — plus this member's own personal stats
+   * within that group. `nickname` searches either team across the WHOLE
+   * group's matches, not just the caller's own games (FR-009). */
+  getMemberGroupHistory(
+    groupId: string,
+    page = 1,
+    nickname?: string,
+  ): Observable<MemberGroupHistoryResponse> {
+    const params = new URLSearchParams({ page: String(page) });
+    if (nickname) {
+      params.set('nickname', nickname);
+    }
+    return this.api.get<MemberGroupHistoryResponse>(
+      `/members/me/groups/${groupId}/history?${params.toString()}`,
+      this.authHeader(),
+    );
   }
 
   forgotAdminPin(groupId: string): Observable<ForgotAdminPinResponse> {

@@ -343,3 +343,58 @@ async def test_guest_matches_never_included(db_session: AsyncSession) -> None:
 
     assert response.total_matches == 1
     assert response.matches[0].round_number == 3
+
+
+async def test_group_id_filter_narrows_to_one_group(db_session: AsyncSession) -> None:
+    """014-member-groups-history research.md #2: the new optional group_id
+    param narrows the same aggregate logic to a single group."""
+    member = await _make_member(db_session, "group-filter@example.com")
+    group_a = await _make_group(db_session, "Filter Group A")
+    group_b = await _make_group(db_session, "Filter Group B")
+
+    my_entry_a = await _make_entry(db_session, group_a, "小明", member.id)
+    opp_a = await _make_entry(db_session, group_a, "對手A", None)
+    await _make_completed_match(
+        db_session, group_a, round_number=1, winner_team="A",
+        team_a=[my_entry_a.id], team_b=[opp_a.id],
+    )
+
+    my_entry_b = await _make_entry(db_session, group_b, "小明", member.id)
+    opp_b = await _make_entry(db_session, group_b, "對手B", None)
+    await _make_completed_match(
+        db_session, group_b, round_number=1, winner_team="B",
+        team_a=[my_entry_b.id], team_b=[opp_b.id],
+    )
+
+    scoped = await build_member_match_records(db_session, member.id, group_id=group_a.id)
+    assert scoped.total_matches == 1
+    assert scoped.matches[0].group_name == "Filter Group A"
+    assert scoped.total_wins == 1
+    assert scoped.total_losses == 0
+
+
+async def test_group_id_omitted_keeps_existing_cross_group_behavior(
+    db_session: AsyncSession,
+) -> None:
+    """Regression: existing callers (the cross-group /members/me/match-records
+    endpoint) never pass group_id — behavior MUST be unchanged."""
+    member = await _make_member(db_session, "no-group-filter@example.com")
+    group_a = await _make_group(db_session, "No Filter Group A")
+    group_b = await _make_group(db_session, "No Filter Group B")
+
+    my_entry_a = await _make_entry(db_session, group_a, "小明", member.id)
+    opp_a = await _make_entry(db_session, group_a, "對手A", None)
+    await _make_completed_match(
+        db_session, group_a, round_number=1, winner_team="A",
+        team_a=[my_entry_a.id], team_b=[opp_a.id],
+    )
+
+    my_entry_b = await _make_entry(db_session, group_b, "小明", member.id)
+    opp_b = await _make_entry(db_session, group_b, "對手B", None)
+    await _make_completed_match(
+        db_session, group_b, round_number=1, winner_team="B",
+        team_a=[my_entry_b.id], team_b=[opp_b.id],
+    )
+
+    response = await build_member_match_records(db_session, member.id)
+    assert response.total_matches == 2

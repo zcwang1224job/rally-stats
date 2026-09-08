@@ -1,6 +1,13 @@
 // Mirrors apps/api/app/domains/friend/schemas.py and the relevant shapes in
 // apps/api/app/domains/member/schemas.py — see
-// specs/006-member-friends/contracts/{friends-api,member-api}.md.
+// specs/006-member-friends/contracts/{friends-api,member-api}.md and
+// specs/014-member-groups-history/contracts/member-groups-history-api.md.
+
+import {
+  MatchRecordSummary,
+  OpponentRecord,
+  RoundWinRatePoint,
+} from './group-member-view.models';
 
 export type FriendshipStatus = 'none' | 'pending_outgoing' | 'pending_incoming' | 'friends';
 
@@ -47,6 +54,12 @@ export interface MyGroupSummary {
   group_number: number;
   name: string;
   status: 'active' | 'disbanded';
+  // 014-member-groups-history: whether this member created the group.
+  is_creator: boolean;
+  // This member's own most-recent roster status in this group — a member
+  // can leave and rejoin the same group, producing multiple historical
+  // entries; this reflects the newest one.
+  member_status: 'active' | 'left' | 'kicked';
 }
 
 export interface MyGroupsResponse {
@@ -56,4 +69,30 @@ export interface MyGroupsResponse {
 export interface ForgotAdminPinResponse {
   admin_pin: string;
   admin_token: string;
+}
+
+/** This member's own performance within one group — always reflects their
+ * FULL history there, never narrowed by `MemberGroupHistoryResponse
+ * .matches`' own nickname search (which searches the group's shared match
+ * list, not "my" games specifically). */
+export interface MemberGroupStatsResponse {
+  total_matches: number;
+  total_wins: number;
+  total_losses: number;
+  win_rate: number;
+  round_win_rates: RoundWinRatePoint[];
+  opponent_records: OpponentRecord[];
+}
+
+/** `matches` is the group's own shared match history (every completed
+ * match, any participant), optionally searched by nickname across either
+ * team; `my_stats` is this member's personal performance in the group,
+ * always unfiltered by that same search. */
+export interface MemberGroupHistoryResponse {
+  group_id: string;
+  group_name: string;
+  my_stats: MemberGroupStatsResponse;
+  matches: MatchRecordSummary[];
+  page: number;
+  total_pages: number;
 }
