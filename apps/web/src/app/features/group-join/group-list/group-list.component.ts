@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { GroupListItem } from '../../../core/api/group-join.models';
 import { AuthService } from '../../auth/auth.service';
@@ -24,7 +24,7 @@ interface FilterChip {
 
 @Component({
   selector: 'app-group-list',
-  imports: [TranslatePipe, ReactiveFormsModule],
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink],
   templateUrl: './group-list.component.html',
   styleUrl: './group-list.component.scss',
 })

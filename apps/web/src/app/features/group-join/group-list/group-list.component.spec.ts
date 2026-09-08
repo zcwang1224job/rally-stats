@@ -78,6 +78,13 @@ function setup(
 }
 
 describe('GroupListComponent', () => {
+  it('shows a create-group entry point in the page header', () => {
+    const fixture = setup(1);
+
+    const link = fixture.nativeElement.querySelector('a[href="/groups/new"]');
+    expect(link).not.toBeNull();
+  });
+
   it('shows match mode and activity time on each card', () => {
     const fixture = setup(1);
 

@@ -5,20 +5,12 @@
     "login": "登入",
     "register": "註冊",
     "memberHome": "會員專區",
-    "settings": "個人設定",
     "matchHistory": "對戰紀錄",
-    "friends": "好友",
     "logout": "登出",
     "menuToggle": "開啟導覽選單"
   },
   "home": {
-    "title": "Rally Stats",
-    "browseGroups": "瀏覽揪團列表",
-    "createGroup": "建立揪團場次",
-    "backToAdmin": "已經開過團？回到管理頁",
-    "login": "登入",
-    "register": "註冊",
-    "goToMemberArea": "前往會員專區"
+    "title": "Rally Stats"
   },
   "auth": {
     "registerTitle": "註冊會員帳號",
@@ -48,6 +40,7 @@
     "confirmNewPassword": "確認新密碼"
   },
   "groupJoin": {
+    "createGroup": "建立揪團場次",
     "hasPasswordLabel": "需要密碼",
     "noPasswordLabel": "公開",
     "alreadyJoinedLabel": "已加入",

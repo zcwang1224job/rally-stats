@@ -60,7 +60,7 @@ describe('NavShellComponent', () => {
     expect(fixture.nativeElement.querySelector('.nav-shell__logout')).toBeNull();
   });
 
-  it('member state shows home/groups/member links + logout, no login/register (contract row 2)', () => {
+  it('member state shows home/groups/member-home link + logout, no login/register (contract row 2)', () => {
     const fixture = setup();
     loggedIn.set(true);
     fixture.detectChanges();
@@ -70,9 +70,6 @@ describe('NavShellComponent', () => {
     expect(links).toContain('/');
     expect(links).toContain('/groups');
     expect(links).toContain('/member');
-    expect(links).toContain('/member/settings');
-    expect(links).toContain('/member/match-history');
-    expect(links).toContain('/friends');
     expect(links).not.toContain('/auth/login');
     expect(links).not.toContain('/auth/register');
     expect(fixture.nativeElement.querySelector('.nav-shell__logout')).not.toBeNull();
@@ -94,18 +91,6 @@ describe('NavShellComponent', () => {
     expect(links).toContain('/auth/login');
     expect(links).toContain('/auth/register');
     expect(links).not.toContain('/member');
-  });
-
-  it('when logged in, all three member routes are reachable simultaneously, not nested behind which member page is active (US3, FR-007)', () => {
-    const fixture = setup();
-    loggedIn.set(true);
-    fixture.detectChanges();
-
-    const links = hrefs(fixture);
-
-    expect(links).toEqual(
-      expect.arrayContaining(['/member', '/member/settings', '/member/match-history']),
-    );
   });
 
   it('logout is reachable regardless of which member route is conceptually active (US3 scenario 2)', () => {
