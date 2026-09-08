@@ -9,6 +9,7 @@ like Ably's `publish()` (see app/core/realtime.py). Recovery paths already
 exist for the user (resend verification, re-trigger forgot-password).
 """
 
+import asyncio
 import logging
 from typing import Protocol
 
@@ -32,7 +33,11 @@ class SesEmailSender:
 
     async def send_email(self, to: str, subject: str, body: str) -> None:
         try:
-            self._client.send_email(
+            # boto3 is synchronous — offload the blocking network call so it
+            # doesn't stall the entire event loop (every other concurrent
+            # request) for the duration of the SES round-trip.
+            await asyncio.to_thread(
+                self._client.send_email,
                 Source=self._from_address,
                 Destination={"ToAddresses": [to]},
                 Message={
