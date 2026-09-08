@@ -2,11 +2,12 @@ import { Component, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, map, startWith } from 'rxjs';
+import { BreadcrumbComponent } from './core/breadcrumb/breadcrumb.component';
 import { NavShellComponent } from './core/nav-shell/nav-shell.component';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, NavShellComponent],
+  imports: [RouterOutlet, NavShellComponent, BreadcrumbComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })

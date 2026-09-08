@@ -1,0 +1,15 @@
+@if (crumbs().length > 0) {
+  <nav class="breadcrumb" aria-label="breadcrumb">
+    <ol>
+      @for (crumb of crumbs(); track crumb.labelKey; let last = $last) {
+        <li>
+          @if (!last && crumb.path) {
+            <a [routerLink]="crumb.path">{{ crumb.labelKey | translate }}</a>
+          } @else {
+            <span aria-current="page">{{ crumb.labelKey | translate }}</span>
+          }
+        </li>
+      }
+    </ol>
+  </nav>
+}

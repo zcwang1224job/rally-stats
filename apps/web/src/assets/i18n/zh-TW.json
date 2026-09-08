@@ -12,6 +12,15 @@
   "home": {
     "title": "Rally Stats"
   },
+  "breadcrumb": {
+    "groupAdmin": "團管理",
+    "groupMemberView": "團內容",
+    "groupHistory": "團戰績",
+    "verifyEmail": "驗證信箱",
+    "joinGroup": "加入揪團",
+    "joinLink": "加入連結",
+    "guestAccess": "訪客連結"
+  },
   "auth": {
     "registerTitle": "註冊會員帳號",
     "registerSubmit": "註冊",

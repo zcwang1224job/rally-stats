@@ -14,13 +14,11 @@ export const routes: Routes = [
       import('./features/group-admin/create-group/create-group.component').then(
         (m) => m.CreateGroupComponent,
       ),
-    data: { navShell: false },
   },
   {
     path: 'groups/reauth',
     loadComponent: () =>
       import('./features/group-admin/reauth/reauth.component').then((m) => m.ReauthComponent),
-    data: { navShell: false },
   },
   {
     path: 'groups/:groupId/admin',
@@ -42,13 +40,11 @@ export const routes: Routes = [
       import('./features/group-join/join-flow/join-flow.component').then(
         (m) => m.JoinFlowComponent,
       ),
-    data: { navShell: false },
   },
   {
     path: 'join/:token',
     loadComponent: () =>
       import('./features/group-join/group-join.component').then((m) => m.GroupJoinComponent),
-    data: { navShell: false },
   },
   {
     path: 'guest-access/:token',
@@ -56,7 +52,6 @@ export const routes: Routes = [
       import('./features/group-join/guest-access/guest-access.component').then(
         (m) => m.GuestAccessComponent,
       ),
-    data: { navShell: false },
   },
   {
     path: 'groups/:groupId/member-view',
