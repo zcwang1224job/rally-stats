@@ -7,6 +7,7 @@ import {
   KickMemberResponse,
   MatchDetailResponse,
   PartnershipsResponse,
+  RegenerateGuestLinkResponse,
   RoundMatchesResponse,
   ScheduleResponse,
   ScoreMutationResult,
@@ -113,6 +114,17 @@ export class ScheduleService {
     return this.api.post<JoinGroupResponse>(
       `/groups/${groupId}/members`,
       { nickname },
+      this.authHeader(groupId),
+    );
+  }
+
+  regenerateGuestLink(
+    groupId: string,
+    rosterEntryId: string,
+  ): Observable<RegenerateGuestLinkResponse> {
+    return this.api.post<RegenerateGuestLinkResponse>(
+      `/groups/${groupId}/members/${rosterEntryId}/regenerate-guest-link`,
+      {},
       this.authHeader(groupId),
     );
   }

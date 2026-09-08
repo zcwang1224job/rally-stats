@@ -360,4 +360,108 @@ describe('AdminPageComponent', () => {
     expect(link.value).toContain('/guest-access/tok-abc');
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareLinkTitle');
   });
+
+  it('only shows the regenerate-link button on guest rows, not member rows', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r1', nickname: '訪客小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+            { roster_entry_id: 'r2', nickname: '會員小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: false },
+          ],
+        }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+    expect(rows[0].querySelector('[aria-label="scheduleManagement.regenerateGuestLinkAriaLabel"]')).not.toBeNull();
+    expect(rows[1].querySelector('[aria-label="scheduleManagement.regenerateGuestLinkAriaLabel"]')).toBeNull();
+  });
+
+  it('regenerating a guest link shows a share panel with the new link', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r1', nickname: '訪客小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+          ],
+        }),
+      regenerateGuestLink: () => of({ roster_entry_id: 'r1', guest_session_token: 'new-tok' }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[aria-label="scheduleManagement.regenerateGuestLinkAriaLabel"]')
+      .click();
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.link-section input[readonly]');
+    expect(link.value).toContain('/guest-access/new-tok');
+    expect(fixture.nativeElement.textContent).toContain('訪客小美');
+  });
+
+  it('a 401 from regenerate-guest-link triggers the same auth-failure redirect as other admin actions', () => {
+    const clearAdminToken = vi.fn();
+    const fixture = setup(
+      false,
+      { getAdminToken: () => 'admin-tok', clearAdminToken },
+      {
+        getSchedule: () =>
+          of({
+            ...scheduleResponse,
+            roster: [
+              { roster_entry_id: 'r1', nickname: '訪客小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+            ],
+          }),
+        regenerateGuestLink: () =>
+          throwError(() => ({
+            errorCode: 'ADMIN_TOKEN_INVALID',
+            i18nKey: 'errors.ADMIN_TOKEN_INVALID',
+            detail: null,
+            status: 401,
+          })),
+      },
+    );
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[aria-label="scheduleManagement.regenerateGuestLinkAriaLabel"]')
+      .click();
+
+    expect(clearAdminToken).toHaveBeenCalledWith('g1');
+  });
+
+  it('a non-401 error from regenerate-guest-link shows the error message', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r1', nickname: '訪客小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+          ],
+        }),
+      regenerateGuestLink: () =>
+        throwError(() => ({
+          errorCode: 'ROSTER_ENTRY_ALREADY_LEFT',
+          i18nKey: 'errors.ROSTER_ENTRY_ALREADY_LEFT',
+          detail: null,
+          status: 409,
+        })),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.nativeElement
+      .querySelector('[aria-label="scheduleManagement.regenerateGuestLinkAriaLabel"]')
+      .click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('errors.ROSTER_ENTRY_ALREADY_LEFT');
+  });
 });

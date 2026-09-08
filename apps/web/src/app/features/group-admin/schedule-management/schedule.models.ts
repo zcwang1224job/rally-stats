@@ -46,6 +46,7 @@ export interface RosterScheduleStatus {
   wait_count: number | null;
   currently_playing: boolean;
   is_creator: boolean;
+  is_guest: boolean;
 }
 
 export interface ScheduleResponse {
@@ -84,6 +85,11 @@ export interface PartnershipsResponse {
 export interface KickMemberResponse {
   roster_entry_id: string;
   status: string;
+}
+
+export interface RegenerateGuestLinkResponse {
+  roster_entry_id: string;
+  guest_session_token: string;
 }
 
 // 011-round-robin-scheduling: 本輪賽程清單 — 涵蓋 queued/in_progress/

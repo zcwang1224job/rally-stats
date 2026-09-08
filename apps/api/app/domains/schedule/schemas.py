@@ -43,6 +43,10 @@ class RosterScheduleStatus(BaseModel):
     wait_count: int | None
     currently_playing: bool
     is_creator: bool
+    # Whether this entry has no Member account (member_id IS NULL) — the
+    # admin page uses this to decide whether "regenerate guest link" makes
+    # sense for the row (a Member entry has no guest_session_token concept).
+    is_guest: bool
 
 
 class ScheduleResponse(BaseModel):
@@ -120,6 +124,11 @@ class MatchDetailResponse(BaseModel):
 class KickMemberResponse(BaseModel):
     roster_entry_id: str
     status: str
+
+
+class RegenerateGuestLinkResponse(BaseModel):
+    roster_entry_id: str
+    guest_session_token: str
 
 
 # --- 007-live-scoreboard, per data-model.md ---

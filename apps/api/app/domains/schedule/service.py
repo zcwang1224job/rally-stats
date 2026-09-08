@@ -3,6 +3,7 @@ changes, and the abandon-matches hooks consumed by 001/002. Per
 specs/003-schedule-rotation/plan.md and research.md."""
 
 import random
+import secrets
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
@@ -848,6 +849,7 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             wait_count=entry.wait_count,
             currently_playing=entry.id in playing_roster_ids,
             is_creator=entry.is_creator,
+            is_guest=entry.member_id is None,
         )
         for entry in roster_result.scalars()
     ]
@@ -1188,6 +1190,41 @@ async def kick_member(session: AsyncSession, group: Group, entry: RosterEntry) -
         group_notifications_channel(str(group.id)),
         "member.left",
         {"roster_entry_id": str(entry.id), "nickname": entry.nickname},
+    )
+    return entry
+
+
+async def regenerate_guest_session_token(
+    session: AsyncSession, group: Group, entry: RosterEntry
+) -> RosterEntry:
+    """Constitution IV: every link-type token (scoreboard, court control
+    panels, join link) MUST be independently regenerable by the admin to
+    invalidate a leaked copy — `guest_session_token` was the one exception
+    (015-manual-add-guest's shareable `/guest-access/:token` link reuses
+    this same field, so the gap became reachable, not just theoretical).
+    Same token-generation call as `join_group()`'s guest branch, so a
+    regenerated token is indistinguishable in shape/entropy from one
+    issued at join time."""
+    if entry.group_id != group.id:
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    if entry.member_id is not None:
+        raise ApiError("NOT_A_GUEST_ENTRY", status_code=400)
+    if entry.status != "active":
+        raise ApiError("ROSTER_ENTRY_ALREADY_LEFT", status_code=409)
+
+    entry.guest_session_token = secrets.token_urlsafe(32)
+    await session.commit()
+    await session.refresh(entry)
+
+    await publish(
+        group_notifications_channel(str(group.id)),
+        "link.regenerated",
+        {
+            "event": "link.regenerated",
+            "group_id": str(group.id),
+            "link_type": "guest_session",
+            "roster_entry_id": str(entry.id),
+        },
     )
     return entry
 

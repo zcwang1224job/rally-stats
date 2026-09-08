@@ -2,7 +2,7 @@
 specs/003-schedule-rotation/contracts/schedule-api.md."""
 
 import uuid
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -27,6 +27,7 @@ from app.domains.schedule.schemas import (
     MatchDetailResponse,
     PartnershipReassignRequest,
     PartnershipsResponse,
+    RegenerateGuestLinkResponse,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
@@ -178,6 +179,34 @@ async def kick_member(
         raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
     updated = await service.kick_member(session, group, entry)
     return KickMemberResponse(roster_entry_id=str(updated.id), status=updated.status)
+
+
+@router.post(
+    "/groups/{group_id}/members/{roster_entry_id}/regenerate-guest-link",
+    response_model=RegenerateGuestLinkResponse,
+)
+async def regenerate_guest_link(
+    group_id: uuid.UUID,
+    roster_entry_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RegenerateGuestLinkResponse:
+    """Constitution IV: admin can independently regenerate a guest's
+    shareable link to invalidate a leaked copy — same guarantee already
+    given for the admin PIN/join link/all-courts link. Errors:
+    `ADMIN_TOKEN_INVALID`, `ROSTER_ENTRY_NOT_FOUND`, `NOT_A_GUEST_ENTRY`,
+    `ROSTER_ENTRY_ALREADY_LEFT`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    entry = result.scalar_one_or_none()
+    if entry is None:
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    updated = await service.regenerate_guest_session_token(session, group, entry)
+    return RegenerateGuestLinkResponse(
+        roster_entry_id=str(updated.id),
+        guest_session_token=cast(str, updated.guest_session_token),
+    )
 
 
 # --- 007-live-scoreboard: 即時計分板與控制板 ---

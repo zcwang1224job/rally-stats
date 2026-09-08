@@ -26,7 +26,7 @@ import {
 } from '../shared/group-form-validators';
 import { CourtListComponent } from '../court-management/court-list.component';
 import { ScheduleService } from '../schedule-management/schedule.service';
-import { ScheduleResponse } from '../schedule-management/schedule.models';
+import { RosterScheduleStatus, ScheduleResponse } from '../schedule-management/schedule.models';
 import { ManualAssignComponent } from '../schedule-management/manual-assign.component';
 import { PartnershipSettingsComponent } from '../schedule-management/partnership-settings.component';
 import { CourtControlComponent } from '../schedule-management/court-control.component';
@@ -118,6 +118,7 @@ export class AdminPageComponent {
   readonly addedGuest = signal<{ nickname: string; link: string } | null>(null);
   readonly copiedGuestLink = signal(false);
   readonly copyGuestLinkErrorKey = signal<string | null>(null);
+  readonly regenerateGuestLinkErrorKey = signal<string | null>(null);
 
   readonly editForm = this.fb.nonNullable.group(
     {
@@ -539,6 +540,29 @@ export class AdminPageComponent {
           return;
         }
         this.addGuestErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  regenerateGuestLink(member: RosterScheduleStatus): void {
+    this.regenerateGuestLinkErrorKey.set(null);
+    this.scheduleService.regenerateGuestLink(this.groupId, member.roster_entry_id).subscribe({
+      next: (response) => {
+        // Reuses the same share panel/signal as a fresh add-guest — the
+        // resulting UI (link + QR + copy) is identical either way.
+        this.addedGuest.set({
+          nickname: member.nickname,
+          link: `${window.location.origin}/guest-access/${response.guest_session_token}`,
+        });
+        this.copiedGuestLink.set(false);
+        this.copyGuestLinkErrorKey.set(null);
+      },
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.regenerateGuestLinkErrorKey.set(error.i18nKey);
       },
     });
   }
