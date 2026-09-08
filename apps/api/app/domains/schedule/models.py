@@ -19,10 +19,10 @@ class Match(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
     )
     court_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("courts.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("courts.id"), nullable=True, index=True
     )
     round_number: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")
@@ -50,10 +50,10 @@ class MatchParticipant(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     match_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True
     )
     roster_entry_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("roster_entries.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("roster_entries.id"), nullable=False, index=True
     )
     team: Mapped[str] = mapped_column(String(1), nullable=False)  # 'A' | 'B'
 
@@ -81,7 +81,7 @@ class Partnership(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
     )
     player_a_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roster_entries.id"), nullable=False, unique=True

@@ -20,10 +20,10 @@ class RosterEntry(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
     )
     member_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("members.id"), nullable=True, index=True
     )
     nickname: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")

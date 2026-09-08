@@ -52,6 +52,11 @@ class Group(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     # active | disbanded
 
+    # Nullable — NULL for every group that is still active, and for groups
+    # disbanded before this column existed (backfilling those is not
+    # possible; their disband time was never recorded).
+    disbanded_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
     last_activity_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -59,7 +64,7 @@ class Group(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     created_by_member_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id"), nullable=True
+        UUID(as_uuid=True), ForeignKey("members.id"), nullable=True, index=True
     )
 
     admin_pin_hash: Mapped[str] = mapped_column(String(255), nullable=False)

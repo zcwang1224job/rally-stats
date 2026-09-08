@@ -24,13 +24,13 @@ class GroupInvite(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     group_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
     )
     inviter_member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
     )
     invitee_member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     # pending | accepted | declined | invalidated

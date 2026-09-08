@@ -24,7 +24,7 @@ class Notification(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     member_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
     )
     type: Mapped[str] = mapped_column(String(32), nullable=False)
     # "friend_request" (only value today) — source_id points at friend_requests.id
