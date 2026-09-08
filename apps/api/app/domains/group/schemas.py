@@ -320,6 +320,16 @@ class JoinGroupResponse(BaseModel):
     created_new: bool
 
 
+class AddGuestRequest(BaseModel):
+    """015-manual-add-guest: deliberately no format validator on `nickname`
+    (unlike `JoinGroupRequest`) — the empty/too-long check must happen
+    inside `join_group()` itself so it raises `NICKNAME_REQUIRED_FOR_GUEST`
+    (a proper `ApiError` the frontend can render), not a generic FastAPI
+    422 the error interceptor can't map to an i18n key."""
+
+    nickname: str
+
+
 class GuestSessionResponse(BaseModel):
     roster_entry_id: str
     group_id: str

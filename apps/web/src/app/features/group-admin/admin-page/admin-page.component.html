@@ -32,12 +32,6 @@
           {{ 'adminPage.section.invites' | translate }}
         </button>
       }
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'name'" (click)="activeSection.set('name')">
-        {{ 'adminPage.section.name' | translate }}
-      </button>
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'access'" (click)="activeSection.set('access')">
-        {{ 'adminPage.section.access' | translate }}
-      </button>
       <button type="button" class="tap-target" [class.is-active]="activeSection() === 'settings'" (click)="activeSection.set('settings')">
         {{ 'adminPage.section.settings' | translate }}
       </button>
@@ -163,16 +157,47 @@
 
           @case ('roster') {
             <section class="card">
-              <h3>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h3>
+              <h2>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h2>
+              <form class="form add-guest-form" [formGroup]="addGuestForm" (ngSubmit)="addGuest()">
+                <input
+                  #addGuestNicknameInput
+                  type="text"
+                  formControlName="nickname"
+                  [placeholder]="'scheduleManagement.addGuest.nicknamePlaceholder' | translate"
+                  [attr.aria-label]="'scheduleManagement.addGuest.nicknamePlaceholder' | translate"
+                  maxlength="20"
+                />
+                <button type="submit" class="btn btn--secondary">
+                  {{ 'scheduleManagement.addGuest.submit' | translate }}
+                </button>
+              </form>
+              @if (addGuestErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+              @if (addedGuest(); as guest) {
+                <div class="link-section">
+                  <p>{{ 'scheduleManagement.addGuest.shareLinkTitle' | translate: { nickname: guest.nickname } }}</p>
+                  <p>{{ 'scheduleManagement.addGuest.shareLinkHint' | translate }}</p>
+                  <qrcode [qrdata]="guest.link" [width]="128" errorCorrectionLevel="M" />
+                  <input type="text" readonly [value]="guest.link" />
+                  <button type="button" class="btn btn--secondary" (click)="copyAddedGuestLink()">
+                    {{ (copiedGuestLink() ? 'common.copied' : 'common.copy') | translate }}
+                  </button>
+                  @if (copyGuestLinkErrorKey(); as key) {
+                    <p role="alert">{{ key | translate }}</p>
+                  }
+                </div>
+              }
               @if (kickMemberErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
               @if (schedule(); as sched) {
                 <ul class="roster-list">
                   @for (member of sched.roster; track member.roster_entry_id) {
-                    <li>
-                      <span class="roster-name">
-                        {{ member.nickname }}
+                    <li class="card friend-row">
+                      <span class="friend-row__avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
+                      <span class="friend-row__identity">
+                        <span class="nickname">{{ member.nickname }}</span>
                         @if (member.currently_playing) {
                           <span class="status-badge status-badge--success">{{ 'scheduleManagement.currentlyPlaying' | translate }}</span>
                         } @else if (sched.scheduling_mechanism === 'manual' && member.wait_count !== null) {
@@ -207,7 +232,7 @@
 
           @case ('invites') {
             <section class="card">
-              <h3>{{ 'inviteSection.title' | translate }}</h3>
+              <h2>{{ 'inviteSection.title' | translate }}</h2>
               @if (invitesErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
@@ -217,14 +242,17 @@
                 } @else {
                   <ul class="invite-friend-list">
                     @for (friend of friends; track friend.member_id) {
-                      <li>
-                        <span class="invite-friend-list__nickname">{{ friend.nickname }}</span>
-                        <span
-                          class="status-badge"
-                          [class.status-badge--success]="friend.invite_status === 'accepted' || friend.invite_status === 'already_member'"
-                          [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated'"
-                        >
-                          {{ ('inviteSection.status.' + friend.invite_status) | translate }}
+                      <li class="card friend-row">
+                        <span class="friend-row__avatar" aria-hidden="true">{{ (friend.nickname || friend.user_number).charAt(0) }}</span>
+                        <span class="friend-row__identity">
+                          <span class="nickname">{{ friend.nickname }}</span>
+                          <span
+                            class="status-badge"
+                            [class.status-badge--success]="friend.invite_status === 'accepted' || friend.invite_status === 'already_member'"
+                            [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated'"
+                          >
+                            {{ ('inviteSection.status.' + friend.invite_status) | translate }}
+                          </span>
                         </span>
                         @if (friend.invite_status === 'not_invited' || friend.invite_status === 'declined' || friend.invite_status === 'invalidated') {
                           <button
@@ -246,9 +274,9 @@
             </section>
           }
 
-          @case ('name') {
+          @case ('settings') {
             <form class="form card" [formGroup]="editForm" (ngSubmit)="saveGroupSettings()">
-              <h2>{{ 'adminPage.section.name' | translate }}</h2>
+              <h2>{{ 'adminPage.nameSectionTitle' | translate }}</h2>
               <label>
                 {{ 'adminPage.name' | translate }}
                 <input type="text" formControlName="name" maxlength="30" />
@@ -261,19 +289,24 @@
               }
               <button type="submit" class="btn">{{ 'adminPage.save' | translate }}</button>
             </form>
-          }
 
-          @case ('access') {
             <section class="card">
-              <h2>{{ 'adminPage.section.access' | translate }}</h2>
+              <h2>{{ 'adminPage.accessSectionTitle' | translate }}</h2>
               <button type="button" class="btn" (click)="openRegeneratePinDialog()">{{ 'adminPage.regeneratePin' | translate }}</button>
               @if (newPin(); as pin) {
-                <p>{{ 'adminPage.newPinTitle' | translate }}: <strong>{{ pin }}</strong></p>
+                <div class="link-section">
+                  <p>{{ 'adminPage.newPinTitle' | translate }}</p>
+                  <input type="text" readonly [value]="pin" class="pin-display" />
+                  <button type="button" class="btn btn--secondary" (click)="copyNewPin()">
+                    {{ (copiedPin() ? 'common.copied' : 'common.copy') | translate }}
+                  </button>
+                  @if (copyPinErrorKey(); as key) {
+                    <p role="alert">{{ key | translate }}</p>
+                  }
+                </div>
               }
             </section>
-          }
 
-          @case ('settings') {
             <form class="form card" [formGroup]="editForm" (ngSubmit)="saveGroupSettings()">
               <h2>{{ 'adminPage.section.settings' | translate }}</h2>
 
@@ -385,7 +418,8 @@
               <button type="submit" class="btn">{{ 'adminPage.saveScoring' | translate }}</button>
             </form>
 
-            <section class="card">
+            <section class="card card--danger-zone">
+              <h2>{{ 'adminPage.dangerZoneSectionTitle' | translate }}</h2>
               <button type="button" class="btn btn--danger" (click)="openDisbandDialog()">{{ 'adminPage.disband' | translate }}</button>
             </section>
           }

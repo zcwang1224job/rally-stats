@@ -59,6 +59,19 @@ section.card {
   gap: var(--space-xs);
   padding-bottom: var(--space-xs);
 
+  // Below $breakpoint-tablet the nav is a horizontally-scrolling strip with
+  // no scrollbar and a hard-cut last button — nothing hints there's more
+  // to scroll. A pure-CSS edge fade (no JS scroll-position tracking) fixes
+  // that; it's reset at tablet+ below, where the axis flips to a vertical
+  // sidebar and a left/right fade would instead clip each button's text.
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--space-md),
+    black calc(100% - var(--space-md)),
+    transparent 100%
+  );
+
   button {
     flex: 0 0 auto;
     min-height: var(--touch-target-min);
@@ -81,6 +94,7 @@ section.card {
     flex-direction: column;
     overflow-x: visible;
     flex: 0 0 200px;
+    mask-image: none;
 
     button {
       width: 100%;
@@ -132,29 +146,7 @@ section.card {
   margin-bottom: var(--space-md);
 }
 
-.roster-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-}
-
-.roster-list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
-}
-
-.roster-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
+.roster-list,
 .invite-friend-list {
   list-style: none;
   padding: 0;
@@ -164,14 +156,75 @@ section.card {
   gap: var(--space-sm);
 }
 
-.invite-friend-list li {
+// Same row anatomy as friend-list's .friend-row (component-scoped styles
+// don't leak across components, so it's copied rather than shared) — an
+// initial-letter avatar plus a stacked identity block, reused here for
+// both the roster and invite lists so every "list of people" on this page
+// reads consistently.
+.friend-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-sm);
 }
 
-.invite-friend-list__nickname {
+.friend-row__avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
   font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
+}
+
+.friend-row__identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.nickname {
+  font-weight: var(--font-weight-bold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Danger-zone visual treatment (disband card) — same color-mix tint
+// technique .status-badge--danger already uses, just applied to a whole
+// card instead of a pill, so it reads as "high-risk" before anyone reads
+// the button label.
+.card--danger-zone {
+  border-color: color-mix(in srgb, var(--color-danger) 28%, white);
+  background: color-mix(in srgb, var(--color-danger) 6%, white);
+}
+
+// The regenerated PIN, unlike a URL, isn't meaningfully represented by a
+// QR code — just a larger, evenly-spaced monospace readout so it's easy
+// to read back digit-by-digit (mirrors how a boarding-pass/OTP code is
+// typically displayed).
+.pin-display {
+  font-family: monospace;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.add-guest-form {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: none;
+
+  input {
+    flex: 1;
+    min-width: 8rem;
+  }
 }

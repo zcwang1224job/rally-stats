@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -36,12 +36,14 @@ const HEARTBEAT_INTERVAL_MS = 30_000; // spec FR-035: 30s heartbeat fallback cei
 
 /** 010-app-wide-ui-redesign US3 (data-model.md): left-nav tab shell —
  * client-side view state only, never reflected in the URL (research.md
- * Decision 2). "團名" and "管理員設定" both render fields from the same
- * single `editForm`/`saveGroupSettings()` (one PATCH, one optimistic-lock
- * version) — splitting the form's DOM across two @switch cases is safe
- * because Angular's FormGroup holds every control's current value
- * independent of which one is currently attached to the DOM. */
-type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'name' | 'access' | 'settings';
+ * Decision 2). UI-optimization pass: the former standalone "團名"/"管理
+ * 權限資訊" tabs were folded into "settings" as sub-cards (each was too
+ * thin to earn its own top-level tab, and "團名" already rendered a field
+ * from the same `editForm`/`saveGroupSettings()` this tab uses) — still
+ * safe to split that form's DOM across sibling cards within one @switch
+ * case, since Angular's FormGroup holds every control's value independent
+ * of which template node currently renders it. */
+type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'settings';
 
 @Component({
   selector: 'app-admin-page',
@@ -88,6 +90,8 @@ export class AdminPageComponent {
   readonly saveSuccess = signal(false);
   readonly scoringSaveSuccess = signal(false);
   readonly newPin = signal<string | null>(null);
+  readonly copiedPin = signal(false);
+  readonly copyPinErrorKey = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
   readonly nextRoundErrorKey = signal<string | null>(null);
   readonly copiedJoinLink = signal(false);
@@ -107,6 +111,13 @@ export class AdminPageComponent {
   readonly kickMemberDialog = viewChild.required<ConfirmDialogComponent>('kickMemberDialog');
   readonly kickMemberTarget = signal<{ rosterEntryId: string; nickname: string } | null>(null);
   readonly kickMemberErrorKey = signal<string | null>(null);
+
+  readonly addGuestNicknameInput =
+    viewChild.required<ElementRef<HTMLInputElement>>('addGuestNicknameInput');
+  readonly addGuestErrorKey = signal<string | null>(null);
+  readonly addedGuest = signal<{ nickname: string; link: string } | null>(null);
+  readonly copiedGuestLink = signal(false);
+  readonly copyGuestLinkErrorKey = signal<string | null>(null);
 
   readonly editForm = this.fb.nonNullable.group(
     {
@@ -137,6 +148,10 @@ export class AdminPageComponent {
     },
     { validators: [customScoringValidator] },
   );
+
+  readonly addGuestForm = this.fb.nonNullable.group({
+    nickname: ['', [Validators.required, Validators.maxLength(20)]],
+  });
 
   constructor() {
     const token = this.groupAdmin.getAdminToken(this.groupId);
@@ -387,10 +402,25 @@ export class AdminPageComponent {
       next: (response) => {
         this.groupAdmin.setAdminToken(this.groupId, response.admin_token);
         this.newPin.set(response.admin_pin);
+        this.copiedPin.set(false);
+        this.copyPinErrorKey.set(null);
         this.load();
       },
       error: (error: ApiError) => this.handleAuthFailure(error),
     });
+  }
+
+  async copyNewPin(): Promise<void> {
+    const pin = this.newPin();
+    if (!pin) {
+      return;
+    }
+    if (await copyTextToClipboard(pin)) {
+      this.copiedPin.set(true);
+      setTimeout(() => this.copiedPin.set(false), 2000);
+    } else {
+      this.copyPinErrorKey.set('courtManagement.copyFailed');
+    }
   }
 
   openRegenerateJoinLinkDialog(): void {
@@ -480,5 +510,49 @@ export class AdminPageComponent {
         this.kickMemberErrorKey.set(error.i18nKey);
       },
     });
+  }
+
+  addGuest(): void {
+    if (this.addGuestForm.invalid) {
+      this.addGuestForm.markAllAsTouched();
+      return;
+    }
+    this.addGuestErrorKey.set(null);
+    const nickname = this.addGuestForm.getRawValue().nickname;
+    this.scheduleService.addGuest(this.groupId, nickname).subscribe({
+      next: (response) => {
+        this.addedGuest.set({
+          nickname: response.nickname,
+          link: `${window.location.origin}/guest-access/${response.guest_session_token}`,
+        });
+        this.copiedGuestLink.set(false);
+        this.copyGuestLinkErrorKey.set(null);
+        this.addGuestForm.reset({ nickname: '' });
+        // FR-009: keep focus in the field so 團長 can add several guests in
+        // a row without re-clicking into it each time.
+        this.addGuestNicknameInput().nativeElement.focus();
+        this.loadSchedule();
+      },
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.addGuestErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  async copyAddedGuestLink(): Promise<void> {
+    const guest = this.addedGuest();
+    if (!guest) {
+      return;
+    }
+    if (await copyTextToClipboard(guest.link)) {
+      this.copiedGuestLink.set(true);
+      setTimeout(() => this.copiedGuestLink.set(false), 2000);
+    } else {
+      this.copyGuestLinkErrorKey.set('courtManagement.copyFailed');
+    }
   }
 }

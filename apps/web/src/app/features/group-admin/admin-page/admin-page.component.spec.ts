@@ -49,6 +49,7 @@ describe('AdminPageComponent', () => {
   function setup(
     readOnly = false,
     groupAdminOverrides: Partial<GroupAdminService> = {},
+    scheduleOverrides: Partial<ScheduleService> = {},
   ) {
     TestBed.configureTestingModule({
       imports: [AdminPageComponent],
@@ -74,7 +75,7 @@ describe('AdminPageComponent', () => {
         },
         {
           provide: ScheduleService,
-          useValue: { getSchedule: () => of(scheduleResponse) },
+          useValue: { getSchedule: () => of(scheduleResponse), ...scheduleOverrides },
         },
         {
           provide: RealtimeService,
@@ -95,11 +96,11 @@ describe('AdminPageComponent', () => {
     return Array.from(fixture.nativeElement.querySelectorAll('.admin-nav button'));
   }
 
-  it('shows 6 left-nav sections, defaulting to 場地 (courts)', () => {
+  it('shows 4 left-nav sections, defaulting to 場地 (courts)', () => {
     const fixture = setup();
 
     const buttons = navButtons(fixture);
-    expect(buttons.length).toBe(6);
+    expect(buttons.length).toBe(4);
     expect(buttons[0].classList.contains('is-active')).toBe(true);
     expect(fixture.nativeElement.querySelector('.links-section')).not.toBeNull();
   });
@@ -124,29 +125,41 @@ describe('AdminPageComponent', () => {
     expect(fixture.nativeElement.querySelector('.links-section')).toBeNull();
   });
 
-  it('clicking 團名 shows the name-only form', () => {
+  it('clicking 設定 shows the name field alongside the password/match-mode fields', () => {
     const fixture = setup();
 
     navButtons(fixture)[3].click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('input[formcontrolname="name"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('input[formcontrolname="password"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('input[formcontrolname="password"]')).not.toBeNull();
   });
 
-  it('clicking 管理員設定 shows the settings form with the password/match-mode fields', () => {
+  it('the disband card gets the danger-zone visual treatment', () => {
     const fixture = setup();
 
-    navButtons(fixture)[5].click();
+    navButtons(fixture)[3].click();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('input[formcontrolname="password"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.card--danger-zone')).not.toBeNull();
+  });
+
+  it('a freshly regenerated PIN shows a copyable readout with a copy button', () => {
+    const fixture = setup();
+
+    navButtons(fixture)[3].click();
+    fixture.componentInstance.newPin.set('123456');
+    fixture.detectChanges();
+
+    const pinInput: HTMLInputElement = fixture.nativeElement.querySelector('.pin-display');
+    expect(pinInput.value).toBe('123456');
+    expect(fixture.nativeElement.textContent).toContain('common.copy');
   });
 
   it('singles match mode hides the doubles-only scheduling options and resets an invalid selection', () => {
     const fixture = setup();
 
-    navButtons(fixture)[5].click();
+    navButtons(fixture)[3].click();
     fixture.detectChanges();
     fixture.componentInstance.editForm.controls.scheduling_mechanism.setValue('individual_mixed');
     fixture.componentInstance.editForm.controls.match_mode.setValue('singles');
@@ -163,13 +176,13 @@ describe('AdminPageComponent', () => {
     expect(fixture.componentInstance.editForm.controls.scheduling_mechanism.value).toBe('fair_rotation');
   });
 
-  it('read-only (disbanded) mode: all 6 nav items still render, but every section shows only the disbanded notice', () => {
+  it('read-only (disbanded) mode: all 4 nav items still render, but every section shows only the disbanded notice', () => {
     const fixture = setup(true);
 
     const buttons = navButtons(fixture);
-    expect(buttons.length).toBe(6);
+    expect(buttons.length).toBe(4);
 
-    buttons[5].click();
+    buttons[3].click();
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('input[formcontrolname="password"]')).toBeNull();
@@ -193,7 +206,7 @@ describe('AdminPageComponent', () => {
       editGroup: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
     });
 
-    navButtons(fixture)[5].click();
+    navButtons(fixture)[3].click();
     fixture.detectChanges();
     fixture.componentInstance.saveGroupSettings();
     fixture.detectChanges();
@@ -213,7 +226,7 @@ describe('AdminPageComponent', () => {
         })),
     });
 
-    navButtons(fixture)[5].click();
+    navButtons(fixture)[3].click();
     fixture.detectChanges();
     fixture.componentInstance.saveGroupSettings();
     fixture.detectChanges();
@@ -228,7 +241,7 @@ describe('AdminPageComponent', () => {
       editScoringSettings: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
     });
 
-    navButtons(fixture)[5].click();
+    navButtons(fixture)[3].click();
     fixture.detectChanges();
     fixture.componentInstance.saveScoringSettings();
     fixture.detectChanges();
@@ -259,5 +272,92 @@ describe('AdminPageComponent', () => {
     });
 
     expect(fixture.componentInstance.hasUnfinishedMatches()).toBe(true);
+  });
+
+  it('adding a guest clears the nickname field and refocuses it, so 團長 can add another right away', () => {
+    const fixture = setup(false, {}, {
+      addGuest: () => of({ roster_entry_id: 'r1', nickname: '小明', guest_session_token: 'tok', created_new: true }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.addGuestForm.controls.nickname.value).toBe('');
+    expect(document.activeElement).toBe(
+      fixture.componentInstance.addGuestNicknameInput().nativeElement,
+    );
+  });
+
+  it.each([
+    ['GROUP_FULL', 409],
+    ['GROUP_DISBANDED', 409],
+    ['NICKNAME_REQUIRED_FOR_GUEST', 400],
+  ])('a failed add-guest (%s) shows the error, not a cleared form', (errorCode, status) => {
+    const fixture = setup(false, {}, {
+      addGuest: () =>
+        throwError(() => ({
+          errorCode,
+          i18nKey: `errors.${errorCode}`,
+          detail: null,
+          status,
+        })),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.addGuestErrorKey()).toBe(`errors.${errorCode}`);
+    expect(fixture.nativeElement.textContent).toContain(`errors.${errorCode}`);
+    expect(fixture.componentInstance.addGuestForm.controls.nickname.value).toBe('小明');
+  });
+
+  it('a 401 from add-guest triggers the same auth-failure redirect as other admin actions', () => {
+    const clearAdminToken = vi.fn();
+    const fixture = setup(
+      false,
+      {
+        getAdminToken: () => 'admin-tok',
+        clearAdminToken,
+      },
+      {
+        addGuest: () =>
+          throwError(() => ({
+            errorCode: 'ADMIN_TOKEN_INVALID',
+            i18nKey: 'errors.ADMIN_TOKEN_INVALID',
+            detail: null,
+            status: 401,
+          })),
+      },
+    );
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+
+    expect(clearAdminToken).toHaveBeenCalledWith('g1');
+  });
+
+  it('a successful add-guest shows a share panel with that guest\'s own link', () => {
+    const fixture = setup(false, {}, {
+      addGuest: () =>
+        of({ roster_entry_id: 'r1', nickname: '小明', guest_session_token: 'tok-abc', created_new: true }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.link-section input[readonly]');
+    expect(link.value).toContain('/guest-access/tok-abc');
+    expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareLinkTitle');
   });
 });

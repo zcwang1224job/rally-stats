@@ -297,12 +297,13 @@
       "schedule": "賽程",
       "roster": "輪替名單",
       "invites": "邀請好友",
-      "name": "團名",
-      "access": "管理權限資訊",
       "settings": "管理員設定"
     },
     "groupNumber": "組團編號",
     "name": "團名",
+    "nameSectionTitle": "團名稱",
+    "accessSectionTitle": "團層級存取",
+    "dangerZoneSectionTitle": "危險操作",
     "password": "通關密碼",
     "matchMode": "比賽模式",
     "partnerSource": "搭檔來源",
@@ -392,7 +393,13 @@
     "kickMember": "踢除",
     "kickMemberAriaLabel": "踢除 {{nickname}}",
     "kickMemberConfirmTitle": "確定踢除 {{nickname}}？",
-    "kickMemberConfirmBody": "此成員將自輪替名單移除，尚未開始的相關比賽將自動取消；進行中的比賽不受影響。"
+    "kickMemberConfirmBody": "此成員將自輪替名單移除，尚未開始的相關比賽將自動取消；進行中的比賽不受影響。",
+    "addGuest": {
+      "nicknamePlaceholder": "輸入訪客暱稱",
+      "submit": "新增訪客",
+      "shareLinkTitle": "分享給 {{nickname}}",
+      "shareLinkHint": "把這組連結或 QR code 交給對方，即可用自己的手機查看賽況"
+    }
   },
   "groupMemberView": {
     "nav": {

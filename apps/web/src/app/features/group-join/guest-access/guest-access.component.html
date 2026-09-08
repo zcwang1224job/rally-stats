@@ -1,0 +1,8 @@
+@switch (status()) {
+  @case ('loading') {
+    <p>{{ 'common.loading' | translate }}</p>
+  }
+  @case ('error') {
+    <p role="alert">{{ (errorKey() ?? 'errors.LINK_NOT_FOUND') | translate }}</p>
+  }
+}

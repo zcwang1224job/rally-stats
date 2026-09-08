@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../../../core/api/api-client';
+import { JoinGroupResponse } from '../../../core/api/group-join.models';
 import { GroupAdminService } from '../group-admin.service';
 import {
   KickMemberResponse,
@@ -104,6 +105,14 @@ export class ScheduleService {
   kickMember(groupId: string, rosterEntryId: string): Observable<KickMemberResponse> {
     return this.api.delete<KickMemberResponse>(
       `/groups/${groupId}/members/${rosterEntryId}`,
+      this.authHeader(groupId),
+    );
+  }
+
+  addGuest(groupId: string, nickname: string): Observable<JoinGroupResponse> {
+    return this.api.post<JoinGroupResponse>(
+      `/groups/${groupId}/members`,
+      { nickname },
       this.authHeader(groupId),
     );
   }

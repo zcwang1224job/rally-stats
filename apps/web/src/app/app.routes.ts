@@ -51,6 +51,14 @@ export const routes: Routes = [
     data: { navShell: false },
   },
   {
+    path: 'guest-access/:token',
+    loadComponent: () =>
+      import('./features/group-join/guest-access/guest-access.component').then(
+        (m) => m.GuestAccessComponent,
+      ),
+    data: { navShell: false },
+  },
+  {
     path: 'groups/:groupId/member-view',
     loadComponent: () =>
       import('./features/group-member-view/group-member-view.component').then(

@@ -16,6 +16,7 @@ from app.domains.court.service import get_court_by_id
 from app.domains.group import service
 from app.domains.group.models import Group
 from app.domains.group.schemas import (
+    AddGuestRequest,
     AdminGroupResponse,
     AllCourtsBootstrapResponse,
     AllCourtsCourtSummary,
@@ -223,6 +224,31 @@ async def join_group(
     group = await service.get_group_by_id(session, group_id)
     roster_entry, created_new = await service.join_group(
         session, group, member=member, password=payload.password, nickname=payload.nickname
+    )
+    return JoinGroupResponse(
+        roster_entry_id=str(roster_entry.id),
+        nickname=roster_entry.nickname,
+        guest_session_token=roster_entry.guest_session_token,
+        created_new=created_new,
+    )
+
+
+@router.post("/{group_id}/members", response_model=JoinGroupResponse, status_code=201)
+async def add_guest(
+    group_id: uuid.UUID,
+    payload: AddGuestRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> JoinGroupResponse:
+    """015-manual-add-guest: the admin's own authorization substitutes for
+    knowing the group password, same as an invite link (`skip_password`,
+    013-group-invite-friends) — this is `join_group()`'s second caller for
+    that reason. Errors: `ADMIN_TOKEN_INVALID`, `GROUP_DISBANDED`,
+    `GROUP_FULL`, `NICKNAME_REQUIRED_FOR_GUEST`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    roster_entry, created_new = await service.join_group(
+        session, group, member=None, password=None, nickname=payload.nickname, skip_password=True
     )
     return JoinGroupResponse(
         roster_entry_id=str(roster_entry.id),
