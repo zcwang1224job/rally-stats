@@ -19,23 +19,27 @@
             (click)="openGroupHistory(group)"
             [attr.aria-label]="'myGroups.viewHistoryAriaLabel' | translate: { name: group.name }"
           >
-            <span class="group-name">{{ group.name }}</span>
-            <span class="group-number">{{ group.group_number }}</span>
-            <span class="status-badge" [class.status-badge--success]="group.is_creator">
-              {{ (group.is_creator ? 'myGroups.role.creator' : 'myGroups.role.member') | translate }}
-            </span>
-            <span
-              class="status-badge"
-              [class.status-badge--success]="group.member_status === 'active'"
-              [class.status-badge--danger]="group.member_status === 'kicked'"
-            >
-              {{ ('myGroups.status.' + group.member_status) | translate }}
-            </span>
-            @if (group.status === 'disbanded') {
-              <span class="status-badge status-badge--danger">
-                {{ 'myGroups.status.disbanded' | translate }}
+            <span class="friend-row__avatar" aria-hidden="true">{{ group.name.charAt(0) }}</span>
+            <span class="group-row-main__identity">
+              <span class="group-name">{{ group.name }}</span>
+              <span class="group-number">{{ group.group_number }}</span>
+              <span class="status-badge" [class.status-badge--success]="group.is_creator">
+                {{ (group.is_creator ? 'myGroups.role.creator' : 'myGroups.role.member') | translate }}
               </span>
-            }
+              <span
+                class="status-badge"
+                [class.status-badge--success]="group.member_status === 'active'"
+                [class.status-badge--danger]="group.member_status === 'kicked'"
+              >
+                {{ ('myGroups.status.' + group.member_status) | translate }}
+              </span>
+              @if (group.status === 'disbanded') {
+                <span class="status-badge status-badge--danger">
+                  {{ 'myGroups.status.disbanded' | translate }}
+                </span>
+              }
+            </span>
+            <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
           @if (group.is_creator) {
             <button type="button" class="btn btn--secondary" (click)="openForgotPinDialog(group)">
