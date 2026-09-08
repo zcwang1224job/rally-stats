@@ -355,7 +355,7 @@ async def build_member_match_records(
         base_query = base_query.where(Match.group_id == group_id)
 
     all_matches_result = await session.execute(
-        base_query.order_by(Match.round_number.desc(), Match.ended_at.desc())
+        base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())
     )
     all_matches = list(all_matches_result.scalars())
 

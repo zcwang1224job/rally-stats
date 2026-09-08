@@ -990,8 +990,10 @@ async def _build_match_record_summaries(
 async def build_group_match_records(
     session: AsyncSession, group_id: uuid.UUID, page: int = 1, *, nickname: str | None = None
 ) -> GroupMatchRecordsResponse:
-    """005-member-view US3 (FR-011/012): 本團已完成比賽列表，依 Round 由新
-    到舊排序，僅限本團範圍。
+    """005-member-view US3 (FR-011/012): 本團已完成比賽列表，僅限本團範圍，
+    依比賽結束時間（`ended_at`）由新到舊排序（時間降冪；`round_number`
+    僅作為時間相同時的次要排序鍵，一般不會出現同一輪不同場地同時結束的
+    情況，但仍保留以確保排序結果穩定）。
 
     `nickname` (014-member-groups-history follow-up): keyword-only,
     defaults to `None` — every pre-existing caller (this domain's own admin
@@ -1020,7 +1022,7 @@ async def build_group_match_records(
     total_pages = max(1, (total + _MATCH_RECORDS_PAGE_SIZE - 1) // _MATCH_RECORDS_PAGE_SIZE)
 
     matches_result = await session.execute(
-        base_query.order_by(Match.round_number.desc(), Match.ended_at.desc())
+        base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())
         .offset((page - 1) * _MATCH_RECORDS_PAGE_SIZE)
         .limit(_MATCH_RECORDS_PAGE_SIZE)
     )
