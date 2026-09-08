@@ -1,7 +1,7 @@
 import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { FriendsService } from '../friends.service';
 import { FriendListComponent } from './friend-list.component';
 
@@ -36,6 +36,28 @@ function setup(totalPages: number, unfriendSpy: () => void = () => undefined) {
 }
 
 describe('FriendListComponent', () => {
+  it('shows an error instead of a stuck loading spinner when the initial fetch fails', () => {
+    TestBed.configureTestingModule({
+      imports: [FriendListComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService({}),
+        {
+          provide: FriendsService,
+          useValue: {
+            listFriends: () =>
+              throwError(() => ({ errorCode: 'SOMETHING', i18nKey: 'errors.SOMETHING' })),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(FriendListComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.loading()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('errors.SOMETHING');
+  });
+
   it('renders each friend with nickname, user number, and an unfriend button', () => {
     const fixture = setup(1);
 

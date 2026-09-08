@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { ApiError } from '../../../core/api/api-error';
 import { GroupListItem } from '../../../core/api/group-join.models';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
@@ -37,6 +38,7 @@ export class GroupListComponent {
 
   readonly loading = signal(true);
   readonly groups = signal<GroupListItem[]>([]);
+  readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
   readonly totalPages = signal(1);
   readonly pageNumbers = computed(() =>
@@ -133,6 +135,7 @@ export class GroupListComponent {
 
   private load(): void {
     this.loading.set(true);
+    this.errorKey.set(null);
     const raw = this.filterForm.getRawValue();
     this.appliedFilters.set(raw);
     this.joinService
@@ -144,10 +147,16 @@ export class GroupListComponent {
         creator_nickname: raw.creator_nickname || undefined,
         match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
       })
-      .subscribe((response) => {
-        this.loading.set(false);
-        this.groups.set(response.groups);
-        this.totalPages.set(response.total_pages);
+      .subscribe({
+        next: (response) => {
+          this.loading.set(false);
+          this.groups.set(response.groups);
+          this.totalPages.set(response.total_pages);
+        },
+        error: (error: ApiError) => {
+          this.loading.set(false);
+          this.errorKey.set(error.i18nKey);
+        },
       });
   }
 

@@ -1,7 +1,7 @@
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { FriendsService } from '../../friends/friends.service';
 import { MyGroupsComponent } from './my-groups.component';
@@ -55,6 +55,29 @@ describe('MyGroupsComponent', () => {
     // button that row 0's creator (active) still has.
     expect(rows[0].querySelectorAll('button').length).toBe(2);
     expect(rows[1].querySelectorAll('button').length).toBe(1);
+  });
+
+  it('shows an error instead of a stuck loading spinner when the initial fetch fails', () => {
+    TestBed.configureTestingModule({
+      imports: [MyGroupsComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: FriendsService,
+          useValue: {
+            getMyGroups: () =>
+              throwError(() => ({ errorCode: 'SOMETHING', i18nKey: 'errors.SOMETHING' })),
+          },
+        },
+        { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
+        { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(MyGroupsComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.loading()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('errors.SOMETHING');
   });
 
   it('renders each group with a forgot-PIN button', () => {

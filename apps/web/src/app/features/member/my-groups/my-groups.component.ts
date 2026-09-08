@@ -32,9 +32,15 @@ export class MyGroupsComponent {
   readonly forgotPinTarget = signal<MyGroupSummary | null>(null);
 
   constructor() {
-    this.friends.getMyGroups().subscribe((response) => {
-      this.loading.set(false);
-      this.groups.set(response.groups);
+    this.friends.getMyGroups().subscribe({
+      next: (response) => {
+        this.loading.set(false);
+        this.groups.set(response.groups);
+      },
+      error: (error: ApiError) => {
+        this.loading.set(false);
+        this.errorKey.set(error.i18nKey);
+      },
     });
   }
 

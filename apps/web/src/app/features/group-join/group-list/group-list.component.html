@@ -1,8 +1,22 @@
 <main class="group-list-page">
   <header class="page-header">
     <h1>{{ 'nav.groups' | translate }}</h1>
-    <a class="btn" routerLink="/groups/new">{{ 'groupJoin.createGroup' | translate }}</a>
+    <a
+      class="btn btn--icon"
+      routerLink="/groups/new"
+      [attr.aria-label]="'groupJoin.createGroup' | translate"
+      [attr.title]="'groupJoin.createGroup' | translate"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+    </a>
   </header>
+
+  @if (errorKey(); as key) {
+    <p role="alert">{{ key | translate }}</p>
+  }
 
   <section class="filters-panel card">
     <form class="filters-form form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">

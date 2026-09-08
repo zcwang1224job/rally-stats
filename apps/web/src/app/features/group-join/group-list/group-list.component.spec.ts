@@ -1,7 +1,7 @@
 import { Router, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { GroupJoinService } from '../group-join.service';
@@ -78,6 +78,16 @@ function setup(
 }
 
 describe('GroupListComponent', () => {
+  it('shows an error instead of a stuck loading spinner when the initial fetch fails', () => {
+    const fixture = setup(1, [], {
+      listGroups: () =>
+        throwError(() => ({ errorCode: 'SOMETHING', i18nKey: 'errors.SOMETHING' })),
+    });
+
+    expect(fixture.componentInstance.loading()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('errors.SOMETHING');
+  });
+
   it('shows a create-group entry point in the page header', () => {
     const fixture = setup(1);
 

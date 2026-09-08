@@ -28,9 +28,15 @@ export class FriendRequestsComponent {
 
   private load(): void {
     this.loading.set(true);
-    this.friends.listIncomingRequests().subscribe((response) => {
-      this.loading.set(false);
-      this.items.set(response.requests);
+    this.friends.listIncomingRequests().subscribe({
+      next: (response) => {
+        this.loading.set(false);
+        this.items.set(response.requests);
+      },
+      error: (error: ApiError) => {
+        this.loading.set(false);
+        this.errorKey.set(error.i18nKey);
+      },
     });
   }
 

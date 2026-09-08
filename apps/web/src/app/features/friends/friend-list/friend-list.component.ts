@@ -67,6 +67,7 @@ export class FriendListComponent {
 
   private load(): void {
     this.loading.set(true);
+    this.errorKey.set(null);
     const raw = this.filterForm.getRawValue();
     this.appliedFilters.set(raw);
     this.friends
@@ -74,10 +75,16 @@ export class FriendListComponent {
         nickname: raw.nickname || undefined,
         user_number: raw.user_number || undefined,
       })
-      .subscribe((response) => {
-        this.loading.set(false);
-        this.items.set(response.friends);
-        this.totalPages.set(response.total_pages);
+      .subscribe({
+        next: (response) => {
+          this.loading.set(false);
+          this.items.set(response.friends);
+          this.totalPages.set(response.total_pages);
+        },
+        error: (error: ApiError) => {
+          this.loading.set(false);
+          this.errorKey.set(error.i18nKey);
+        },
       });
   }
 
