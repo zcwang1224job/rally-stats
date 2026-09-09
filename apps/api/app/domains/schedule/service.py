@@ -365,7 +365,11 @@ async def _generate_singles_round_robin_matches(
     guarantees equal participation (research.md #5), so `stage1_select_players`/
     `apply_wait_count_updates` are intentionally not called here."""
     roster_ids = await _get_active_roster_ids(session, group.id)
-    for batch in round_robin_pairs(roster_ids):
+    # research.md #1 follow-up (fix for "球員固定同一側"): alternate which
+    # side the circle-method anchor starts on from one Round to the next,
+    # so the same perennial pool[0] roster entry doesn't land on Team A in
+    # batch 0 of every Round's full round-robin.
+    for batch in round_robin_pairs(roster_ids, start_swapped=round_number % 2 == 1):
         for player_a, player_b in batch:
             await create_match_with_participants(
                 session,
@@ -557,7 +561,9 @@ async def _generate_fixed_partner_matches(
     else:
         teams = await _get_active_partnership_teams(session, group.id)
 
-    for batch in round_robin_pairs(teams):
+    # research.md #1 follow-up (fix for "球員固定同一側"): same anchor-side
+    # alternation as singles round-robin above, applied at the team level.
+    for batch in round_robin_pairs(teams, start_swapped=round_number % 2 == 1):
         for team_a, team_b in batch:
             await create_match_with_participants(
                 session,

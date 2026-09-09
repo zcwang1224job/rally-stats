@@ -4,6 +4,7 @@ exactly once) per 011-round-robin-scheduling FR-002 / research.md #1 — not
 the old "fill exactly len(courts) matches" behavior."""
 
 import math
+import uuid
 
 import pytest
 from sqlalchemy import select
@@ -102,3 +103,41 @@ async def test_singles_round_robin_leaves_at_most_one_court_worth_in_progress(
     in_progress = result.scalars().all()
     assert len(in_progress) == 1  # only one court -> only one match picked up
     assert updated.current_round_number == 1
+
+
+@pytest.mark.asyncio
+async def test_no_player_is_stuck_on_the_same_team_letter_every_match(
+    db_session: AsyncSession,
+) -> None:
+    """Regression test for "球員固定同一側": before the fix, the
+    circle-method's fixed anchor (algorithms.py `round_robin_pairs`)
+    deterministically landed as Team A in every match of the round-robin —
+    reproducible with ANY 3+ active members, not dependent on a specific
+    roster_entry_id or DB row order."""
+    group = await _make_group(db_session)
+    await _make_court(db_session, group)
+    entries = await _make_entries(db_session, group, 5)
+
+    await generate_next_round(db_session, group)
+
+    result = await db_session.execute(
+        select(Match).where(Match.group_id == group.id, Match.round_number == 1)
+    )
+    matches = result.scalars().all()
+
+    sides_by_player: dict[uuid.UUID, set[str]] = {e.id: set() for e in entries}
+    for match in matches:
+        rows = await db_session.execute(
+            select(MatchParticipant.roster_entry_id, MatchParticipant.team).where(
+                MatchParticipant.match_id == match.id
+            )
+        )
+        for roster_entry_id, team in rows.all():
+            sides_by_player[roster_entry_id].add(team)
+
+    # Each of the 5 players plays 4 matches (n-1) — enough for both sides to
+    # show up if fairly distributed. None should be all-A or all-B.
+    for entry in entries:
+        assert sides_by_player[entry.id] == {"A", "B"}, (
+            f"{entry.nickname} only ever played on side(s) {sides_by_player[entry.id]}"
+        )
