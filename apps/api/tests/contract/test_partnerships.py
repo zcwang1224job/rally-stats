@@ -92,6 +92,68 @@ async def test_get_partnerships_rejected_outside_fixed_partner_mode(
     assert partnerships_response.json()["error_code"] == "SCHEDULING_MECHANISM_MISMATCH"
 
 
+async def test_delete_partnership_dissolves_the_last_remaining_pair(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """The reported edge case: with only two active members left, already
+    partnered with each other, `PATCH .../partnerships` (swap) has no third
+    person to swap with and can never make them unpaired. The dedicated
+    `DELETE` endpoint must."""
+    response = await client.post(
+        "/groups",
+        json={
+            "name": "Dissolve Last Pair",
+            "max_members": 4,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "fixed_partner",
+            "creator_nickname": "阿寬",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+    created = response.json()
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    await db_session.execute(
+        text(
+            "INSERT INTO roster_entries (id, group_id, nickname, status, is_creator) "
+            "VALUES (:id, :group_id, :nickname, 'active', false)"
+        ),
+        {"id": str(uuid.uuid4()), "group_id": created["group_id"], "nickname": "P1"},
+    )
+    await db_session.commit()
+    # Trigger the mechanism-switch side effect to auto-pair the two members.
+    await client.patch(
+        f"/groups/{created['group_id']}",
+        headers=headers,
+        json={"expected_version": 0, "scheduling_mechanism": "manual"},
+    )
+    await client.patch(
+        f"/groups/{created['group_id']}",
+        headers=headers,
+        json={"expected_version": 1, "scheduling_mechanism": "fixed_partner"},
+    )
+
+    before = (
+        await client.get(f"/groups/{created['group_id']}/partnerships", headers=headers)
+    ).json()
+    assert len(before["partnerships"]) == 1
+    player_a_id = before["partnerships"][0]["player_a"]["roster_entry_id"]
+
+    response = await client.delete(
+        f"/groups/{created['group_id']}/partnerships/{player_a_id}", headers=headers
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["partnerships"] == []
+    assert len(body["unpaired"]) == 2
+
+    # Dissolving again (no partnership left for this member) is a 404.
+    repeat = await client.delete(
+        f"/groups/{created['group_id']}/partnerships/{player_a_id}", headers=headers
+    )
+    assert repeat.status_code == 404
+    assert repeat.json()["error_code"] == "PARTNERSHIP_NOT_FOUND"
+
+
 async def test_patch_partnerships_reassigns(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
 ) -> None:

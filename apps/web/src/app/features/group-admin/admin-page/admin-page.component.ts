@@ -26,7 +26,11 @@ import {
 } from '../shared/group-form-validators';
 import { CourtListComponent } from '../court-management/court-list.component';
 import { ScheduleService } from '../schedule-management/schedule.service';
-import { RosterScheduleStatus, ScheduleResponse } from '../schedule-management/schedule.models';
+import {
+  RosterScheduleStatus,
+  ScheduleResponse,
+  TemporaryPairing,
+} from '../schedule-management/schedule.models';
 import { ManualAssignComponent } from '../schedule-management/manual-assign.component';
 import { PartnershipSettingsComponent } from '../schedule-management/partnership-settings.component';
 import { CourtControlComponent } from '../schedule-management/court-control.component';
@@ -94,6 +98,11 @@ export class AdminPageComponent {
   readonly copyPinErrorKey = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
   readonly nextRoundErrorKey = signal<string | null>(null);
+  // 017-fixed-partner-autofill: the partnership-settings child's current
+  // temporary-pairing draft (research.md #5) — held here only so
+  // confirmNextRound() can pass it along; never persisted, never read back
+  // from the server.
+  readonly temporaryPairings = signal<TemporaryPairing[]>([]);
   readonly copiedJoinLink = signal(false);
   readonly copiedAllCourtsLink = signal(false);
   readonly copyLinkErrorKey = signal<string | null>(null);
@@ -478,8 +487,13 @@ export class AdminPageComponent {
 
   confirmNextRound(): void {
     this.nextRoundErrorKey.set(null);
-    this.scheduleService.nextRound(this.groupId).subscribe({
-      next: (response) => this.schedule.set(response),
+    this.scheduleService.nextRound(this.groupId, this.temporaryPairings()).subscribe({
+      next: (response) => {
+        this.schedule.set(response);
+        // A round was just generated (or force-ended) using this draft —
+        // it's round-scoped only (FR-004), so it MUST NOT carry over.
+        this.temporaryPairings.set([]);
+      },
       error: (error: ApiError) => {
         if (error.status === 401) {
           this.handleAuthFailure(error);
@@ -488,6 +502,10 @@ export class AdminPageComponent {
         this.nextRoundErrorKey.set(error.i18nKey);
       },
     });
+  }
+
+  onTemporaryPairingsChange(pairings: TemporaryPairing[]): void {
+    this.temporaryPairings.set(pairings);
   }
 
   openKickMemberDialog(rosterEntryId: string, nickname: string): void {

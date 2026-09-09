@@ -109,3 +109,14 @@ export interface RoundMatchesResponse {
   round_number: number;
   matches: RoundMatchSummary[];
 }
+
+// 017-fixed-partner-autofill: 暫時隨機配對——刻意沒有 partnership_id，
+// 因為它從來不是一筆寫入資料庫的資料（data-model.md）。
+export interface TemporaryPairing {
+  player_a: RosterSummary;
+  player_b: RosterSummary;
+}
+
+export interface TemporaryPairingsResponse {
+  pairings: TemporaryPairing[];
+}

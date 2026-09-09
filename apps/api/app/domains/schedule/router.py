@@ -25,6 +25,7 @@ from app.domains.schedule.schemas import (
     KickMemberResponse,
     ManualAssignRequest,
     MatchDetailResponse,
+    NextRoundRequest,
     PartnershipReassignRequest,
     PartnershipsResponse,
     RegenerateGuestLinkResponse,
@@ -32,6 +33,7 @@ from app.domains.schedule.schemas import (
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
+    TemporaryPairingsResponse,
 )
 
 router = APIRouter(tags=["schedule"])
@@ -85,14 +87,24 @@ async def next_round(
     group_id: uuid.UUID,
     group: Annotated[Group, Depends(require_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    payload: NextRoundRequest | None = None,
 ) -> ScheduleResponse:
     """Forces the current round to end and generates the next one (FR-031).
-    Errors: `ADMIN_TOKEN_INVALID`, `NO_COURTS_AVAILABLE`,
-    `ROUND_GENERATION_IN_PROGRESS`, `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT`
-    (011-round-robin-scheduling FR-003)."""
+    017-fixed-partner-autofill: optional `temporary_pairings` body field
+    (omitted/null/empty = unchanged existing behavior, US3) — only consumed
+    when `scheduling_mechanism == "fixed_partner"` and `partner_source ==
+    "manual"`; ignored otherwise. Errors: `ADMIN_TOKEN_INVALID`,
+    `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`,
+    `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT` (011-round-robin-scheduling
+    FR-003)."""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
-    updated = await service.generate_next_round(session, group)
+    temporary_pairings = (
+        [(uuid.UUID(p.player_a_id), uuid.UUID(p.player_b_id)) for p in payload.temporary_pairings]
+        if payload is not None
+        else None
+    )
+    updated = await service.generate_next_round(session, group, temporary_pairings)
     return await service.build_schedule_snapshot(session, updated)
 
 
@@ -139,6 +151,43 @@ async def reassign_partnership(
     )
     await session.commit()
     return await service.build_partnerships_snapshot(session, group)
+
+
+@router.delete(
+    "/groups/{group_id}/partnerships/{roster_entry_id}", response_model=PartnershipsResponse
+)
+async def dissolve_partnership(
+    group_id: uuid.UUID,
+    roster_entry_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PartnershipsResponse:
+    """管理員手動拆散一組正式搭檔（涵蓋「只剩最後一組搭檔、沒有第三人可
+    互換」的邊界情況——見 service.dissolve_partnership 說明）。Errors:
+    `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`,
+    `PARTNERSHIP_NOT_FOUND`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    await service.dissolve_partnership(session, group, roster_entry_id)
+    await session.commit()
+    return await service.build_partnerships_snapshot(session, group)
+
+
+@router.post(
+    "/groups/{group_id}/partnerships/random-preview", response_model=TemporaryPairingsResponse
+)
+async def preview_random_partner_pairing(
+    group_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TemporaryPairingsResponse:
+    """017-fixed-partner-autofill FR-001: pure, no-side-effect preview of a
+    random pairing for currently-unpaired active members. Errors:
+    `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`,
+    `PARTNER_SOURCE_MISMATCH`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    return await service.preview_random_partner_pairing(session, group)
 
 
 @router.post(

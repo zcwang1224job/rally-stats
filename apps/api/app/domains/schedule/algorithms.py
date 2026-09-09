@@ -7,6 +7,7 @@ Pure functions with no ORM/DB dependency, so they're trivially unit-testable
 and reusable at different granularities (individual players to form teammate
 pairs, or already-formed teams to form match-ups)."""
 
+import random
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
@@ -158,6 +159,20 @@ def round_robin_pairs(
         rotating = [rotating[-1], *rotating[:-1]]
 
     return batches
+
+
+def random_pair_units(units: Sequence[T]) -> list[tuple[T, T]]:
+    """017-fixed-partner-autofill research.md #3: uniform-random pairing,
+    deliberately kept separate from `stage2_pair_players` (history-optimized
+    "auto configuration" pairing) — the two represent different semantics
+    (pure gap-filling vs. continuous optimization) and MUST NOT be merged.
+    Shared by the preview endpoint and the round-generation autofill step so
+    both use the exact same notion of "random". An odd `units` count drops
+    the last shuffled unit from the result — callers pass only members that
+    are already known to be an even-count remainder."""
+    shuffled = list(units)
+    random.shuffle(shuffled)
+    return [(shuffled[i], shuffled[i + 1]) for i in range(0, len(shuffled) - 1, 2)]
 
 
 def team_matchup_stage2(

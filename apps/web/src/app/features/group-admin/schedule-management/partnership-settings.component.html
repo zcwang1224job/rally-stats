@@ -13,23 +13,131 @@
     <ul class="pair-list">
       @for (pair of data.partnerships; track pair.partnership_id) {
         <li>
-          <button type="button" class="btn btn--secondary" (click)="pick(pair.player_a.roster_entry_id)">
+          <button
+            type="button"
+            class="btn btn--secondary"
+            [class.is-selected]="isSelected(pair.player_a.roster_entry_id)"
+            [attr.aria-pressed]="isSelected(pair.player_a.roster_entry_id)"
+            (click)="pick(pair.player_a.roster_entry_id)"
+          >
+            @if (isSelected(pair.player_a.roster_entry_id)) {
+              <span aria-hidden="true">✓ </span>
+            }
             {{ pair.player_a.nickname }}
           </button>
           ＋
-          <button type="button" class="btn btn--secondary" (click)="pick(pair.player_b.roster_entry_id)">
+          <button
+            type="button"
+            class="btn btn--secondary"
+            [class.is-selected]="isSelected(pair.player_b.roster_entry_id)"
+            [attr.aria-pressed]="isSelected(pair.player_b.roster_entry_id)"
+            (click)="pick(pair.player_b.roster_entry_id)"
+          >
+            @if (isSelected(pair.player_b.roster_entry_id)) {
+              <span aria-hidden="true">✓ </span>
+            }
             {{ pair.player_b.nickname }}
+          </button>
+          <button
+            type="button"
+            class="btn btn--secondary btn--dissolve"
+            (click)="dissolve(pair.player_a.roster_entry_id)"
+          >
+            {{ 'scheduleManagement.partnershipDissolveButton' | translate }}
           </button>
         </li>
       }
       @for (entry of data.unpaired; track entry.roster_entry_id) {
         <li>
-          <button type="button" class="btn btn--secondary" (click)="pick(entry.roster_entry_id)">
+          <button
+            type="button"
+            class="btn btn--secondary"
+            [class.is-selected]="isSelected(entry.roster_entry_id)"
+            [attr.aria-pressed]="isSelected(entry.roster_entry_id)"
+            (click)="pick(entry.roster_entry_id)"
+          >
+            @if (isSelected(entry.roster_entry_id)) {
+              <span aria-hidden="true">✓ </span>
+            }
             {{ entry.nickname }}
           </button>
           <span class="status-badge">{{ 'scheduleManagement.partnershipUnpaired' | translate }}</span>
         </li>
       }
     </ul>
+
+    @if (partnerSource() === 'manual' && data.unpaired.length > 0) {
+      <div class="temporary-pairing-section">
+        <button
+          type="button"
+          class="btn btn--secondary"
+          [disabled]="previewLoading()"
+          (click)="previewRandomPairing()"
+        >
+          {{ 'scheduleManagement.randomizeRemainingButton' | translate }}
+        </button>
+
+        @if (previewErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+
+        @if (temporaryMembers().length > 0) {
+          <p>{{ 'scheduleManagement.temporaryPairingPickHint' | translate }}</p>
+          <ul class="pair-list temporary-pairing-list">
+            @for (pair of temporaryPairs(); track pair.player_a.roster_entry_id) {
+              <li>
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  [class.is-selected]="isTemporarySelected(pair.player_a.roster_entry_id)"
+                  [attr.aria-pressed]="isTemporarySelected(pair.player_a.roster_entry_id)"
+                  (click)="pickTemporary(pair.player_a.roster_entry_id)"
+                >
+                  @if (isTemporarySelected(pair.player_a.roster_entry_id)) {
+                    <span aria-hidden="true">✓ </span>
+                  }
+                  {{ pair.player_a.nickname }}
+                </button>
+                ＋
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  [class.is-selected]="isTemporarySelected(pair.player_b.roster_entry_id)"
+                  [attr.aria-pressed]="isTemporarySelected(pair.player_b.roster_entry_id)"
+                  (click)="pickTemporary(pair.player_b.roster_entry_id)"
+                >
+                  @if (isTemporarySelected(pair.player_b.roster_entry_id)) {
+                    <span aria-hidden="true">✓ </span>
+                  }
+                  {{ pair.player_b.nickname }}
+                </button>
+                <span class="status-badge status-badge--temporary">
+                  {{ 'scheduleManagement.temporaryPairingBadge' | translate }}
+                </span>
+              </li>
+            }
+            @for (entry of temporaryUnpaired(); track entry.roster_entry_id) {
+              <li>
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  [class.is-selected]="isTemporarySelected(entry.roster_entry_id)"
+                  [attr.aria-pressed]="isTemporarySelected(entry.roster_entry_id)"
+                  (click)="pickTemporary(entry.roster_entry_id)"
+                >
+                  @if (isTemporarySelected(entry.roster_entry_id)) {
+                    <span aria-hidden="true">✓ </span>
+                  }
+                  {{ entry.nickname }}
+                </button>
+                <span class="status-badge">
+                  {{ 'scheduleManagement.partnershipUnpaired' | translate }}
+                </span>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
   }
 </section>

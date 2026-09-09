@@ -12,6 +12,8 @@ import {
   ScheduleResponse,
   ScoreMutationResult,
   Team,
+  TemporaryPairing,
+  TemporaryPairingsResponse,
 } from './schedule.models';
 
 /** Centralized API layer for the schedule-management feature (US1 T026/T027
@@ -33,9 +35,28 @@ export class ScheduleService {
     );
   }
 
-  nextRound(groupId: string): Observable<ScheduleResponse> {
+  nextRound(
+    groupId: string,
+    temporaryPairings?: TemporaryPairing[],
+  ): Observable<ScheduleResponse> {
+    const body = temporaryPairings?.length
+      ? {
+          temporary_pairings: temporaryPairings.map((pairing) => ({
+            player_a_id: pairing.player_a.roster_entry_id,
+            player_b_id: pairing.player_b.roster_entry_id,
+          })),
+        }
+      : {};
     return this.api.post<ScheduleResponse>(
       `/groups/${groupId}/next-round`,
+      body,
+      this.authHeader(groupId),
+    );
+  }
+
+  previewRandomPairing(groupId: string): Observable<TemporaryPairingsResponse> {
+    return this.api.post<TemporaryPairingsResponse>(
+      `/groups/${groupId}/partnerships/random-preview`,
       {},
       this.authHeader(groupId),
     );
@@ -77,6 +98,13 @@ export class ScheduleService {
     return this.api.patch<PartnershipsResponse>(
       `/groups/${groupId}/partnerships`,
       { player_a_id: playerAId, player_b_id: playerBId },
+      this.authHeader(groupId),
+    );
+  }
+
+  dissolvePartnership(groupId: string, rosterEntryId: string): Observable<PartnershipsResponse> {
+    return this.api.delete<PartnershipsResponse>(
+      `/groups/${groupId}/partnerships/${rosterEntryId}`,
       this.authHeader(groupId),
     );
   }

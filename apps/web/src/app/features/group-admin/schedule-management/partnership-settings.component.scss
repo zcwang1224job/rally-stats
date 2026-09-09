@@ -23,3 +23,49 @@ h2 {
   align-items: center;
   gap: var(--space-sm);
 }
+
+// 點選第一位參與者後，MUST 讓使用者看得出「目前選到誰」——比照
+// .status-badge 既有慣例（constitution VII），顏色變化只是輔助，實際的
+// 區分依據是按鈕文字前綴的勾選符號（見 template）與 aria-pressed。
+.pair-list .btn.is-selected {
+  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
+}
+
+// 拆散一組搭檔屬於可逆操作（隨時可以重新配對），不比照真正的破壞性操作
+// 加二次確認（憲章原則 V）；視覺上調得比主要的「點兩人互換」按鈕更輕，
+// 避免在配對列表中搶走主要操作的注意力。
+.btn--dissolve {
+  min-width: auto;
+  min-height: auto;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-caption);
+  font-weight: normal;
+  color: var(--color-text-muted);
+  box-shadow: none;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      color: var(--color-danger);
+      border-color: color-mix(in srgb, var(--color-danger) 40%, white);
+    }
+  }
+}
+
+.temporary-pairing-section {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px dashed var(--color-border);
+}
+
+// FR-008：暫時配對 MUST 以圖示/文字（而非純顏色）與正式搭檔區隔——文字
+// 前綴的骰子符號本身就已經是區分依據，顏色變體只是輔助（比照 .status-badge
+// 既有慣例，見 apps/web/src/styles/_base.scss）。
+.status-badge--temporary {
+  background: color-mix(in srgb, var(--color-brand-accent) 10%, white);
+  border-color: color-mix(in srgb, var(--color-brand-accent) 25%, white);
+  color: var(--color-brand-accent);
+}

@@ -21,6 +21,7 @@ from app.domains.court.models import Court
 from app.domains.group.models import Group, RoundHistory
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.algorithms import (
+    random_pair_units,
     round_robin_pairs,
     stage1_select_players,
     stage2_pair_players,
@@ -50,6 +51,8 @@ from app.domains.schedule.schemas import (
     ScheduleResponse,
     ScoreMutationResult,
     Team,
+    TemporaryPairing,
+    TemporaryPairingsResponse,
     WaitingReason,
 )
 
@@ -545,21 +548,71 @@ async def compute_auto_partner_teams_for_round(
     return stage2_pair_players(active_ids, pair_count_lookup)
 
 
+async def _resolve_manual_fixed_partner_teams(
+    session: AsyncSession,
+    group: Group,
+    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None,
+) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """017-fixed-partner-autofill data-model.md 三段聯集，`partner_source ==
+    "manual"` 專用：(1) 既有正式搭檔（不變）；(2) 驗證通過的
+    `temporary_pairings`——任一方已有正式搭檔/非現役、或同一位成員在提交的
+    清單中出現超過一次（FR-003：該重複成員涉及的組合一律視為無效、一律
+    捨棄，MUST NOT 只丟棄後面出現的那一組）的組合皆被捨棄；(3) 對步驟 1+2
+    後仍未涵蓋到的現役成員，呼叫 `random_pair_units()` 當場隨機配對補齊
+    （FR-002）。"""
+    formal_teams = await _get_active_partnership_teams(session, group.id)
+    covered = {pid for pair in formal_teams for pid in pair}
+
+    active_ids = await _get_active_roster_ordered(session, group.id)
+    active_set = set(active_ids)
+
+    temp_list = temporary_pairings or []
+    member_counts: dict[uuid.UUID, int] = {}
+    for player_a, player_b in temp_list:
+        member_counts[player_a] = member_counts.get(player_a, 0) + 1
+        member_counts[player_b] = member_counts.get(player_b, 0) + 1
+
+    validated_temp_teams: list[tuple[uuid.UUID, uuid.UUID]] = []
+    for player_a, player_b in temp_list:
+        if member_counts[player_a] > 1 or member_counts[player_b] > 1:
+            continue
+        if player_a in covered or player_b in covered:
+            continue
+        if player_a not in active_set or player_b not in active_set:
+            continue
+        validated_temp_teams.append((player_a, player_b))
+        covered.add(player_a)
+        covered.add(player_b)
+
+    remaining = [pid for pid in active_ids if pid not in covered]
+    autofill_teams = random_pair_units(remaining)
+
+    return [*formal_teams, *validated_temp_teams, *autofill_teams]
+
+
 async def _generate_fixed_partner_matches(
-    session: AsyncSession, group: Group, courts: list[Court], round_number: int
+    session: AsyncSession,
+    group: Group,
+    courts: list[Court],
+    round_number: int,
+    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None = None,
 ) -> None:
     """011-round-robin-scheduling FR-003/FR-008: every team plays every
     other team exactly once this round (research.md #1's circle method,
     applied to teams) — courts no longer bound how many matches get
     generated, and there's no wait_count-based team subset selection
     (research.md #5); ALL teams participate. `group.partner_source`
-    decides where the teams come from (research.md #6)."""
+    decides where the teams come from (research.md #6). 017-fixed-partner-
+    autofill: in "manual" mode, `temporary_pairings` (validated) plus an
+    auto-fill pass over anyone still uncovered ensure the round always
+    covers every active member (FR-002/FR-003/FR-007) — see
+    `_resolve_manual_fixed_partner_teams()`."""
     del courts
 
     if group.partner_source == "auto":
         teams = await compute_auto_partner_teams_for_round(session, group.id)
     else:
-        teams = await _get_active_partnership_teams(session, group.id)
+        teams = await _resolve_manual_fixed_partner_teams(session, group, temporary_pairings)
 
     # research.md #1 follow-up (fix for "球員固定同一側"): same anchor-side
     # alternation as singles round-robin above, applied at the team level.
@@ -626,14 +679,23 @@ async def _shuffle_round_match_order(
         )
 
 
-async def generate_next_round(session: AsyncSession, group: Group) -> Group:
+async def generate_next_round(
+    session: AsyncSession,
+    group: Group,
+    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None = None,
+) -> Group:
     """Round generation entry point — both the manual "Next Round" button
     (FR-031~033) and Auto Next Round funnel through here. Force-abandons
     whatever is still queued/in_progress (a no-op if the round already
     finished naturally), then dispatches per `scheduling_mechanism`: for
     algorithmic modes, creates the round's matches as `queued` and
     immediately pulls one per available court (research.md #7); manual mode
-    generates nothing (FR-033) — courts simply show "waiting for admin"."""
+    generates nothing (FR-033) — courts simply show "waiting for admin".
+    017-fixed-partner-autofill: `temporary_pairings` is only meaningful for
+    `scheduling_mechanism == "fixed_partner"` + `partner_source == "manual"`
+    (`_generate_fixed_partner_matches`) — every other mechanism/branch
+    ignores it, so passing it here for other mechanisms is a harmless no-op
+    (FR-005/US3)."""
     courts = await _get_active_courts_ordered(session, group.id)
     if not courts:
         raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
@@ -682,7 +744,9 @@ async def generate_next_round(session: AsyncSession, group: Group) -> Group:
         # single court-count-sized batch, so it gets its own generator.
         await _generate_individual_mixed_matches(session, group, group.current_round_number)
     elif group.scheduling_mechanism == "fixed_partner":
-        await _generate_fixed_partner_matches(session, group, courts, group.current_round_number)
+        await _generate_fixed_partner_matches(
+            session, group, courts, group.current_round_number, temporary_pairings
+        )
     else:
         raise ApiError("VALIDATION_ERROR", status_code=400)
 
@@ -1089,6 +1153,32 @@ async def manual_partnership_reassign(
     await session.flush()
 
 
+async def dissolve_partnership(
+    session: AsyncSession, group: Group, roster_entry_id: uuid.UUID
+) -> None:
+    """管理員手動拆散一組正式搭檔，讓雙方都變成落單。既有「點兩人互換」
+    (`manual_partnership_reassign`) 只能透過「把其中一人配給第三人，原本的
+    搭檔就自然落單」來間接拆散一組搭檔——現役成員只剩下這唯一一組搭檔、
+    沒有第三人可以拿來觸發這個技巧時，管理員完全無法讓他們落單，這是本
+    函式要補上的缺口。"""
+    if group.scheduling_mechanism != "fixed_partner":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+    result = await session.execute(
+        select(Partnership).where(
+            Partnership.group_id == group.id,
+            or_(
+                Partnership.player_a_id == roster_entry_id,
+                Partnership.player_b_id == roster_entry_id,
+            ),
+        )
+    )
+    partnership = result.scalar_one_or_none()
+    if partnership is None:
+        raise ApiError("PARTNERSHIP_NOT_FOUND", status_code=404)
+    await session.delete(partnership)
+    await session.flush()
+
+
 async def handle_member_joined(
     session: AsyncSession, group: Group, new_member: RosterEntry
 ) -> None:
@@ -1284,6 +1374,45 @@ async def build_partnerships_snapshot(
         if entry_id not in paired_ids
     ]
     return PartnershipsResponse(partnerships=partnership_summaries, unpaired=unpaired)
+
+
+async def preview_random_partner_pairing(
+    session: AsyncSession, group: Group
+) -> TemporaryPairingsResponse:
+    """017-fixed-partner-autofill FR-001: pure, side-effect-free preview of
+    how the currently-unpaired active members would be randomly paired —
+    never writes to `partnerships` (research.md #1). `PARTNER_SOURCE_MISMATCH`
+    is deliberately a distinct error code from `SCHEDULING_MECHANISM_MISMATCH`
+    (research.md #4): the latter means "this group isn't fixed_partner at
+    all", the former means "it is, but partner_source isn't manual"."""
+    if group.scheduling_mechanism != "fixed_partner":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+    if group.partner_source != "manual":
+        raise ApiError("PARTNER_SOURCE_MISMATCH", status_code=409)
+
+    active_ids = await _get_active_roster_ordered(session, group.id)
+    paired = await _get_paired_ids(session, group.id)
+    unpaired_ids = [pid for pid in active_ids if pid not in paired]
+    pairs = random_pair_units(unpaired_ids)
+
+    roster_result = await session.execute(
+        select(RosterEntry).where(RosterEntry.id.in_(unpaired_ids))
+    )
+    roster_by_id = {entry.id: entry for entry in roster_result.scalars()}
+
+    return TemporaryPairingsResponse(
+        pairings=[
+            TemporaryPairing(
+                player_a=RosterSummary(
+                    roster_entry_id=str(player_a), nickname=roster_by_id[player_a].nickname
+                ),
+                player_b=RosterSummary(
+                    roster_entry_id=str(player_b), nickname=roster_by_id[player_b].nickname
+                ),
+            )
+            for player_a, player_b in pairs
+        ]
+    )
 
 
 # --- 007-live-scoreboard: 即時計分板與控制板 ---

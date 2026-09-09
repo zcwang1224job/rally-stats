@@ -3,7 +3,7 @@ specs/003-schedule-rotation/contracts/schedule-api.md."""
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 Team = Literal["A", "B"]
 WaitingReason = Literal["manual_assignment", "no_queued_match"]
@@ -105,6 +105,30 @@ class PartnershipsResponse(BaseModel):
 class PartnershipReassignRequest(BaseModel):
     player_a_id: str
     player_b_id: str
+
+
+# --- 017-fixed-partner-autofill ---
+
+
+class TemporaryPairing(BaseModel):
+    """暫時隨機配對 — 前端草稿狀態 + API 傳輸格式，刻意不含 `partnership_id`
+    （data-model.md）：它從來不是一筆寫入資料庫、有主鍵的資料列。"""
+
+    player_a: RosterSummary
+    player_b: RosterSummary
+
+
+class TemporaryPairingsResponse(BaseModel):
+    pairings: list[TemporaryPairing]
+
+
+class TemporaryPairingInput(BaseModel):
+    player_a_id: str
+    player_b_id: str
+
+
+class NextRoundRequest(BaseModel):
+    temporary_pairings: list[TemporaryPairingInput] = Field(default_factory=list)
 
 
 class ManualAssignRequest(BaseModel):

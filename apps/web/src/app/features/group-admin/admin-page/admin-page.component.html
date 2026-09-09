@@ -149,7 +149,11 @@
                 </button>
 
                 @if (sched.scheduling_mechanism === 'fixed_partner') {
-                  <app-partnership-settings [groupId]="groupId" />
+                  <app-partnership-settings
+                    [groupId]="groupId"
+                    [partnerSource]="view.group.partner_source"
+                    (temporaryPairingsChange)="onTemporaryPairingsChange($event)"
+                  />
                 }
               }
             </section>

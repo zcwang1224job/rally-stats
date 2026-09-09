@@ -82,3 +82,26 @@ async def test_auto_source_never_writes_to_partnerships(db_session: AsyncSession
         select(Partnership).where(Partnership.group_id == group.id)
     )
     assert partnerships.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_temporary_pairings_are_ignored_when_partner_source_is_auto(
+    db_session: AsyncSession,
+) -> None:
+    """017-fixed-partner-autofill FR-005/US3: `temporary_pairings` is a
+    "manual" partner_source concept only — passing it while partner_source
+    == "auto" MUST NOT change the (still history-optimized) result."""
+    group = await _make_group(db_session)
+    await _make_court(db_session, group)
+    entries = await _make_entries(db_session, group, 8)
+
+    bogus_pairings = [(entries[0].id, entries[1].id), (entries[2].id, entries[3].id)]
+    await generate_next_round(db_session, group, bogus_pairings)
+
+    result = await db_session.execute(select(Match).where(Match.group_id == group.id))
+    assert len(result.scalars().all()) == math.comb(4, 2)
+
+    partnerships = await db_session.execute(
+        select(Partnership).where(Partnership.group_id == group.id)
+    )
+    assert partnerships.scalars().all() == []
