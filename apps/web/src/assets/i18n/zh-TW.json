@@ -39,6 +39,7 @@
     "verifiedTitle": "信箱驗證成功",
     "verifiedBody": "你的帳號已完成驗證，請重新登入以繼續使用完整功能。",
     "verificationLinkInvalid": "此驗證連結無效或已逾期",
+    "forgotPasswordLink": "忘記密碼？",
     "forgotPasswordTitle": "忘記密碼",
     "forgotPasswordSubmit": "寄送重設密碼信",
     "forgotPasswordSent": "若此 Email 已註冊，重設密碼信將寄送至該信箱",

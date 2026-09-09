@@ -9,3 +9,9 @@ h1 {
   font-size: var(--font-size-heading);
   font-weight: var(--font-weight-bold);
 }
+
+.forgot-password-link {
+  align-self: center;
+  font-size: var(--font-size-caption);
+  color: var(--color-brand-primary);
+}
