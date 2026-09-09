@@ -446,6 +446,29 @@
       "winnerLabel": "{{names}} 獲勝"
     }
   },
+  "matchRecordDetail": {
+    "title": "比賽詳情",
+    "close": "關閉",
+    "loading": "載入中…",
+    "loadError": "載入失敗，請稍後再試",
+    "completeness": {
+      "none": "🚫 此比賽沒有加減分紀錄可顯示",
+      "partial": "⚠️ 此為部分紀錄，比賽前段未被記錄"
+    },
+    "chart": {
+      "title": "比分趨勢圖",
+      "legendTeamA": "－ A 隊（實線）",
+      "legendTeamB": "┄ B 隊（虛線）"
+    },
+    "eventList": {
+      "title": "加減分紀錄",
+      "delta": {
+        "plus": "➕ 加分",
+        "minus": "➖ 扣分"
+      },
+      "elapsed": "開賽後 {{minutes}} 分 {{seconds}} 秒"
+    }
+  },
   "errors": {
     "VALIDATION_ERROR": "欄位資料不正確，請檢查後重新送出",
     "CAPTCHA_INVALID": "驗證失敗，請重新嘗試",

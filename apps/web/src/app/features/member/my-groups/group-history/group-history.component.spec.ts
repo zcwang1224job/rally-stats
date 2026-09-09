@@ -3,6 +3,7 @@ import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
+import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
 import { GroupHistoryComponent } from './group-history.component';
 
@@ -45,13 +46,25 @@ const historyResponse: MemberGroupHistoryResponse = {
   total_pages: 1,
 };
 
-function setup(overrides: { getMemberGroupHistory?: (...args: unknown[]) => unknown } = {}) {
+function setup(
+  overrides: {
+    getMemberGroupHistory?: (...args: unknown[]) => unknown;
+    getMatchRecordDetail?: (...args: unknown[]) => unknown;
+  } = {},
+) {
   const calls: unknown[][] = [];
   const getMemberGroupHistory =
     overrides.getMemberGroupHistory ??
     ((...args: unknown[]) => {
       calls.push(args);
       return of(historyResponse);
+    });
+  const matchRecordDetailCalls: unknown[][] = [];
+  const getMatchRecordDetail =
+    overrides.getMatchRecordDetail ??
+    ((...args: unknown[]) => {
+      matchRecordDetailCalls.push(args);
+      return of(null);
     });
   TestBed.configureTestingModule({
     imports: [GroupHistoryComponent],
@@ -62,10 +75,11 @@ function setup(overrides: { getMemberGroupHistory?: (...args: unknown[]) => unkn
         useValue: { snapshot: { paramMap: convertToParamMap({ groupId: 'g1' }) } },
       },
       { provide: FriendsService, useValue: { getMemberGroupHistory } },
+      { provide: AuthService, useValue: { getMatchRecordDetail } },
     ],
   });
   const fixture = TestBed.createComponent(GroupHistoryComponent);
-  return { fixture, calls };
+  return { fixture, calls, matchRecordDetailCalls };
 }
 
 describe('GroupHistoryComponent', () => {
@@ -150,5 +164,21 @@ describe('GroupHistoryComponent', () => {
     expect(calls.length).toBe(1);
     const [, , nickname] = calls[0] as [string, number, string | undefined];
     expect(nickname).toBeUndefined();
+  });
+
+  // 016-match-score-timeline (regression guard for the I1 finding from
+  // /speckit-analyze): this page MUST call AuthService's "ever a member"
+  // endpoint, never GroupMemberViewService's active-membership one — a
+  // member who left/was kicked from the group must still be able to open
+  // a match's detail from here.
+  it('clicking a match row calls AuthService.getMatchRecordDetail with only the matchId', () => {
+    const { fixture, matchRecordDetailCalls } = setup();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelectorAll('.record-list li')[0] as HTMLElement;
+    row.click();
+
+    expect(matchRecordDetailCalls.length).toBe(1);
+    expect(matchRecordDetailCalls[0]).toEqual(['m1']);
   });
 });

@@ -2,6 +2,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
 import {
+  MatchRecordDetailResponse,
   MemberMatchRecordFilters,
   MemberMatchRecordsResponse,
 } from '../../core/api/group-member-view.models';
@@ -100,6 +101,20 @@ export class AuthService {
     }
     return this.api.get<MemberMatchRecordsResponse>(
       `/members/me/match-records?${params.toString()}`,
+      this.authHeader(),
+    );
+  }
+
+  /** 016-match-score-timeline (US1/US2/US3): shared by the cross-group
+   * match-history list and the "我的團→歷史" list — both are a logged-in
+   * Member viewing a match they have "ever a member" access to (not
+   * requiring current/active membership), matching `verify_ever_group_
+   * member()` on the backend (research.md #1/#4). Deliberately NOT
+   * `GroupMemberViewService.getMatchRecordDetail()`, which requires
+   * active membership and serves only the 團內對戰紀錄 tab. */
+  getMatchRecordDetail(matchId: string): Observable<MatchRecordDetailResponse> {
+    return this.api.get<MatchRecordDetailResponse>(
+      `/members/me/match-records/${matchId}`,
       this.authHeader(),
     );
   }

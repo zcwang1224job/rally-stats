@@ -1,0 +1,100 @@
+<dialog #dialog class="match-detail-dialog">
+  <button
+    type="button"
+    class="dialog-close"
+    (click)="close()"
+    [attr.aria-label]="'matchRecordDetail.close' | translate"
+  >
+    ✕
+  </button>
+
+  @if (loading()) {
+    <p>{{ 'matchRecordDetail.loading' | translate }}</p>
+  } @else if (loadError()) {
+    <p role="alert">{{ 'matchRecordDetail.loadError' | translate }}</p>
+  } @else if (detail(); as d) {
+    <h2>{{ 'matchRecordDetail.title' | translate }}</h2>
+    <p class="basic-info">
+      {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: d.round_number } }}
+      · {{ teamANames() }} vs {{ teamBNames() }}
+      · <strong>{{ d.score_a }} : {{ d.score_b }}</strong>
+    </p>
+
+    @if (d.record_completeness === 'none') {
+      <p class="completeness-note">{{ 'matchRecordDetail.completeness.none' | translate }}</p>
+    } @else {
+      @if (d.record_completeness === 'partial') {
+        <p class="completeness-note completeness-note--partial" role="alert">
+          {{ 'matchRecordDetail.completeness.partial' | translate }}
+        </p>
+      }
+
+      <section class="chart-card">
+        <h3>{{ 'matchRecordDetail.chart.title' | translate }}</h3>
+        <svg
+          class="trend-chart"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          role="img"
+          [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
+        >
+          <line x1="0" y1="100" x2="100" y2="100" class="trend-chart__midline" />
+          <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
+          <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
+          @for (point of chartPoints(); track $index) {
+            <circle
+              [attr.cx]="point.x"
+              [attr.cy]="point.yA"
+              r="2"
+              class="trend-chart__dot trend-chart__dot--a"
+            />
+            <rect
+              [attr.x]="point.x - 1.6"
+              [attr.y]="point.yB - 1.6"
+              width="3.2"
+              height="3.2"
+              class="trend-chart__dot trend-chart__dot--b"
+            />
+          }
+        </svg>
+        <ul class="trend-legend">
+          <li class="trend-legend__item">
+            <span class="trend-legend__swatch trend-legend__swatch--a"></span>
+            {{ 'matchRecordDetail.chart.legendTeamA' | translate }}：{{ teamANames() }}
+          </li>
+          <li class="trend-legend__item">
+            <span class="trend-legend__swatch trend-legend__swatch--b"></span>
+            {{ 'matchRecordDetail.chart.legendTeamB' | translate }}：{{ teamBNames() }}
+          </li>
+        </ul>
+      </section>
+
+      <section class="event-list">
+        <h3>{{ 'matchRecordDetail.eventList.title' | translate }}</h3>
+        <ul class="record-list">
+          @for (event of d.events; track $index) {
+            <li class="card event-row">
+              <span
+                class="status-badge"
+                [class.status-badge--success]="event.delta === 1"
+                [class.status-badge--danger]="event.delta === -1"
+              >
+                {{
+                  (event.delta === 1
+                    ? 'matchRecordDetail.eventList.delta.plus'
+                    : 'matchRecordDetail.eventList.delta.minus'
+                  ) | translate
+                }}
+              </span>
+              <span class="event-row__side">{{ event.side === 'A' ? teamANames() : teamBNames() }}</span>
+              <span class="event-row__score">{{ event.score_a }} : {{ event.score_b }}</span>
+              <span class="event-row__time">
+                {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(event.elapsed_seconds) }}
+              </span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  }
+</dialog>

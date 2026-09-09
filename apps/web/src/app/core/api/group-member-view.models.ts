@@ -55,6 +55,27 @@ export interface MemberMatchRecordSummary extends MatchRecordSummary {
   won: boolean;
 }
 
+// 016-match-score-timeline: one +1/-1 scoring action, with its time
+// expressed as seconds elapsed since the match started (research.md #3 —
+// deliberately not a wall-clock timestamp).
+export interface ScoreEventSummary {
+  side: Team;
+  delta: 1 | -1;
+  score_a: number;
+  score_b: number;
+  elapsed_seconds: number;
+}
+
+// `record_completeness` distinguishes three states purely derived from
+// the events themselves (research.md #3, no deploy-timestamp dependency):
+// "complete" (first event is the match's real first point), "partial"
+// (recording started mid-match), "none" (no events at all — a match
+// completed before this feature shipped).
+export interface MatchRecordDetailResponse extends MatchRecordSummary {
+  record_completeness: 'complete' | 'partial' | 'none';
+  events: ScoreEventSummary[];
+}
+
 export interface RoundWinRatePoint {
   round_number: number;
   wins: number;

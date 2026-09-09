@@ -36,6 +36,7 @@ from app.domains.group.schemas import (
     LeaveGroupRequest,
     LeaveGroupResponse,
     MatchMode,
+    MatchRecordDetailResponse,
     ReauthRequest,
     ReauthResponse,
     RegenerateAllCourtsLinkResponse,
@@ -553,7 +554,9 @@ async def score_by_all_courts_token(
 ) -> ScoreMutationResult:
     """Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`."""
     _group, court = await _all_courts_court(token, court_id, session)
-    return await apply_score_delta(session, court, match_id, payload.side, payload.delta)
+    return await apply_score_delta(
+        session, court, match_id, payload.side, payload.delta, source="all_courts"
+    )
 
 
 @router.post(
@@ -653,6 +656,33 @@ async def get_group_match_records(
         member_id=member.id if member is not None else None,
     )
     return await service.build_group_match_records(session, group_id, page)
+
+
+@router.get(
+    "/{group_id}/match-records/{match_id}", response_model=MatchRecordDetailResponse
+)
+async def get_group_match_record_detail(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    member: Annotated[Member | None, Depends(optional_member)],
+    guest_session_token: str | None = None,
+) -> MatchRecordDetailResponse:
+    """016-match-score-timeline US1/US2/US3 (FR-001~008): 團內對戰紀錄分頁
+    點進單場比賽的詳情——逐筆加減分紀錄 + 趨勢圖所需資料。授權語意與同層級
+    `GET /{group_id}/match-records` 完全相同（現役 Guest/Member），research.md
+    #1。Errors: `MEMBERSHIP_REQUIRED`、`MATCH_NOT_FOUND`（比賽不存在、非
+    `completed`、或屬於別的團——刻意統一，不透露額外資訊）。"""
+    await service.resolve_active_roster_membership(
+        session,
+        group_id,
+        guest_session_token=guest_session_token,
+        member_id=member.id if member is not None else None,
+    )
+    match = await service.get_completed_match_or_404(session, match_id)
+    if match.group_id != group_id:
+        raise ApiError("MATCH_NOT_FOUND", status_code=404)
+    return await service.build_match_record_detail(session, match)
 
 
 @router.post(

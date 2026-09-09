@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_session
 from app.core.rate_limit import limiter
 from app.core.turnstile import verify_turnstile_token
-from app.domains.group.schemas import MemberMatchRecordsResponse
+from app.domains.group.schemas import MatchRecordDetailResponse, MemberMatchRecordsResponse
 from app.domains.member import security, service
 from app.domains.member.models import Member
 from app.domains.member.schemas import (
@@ -269,3 +269,17 @@ async def get_member_match_records(
         opponent_score=opponent_score,
         match_mode=match_mode,
     )
+
+
+@router.get("/members/me/match-records/{match_id}", response_model=MatchRecordDetailResponse)
+async def get_member_match_record_detail(
+    match_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MatchRecordDetailResponse:
+    """016-match-score-timeline US1/US2/US3 (FR-001~008): 會員跨團對戰紀錄、
+    以及「我的團→歷史」這兩個清單點進單場比賽的詳情——兩者皆已登入會員
+    視角，共用同一支端點（research.md #1）。`require_member`（不要求信箱
+    已驗證，比照既有 `/members/me/match-records`）。Errors:
+    `MEMBER_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`GROUP_MEMBERSHIP_NEVER_HELD`。"""
+    return await service.get_member_match_record_detail(session, member.id, match_id)

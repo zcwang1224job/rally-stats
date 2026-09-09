@@ -43,6 +43,33 @@ class Match(Base):
     ended_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
 
+class ScoreEvent(Base):
+    """One +1/-1 scoring action applied to a match, per apply_score_delta()
+    (service.py) — an append-only audit trail alongside Match's running
+    score_a/score_b totals."""
+
+    __tablename__ = "score_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    match_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
+    )
+    side: Mapped[str] = mapped_column(String(1), nullable=False)  # 'A' | 'B'
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 | -1
+    score_a: Mapped[int] = mapped_column(Integer, nullable=False)  # resulting totals
+    score_b: Mapped[int] = mapped_column(Integer, nullable=False)
+    # which control surface issued the action: control_panel | admin | all_courts
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class MatchParticipant(Base):
     __tablename__ = "match_participants"
 

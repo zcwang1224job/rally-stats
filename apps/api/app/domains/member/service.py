@@ -16,6 +16,7 @@ from app.core.errors import ApiError
 from app.domains.friend.service import get_friendship_status
 from app.domains.group.models import Group
 from app.domains.group.schemas import (
+    MatchRecordDetailResponse,
     MemberMatchRecordsResponse,
     MemberMatchRecordSummary,
     OpponentRecord,
@@ -24,6 +25,8 @@ from app.domains.group.schemas import (
 from app.domains.group.service import (
     _completed_matches_query,
     build_group_match_records,
+    build_match_record_detail,
+    get_completed_match_or_404,
     get_group_by_id,
     verify_ever_group_member,
 )
@@ -532,6 +535,25 @@ async def get_member_group_history(
         page=match_records.page,
         total_pages=match_records.total_pages,
     )
+
+
+async def get_member_match_record_detail(
+    session: AsyncSession, member_id: uuid.UUID, match_id: uuid.UUID
+) -> MatchRecordDetailResponse:
+    """016-match-score-timeline US1/US2/US3 (FR-001~008): serves both the
+    member's cross-group `/members/me/match-records` list and the
+    `/members/me/groups/{group_id}/history` list — both are a logged-in
+    member viewing a match they already have "ever member" access to, so
+    both share this one function/endpoint (research.md #1). Deliberately
+    reuses `verify_ever_group_member()` (the SAME check
+    `get_member_group_history()` above already uses), not the stricter
+    active-membership `resolve_active_roster_membership()` used by the
+    group-scoped `/groups/{group_id}/match-records/{match_id}` sibling
+    endpoint — a member who left/was kicked from the group MUST still be
+    able to view this. Errors: `MATCH_NOT_FOUND`, `GROUP_MEMBERSHIP_NEVER_HELD`."""
+    match = await get_completed_match_or_404(session, match_id)
+    await verify_ever_group_member(session, match.group_id, member_id)
+    return await build_match_record_detail(session, match)
 
 
 async def search_member(

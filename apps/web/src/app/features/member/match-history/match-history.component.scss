@@ -381,3 +381,14 @@
   margin-top: var(--space-md);
   flex-wrap: wrap;
 }
+
+// 016-match-score-timeline: rows are clickable (opens the match detail
+// dialog).
+.record-row--clickable {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}

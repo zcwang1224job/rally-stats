@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, time, timedelta
+from typing import Literal
 
 from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,9 +27,11 @@ from app.domains.group.schemas import (
     EditScoringSettingsRequest,
     GroupMatchRecordsResponse,
     GroupStandingsResponse,
+    MatchRecordDetailResponse,
     MatchRecordSummary,
     MemberStandingRow,
     RoundRecord,
+    ScoreEventSummary,
 )
 from app.domains.group.security import (
     decrypt_group_password,
@@ -40,7 +43,7 @@ from app.domains.group.security import (
 )
 from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
-from app.domains.schedule.models import Match, MatchParticipant
+from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent
 from app.domains.schedule.schemas import ParticipantSummary
 from app.domains.schedule.service import handle_member_joined, handle_member_left
 from app.system_config.service import get_max_group_members
@@ -1031,6 +1034,71 @@ async def build_group_match_records(
 
     summaries = await _build_match_record_summaries(session, matches)
     return GroupMatchRecordsResponse(matches=summaries, page=page, total_pages=total_pages)
+
+
+async def get_completed_match_or_404(session: AsyncSession, match_id: uuid.UUID) -> Match:
+    """016-match-score-timeline research.md #2: shared match lookup for both
+    new match-detail endpoints — reuses `_completed_matches_query()` so
+    "what counts as a completed match" is defined in exactly one place."""
+    result = await session.execute(_completed_matches_query().where(Match.id == match_id))
+    match = result.scalar_one_or_none()
+    if match is None:
+        raise ApiError("MATCH_NOT_FOUND", status_code=404)
+    return match
+
+
+async def build_match_record_detail(
+    session: AsyncSession, match: Match
+) -> MatchRecordDetailResponse:
+    """016-match-score-timeline research.md #2/#3: reuses
+    `_build_match_record_summaries()` for the existing basic-info fields,
+    then layers on the `score_events` log (007-live-scoreboard's
+    `apply_score_delta()` write path — this function never writes, only
+    reads) as `elapsed_seconds`-stamped events plus a three-state
+    `record_completeness` derived purely from the events themselves (no
+    deploy-timestamp dependency):
+    - no events -> `"none"`.
+    - first event's `score_a + score_b == 1` -> `"complete"` (it really is
+      the match's first point, so nothing was missed before recording).
+    - otherwise -> `"partial"` (recording started mid-match).
+
+    Ordered by `created_at, id` — `id` is a secondary sort key only for
+    determinism when two events share a `created_at` (concurrent scoring,
+    see `test_score_concurrency.py`); it carries no write-order meaning of
+    its own."""
+    [summary] = await _build_match_record_summaries(session, [match])
+
+    events_result = await session.execute(
+        select(ScoreEvent)
+        .where(ScoreEvent.match_id == match.id)
+        .order_by(ScoreEvent.created_at, ScoreEvent.id)
+    )
+    score_events = list(events_result.scalars())
+
+    completeness: Literal["complete", "partial", "none"]
+    if not score_events:
+        completeness = "none"
+    elif score_events[0].score_a + score_events[0].score_b == 1:
+        completeness = "complete"
+    else:
+        completeness = "partial"
+
+    started_at = match.started_at
+    assert started_at is not None  # always set for completed matches (see MatchRecordSummary)
+    event_summaries = [
+        ScoreEventSummary(
+            side=event.side,
+            delta=event.delta,
+            score_a=event.score_a,
+            score_b=event.score_b,
+            elapsed_seconds=int((event.created_at - started_at).total_seconds()),
+        )
+        for event in score_events
+    ]
+
+    return MatchRecordDetailResponse(
+        **summary.model_dump(), record_completeness=completeness, events=event_summaries
+    )
 
 
 async def leave_group(

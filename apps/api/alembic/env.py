@@ -15,6 +15,13 @@ from app.domains.court.models import Court  # noqa: F401
 from app.domains.group.models import Group  # noqa: F401
 from app.domains.member.models import Member  # noqa: F401
 from app.domains.roster.models import RosterEntry  # noqa: F401
+from app.domains.schedule.models import (  # noqa: F401
+    Match,
+    MatchParticipant,
+    PairHistory,
+    Partnership,
+    ScoreEvent,
+)
 from app.system_config.models import SystemConfig  # noqa: F401
 
 # this is the Alembic Config object, which provides

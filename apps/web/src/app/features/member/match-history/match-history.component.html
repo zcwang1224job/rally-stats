@@ -190,7 +190,16 @@
   } @else {
     <ul class="record-list">
       @for (match of r.matches; track match.match_id) {
-        <li class="card match-card" [class.match-card--win]="match.won" [class.match-card--loss]="!match.won">
+        <li
+          class="card match-card record-row--clickable"
+          [class.match-card--win]="match.won"
+          [class.match-card--loss]="!match.won"
+          role="button"
+          tabindex="0"
+          (click)="openDetail(match.match_id)"
+          (keydown.enter)="openDetail(match.match_id)"
+          (keydown.space)="openDetail(match.match_id); $event.preventDefault()"
+        >
           <div class="match-card__meta">
             <span class="status-badge">{{ match.group_name }}</span>
             <span class="status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
@@ -240,3 +249,10 @@
 } @else {
   <p>{{ 'common.loading' | translate }}</p>
 }
+
+<app-match-record-detail-dialog
+  #detailDialog
+  [detail]="detail()"
+  [loading]="detailLoading()"
+  [loadError]="detailLoadError()"
+/>

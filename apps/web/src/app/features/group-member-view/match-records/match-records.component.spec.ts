@@ -40,12 +40,24 @@ const recordsResponse: GroupMatchRecordsResponse = {
   total_pages: 1,
 };
 
-function setup(response: GroupMatchRecordsResponse = recordsResponse) {
+function setup(
+  response: GroupMatchRecordsResponse = recordsResponse,
+  detailCalls: unknown[][] = [],
+) {
   TestBed.configureTestingModule({
     imports: [MatchRecordsComponent],
     providers: [
       provideTranslateService({}),
-      { provide: GroupMemberViewService, useValue: { getMatchRecords: () => of(response) } },
+      {
+        provide: GroupMemberViewService,
+        useValue: {
+          getMatchRecords: () => of(response),
+          getMatchRecordDetail: (...args: unknown[]) => {
+            detailCalls.push(args);
+            return of(null);
+          },
+        },
+      },
     ],
   });
   const fixture = TestBed.createComponent(MatchRecordsComponent);
@@ -99,5 +111,22 @@ describe('MatchRecordsComponent start/end time', () => {
 
     const items = fixture.nativeElement.querySelectorAll('.record-list li');
     expect(items[1].querySelector('.time-range')).toBeNull();
+  });
+});
+
+// 016-match-score-timeline (US1, T015a regression guard for I1): this is
+// the ONE entry point that should call the group-scoped, active-membership
+// endpoint — contrast with match-history/group-history, which must call
+// AuthService instead (research.md #1/#4).
+describe('MatchRecordsComponent match detail', () => {
+  it('clicking a row calls GroupMemberViewService.getMatchRecordDetail with groupId and matchId', () => {
+    const detailCalls: unknown[][] = [];
+    const fixture = setup(recordsResponse, detailCalls);
+
+    const row = fixture.nativeElement.querySelectorAll('.record-list li')[0] as HTMLElement;
+    row.click();
+
+    expect(detailCalls.length).toBe(1);
+    expect(detailCalls[0]).toEqual(['g1', 'm1']);
   });
 });

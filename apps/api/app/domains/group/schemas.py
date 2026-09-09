@@ -400,6 +400,19 @@ class MemberMatchRecordSummary(MatchRecordSummary):
     won: bool
 
 
+class ScoreEventSummary(BaseModel):
+    side: Literal["A", "B"]
+    delta: Literal[1, -1]
+    score_a: int
+    score_b: int
+    elapsed_seconds: int
+
+
+class MatchRecordDetailResponse(MatchRecordSummary):
+    record_completeness: Literal["complete", "partial", "none"]
+    events: list[ScoreEventSummary]
+
+
 class RoundWinRatePoint(BaseModel):
     """One point on the "各輪勝率趨勢" line chart — matches sharing the same
     `round_number` are bucketed together across every group the member has

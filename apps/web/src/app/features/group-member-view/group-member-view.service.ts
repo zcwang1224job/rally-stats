@@ -5,6 +5,7 @@ import {
   GroupMatchRecordsResponse,
   GroupStandingsResponse,
   LeaveGroupResponse,
+  MatchRecordDetailResponse,
 } from '../../core/api/group-member-view.models';
 import {
   RoundMatchesResponse,
@@ -54,6 +55,18 @@ export class GroupMemberViewService {
     const separator = this.guestTokenQuery(groupId) ? '&' : '?';
     return this.api.get<GroupMatchRecordsResponse>(
       `/groups/${groupId}/match-records${this.guestTokenQuery(groupId)}${separator}page=${page}`,
+      this.authHeader(),
+    );
+  }
+
+  /** 016-match-score-timeline (US1/US2/US3): a single match's逐筆加減分
+   *紀錄 + 三態完整度標記, for the "團內對戰紀錄" tab's drill-down. Same
+   * auth boundary as `getMatchRecords()` above (active Guest/Member) —
+   * deliberately NOT the "ever a member" endpoint `AuthService` uses for
+   * the other two 對戰紀錄 entry points (research.md #1/#4). */
+  getMatchRecordDetail(groupId: string, matchId: string): Observable<MatchRecordDetailResponse> {
+    return this.api.get<MatchRecordDetailResponse>(
+      `/groups/${groupId}/match-records/${matchId}${this.guestTokenQuery(groupId)}`,
       this.authHeader(),
     );
   }

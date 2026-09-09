@@ -259,7 +259,9 @@ async def score_by_token(
     court, _group, link_type = await court_service.get_court_by_token(session, token)
     if link_type != "control_panel":
         raise ApiError("LINK_NOT_FOUND", status_code=404)
-    return await service.apply_score_delta(session, court, match_id, payload.side, payload.delta)
+    return await service.apply_score_delta(
+        session, court, match_id, payload.side, payload.delta, source="control_panel"
+    )
 
 
 @router.post("/courts/by-token/{token}/matches/{match_id}/end", response_model=ScoreMutationResult)
@@ -292,7 +294,9 @@ async def score_by_admin(
     `ADMIN_TOKEN_INVALID`、`MATCH_NOT_FOUND`。"""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
-    return await service.apply_score_delta(session, court, match_id, payload.side, payload.delta)
+    return await service.apply_score_delta(
+        session, court, match_id, payload.side, payload.delta, source="admin"
+    )
 
 
 @router.post(

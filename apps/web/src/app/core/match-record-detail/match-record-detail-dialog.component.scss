@@ -1,0 +1,174 @@
+.match-detail-dialog {
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  width: min(90vw, 560px);
+  max-height: 85vh;
+  overflow-y: auto;
+
+  &::backdrop {
+    background: rgb(0 0 0 / 50%);
+  }
+}
+
+.dialog-close {
+  float: right;
+  border: none;
+  background: none;
+  font-size: var(--font-size-heading);
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+h2 {
+  margin-top: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+}
+
+.basic-info {
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-md);
+}
+
+// Constitution VII: a completeness note MUST NOT rely on the surrounding
+// color alone — the icon is baked into the i18n string itself, matching
+// the project's established status-badge convention.
+.completeness-note {
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-md);
+
+  &--partial {
+    background: color-mix(in srgb, var(--color-danger) 10%, white);
+    color: var(--color-danger);
+  }
+}
+
+.chart-card {
+  margin-bottom: var(--space-lg);
+
+  h3 {
+    font-size: var(--font-size-body);
+    margin-bottom: var(--space-sm);
+  }
+}
+
+.trend-chart {
+  width: 100%;
+  height: 140px;
+  overflow: visible;
+}
+
+.trend-chart__midline {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend-chart__line {
+  fill: none;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+
+  // FR-008 / constitution VII: the two teams' lines MUST be distinguishable
+  // by more than color alone — team A is a solid line, team B is dashed.
+  &--a {
+    stroke: var(--color-brand-primary);
+  }
+
+  &--b {
+    stroke: var(--color-ink);
+    stroke-dasharray: 4 2;
+  }
+}
+
+.trend-chart__dot {
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+
+  // Marker SHAPE differs too (circle vs square), a second non-color cue
+  // alongside the line style.
+  &--a {
+    fill: var(--color-surface);
+    stroke: var(--color-brand-primary);
+  }
+
+  &--b {
+    fill: var(--color-surface);
+    stroke: var(--color-ink);
+  }
+}
+
+.trend-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  font-size: var(--font-size-caption);
+}
+
+.trend-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.trend-legend__swatch {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+
+  &--a {
+    border-top-color: var(--color-brand-primary);
+  }
+
+  &--b {
+    border-top-color: var(--color-ink);
+    border-top-style: dashed;
+  }
+}
+
+.event-list {
+  h3 {
+    font-size: var(--font-size-body);
+    margin-bottom: var(--space-sm);
+  }
+}
+
+.record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.event-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding: var(--space-sm);
+}
+
+.event-row__side {
+  font-weight: var(--font-weight-bold);
+}
+
+.event-row__score {
+  font-variant-numeric: tabular-nums;
+}
+
+.event-row__time {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  margin-left: auto;
+}

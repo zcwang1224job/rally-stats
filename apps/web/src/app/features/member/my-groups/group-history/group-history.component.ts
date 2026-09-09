@@ -1,11 +1,16 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../../core/api/api-error';
 import { MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
-import { MatchRecordSummary } from '../../../../core/api/group-member-view.models';
+import {
+  MatchRecordDetailResponse,
+  MatchRecordSummary,
+} from '../../../../core/api/group-member-view.models';
+import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
+import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
 
 interface RoundTrendPoint {
@@ -35,16 +40,23 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
  * from (FR-006). */
 @Component({
   selector: 'app-group-history',
-  imports: [TranslatePipe, ReactiveFormsModule, DatePipe, RouterLink],
+  imports: [TranslatePipe, ReactiveFormsModule, DatePipe, RouterLink, MatchRecordDetailDialogComponent],
   templateUrl: './group-history.component.html',
   styleUrl: './group-history.component.scss',
 })
 export class GroupHistoryComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly friends = inject(FriendsService);
+  private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
 
   private readonly groupId = this.route.snapshot.paramMap.get('groupId')!;
+
+  private readonly detailDialogRef =
+    viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');
+  readonly detail = signal<MatchRecordDetailResponse | null>(null);
+  readonly detailLoading = signal(false);
+  readonly detailLoadError = signal(false);
 
   readonly history = signal<MemberGroupHistoryResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
@@ -158,5 +170,30 @@ export class GroupHistoryComponent {
   winnerNames(match: MatchRecordSummary): string {
     const winners = match.winner_team === 'A' ? match.team_a : match.team_b;
     return winners.map((p) => p.nickname).join('、');
+  }
+
+  /** 016-match-score-timeline: opens the match detail dialog via
+   * `AuthService.getMatchRecordDetail()` — the SAME "ever a member"
+   * endpoint `member/match-history` uses, deliberately NOT
+   * `GroupMemberViewService`'s active-membership one (research.md #1/#4).
+   * This page exists precisely so a member who has left/been kicked from
+   * the group can still review its history (014) — using the
+   * active-membership endpoint here would silently break that for exactly
+   * the members this page is for (previously the I1 finding). */
+  openDetail(matchId: string): void {
+    this.detail.set(null);
+    this.detailLoadError.set(false);
+    this.detailLoading.set(true);
+    this.detailDialogRef().open();
+    this.auth.getMatchRecordDetail(matchId).subscribe({
+      next: (response) => {
+        this.detail.set(response);
+        this.detailLoading.set(false);
+      },
+      error: () => {
+        this.detailLoadError.set(true);
+        this.detailLoading.set(false);
+      },
+    });
   }
 }

@@ -1,14 +1,16 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import {
+  MatchRecordDetailResponse,
   MatchRecordResultFilter,
   MatchRecordScoreComparison,
   MemberMatchRecordFilters,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
 
@@ -32,13 +34,19 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
  * 片與圖表都反映篩選後的完整結果集，而非僅目前頁面。 */
 @Component({
   selector: 'app-match-history',
-  imports: [TranslatePipe, ReactiveFormsModule, DatePipe],
+  imports: [TranslatePipe, ReactiveFormsModule, DatePipe, MatchRecordDetailDialogComponent],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
 })
 export class MatchHistoryComponent {
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+
+  private readonly detailDialogRef =
+    viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');
+  readonly detail = signal<MatchRecordDetailResponse | null>(null);
+  readonly detailLoading = signal(false);
+  readonly detailLoadError = signal(false);
 
   readonly records = signal<MemberMatchRecordsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
@@ -204,5 +212,27 @@ export class MatchHistoryComponent {
    * number below that. */
   rankBadge(index: number): string {
     return RANK_MEDALS[index] ?? String(index + 1);
+  }
+
+  /** 016-match-score-timeline: opens the match detail dialog via
+   * `AuthService.getMatchRecordDetail()` — the "ever a member" endpoint,
+   * NOT `GroupMemberViewService`'s active-membership one (research.md
+   * #1/#4), since this list already includes matches from groups the
+   * member may no longer be active in. */
+  openDetail(matchId: string): void {
+    this.detail.set(null);
+    this.detailLoadError.set(false);
+    this.detailLoading.set(true);
+    this.detailDialogRef().open();
+    this.auth.getMatchRecordDetail(matchId).subscribe({
+      next: (response) => {
+        this.detail.set(response);
+        this.detailLoading.set(false);
+      },
+      error: () => {
+        this.detailLoadError.set(true);
+        this.detailLoading.set(false);
+      },
+    });
   }
 }

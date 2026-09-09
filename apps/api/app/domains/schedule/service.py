@@ -26,7 +26,13 @@ from app.domains.schedule.algorithms import (
     stage2_pair_players,
     team_matchup_stage2,
 )
-from app.domains.schedule.models import Match, MatchParticipant, PairHistory, Partnership
+from app.domains.schedule.models import (
+    Match,
+    MatchParticipant,
+    PairHistory,
+    Partnership,
+    ScoreEvent,
+)
 from app.domains.schedule.schemas import (
     CourtLiveState,
     CourtScheduleStatus,
@@ -1381,7 +1387,12 @@ async def _advance_after_terminal(session: AsyncSession, match: Match) -> Match 
 
 
 async def apply_score_delta(
-    session: AsyncSession, court: Court, match_id: uuid.UUID, side: Team, delta: int
+    session: AsyncSession,
+    court: Court,
+    match_id: uuid.UUID,
+    side: Team,
+    delta: int,
+    source: str = "control_panel",
 ) -> ScoreMutationResult:
     """+1/-1（FR-003~007）。原子防呆（research.md #5）: 一句 `UPDATE ...
     WHERE status='in_progress' [AND score>0]` 同時達成 FR-005/006/006a；
@@ -1411,6 +1422,17 @@ async def apply_score_delta(
     # (apps/api/app/scheduler/auto_disband.py) same as join/edit/reauth.
     await session.execute(
         update(Group).where(Group.id == match.group_id).values(last_activity_at=datetime.now(UTC))
+    )
+    session.add(
+        ScoreEvent(
+            match_id=match_id,
+            group_id=match.group_id,
+            side=side,
+            delta=delta,
+            score_a=row.score_a,
+            score_b=row.score_b,
+            source=source,
+        )
     )
 
     await session.commit()

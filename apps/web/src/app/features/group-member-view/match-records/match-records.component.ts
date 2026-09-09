@@ -1,17 +1,22 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import {
   GroupMatchRecordsResponse,
+  MatchRecordDetailResponse,
   MatchRecordSummary,
 } from '../../../core/api/group-member-view.models';
+import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { GroupMemberViewService } from '../group-member-view.service';
 
-/** US3 (FR-011/012): 團內對戰紀錄——逐場列表，僅限本團，載入時查詢。 */
+/** US3 (FR-011/012): 團內對戰紀錄——逐場列表，僅限本團，載入時查詢。
+ * 016-match-score-timeline US1/US2/US3: 每列點擊開啟比賽詳情彈出視窗——
+ * 呼叫本頁本來就已經在用的 `GroupMemberViewService`（見 research.md #4，
+ * 刻意不透過任何「依 groupId 有無決定端點」的共用邏輯）。 */
 @Component({
   selector: 'app-match-records',
-  imports: [TranslatePipe, DatePipe],
+  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent],
   templateUrl: './match-records.component.html',
   styleUrl: './match-records.component.scss',
 })
@@ -27,6 +32,12 @@ export class MatchRecordsComponent {
     const totalPages = this.records()?.total_pages ?? 1;
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   });
+
+  private readonly detailDialogRef =
+    viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');
+  readonly detail = signal<MatchRecordDetailResponse | null>(null);
+  readonly detailLoading = signal(false);
+  readonly detailLoadError = signal(false);
 
   constructor() {
     effect(() => {
@@ -46,6 +57,23 @@ export class MatchRecordsComponent {
 
   goToPage(page: number): void {
     this.page.set(page);
+  }
+
+  openDetail(matchId: string): void {
+    this.detail.set(null);
+    this.detailLoadError.set(false);
+    this.detailLoading.set(true);
+    this.detailDialogRef().open();
+    this.memberView.getMatchRecordDetail(this.groupId(), matchId).subscribe({
+      next: (response) => {
+        this.detail.set(response);
+        this.detailLoading.set(false);
+      },
+      error: () => {
+        this.detailLoadError.set(true);
+        this.detailLoading.set(false);
+      },
+    });
   }
 
   /** The winning side's player names, joined — shown instead of a bare
