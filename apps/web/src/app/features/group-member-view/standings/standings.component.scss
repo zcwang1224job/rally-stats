@@ -60,3 +60,17 @@ th {
 .total-record {
   font-weight: var(--font-weight-bold);
 }
+
+// FR-011：自己所在列 MUST 以圖示/文字（而非純顏色）與其他列區隔——
+// self-badge 文字本身已內建圖示前綴，背景色只是輔助（比照既有
+// .status-badge 慣例）。
+tr.is-self {
+  background: color-mix(in srgb, var(--color-brand-primary) 8%, white);
+}
+
+.self-badge {
+  margin-left: var(--space-xs);
+  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
+  border-color: color-mix(in srgb, var(--color-brand-primary) 30%, white);
+  color: var(--color-brand-primary);
+}

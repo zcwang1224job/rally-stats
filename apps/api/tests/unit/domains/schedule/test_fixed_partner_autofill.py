@@ -134,8 +134,12 @@ async def test_duplicate_member_across_submitted_pairs_invalidates_all_of_them(
         db_session, group, [(p0.id, p2.id), (p2.id, p3.id)]
     )
 
-    assert (p0.id, p2.id) not in teams
-    assert (p2.id, p3.id) not in teams
+    # Both submitted pairs are discarded, so all 4 fall through to random
+    # autofill — which pairing the randomizer lands on afterward is not
+    # this test's concern (it could legitimately re-produce (p0,p2) or
+    # (p2,p3) by chance; asserting against that made this test flaky).
+    # What actually matters per the docstring is covered below: full
+    # coverage, and p2 never double-booked.
     covered = {pid for team in teams for pid in team}
     assert covered == {p0.id, p1.id, p2.id, p3.id}
     # p2 must appear on exactly one team.

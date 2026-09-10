@@ -437,7 +437,11 @@
     },
     "standings": {
       "noRoundsYet": "尚無已完成的輪次",
+      "rankLabel": "名次",
+      "rankValue": "第 {{rank}} 名",
       "nicknameLabel": "暱稱",
+      "selfBadge": "🙋 我",
+      "noRecordYet": "尚無比賽紀錄",
       "roundColumnLabel": "第 {{round}} 輪",
       "totalLabel": "總戰績",
       "recordLabel": "{{wins}} 勝 {{losses}} 敗",

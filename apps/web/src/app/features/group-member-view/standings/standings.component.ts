@@ -1,6 +1,9 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { RealtimeService } from '../../../core/realtime/ably.service';
+import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
 import { GroupStandingsResponse, MemberStandingRow } from '../../../core/api/group-member-view.models';
 import { GroupMemberViewService } from '../group-member-view.service';
 
@@ -9,10 +12,15 @@ export interface WinLossRecord {
   losses: number;
 }
 
-/** US2 (FR-005~010): 戰績頁——載入時查詢，無即時同步要求（spec
- * Assumptions）。每一輪的勝敗數直接來自後端（011-round-robin-scheduling：
- * 循環賽單打一輪內一個人可能打好幾場，所以是「這一輪」的勝敗計數，不是
- * 單一輸贏狀態）——本元件只負責呈現跟算總計，不重新推導每輪本身的數字。 */
+/** US2 (005-member-view，FR-005~010): 戰績頁。
+ *
+ * 018-group-leaderboard 疊加：`members` 已由後端依 `rank` 排序好
+ * （constitution X——本元件 MUST NOT 自行重新排序/計算名次，只負責渲染
+ * `rank`/`total_wins`/`total_losses`，見 data-model.md）；訂閱既有
+ * `group:{groupId}:notifications` 頻道的 `standings.updated` 事件（比照
+ * `notification.service.ts` 既有的「收到事件就整包重新拉取」模式），並
+ * 重用既有 `ReconnectRefetchService` 讓斷線重連/切回畫面時自動拿到最新
+ * 名次（FR-012）——本畫面純唯讀，刻意不新增任何「連線中斷」提示元件。 */
 @Component({
   selector: 'app-standings',
   imports: [TranslatePipe],
@@ -23,20 +31,73 @@ export class StandingsComponent {
   readonly groupId = input.required<string>();
 
   private readonly memberView = inject(GroupMemberViewService);
+  private readonly realtime = inject(RealtimeService);
+  private readonly reconnectRefetch = inject(ReconnectRefetchService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly standings = signal<GroupStandingsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
+  readonly myRosterEntryId = signal<string | null>(null);
+
+  private subscribedGroupId: string | null = null;
 
   constructor() {
     effect(() => {
-      if (!this.groupId()) {
+      const groupId = this.groupId();
+      if (!groupId) {
         return;
       }
-      this.memberView.getStandings(this.groupId()).subscribe({
-        next: (response) => this.standings.set(response),
-        error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+      this.load(groupId);
+      this.memberView.resolveRosterEntryId(groupId).subscribe((rosterEntryId) => {
+        this.myRosterEntryId.set(rosterEntryId);
       });
+      this.subscribeToChannel(groupId);
     });
+
+    // `onReconnect()` calls `toObservable()` internally, which requires an
+    // injection context — MUST be called here (constructor top level), not
+    // from inside the effect above (an effect body is explicitly NOT an
+    // injection context, NG0203). `groupId()` is read fresh inside the
+    // callback so this one subscription always refetches for whichever
+    // group is current when a reconnect actually happens.
+    this.reconnectRefetch
+      .onReconnect()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        const groupId = this.groupId();
+        if (groupId) {
+          this.load(groupId);
+        }
+      });
+  }
+
+  private load(groupId: string): void {
+    this.memberView.getStandings(groupId).subscribe({
+      next: (response) => this.standings.set(response),
+      error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+    });
+  }
+
+  private subscribeToChannel(groupId: string): void {
+    if (this.subscribedGroupId === groupId) {
+      return;
+    }
+    this.subscribedGroupId = groupId;
+    this.realtime
+      .subscribe(`group:${groupId}:notifications`, 'standings.updated')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.load(groupId));
+  }
+
+  isSelf(member: MemberStandingRow): boolean {
+    const mine = this.myRosterEntryId();
+    return mine !== null && mine === member.roster_entry_id;
+  }
+
+  /** FR-007/SC-004: "尚無比賽紀錄" — zero wins AND zero losses across every
+   * round means this member has never had a completed match. */
+  hasNoRecordYet(member: MemberStandingRow): boolean {
+    return member.total_wins === 0 && member.total_losses === 0;
   }
 
   /** did_not_play/left rounds carry no wins/losses to show — this is the
@@ -47,16 +108,6 @@ export class StandingsComponent {
   }
 
   totalRecord(member: MemberStandingRow): WinLossRecord {
-    const rounds = this.standings()?.rounds ?? [];
-    let wins = 0;
-    let losses = 0;
-    for (const round of rounds) {
-      const record = member.rounds[String(round)];
-      if (record) {
-        wins += record.wins;
-        losses += record.losses;
-      }
-    }
-    return { wins, losses };
+    return { wins: member.total_wins, losses: member.total_losses };
   }
 }

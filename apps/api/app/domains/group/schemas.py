@@ -362,6 +362,14 @@ class MemberStandingRow(BaseModel):
     nickname: str
     current_status: Literal["active", "left", "kicked"]
     rounds: dict[int, RoundRecord]
+    rank: int
+    """018-group-leaderboard FR-001/FR-006: standard competition ranking
+    ("1224") over `total_wins`, ties broken by `RosterEntry.joined_at`
+    (earlier joiner sorts first within a tie) — computed once server-side
+    in `build_group_standings`, never re-derived client-side (constitution
+    X)."""
+    total_wins: int
+    total_losses: int
 
 
 class GroupStandingsResponse(BaseModel):

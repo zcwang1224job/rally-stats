@@ -1474,6 +1474,18 @@ async def _publish_match_ended(
     if pulled is not None:
         await _publish_rotation_updated(session, match.group_id, court.id, pulled)
 
+    if match.status == "completed":
+        # 018-group-leaderboard FR-003/contracts/ably-events.md: only an
+        # actual win (never `abandoned`, which `_publish_match_ended` is
+        # also called for from `end_match_early`) changes anyone's
+        # standings, so only that case is worth telling open 戰績頁 to
+        # re-fetch.
+        await publish(
+            group_notifications_channel(str(match.group_id)),
+            "standings.updated",
+            {"group_id": str(match.group_id)},
+        )
+
 
 async def _advance_other_idle_courts(
     session: AsyncSession, group: Group, round_number: int, *, exclude_court_id: uuid.UUID | None

@@ -629,7 +629,10 @@ async def get_group_standings(
     guest_session_token: str | None = None,
 ) -> GroupStandingsResponse:
     """US2 (FR-005~010): four-state per-round standings, this team only
-    (FR-009). Errors: `MEMBERSHIP_REQUIRED`."""
+    (FR-009). 018-group-leaderboard (FR-001~FR-012) additionally ranks
+    `members` by total wins (`rank`/`total_wins`/`total_losses`, standard
+    competition ranking) and restricts `members` to currently-active roster
+    entries. Errors: `MEMBERSHIP_REQUIRED`."""
     await service.resolve_active_roster_membership(
         session,
         group_id,

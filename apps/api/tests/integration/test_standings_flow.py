@@ -1,7 +1,12 @@
 """Integration test: multi-round flow covering candidate/bench, abandoned,
 mid-tournament kick, and mid-tournament join -> the standings endpoint
 correctly classifies every state (005-member-view US2, FR-005~010) as a
-per-round {wins, losses, left} tally (011-round-robin-scheduling)."""
+per-round {wins, losses, left} tally (011-round-robin-scheduling).
+
+018-group-leaderboard FR-008: a kicked/left member no longer gets a row at
+all (the round-level `left: true` state this test used to also assert for
+the kicked player is now unreachable — every roster entry `standings`
+returns is, by construction, currently active)."""
 
 import uuid
 from datetime import UTC, datetime
@@ -102,9 +107,9 @@ async def test_standings_flow_all_four_states(
     assert rows_by_id[p1_id]["rounds"]["1"] == not_played
     assert rows_by_id[p1_id]["rounds"]["2"] == {"wins": 0, "losses": 1, "left": False}
 
-    assert rows_by_id[p2_id]["current_status"] == "kicked"
-    assert rows_by_id[p2_id]["rounds"]["1"] == not_played
-    assert rows_by_id[p2_id]["rounds"]["2"] == {"wins": 0, "losses": 0, "left": True}
+    # 018-group-leaderboard FR-008: a kicked member no longer gets a row at
+    # all (supersedes the old `left: true` row it used to get here).
+    assert p2_id not in rows_by_id
 
     p3_id = p3["roster_entry_id"]
     assert rows_by_id[p3_id]["rounds"]["1"] == not_played

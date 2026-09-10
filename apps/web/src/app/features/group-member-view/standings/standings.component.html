@@ -8,6 +8,7 @@
       <table>
         <thead>
           <tr>
+            <th>{{ 'groupMemberView.standings.rankLabel' | translate }}</th>
             <th>{{ 'groupMemberView.standings.nicknameLabel' | translate }}</th>
             @for (round of s.rounds; track round) {
               <th>{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round } }}</th>
@@ -17,8 +18,16 @@
         </thead>
         <tbody>
           @for (member of s.members; track member.roster_entry_id) {
-            <tr>
-              <td>{{ member.nickname }}</td>
+            <tr [class.is-self]="isSelf(member)">
+              <td>{{ 'groupMemberView.standings.rankValue' | translate: { rank: member.rank } }}</td>
+              <td>
+                {{ member.nickname }}
+                @if (isSelf(member)) {
+                  <span class="status-badge self-badge">
+                    {{ 'groupMemberView.standings.selfBadge' | translate }}
+                  </span>
+                }
+              </td>
               @for (round of s.rounds; track round) {
                 <td>
                   @if (member.rounds[round].left) {
@@ -50,7 +59,11 @@
                 </td>
               }
               <td class="total-record">
-                {{ 'groupMemberView.standings.recordLabel' | translate: { wins: totalRecord(member).wins, losses: totalRecord(member).losses } }}
+                @if (hasNoRecordYet(member)) {
+                  {{ 'groupMemberView.standings.noRecordYet' | translate }}
+                } @else {
+                  {{ 'groupMemberView.standings.recordLabel' | translate: { wins: totalRecord(member).wins, losses: totalRecord(member).losses } }}
+                }
               </td>
             </tr>
           }

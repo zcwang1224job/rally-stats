@@ -865,7 +865,16 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
     pair). Rounds are exactly those that have ever been generated for this
     group (one `round_history` row per round, including round 1) — a group
     that hasn't pressed Next Round yet has no rows and thus no rounds to
-    report."""
+    report.
+
+    018-group-leaderboard (FR-001~FR-012): also ranks the returned
+    `members` by total wins — standard competition ranking ("1224": ties
+    share a rank, the next distinct value skips accordingly, research.md
+    #6), secondary-sorted by `joined_at` (research.md #2). Only currently
+    `active` roster entries are returned (FR-008) — a left/kicked member's
+    past matches still count toward whichever *active* opponent they
+    played, since that comes from `MatchParticipant`/`Match`, not from this
+    roster query."""
     round_history_result = await session.execute(
         select(RoundHistory)
         .where(RoundHistory.group_id == group.id)
@@ -877,7 +886,7 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
 
     roster_result = await session.execute(
         select(RosterEntry)
-        .where(RosterEntry.group_id == group.id)
+        .where(RosterEntry.group_id == group.id, RosterEntry.status == "active")
         .order_by(RosterEntry.joined_at)
     )
     roster_entries = list(roster_result.scalars())
@@ -901,7 +910,7 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
                 (match.status, participant.team, match.winner_team)
             )
 
-    members = []
+    unranked: list[tuple[RosterEntry, dict[int, RoundRecord], int, int]] = []
     for entry in roster_entries:
         row_rounds: dict[int, RoundRecord] = {}
         for round_number in rounds:
@@ -927,12 +936,34 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
                         else:
                             losses += 1
                 row_rounds[round_number] = RoundRecord(wins=wins, losses=losses, left=False)
+        total_wins = sum(record.wins for record in row_rounds.values())
+        total_losses = sum(record.losses for record in row_rounds.values())
+        unranked.append((entry, row_rounds, total_wins, total_losses))
+
+    # 018-group-leaderboard research.md #2/#6: sort by total_wins descending;
+    # `sorted` is stable, and `unranked` starts in `joined_at` order (the
+    # roster query above), so ties keep the earlier joiner first without any
+    # extra tiebreak key. Standard competition ranking ("1224") — a run of
+    # tied total_wins shares one rank number, and the next distinct value's
+    # rank is its 1-based position, not "previous rank + 1".
+    unranked.sort(key=lambda item: item[2], reverse=True)
+
+    members: list[MemberStandingRow] = []
+    previous_wins: int | None = None
+    previous_rank = 0
+    for position, (entry, row_rounds, total_wins, total_losses) in enumerate(unranked, start=1):
+        if total_wins != previous_wins:
+            previous_rank = position
+            previous_wins = total_wins
         members.append(
             MemberStandingRow(
                 roster_entry_id=str(entry.id),
                 nickname=entry.nickname,
                 current_status=entry.status,
                 rounds=row_rounds,
+                rank=previous_rank,
+                total_wins=total_wins,
+                total_losses=total_losses,
             )
         )
 

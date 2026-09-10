@@ -23,6 +23,13 @@ export interface MemberStandingRow {
   nickname: string;
   current_status: 'active' | 'left' | 'kicked';
   rounds: Record<string, RoundRecord>;
+  // 018-group-leaderboard: standard competition ranking ("1224") over
+  // total_wins, computed server-side — MUST NOT be re-derived/re-sorted
+  // client-side (constitution X). `members` in GroupStandingsResponse
+  // already arrives pre-sorted by rank.
+  rank: number;
+  total_wins: number;
+  total_losses: number;
 }
 
 export interface GroupStandingsResponse {

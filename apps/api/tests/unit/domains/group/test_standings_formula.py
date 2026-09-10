@@ -22,10 +22,7 @@ from app.domains.schedule.models import Match, MatchParticipant
 pytestmark = pytest.mark.asyncio
 
 T2 = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
-T3 = datetime(2026, 1, 1, 11, 0, tzinfo=UTC)
-T4 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 BEFORE = T2 - timedelta(hours=1)
-AFTER_T2_BEFORE_T3 = T2 + timedelta(minutes=30)
 
 
 async def _make_group(session: AsyncSession, **overrides: object) -> Group:
@@ -218,37 +215,14 @@ async def test_did_not_play_joined_after_round_start(db_session: AsyncSession) -
     assert _record(response, late.id, 2) == RoundRecord(wins=0, losses=0, left=False)
 
 
-async def test_left_state_is_irreversible(db_session: AsyncSession) -> None:
-    group = await _make_group(db_session, current_round_number=4)
-    await _make_round_history(db_session, group, 2, T2)
-    await _make_round_history(db_session, group, 3, T3)
-    await _make_round_history(db_session, group, 4, T4)
-    leaver = await _make_entry(
-        db_session, group, joined_at=BEFORE, status="left", left_at=AFTER_T2_BEFORE_T3
-    )
-
-    response = await build_group_standings(db_session, group)
-
-    # left_at is after round 2 started
-    assert _record(response, leaver.id, 2) == RoundRecord(wins=0, losses=0, left=False)
-    assert _record(response, leaver.id, 3) == RoundRecord(wins=0, losses=0, left=True)
-    assert _record(response, leaver.id, 4) == RoundRecord(wins=0, losses=0, left=True)  # never reverts
-
-
-async def test_left_state_basis_consistent_in_manual_mode(db_session: AsyncSession) -> None:
-    group = await _make_group(
-        db_session, current_round_number=3, scheduling_mechanism="manual"
-    )
-    await _make_round_history(db_session, group, 2, T2)
-    await _make_round_history(db_session, group, 3, T3)
-    kicked = await _make_entry(
-        db_session, group, joined_at=BEFORE, status="kicked", left_at=AFTER_T2_BEFORE_T3
-    )
-
-    response = await build_group_standings(db_session, group)
-
-    assert _record(response, kicked.id, 2) == RoundRecord(wins=0, losses=0, left=False)
-    assert _record(response, kicked.id, 3) == RoundRecord(wins=0, losses=0, left=True)
+### NOTE: `test_left_state_is_irreversible` and
+### `test_left_state_basis_consistent_in_manual_mode` (which asserted a
+### left/kicked member gets a `rounds[...].left == True` row here) were
+### removed by 018-group-leaderboard — FR-008 supersedes that presentation:
+### such a member no longer gets a row in `members` at all. See
+### `test_group_standings_ranking.py` for the replacement coverage
+### (leaver excluded from `members`, but their past matches still count
+### toward whichever active opponent they played).
 
 
 async def test_scope_isolation_excludes_other_groups(db_session: AsyncSession) -> None:
