@@ -34,6 +34,11 @@ export class CourtListComponent {
     name: ['', [Validators.required, Validators.maxLength(20)]],
   });
 
+  readonly renamingCourtId = signal<string | null>(null);
+  readonly renameForm = this.fb.nonNullable.group({
+    name: ['', [Validators.required, Validators.maxLength(20)]],
+  });
+
   constructor() {
     effect(() => {
       const id = this.groupId();
@@ -68,6 +73,32 @@ export class CourtListComponent {
     this.courtService.createCourt(this.groupId(), name).subscribe({
       next: () => {
         this.form.reset();
+        this.load(this.groupId());
+      },
+      error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+    });
+  }
+
+  startRename(court: Court): void {
+    this.errorKey.set(null);
+    this.renameForm.reset({ name: court.name });
+    this.renamingCourtId.set(court.court_id);
+  }
+
+  cancelRename(): void {
+    this.renamingCourtId.set(null);
+  }
+
+  renameCourt(court: Court): void {
+    if (this.renameForm.invalid) {
+      this.renameForm.markAllAsTouched();
+      return;
+    }
+    const { name } = this.renameForm.getRawValue();
+    this.errorKey.set(null);
+    this.courtService.renameCourt(this.groupId(), court.court_id, name).subscribe({
+      next: () => {
+        this.renamingCourtId.set(null);
         this.load(this.groupId());
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),

@@ -30,9 +30,11 @@ async def test_singles_round_robin_full_flow(
     group_id = created["group_id"]
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
 
-    court = (
-        await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"})
-    ).json()
+    # 021-group-creation-defaults FR-006: the group already has one
+    # auto-created "球場一" court — use that instead of adding a second one,
+    # so all 10 matches funnel through the single court this test drains
+    # (a second court would otherwise also claim some of them).
+    court = (await client.get(f"/groups/{group_id}/courts", headers=headers)).json()["courts"][0]
 
     # 4 more members (+ creator = 5) -> C(5,2) = 10 matches this round.
     for i in range(4):

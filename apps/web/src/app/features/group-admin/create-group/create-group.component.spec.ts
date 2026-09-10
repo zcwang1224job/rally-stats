@@ -13,6 +13,7 @@ const nicknameMember = {
   nickname: '小明',
   user_number: 'U1',
   verification_status: 'verified' as const,
+  resend_verification_available_at: null,
 };
 
 const noNicknameMember = { ...nicknameMember, nickname: null };
@@ -169,6 +170,12 @@ describe('CreateGroupComponent', () => {
   it('doubles match mode still shows the doubles-only scheduling options', () => {
     const { fixture } = setup({ isLoggedIn: () => false });
 
+    // 021-group-creation-defaults: match_mode's initial value is now
+    // 'singles' (was 'doubles') — explicitly switch to doubles here,
+    // since that's what this test actually exercises.
+    fixture.componentInstance.form.controls.match_mode.setValue('doubles');
+    fixture.detectChanges();
+
     const options = Array.from<HTMLOptionElement>(
       fixture.nativeElement.querySelectorAll('select[formcontrolname="scheduling_mechanism"] option'),
     ).map((o) => o.value);
@@ -200,15 +207,35 @@ describe('CreateGroupComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('common.copy');
   });
 
-  it('submitting with an empty name and no turnstile token shows the field-level error reasons', () => {
-    const { fixture } = setup({ isLoggedIn: () => false });
+  // 021-group-creation-defaults (T009, US1): blank team name no longer
+  // blocks submission — the backend fills in the default, this form MUST
+  // send the blank value through as-is rather than computing it itself
+  // (constitution X, research.md #1).
+  it('leaving name blank does not block submission — the raw (empty) value is sent as-is', () => {
+    const { fixture, getCall } = setup({ isLoggedIn: () => false });
 
     fixture.componentInstance.form.patchValue({ creator_nickname: '小華' });
+    fixture.componentInstance.onTurnstileVerified('tok');
     fixture.componentInstance.submit();
     fixture.detectChanges();
 
-    const text = fixture.nativeElement.textContent;
-    expect(text).toContain('createGroup.nameRequired');
+    // The form itself must accept a blank name (no client-side validation
+    // error) and the request must actually go through — checked via the
+    // mocked service call below, not the [role="alert"] success-screen
+    // notice (which is an unrelated, expected element once submission
+    // succeeds).
+    const call = getCall();
+    expect(call).not.toBeNull();
+    expect((call!.payload as { name: string }).name).toBe('');
+  });
+
+  it('the form initial values are 單打／4人／公平輪替 (quickstart.md 情境 2, /speckit-analyze G1)', () => {
+    const { fixture } = setup({ isLoggedIn: () => false });
+
+    const controls = fixture.componentInstance.form.controls;
+    expect(controls.match_mode.value).toBe('singles');
+    expect(controls.max_members.value).toBe(4);
+    expect(controls.scheduling_mechanism.value).toBe('fair_rotation');
   });
 
   it('a name over the 30-char limit shows the max-length error reason', () => {

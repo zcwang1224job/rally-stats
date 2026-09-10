@@ -55,7 +55,9 @@ async def test_get_all_courts_state_returns_all_courts(
     body = response.json()
     assert body["group_id"] == group_id
     assert body["round_number"] == 1
-    assert len(body["courts"]) == 2
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court, on top of the 2 added here.
+    assert len(body["courts"]) == 3
     for court_state in body["courts"]:
         assert court_state["current_match"] is not None
         assert court_state["current_match"]["score_a"] == 0

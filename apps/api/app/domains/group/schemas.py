@@ -31,7 +31,7 @@ class CustomScoring(BaseModel):
 
 
 class CreateGroupRequest(BaseModel):
-    name: str
+    name: str | None = None
     password: str | None = None
     max_members: int
     match_mode: MatchMode
@@ -45,9 +45,18 @@ class CreateGroupRequest(BaseModel):
 
     @field_validator("name")
     @classmethod
-    def name_not_blank(cls, v: str) -> str:
+    def name_blank_normalizes_to_none(cls, v: str | None) -> str | None:
+        """021-group-creation-defaults (FR-001): omitted, `null`, or
+        whitespace-only `name` all normalize to `None` — `create_group()`
+        substitutes the default "{建立者暱稱}的羽球團" in that case
+        (research.md #1). A non-blank value still enforces the existing
+        1-30 char limit."""
+        if v is None:
+            return None
         stripped = v.strip()
-        if not stripped or len(stripped) > 30:
+        if not stripped:
+            return None
+        if len(stripped) > 30:
             raise ValueError("name must be 1-30 chars after trimming")
         return stripped
 

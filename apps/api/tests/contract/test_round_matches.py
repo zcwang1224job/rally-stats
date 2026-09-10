@@ -30,7 +30,9 @@ async def test_round_matches_lists_full_pregenerated_schedule(
     group_id = created["group_id"]
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
 
-    await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"})
+    # 021-group-creation-defaults FR-006: the group already has one
+    # auto-created "球場一" court — a second court would let 2 concurrent
+    # matches run instead of the 1 this test expects.
 
     for i in range(4):
         await db_session.execute(

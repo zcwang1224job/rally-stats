@@ -35,9 +35,13 @@ async def test_full_scoring_lifecycle(
     group_id = created["group_id"]
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
 
-    court1 = (
-        await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"})
-    ).json()
+    # 021-group-creation-defaults FR-006: the group already has one
+    # auto-created "球場一" court — use that as court1 and add only one more
+    # court, so there are exactly 2 courts total (a 3rd would go unfilled:
+    # 5 players only support 2 concurrent non-overlapping matches).
+    court1 = (await client.get(f"/groups/{group_id}/courts", headers=headers)).json()["courts"][
+        0
+    ]
     court2 = (
         await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "2號場"})
     ).json()

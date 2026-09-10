@@ -32,9 +32,13 @@ async def test_end_match_early_algorithmic_mode_waits_then_next_round(
     group_id = created["group_id"]
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
 
+    # 021-group-creation-defaults FR-006: the group already has one
+    # auto-created "球場一" court — use that instead of adding a second one,
+    # so round generation has exactly one court to assign this test's single
+    # match to (a second court would otherwise compete for it).
     court = (
-        await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"})
-    ).json()
+        await client.get(f"/groups/{group_id}/courts", headers=headers)
+    ).json()["courts"][0]
 
     await db_session.execute(
         text(

@@ -92,6 +92,14 @@ async def test_next_round_without_courts_returns_no_courts_available(
     created = group_response.json()
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
 
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court — delete it to restore the "zero courts"
+    # scenario this test exercises.
+    default_court = (
+        await client.get(f"/groups/{created['group_id']}/courts", headers=headers)
+    ).json()["courts"][0]
+    await client.delete(f"/courts/{default_court['court_id']}", headers=headers)
+
     response = await client.post(f"/groups/{created['group_id']}/next-round", headers=headers)
     assert response.status_code == 400
     assert response.json()["error_code"] == "NO_COURTS_AVAILABLE"

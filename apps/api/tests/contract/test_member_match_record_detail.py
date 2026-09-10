@@ -74,10 +74,14 @@ async def _create_group_with_member_in_active_match(
     )
     created = group_response.json()
     admin_headers = {"Authorization": f"Bearer {created['admin_token']}"}
-    court_response = await client.post(
-        f"/groups/{created['group_id']}/courts", headers=admin_headers, json={"name": "1號場"}
+    # 021-group-creation-defaults FR-006: the group already has one
+    # auto-created "球場一" court — use that instead of adding a second one,
+    # so round generation has exactly one court to assign this test's single
+    # match to (a second court would otherwise compete for it).
+    courts_response = await client.get(
+        f"/groups/{created['group_id']}/courts", headers=admin_headers
     )
-    court = court_response.json()
+    court = courts_response.json()["courts"][0]
 
     access_token = await _register_verified_and_login(client, db_session, member_email)
     member_headers = {"Authorization": f"Bearer {access_token}"}

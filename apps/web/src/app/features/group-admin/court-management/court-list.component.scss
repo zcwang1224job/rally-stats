@@ -23,3 +23,15 @@
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
 }
+
+.rename-court-form {
+  flex-direction: row;
+  max-width: none;
+  align-items: center;
+  gap: var(--space-sm);
+
+  input {
+    flex: 1;
+    min-height: var(--touch-target-min);
+  }
+}

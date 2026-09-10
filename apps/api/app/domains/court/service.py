@@ -66,6 +66,11 @@ async def get_court_by_id(session: AsyncSession, court_id: uuid.UUID) -> Court:
 
 
 async def rename_court(session: AsyncSession, court: Court, payload: RenameCourtRequest) -> Court:
+    """Rename a court, keeping its scoreboard/control-panel tokens unchanged.
+    Previously exposed only via `PATCH /courts/{court_id}` with no caller and
+    no test coverage; 021-group-creation-defaults added the 球場管理 UI entry
+    point (T014/T015) and the first tests for this path (T011/T012,
+    research.md #3)."""
     if court.deleted_at is not None:
         raise ApiError("COURT_DELETED", status_code=409)
     court.name = payload.name

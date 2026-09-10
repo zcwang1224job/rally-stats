@@ -40,9 +40,6 @@
         {{ 'createGroup.name' | translate }}
         <input type="text" formControlName="name" [attr.placeholder]="'createGroup.namePlaceholder' | translate" maxlength="30" />
       </label>
-      @if (form.controls.name.touched && form.controls.name.errors?.['required']) {
-        <p role="alert">{{ 'createGroup.nameRequired' | translate }}</p>
-      }
       @if (form.controls.name.touched && form.controls.name.errors?.['maxlength']) {
         <p role="alert">{{ 'createGroup.nameTooLong' | translate }}</p>
       }

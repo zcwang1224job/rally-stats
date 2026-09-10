@@ -30,10 +30,12 @@ async def test_manual_assign_flow(
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
     group_id = created["group_id"]
 
-    court_response = await client.post(
-        f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"}
-    )
-    court = court_response.json()
+    # 021-group-creation-defaults FR-006: the group already has one
+    # auto-created "球場一" court — use that instead of adding a second one,
+    # so `courts[0]` below unambiguously refers to the court this test acts
+    # on (a second court would otherwise also sit at some index, unassigned).
+    court_response = await client.get(f"/groups/{group_id}/courts", headers=headers)
+    court = court_response.json()["courts"][0]
 
     await db_session.execute(
         text(

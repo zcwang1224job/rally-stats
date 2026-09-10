@@ -64,5 +64,7 @@ async def test_list_courts_reflects_active_count(
     response = await client.get(f"/groups/{group_id}/courts", headers=headers)
     assert response.status_code == 200
     body = response.json()
-    assert body["active_court_count"] == 2
-    assert {c["name"] for c in body["courts"]} == {"1號場", "2號場"}
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court, on top of the 2 manually added here.
+    assert body["active_court_count"] == 3
+    assert {c["name"] for c in body["courts"]} == {"球場一", "1號場", "2號場"}

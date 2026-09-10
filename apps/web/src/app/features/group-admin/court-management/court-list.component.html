@@ -20,10 +20,28 @@
   } @else {
     @for (court of courts(); track court.court_id) {
       <div class="court-entry">
-        <app-court-link-card [groupId]="groupId()" [court]="court" (regenerated)="load(groupId())" />
-        <button type="button" class="btn btn--danger" (click)="openDeleteDialog(court)">
-          {{ 'courtManagement.delete' | translate }}
-        </button>
+        @if (renamingCourtId() === court.court_id) {
+          <form class="form rename-court-form" [formGroup]="renameForm" (ngSubmit)="renameCourt(court)">
+            <input
+              type="text"
+              formControlName="name"
+              maxlength="20"
+              [attr.aria-label]="'courtManagement.namePlaceholder' | translate"
+            />
+            <button type="submit" class="btn">{{ 'common.confirm' | translate }}</button>
+            <button type="button" class="btn btn--secondary" (click)="cancelRename()">
+              {{ 'common.cancel' | translate }}
+            </button>
+          </form>
+        } @else {
+          <app-court-link-card [groupId]="groupId()" [court]="court" (regenerated)="load(groupId())" />
+          <button type="button" class="btn" (click)="startRename(court)">
+            {{ 'courtManagement.rename' | translate }}
+          </button>
+          <button type="button" class="btn btn--danger" (click)="openDeleteDialog(court)">
+            {{ 'courtManagement.delete' | translate }}
+          </button>
+        }
       </div>
     }
   }

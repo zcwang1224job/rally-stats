@@ -23,8 +23,10 @@ async def test_create_court_flow(client: AsyncClient, valid_turnstile_token: str
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
     group_id = created["group_id"]
 
-    empty_list = await client.get(f"/groups/{group_id}/courts", headers=headers)
-    assert empty_list.json()["active_court_count"] == 0
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court, not zero.
+    initial_list = await client.get(f"/groups/{group_id}/courts", headers=headers)
+    assert initial_list.json()["active_court_count"] == 1
 
     create_response = await client.post(
         f"/groups/{group_id}/courts", headers=headers, json={"name": "中央場"}
@@ -37,5 +39,5 @@ async def test_create_court_flow(client: AsyncClient, valid_turnstile_token: str
 
     list_response = await client.get(f"/groups/{group_id}/courts", headers=headers)
     body = list_response.json()
-    assert body["active_court_count"] == 1
-    assert body["courts"][0]["court_id"] == court["court_id"]
+    assert body["active_court_count"] == 2
+    assert court["court_id"] in {c["court_id"] for c in body["courts"]}

@@ -62,6 +62,14 @@ _SCORING_PRESETS = {
     "15pt": (15, 14, 21),
 }
 
+_DEFAULT_GROUP_NAME_SUFFIX = "的羽球團"
+# 021-group-creation-defaults FR-001: a blank/omitted group name defaults
+# to f"{建立者暱稱}{_DEFAULT_GROUP_NAME_SUFFIX}" (research.md #1).
+_DEFAULT_COURT_NAME = "球場一"
+# 021-group-creation-defaults FR-006: every group gets exactly one active
+# court with this name, auto-created in the same transaction as the group
+# itself (research.md #2).
+
 
 async def _touch_activity(session: AsyncSession, group: Group) -> None:
     group.last_activity_at = datetime.now(UTC)
@@ -135,7 +143,9 @@ async def create_group(
     *,
     member: Member | None,
 ) -> tuple[Group, RosterEntry, str, str | None]:
-    """Create a Group + the creator's RosterEntry in one transaction (spec FR-001-012)."""
+    """Create a Group + the creator's RosterEntry + a default Court in one
+    transaction (spec FR-001-012; 021-group-creation-defaults FR-001,
+    FR-006, FR-007, research.md #1/#2)."""
     if member is not None:
         await _raise_if_active_elsewhere(session, member.id)
 
@@ -150,6 +160,14 @@ async def create_group(
     stripped_creator_nickname = (payload.creator_nickname or "").strip()
     if member is None and not stripped_creator_nickname:
         raise ApiError("NICKNAME_REQUIRED_FOR_GUEST", status_code=400)
+
+    # 021-group-creation-defaults research.md #1: resolved once, here, so
+    # both the default group name (below) and the RosterEntry (further
+    # down) use the exact same value — moved up from where it used to be
+    # computed (immediately before building RosterEntry).
+    nickname = member.nickname if member else stripped_creator_nickname
+    assert nickname is not None
+    resolved_name = payload.name or f"{nickname}{_DEFAULT_GROUP_NAME_SUFFIX}"
 
     if payload.scoring_mode == "custom":
         assert payload.custom_scoring is not None
@@ -166,7 +184,7 @@ async def create_group(
 
     admin_pin = generate_admin_pin()
     group = Group(
-        name=payload.name,
+        name=resolved_name,
         password_ciphertext=password_ciphertext,
         password_nonce=password_nonce,
         max_members=payload.max_members,
@@ -186,8 +204,6 @@ async def create_group(
     session.add(group)
     await session.flush()  # populate group.id via default
 
-    nickname = member.nickname if member else stripped_creator_nickname
-    assert nickname is not None
     guest_token = secrets.token_urlsafe(32) if member is None else None
 
     roster_entry = RosterEntry(
@@ -201,9 +217,28 @@ async def create_group(
     )
     session.add(roster_entry)
 
+    # 021-group-creation-defaults research.md #2: inserted directly (not
+    # via create_court(), which owns its own commit + IntegrityError
+    # handling for user-supplied names) so it shares this exact same
+    # transaction — a failure anywhere above means neither the Group nor
+    # this Court is persisted (FR-007). No name-collision handling is
+    # needed: this is necessarily the group's first-ever court.
+    default_court = Court(group_id=group.id, name=_DEFAULT_COURT_NAME)
+    session.add(default_court)
+
     await session.commit()
     await session.refresh(group)
     await session.refresh(roster_entry)
+    await session.refresh(default_court)
+
+    # Same event shape create_court() publishes — lets any hypothetical
+    # already-open all-courts screen pick it up the same way a manually
+    # added court would (constitution III/VI).
+    await publish(
+        group_notifications_channel(str(group.id)),
+        "court.added",
+        {"court_id": str(default_court.id), "name": default_court.name},
+    )
 
     return group, roster_entry, admin_pin, guest_token
 

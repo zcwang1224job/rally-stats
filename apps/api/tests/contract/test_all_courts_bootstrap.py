@@ -39,7 +39,9 @@ async def test_all_courts_bootstrap_lists_active_courts(
     assert body["group_id"] == group_id
     assert body["group_disbanded"] is False
     assert body["all_courts_link_version"] == 0
-    assert {c["name"] for c in body["courts"]} == {"1號場", "2號場"}
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court, on top of the 2 added here.
+    assert {c["name"] for c in body["courts"]} == {"球場一", "1號場", "2號場"}
     # Individual court link tokens must never leak through this endpoint.
     for court in body["courts"]:
         assert "scoreboard_token" not in court

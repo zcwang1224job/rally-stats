@@ -257,8 +257,7 @@
       "creator": "建立者資訊"
     },
     "name": "團名",
-    "namePlaceholder": "例如：週三夜羽球團",
-    "nameRequired": "請輸入團名",
+    "namePlaceholder": "留空將自動帶入「你的暱稱的羽球團」",
     "nameTooLong": "團名最多 30 個字",
     "password": "通關密碼（選填）",
     "maxMembers": "人數上限",
@@ -359,6 +358,7 @@
     "regenerateLinkConfirmTitle": "確認重新產生此連結？",
     "regenerateLinkConfirmBody": "舊連結與 QR Code 將立即失效，此操作無法復原。",
     "copyFailed": "複製失敗，請手動選取下方欄位的連結文字複製",
+    "rename": "重新命名",
     "delete": "刪除場地",
     "deleteConfirmTitle": "確定刪除「{{name}}」場地？",
     "deleteConfirmBody": "此操作無法復原。",

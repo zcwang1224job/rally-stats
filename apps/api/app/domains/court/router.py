@@ -91,8 +91,11 @@ async def rename_court(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> CourtResponse:
     """Rename a court (last-write-wins; see research.md #5 for why this has no
-    dedicated optimistic-lock version). Errors: `VALIDATION_ERROR`,
-    `COURT_NAME_ALREADY_EXISTS`, `COURT_DELETED`, `ADMIN_TOKEN_INVALID`."""
+    dedicated optimistic-lock version). Previously had no frontend caller and
+    no test coverage; 021-group-creation-defaults wired it up to the 球場管理
+    UI's 重新命名 action and added its first contract/unit tests (research.md
+    #3). Errors: `VALIDATION_ERROR`, `COURT_NAME_ALREADY_EXISTS`,
+    `COURT_DELETED`, `ADMIN_TOKEN_INVALID`."""
     updated = await service.rename_court(session, court, payload)
     return _to_response(updated)
 

@@ -71,4 +71,6 @@ async def test_list_groups_item_includes_court_names(
     response = await client.get("/groups")
     assert response.status_code == 200
     item = next(g for g in response.json()["groups"] if g["name"] == "場地資訊團")
-    assert item["court_names"] == ["1號場"]
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court, on top of the 1 added here.
+    assert item["court_names"] == ["球場一", "1號場"]

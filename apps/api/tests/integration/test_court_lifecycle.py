@@ -33,7 +33,9 @@ async def test_court_full_lifecycle(client: AsyncClient, valid_turnstile_token: 
     old_scoreboard_token = court["scoreboard_token"]
 
     list_response = await client.get(f"/groups/{group_id}/courts", headers=headers)
-    assert list_response.json()["active_court_count"] == 1
+    # 021-group-creation-defaults FR-006: the group's auto-created "球場一"
+    # court is also active, alongside the manually-created one above.
+    assert list_response.json()["active_court_count"] == 2
 
     # 重新產生連結
     regen_response = await client.post(
@@ -61,4 +63,5 @@ async def test_court_full_lifecycle(client: AsyncClient, valid_turnstile_token: 
     assert final_lookup.json()["deleted"] is True
 
     final_list = await client.get(f"/groups/{group_id}/courts", headers=headers)
-    assert final_list.json()["active_court_count"] == 0
+    # The auto-created "球場一" court remains; only 中山場 was deleted.
+    assert final_list.json()["active_court_count"] == 1

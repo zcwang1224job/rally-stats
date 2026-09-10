@@ -21,9 +21,21 @@ def _base_payload(**overrides: object) -> dict:
     return payload
 
 
-def test_blank_name_rejected() -> None:
-    with pytest.raises(ValidationError):
-        CreateGroupRequest(**_base_payload(name="   "))
+def test_blank_or_omitted_name_normalizes_to_none() -> None:
+    """021-group-creation-defaults (FR-001, research.md #1): reverses the
+    prior behavior — a blank/whitespace-only/omitted `name` used to be
+    rejected; it MUST now be accepted and normalized to `None`, letting
+    `create_group()` substitute the default "{暱稱}的羽球團" (service-layer
+    behavior covered by test_create_group_defaults.py, not here)."""
+    assert CreateGroupRequest(**_base_payload(name="   ")).name is None
+    assert CreateGroupRequest(**_base_payload(name="")).name is None
+    payload = _base_payload()
+    del payload["name"]
+    assert CreateGroupRequest(**payload).name is None
+
+
+def test_non_blank_name_is_trimmed_and_kept() -> None:
+    assert CreateGroupRequest(**_base_payload(name="  Test Group  ")).name == "Test Group"
 
 
 def test_name_over_30_chars_rejected() -> None:

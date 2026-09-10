@@ -66,10 +66,14 @@ export class CreateGroupComponent {
 
   readonly form = this.fb.nonNullable.group(
     {
-      name: ['', [Validators.required, Validators.maxLength(30)]],
+      // 021-group-creation-defaults FR-001: no longer required — left
+      // blank, the backend fills in "{建立者暱稱}的羽球團" (research.md
+      // #1); this form MUST NOT compute that default itself (constitution X).
+      name: ['', [Validators.maxLength(30)]],
       password: [''],
       max_members: [4, [Validators.required, Validators.min(1)]],
-      match_mode: ['doubles' as MatchMode, Validators.required],
+      // FR-002: 單打 is now the form's initial match mode (was 雙打).
+      match_mode: ['singles' as MatchMode, Validators.required],
       scheduling_mechanism: ['fair_rotation' as SchedulingMechanism, Validators.required],
       scoring_mode: ['21pt' as ScoringMode, Validators.required],
       custom_target_score: [11],

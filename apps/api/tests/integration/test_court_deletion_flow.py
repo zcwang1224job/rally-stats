@@ -41,7 +41,9 @@ async def test_court_deletion_flow(client: AsyncClient, valid_turnstile_token: s
     assert by_token.json()["deleted"] is True
 
     list_response = await client.get(f"/groups/{group_id}/courts", headers=headers)
-    assert list_response.json()["active_court_count"] == 0
+    # 021-group-creation-defaults FR-006: the group's auto-created "球場一"
+    # court is still active — only the manually-created one above was deleted.
+    assert list_response.json()["active_court_count"] == 1
 
     recreate_response = await client.post(
         f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"}

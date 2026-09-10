@@ -35,14 +35,16 @@ async def test_all_courts_panel_reflects_court_changes(
     all_courts_token = admin_view["all_courts_control_panel_token"]
 
     bootstrap = (await client.get(f"/groups/by-all-courts-token/{all_courts_token}")).json()
-    assert len(bootstrap["courts"]) == 2
+    # 021-group-creation-defaults FR-006: every group starts with one
+    # auto-created "球場一" court, on top of the 2 added here.
+    assert len(bootstrap["courts"]) == 3
 
     await client.delete(f"/courts/{court_a['court_id']}", headers=headers)
 
     bootstrap_after_delete = (
         await client.get(f"/groups/by-all-courts-token/{all_courts_token}")
     ).json()
-    assert len(bootstrap_after_delete["courts"]) == 1
-    assert bootstrap_after_delete["courts"][0]["name"] == "B場"
+    assert len(bootstrap_after_delete["courts"]) == 2
+    assert {c["name"] for c in bootstrap_after_delete["courts"]} == {"球場一", "B場"}
     # The all-courts token itself is unaffected by an individual court's deletion.
     assert bootstrap_after_delete["all_courts_link_version"] == 0
