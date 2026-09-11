@@ -24,6 +24,7 @@ from app.domains.group.schemas import (
 )
 from app.domains.group.service import (
     _completed_matches_query,
+    build_group_final_standings,
     build_group_match_records,
     build_match_record_detail,
     get_completed_match_or_404,
@@ -48,11 +49,12 @@ from app.domains.member.security import (
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.schemas import ParticipantSummary
-
-_VERIFICATION_TOKEN_TTL = timedelta(hours=24)
-_RESEND_VERIFICATION_COOLDOWN = timedelta(seconds=60)
-_PASSWORD_RESET_TOKEN_TTL = timedelta(hours=1)
-_MEMBER_MATCH_RECORDS_PAGE_SIZE = 20
+from app.system_config.service import (
+    get_default_page_size,
+    get_password_reset_token_ttl_hours,
+    get_resend_verification_cooldown_minutes,
+    get_verification_token_ttl_hours,
+)
 
 
 async def login(session: AsyncSession, email: str, password: str) -> tuple[Member, str, str]:
@@ -73,9 +75,12 @@ def _verification_link(token: str) -> str:
     return f"{get_settings().frontend_base_url}/auth/verify-email/{token}"
 
 
-async def _issue_verification_token_and_email(session: AsyncSession, member: Member) -> None:
+async def _issue_verification_token_and_email(
+    session: AsyncSession, member: Member
+) -> EmailVerificationToken:
+    ttl_hours = await get_verification_token_ttl_hours(session)
     verification_token = EmailVerificationToken(
-        member_id=member.id, expires_at=datetime.now(UTC) + _VERIFICATION_TOKEN_TTL
+        member_id=member.id, expires_at=datetime.now(UTC) + timedelta(hours=ttl_hours)
     )
     session.add(verification_token)
     await session.flush()
@@ -86,6 +91,7 @@ async def _issue_verification_token_and_email(session: AsyncSession, member: Mem
         "請驗證你的信箱",
         f"請點擊以下連結完成信箱驗證：{_verification_link(str(verification_token.token))}",
     )
+    return verification_token
 
 
 async def register(session: AsyncSession, email: str, password: str) -> Member:
@@ -133,23 +139,68 @@ async def verify_email(session: AsyncSession, token: uuid.UUID) -> Member:
     return member
 
 
-async def resend_verification(session: AsyncSession, member: Member) -> None:
+async def _verification_token_count_and_last_created_at(
+    session: AsyncSession, member_id: uuid.UUID
+) -> tuple[int, datetime | None]:
+    """020-resend-verification-email research.md #2/#5: single query shared
+    by `resend_verification()` (write path) and
+    `get_resend_verification_available_at()` (read path). The *count*
+    matters, not just the latest timestamp: `register()` always issues one
+    token immediately, and the only two paths that ever create a token are
+    registration and a manual resend — so count <= 1 means this member has
+    never manually triggered a resend yet, and MUST NOT be cooled down by
+    the registration-time send (fixes `/speckit-analyze` finding I1: the
+    original design would reject a member's very first resend click if
+    attempted within the cooldown window of their own registration)."""
+    result = await session.execute(
+        select(func.count(EmailVerificationToken.id), func.max(EmailVerificationToken.created_at))
+        .where(EmailVerificationToken.member_id == member_id)
+    )
+    count, last_created_at = result.one()
+    return count, last_created_at
+
+
+async def resend_verification(session: AsyncSession, member: Member) -> datetime:
+    """Returns `available_at` — the earliest time the *next* resend will be
+    allowed (research.md #3), even when this call is the member's first-ever
+    manual resend (which always succeeds regardless of cooldown, per
+    `_verification_token_count_and_last_created_at()`)."""
     if member.verification_status == "verified":
         raise ApiError("ALREADY_VERIFIED", status_code=409)
 
-    last_token_result = await session.execute(
-        select(EmailVerificationToken.created_at)
-        .where(EmailVerificationToken.member_id == member.id)
-        .order_by(EmailVerificationToken.created_at.desc())
-        .limit(1)
+    cooldown = timedelta(minutes=await get_resend_verification_cooldown_minutes(session))
+    count, last_created_at = await _verification_token_count_and_last_created_at(
+        session, member.id
     )
-    last_created_at = last_token_result.scalar_one_or_none()
-    if last_created_at is not None and datetime.now(UTC) - last_created_at < (
-        _RESEND_VERIFICATION_COOLDOWN
-    ):
+    if count > 1 and last_created_at is not None and datetime.now(UTC) - last_created_at < cooldown:
         raise ApiError("RESEND_RATE_LIMITED", status_code=429)
 
-    await _issue_verification_token_and_email(session, member)
+    new_token = await _issue_verification_token_and_email(session, member)
+    return new_token.created_at + cooldown
+
+
+async def get_resend_verification_available_at(
+    session: AsyncSession, member: Member
+) -> datetime | None:
+    """Read-only counterpart to `resend_verification()`'s cooldown check —
+    backs `MemberPublicResponse.resend_verification_available_at`
+    (`GET /members/me`, `POST /auth/login`). `None` means resend is
+    available right now (verified members always get `None` without a
+    query, and unverified members with <= 1 token — i.e. never manually
+    resent — always get `None` too, research.md #5)."""
+    if member.verification_status == "verified":
+        return None
+
+    count, last_created_at = await _verification_token_count_and_last_created_at(
+        session, member.id
+    )
+    if count <= 1 or last_created_at is None:
+        return None
+    cooldown = timedelta(minutes=await get_resend_verification_cooldown_minutes(session))
+    available_at = last_created_at + cooldown
+    if available_at <= datetime.now(UTC):
+        return None
+    return available_at
 
 
 def _reset_link(token: str) -> str:
@@ -164,8 +215,9 @@ async def forgot_password(session: AsyncSession, email: str) -> None:
     if member is None:
         return
 
+    ttl_hours = await get_password_reset_token_ttl_hours(session)
     reset_token = PasswordResetToken(
-        member_id=member.id, expires_at=datetime.now(UTC) + _PASSWORD_RESET_TOKEN_TTL
+        member_id=member.id, expires_at=datetime.now(UTC) + timedelta(hours=ttl_hours)
     )
     session.add(reset_token)
     await session.flush()
@@ -475,11 +527,10 @@ async def build_member_match_records(
         reverse=True,
     )
 
-    total_pages = max(
-        1, (total_matches + _MEMBER_MATCH_RECORDS_PAGE_SIZE - 1) // _MEMBER_MATCH_RECORDS_PAGE_SIZE
-    )
-    start = (page - 1) * _MEMBER_MATCH_RECORDS_PAGE_SIZE
-    end = start + _MEMBER_MATCH_RECORDS_PAGE_SIZE
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (total_matches + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    end = start + page_size
     page_matches = [summary for _, summary, _ in filtered[start:end]]
 
     return MemberMatchRecordsResponse(
@@ -519,6 +570,9 @@ async def get_member_group_history(
 
     match_records = await build_group_match_records(session, group_id, page, nickname=nickname)
     member_records = await build_member_match_records(session, member_id, group_id=group_id)
+    final_standings = await build_group_final_standings(
+        session, group_id, viewer_member_id=member_id
+    )
 
     return MemberGroupHistoryResponse(
         group_id=str(group.id),
@@ -531,6 +585,7 @@ async def get_member_group_history(
             round_win_rates=member_records.round_win_rates,
             opponent_records=member_records.opponent_records,
         ),
+        final_standings=final_standings,
         matches=match_records.matches,
         page=match_records.page,
         total_pages=match_records.total_pages,

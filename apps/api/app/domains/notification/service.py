@@ -28,8 +28,7 @@ from app.domains.notification.schemas import (
     NotificationSummary,
     UnreadCountResponse,
 )
-
-_NOTIFICATION_LIST_PAGE_SIZE = 20
+from app.system_config.service import get_default_page_size
 
 
 def create_friend_request_notification(friend_request: FriendRequest) -> Notification:
@@ -207,14 +206,15 @@ async def list_notifications(
         select(func.count()).select_from(Notification).where(Notification.member_id == member_id)
     )
     total = count_result.scalar_one()
-    total_pages = max(1, (total + _NOTIFICATION_LIST_PAGE_SIZE - 1) // _NOTIFICATION_LIST_PAGE_SIZE)
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (total + page_size - 1) // page_size)
 
     result = await session.execute(
         select(Notification)
         .where(Notification.member_id == member_id)
         .order_by(Notification.created_at.desc())
-        .offset((page - 1) * _NOTIFICATION_LIST_PAGE_SIZE)
-        .limit(_NOTIFICATION_LIST_PAGE_SIZE)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     notifications = list(result.scalars())
     summaries = await _build_notification_summaries(session, notifications)

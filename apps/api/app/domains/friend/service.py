@@ -23,8 +23,7 @@ from app.domains.notification.service import (
     create_friend_request_notification,
     publish_notification_created,
 )
-
-_FRIEND_LIST_PAGE_SIZE = 20
+from app.system_config.service import get_default_page_size
 
 # 013-group-invite-friends research.md #2: same optional-hook pattern as
 # group.service's AbandonMatchesHook, wired in by group_invite/router.py's
@@ -159,9 +158,10 @@ async def list_friends(
 
     friends.sort(key=lambda f: f.user_number)
     total = len(friends)
-    total_pages = max(1, (total + _FRIEND_LIST_PAGE_SIZE - 1) // _FRIEND_LIST_PAGE_SIZE)
-    start = (page - 1) * _FRIEND_LIST_PAGE_SIZE
-    page_friends = friends[start : start + _FRIEND_LIST_PAGE_SIZE]
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    page_friends = friends[start : start + page_size]
     return FriendListResponse(friends=page_friends, page=page, total_pages=total_pages)
 
 

@@ -25,6 +25,7 @@ from app.domains.group.schemas import (
     CreateGroupRequest,
     EditGroupRequest,
     EditScoringSettingsRequest,
+    FinalStandingRow,
     GroupMatchRecordsResponse,
     GroupStandingsResponse,
     MatchRecordDetailResponse,
@@ -46,7 +47,12 @@ from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent
 from app.domains.schedule.schemas import ParticipantSummary
 from app.domains.schedule.service import handle_member_joined, handle_member_left
-from app.system_config.service import get_max_group_members
+from app.system_config.service import (
+    get_default_court_name,
+    get_default_group_name_suffix,
+    get_default_page_size,
+    get_max_group_members,
+)
 
 AbandonMatchesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
 # 013-group-invite-friends research.md #2: same optional-hook pattern as
@@ -55,20 +61,13 @@ AbandonMatchesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
 # import group_invite.service directly.
 InvalidatePendingInvitesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
 
-_MATCH_RECORDS_PAGE_SIZE = 20
-
 _SCORING_PRESETS = {
     "21pt": (21, 20, 30),
     "15pt": (15, 14, 21),
 }
-
-_DEFAULT_GROUP_NAME_SUFFIX = "的羽球團"
-# 021-group-creation-defaults FR-001: a blank/omitted group name defaults
-# to f"{建立者暱稱}{_DEFAULT_GROUP_NAME_SUFFIX}" (research.md #1).
-_DEFAULT_COURT_NAME = "球場一"
-# 021-group-creation-defaults FR-006: every group gets exactly one active
-# court with this name, auto-created in the same transaction as the group
-# itself (research.md #2).
+# 021-group-creation-defaults FR-001/FR-006 (research.md #1/#2): the default
+# group name suffix and default court name now live in system_config
+# (`default_group_name_suffix` / `default_court_name`), not here.
 
 
 async def _touch_activity(session: AsyncSession, group: Group) -> None:
@@ -167,7 +166,11 @@ async def create_group(
     # computed (immediately before building RosterEntry).
     nickname = member.nickname if member else stripped_creator_nickname
     assert nickname is not None
-    resolved_name = payload.name or f"{nickname}{_DEFAULT_GROUP_NAME_SUFFIX}"
+    if payload.name:
+        resolved_name = payload.name
+    else:
+        default_suffix = await get_default_group_name_suffix(session)
+        resolved_name = f"{nickname}{default_suffix}"
 
     if payload.scoring_mode == "custom":
         assert payload.custom_scoring is not None
@@ -223,7 +226,8 @@ async def create_group(
     # transaction — a failure anywhere above means neither the Group nor
     # this Court is persisted (FR-007). No name-collision handling is
     # needed: this is necessarily the group's first-ever court.
-    default_court = Court(group_id=group.id, name=_DEFAULT_COURT_NAME)
+    default_court_name = await get_default_court_name(session)
+    default_court = Court(group_id=group.id, name=default_court_name)
     session.add(default_court)
 
     await session.commit()
@@ -982,29 +986,130 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
     # tied total_wins shares one rank number, and the next distinct value's
     # rank is its 1-based position, not "previous rank + 1".
     unranked.sort(key=lambda item: item[2], reverse=True)
+    ranks = _assign_standard_competition_ranks([item[2] for item in unranked])
 
-    members: list[MemberStandingRow] = []
-    previous_wins: int | None = None
-    previous_rank = 0
-    for position, (entry, row_rounds, total_wins, total_losses) in enumerate(unranked, start=1):
-        if total_wins != previous_wins:
-            previous_rank = position
-            previous_wins = total_wins
-        members.append(
-            MemberStandingRow(
-                roster_entry_id=str(entry.id),
-                nickname=entry.nickname,
-                current_status=entry.status,
-                rounds=row_rounds,
-                rank=previous_rank,
-                total_wins=total_wins,
-                total_losses=total_losses,
-            )
+    members: list[MemberStandingRow] = [
+        MemberStandingRow(
+            roster_entry_id=str(entry.id),
+            nickname=entry.nickname,
+            current_status=entry.status,
+            rounds=row_rounds,
+            rank=rank,
+            total_wins=total_wins,
+            total_losses=total_losses,
         )
+        for (entry, row_rounds, total_wins, total_losses), rank in zip(unranked, ranks, strict=True)
+    ]
 
     return GroupStandingsResponse(
         current_round_number=group.current_round_number, rounds=rounds, members=members
     )
+
+
+def _assign_standard_competition_ranks(total_wins_in_order: list[int]) -> list[int]:
+    """019-group-final-standings research.md #2: shared by
+    `build_group_standings()` (018) and `build_group_final_standings()`
+    (019) so standard competition ranking ("1224" — ties share a rank, the
+    next distinct value's rank is its 1-based position, not "previous rank +
+    1") is computed in exactly one place. `total_wins_in_order` MUST already
+    be sorted descending; the caller is responsible for the sort (and for
+    whatever secondary tiebreak ordering — e.g. `joined_at` — determines the
+    order among ties, since `sorted`/`list.sort` is stable)."""
+    ranks: list[int] = []
+    previous_wins: int | None = None
+    previous_rank = 0
+    for position, total_wins in enumerate(total_wins_in_order, start=1):
+        if total_wins != previous_wins:
+            previous_rank = position
+            previous_wins = total_wins
+        ranks.append(previous_rank)
+    return ranks
+
+
+async def build_group_final_standings(
+    session: AsyncSession, group_id: uuid.UUID, *, viewer_member_id: uuid.UUID
+) -> list[FinalStandingRow]:
+    """019-group-final-standings (FR-001~FR-012): 「我的團」歷史頁面的
+    最終團隊排名——涵蓋該團所有曾參與者（不限現役，含訪客），依
+    `member_id` 合併同一位會員的多筆歷史 `RosterEntry`（research.md #1）；
+    只計入「已完成」比賽的累計勝敗，不分輪次（FR-004）；依
+    `_assign_standard_competition_ranks()` 排序（research.md #2），次要
+    排序依（合併後最早的）`joined_at`。`viewer_member_id` 用於計算每組的
+    `is_self`（research.md #4）——伺服器端算好，回應本身不暴露任何原始
+    `member_id`（憲章原則 X）。"""
+    roster_result = await session.execute(
+        select(RosterEntry)
+        .where(RosterEntry.group_id == group_id)
+        .order_by(RosterEntry.joined_at)
+    )
+    roster_entries = list(roster_result.scalars())
+    if not roster_entries:
+        return []
+
+    # research.md #1: a member's multiple stints in this group (rejoin after
+    # leaving) collapse into one group; a guest (member_id IS NULL) has no
+    # stable cross-stint identity, so each guest RosterEntry stays its own
+    # singleton group.
+    member_groups: dict[uuid.UUID, list[RosterEntry]] = defaultdict(list)
+    grouped_entries: list[tuple[uuid.UUID | None, list[RosterEntry]]] = []
+    for entry in roster_entries:
+        if entry.member_id is not None:
+            member_groups[entry.member_id].append(entry)
+        else:
+            grouped_entries.append((None, [entry]))
+    grouped_entries.extend((member_id, entries) for member_id, entries in member_groups.items())
+
+    entry_ids = [entry.id for entry in roster_entries]
+    participants_result = await session.execute(
+        select(MatchParticipant, Match)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group_id,
+            Match.status == "completed",
+            MatchParticipant.roster_entry_id.in_(entry_ids),
+        )
+    )
+    tallies: dict[uuid.UUID, list[int]] = defaultdict(lambda: [0, 0])
+    for participant, match in participants_result.all():
+        bucket = tallies[participant.roster_entry_id]
+        bucket[0 if participant.team == match.winner_team else 1] += 1
+
+    unranked: list[tuple[RosterEntry, bool, datetime, int, int]] = []
+    for member_id, entries in grouped_entries:
+        representative = max(entries, key=lambda e: e.joined_at)
+        earliest_joined_at = min(e.joined_at for e in entries)
+        total_wins = 0
+        total_losses = 0
+        for entry in entries:
+            wins, losses = tallies.get(entry.id, [0, 0])
+            total_wins += wins
+            total_losses += losses
+        is_self = member_id is not None and member_id == viewer_member_id
+        unranked.append((representative, is_self, earliest_joined_at, total_wins, total_losses))
+
+    # Stable sort: first by (merged) joined_at ascending so ties keep the
+    # earlier joiner first, then by total_wins descending — same technique
+    # as build_group_standings (research.md #1/#2), relying on stability to
+    # do the tiebreak.
+    unranked.sort(key=lambda item: item[2])
+    unranked.sort(key=lambda item: item[3], reverse=True)
+    ranks = _assign_standard_competition_ranks([item[3] for item in unranked])
+
+    return [
+        FinalStandingRow(
+            roster_entry_id=str(representative.id),
+            nickname=representative.nickname,
+            current_status=representative.status,
+            is_self=is_self,
+            rank=rank,
+            total_matches=total_wins + total_losses,
+            total_wins=total_wins,
+            total_losses=total_losses,
+        )
+        for (representative, is_self, _joined_at, total_wins, total_losses), rank in zip(
+            unranked, ranks, strict=True
+        )
+    ]
 
 
 def _completed_matches_query() -> Select[tuple[Match]]:
@@ -1089,12 +1194,13 @@ async def build_group_match_records(
         select(func.count()).select_from(base_query.subquery())
     )
     total = count_result.scalar_one()
-    total_pages = max(1, (total + _MATCH_RECORDS_PAGE_SIZE - 1) // _MATCH_RECORDS_PAGE_SIZE)
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (total + page_size - 1) // page_size)
 
     matches_result = await session.execute(
         base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())
-        .offset((page - 1) * _MATCH_RECORDS_PAGE_SIZE)
-        .limit(_MATCH_RECORDS_PAGE_SIZE)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
     matches = list(matches_result.scalars())
 
