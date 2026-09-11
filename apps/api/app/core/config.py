@@ -37,6 +37,16 @@ class Settings(BaseSettings):
     member_access_token_ttl_minutes: int = 60
     member_refresh_token_ttl_days: int = 30
 
+    # Production's CloudFront distribution has custom error responses
+    # (403/404 -> /index.html, needed for Angular client-side routes that
+    # 403 straight from the S3 origin) configured distribution-wide, not
+    # scoped to a path pattern — so it also swallows the API's own
+    # legitimate 403/404 JSON error bodies. Off by default (local dev/tests
+    # never sit behind that CloudFront distribution); set to true via the
+    # ECS task definition's environment for the production API only. See
+    # app.core.errors.CloudFrontSafeStatusMiddleware.
+    remap_403_404_for_cloudfront: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

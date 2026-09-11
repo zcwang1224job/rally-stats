@@ -10,7 +10,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.core.config import get_settings
-from app.core.errors import register_exception_handlers
+from app.core.errors import CloudFrontSafeStatusMiddleware, register_exception_handlers
 from app.core.rate_limit import limiter
 from app.core.realtime_router import router as realtime_router
 from app.domains.court.router import router as court_router
@@ -32,8 +32,29 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     stop_scheduler()
 
 
+_BASE_DESCRIPTION = (
+    "Every error response has the shape `{\"error_code\": string, \"detail\": object}` "
+    "— `error_code` is authoritative; clients MUST branch on it, never on the raw "
+    "HTTP status code."
+)
+_CLOUDFRONT_REMAP_NOTE = (
+    "\n\n**This environment remaps 403/404 responses to 400** "
+    "(`REMAP_403_404_FOR_CLOUDFRONT=true`): production's CloudFront distribution "
+    "has a distribution-wide custom error response (403/404 → the SPA's "
+    "`/index.html`, needed so a direct browser hit on an Angular client-side route "
+    "doesn't 403 from the S3 origin) that would otherwise also swallow these two "
+    "status codes' real JSON bodies from this API. A route documented below as "
+    "returning 403 or 404 actually returns HTTP 400 here, with the same "
+    "`error_code` — see `CloudFrontSafeStatusMiddleware` (app/core/errors.py)."
+)
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Rally Stats API", lifespan=lifespan)
+    settings = get_settings()
+    description = _BASE_DESCRIPTION + (
+        _CLOUDFRONT_REMAP_NOTE if settings.remap_403_404_for_cloudfront else ""
+    )
+    app = FastAPI(title="Rally Stats API", description=description, lifespan=lifespan)
 
     app.state.limiter = limiter
     app.add_exception_handler(
@@ -44,7 +65,8 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
 
-    settings = get_settings()
+    if settings.remap_403_404_for_cloudfront:
+        app.add_middleware(CloudFrontSafeStatusMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
