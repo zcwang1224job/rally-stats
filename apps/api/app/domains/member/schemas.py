@@ -6,7 +6,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
-from app.domains.group.schemas import MatchRecordSummary, OpponentRecord, RoundWinRatePoint
+from app.domains.group.schemas import (
+    FinalStandingRow,
+    MatchRecordSummary,
+    OpponentRecord,
+    RoundWinRatePoint,
+)
 
 VerificationStatus = str  # "unverified" | "verified"
 
@@ -60,6 +65,13 @@ class MemberPublicResponse(BaseModel):
     nickname: str | None
     user_number: str
     verification_status: VerificationStatus
+    resend_verification_available_at: datetime | None
+    """020-resend-verification-email: `None` means the member can trigger
+    "重新寄送驗證信" right now (or the account is already verified —
+    the frontend already distinguishes that via `verification_status`,
+    so the two `None` cases never get confused); otherwise the timestamp
+    at which the cooldown ends, computed server-side
+    (`get_resend_verification_available_at()`, constitution X)."""
 
 
 class LoginResponse(BaseModel):
@@ -82,6 +94,10 @@ class VerifyEmailResponse(BaseModel):
 
 class ResendVerificationResponse(BaseModel):
     sent: bool
+    available_at: datetime
+    """020-resend-verification-email: cooldown end time for the *next*
+    resend, even when this call was the member's first-ever manual resend
+    (which always succeeds — research.md #5)."""
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -193,11 +209,18 @@ class MemberGroupHistoryResponse(BaseModel):
     group (reuses `build_member_match_records(group_id=...)`, FR-005),
     always unfiltered by that same nickname search — the two sections
     answer different questions ("what happened in this team" vs. "how have
-    I done"), so they deliberately don't share one filter."""
+    I done"), so they deliberately don't share one filter.
+
+    019-group-final-standings adds a third, equally independent section:
+    `final_standings` — the group's whole final team ranking (reuses
+    `build_group_final_standings()`), covering every ever-participant
+    (active/left/kicked, member or guest), also unaffected by the
+    `matches` nickname filter."""
 
     group_id: str
     group_name: str
     my_stats: MemberGroupStatsResponse
+    final_standings: list[FinalStandingRow]
     matches: list[MatchRecordSummary]
     page: int
     total_pages: int

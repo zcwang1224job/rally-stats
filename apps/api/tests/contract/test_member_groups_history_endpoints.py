@@ -89,6 +89,71 @@ async def test_group_history_endpoint_success_and_empty_state(
     assert body["matches"] == []
     assert body["my_stats"]["total_matches"] == 0
     assert body["my_stats"]["win_rate"] == 0.0
+    # 019-group-final-standings: `final_standings` is a third, independent
+    # section — the lone creator still appears with zero totals, is_self.
+    assert len(body["final_standings"]) == 1
+    creator_row = body["final_standings"][0]
+    assert creator_row["is_self"] is True
+    assert creator_row["current_status"] == "active"
+    assert creator_row["rank"] == 1
+    assert creator_row["total_matches"] == 0
+    assert creator_row["total_wins"] == 0
+    assert creator_row["total_losses"] == 0
+
+
+async def test_group_history_final_standings_shape_and_is_self(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """019-group-final-standings: `final_standings` reflects the whole
+    team's ranking, and `is_self` differentiates the caller from everyone
+    else — regression-safe, independent of the existing `my_stats`/
+    `matches` fields (per contracts/final-standings-api.md)."""
+    await _register_and_verify(db_session, "history-c-a7@example.com", "團長7")
+    await _register_and_verify(db_session, "history-c-b7@example.com", "團員7")
+    a_token = await _login(client, "history-c-a7@example.com")
+    b_token = await _login(client, "history-c-b7@example.com")
+    group = await _create_member_group(
+        client, a_token, valid_turnstile_token, "History Contract Group 7"
+    )
+    joined = await client.post(
+        f"/groups/{group['group_id']}/join",
+        headers={"Authorization": f"Bearer {b_token}"},
+        json={},
+    )
+    assert joined.status_code == 201
+
+    a_view = (
+        await client.get(
+            f"/members/me/groups/{group['group_id']}/history",
+            headers={"Authorization": f"Bearer {a_token}"},
+        )
+    ).json()
+    b_view = (
+        await client.get(
+            f"/members/me/groups/{group['group_id']}/history",
+            headers={"Authorization": f"Bearer {b_token}"},
+        )
+    ).json()
+
+    assert len(a_view["final_standings"]) == 2
+    a_self_rows = [row for row in a_view["final_standings"] if row["is_self"]]
+    assert len(a_self_rows) == 1
+    assert a_self_rows[0]["nickname"] == "團長7"
+
+    b_self_rows = [row for row in b_view["final_standings"] if row["is_self"]]
+    assert len(b_self_rows) == 1
+    assert b_self_rows[0]["nickname"] == "團員7"
+    # Same underlying data, viewed by two different members — everything
+    # except is_self MUST be identical.
+    a_by_id = {row["roster_entry_id"]: row for row in a_view["final_standings"]}
+    b_by_id = {row["roster_entry_id"]: row for row in b_view["final_standings"]}
+    assert a_by_id.keys() == b_by_id.keys()
+    for entry_id, a_row in a_by_id.items():
+        b_row = b_by_id[entry_id]
+        assert a_row["rank"] == b_row["rank"]
+        assert a_row["total_wins"] == b_row["total_wins"]
+        assert a_row["total_losses"] == b_row["total_losses"]
+        assert a_row["current_status"] == b_row["current_status"]
 
 
 async def test_group_history_rejects_member_who_was_never_in_the_group(

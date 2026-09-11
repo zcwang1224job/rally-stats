@@ -4,6 +4,7 @@
 // specs/014-member-groups-history/contracts/member-groups-history-api.md.
 
 import {
+  FinalStandingRow,
   MatchRecordSummary,
   OpponentRecord,
   RoundWinRatePoint,
@@ -91,11 +92,14 @@ export interface MemberGroupStatsResponse {
 /** `matches` is the group's own shared match history (every completed
  * match, any participant), optionally searched by nickname across either
  * team; `my_stats` is this member's personal performance in the group,
- * always unfiltered by that same search. */
+ * always unfiltered by that same search. `final_standings`
+ * (019-group-final-standings) is a third, equally independent section: the
+ * group's whole final team ranking, covering every ever-participant. */
 export interface MemberGroupHistoryResponse {
   group_id: string;
   group_name: string;
   my_stats: MemberGroupStatsResponse;
+  final_standings: FinalStandingRow[];
   matches: MatchRecordSummary[];
   page: number;
   total_pages: number;

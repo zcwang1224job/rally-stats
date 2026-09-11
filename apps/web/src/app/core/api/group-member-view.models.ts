@@ -38,6 +38,24 @@ export interface GroupStandingsResponse {
   members: MemberStandingRow[];
 }
 
+// 019-group-final-standings: the "我的團" history page's final team
+// ranking row — unlike MemberStandingRow (the live standings tab), this
+// covers every ever-participant (active/left/kicked, member or guest,
+// multiple stints of the same member merged into one row) and has no
+// per-round breakdown, only cumulative totals.
+export interface FinalStandingRow {
+  roster_entry_id: string;
+  nickname: string;
+  current_status: 'active' | 'left' | 'kicked';
+  // Computed server-side (research.md #4) — render directly, MUST NOT be
+  // re-derived by comparing IDs client-side (constitution X).
+  is_self: boolean;
+  rank: number;
+  total_matches: number;
+  total_wins: number;
+  total_losses: number;
+}
+
 export interface MatchRecordSummary {
   match_id: string;
   round_number: number;

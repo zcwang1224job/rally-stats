@@ -13,6 +13,62 @@
   margin: var(--space-lg) 0 var(--space-sm);
 }
 
+// ---- 最終團隊排名 (019-group-final-standings: whole-team final ranking,
+// every ever-participant) ----
+
+.final-standings {
+  margin-bottom: var(--space-lg);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.final-standings table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.final-standings th,
+.final-standings td {
+  padding: var(--space-sm);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.final-standings th {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
+}
+
+.final-standings .total-record {
+  font-weight: var(--font-weight-bold);
+}
+
+// FR-011：自己所在列 MUST 以圖示/文字（而非純顏色）與其他列區隔——
+// self-badge 文字本身已內建圖示前綴，背景色只是輔助（比照既有
+// group-member-view/standings 的既定慣例）。
+.final-standings tr.is-self {
+  background: color-mix(in srgb, var(--color-brand-primary) 8%, white);
+}
+
+.final-standings .self-badge {
+  margin-left: var(--space-xs);
+  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
+  border-color: color-mix(in srgb, var(--color-brand-primary) 30%, white);
+  color: var(--color-brand-primary);
+}
+
+// [FR-006] 已離開/已被踢除標籤——i18n 字串本身已內建圖示前綴（⏏／🚫），
+// 顏色只是輔助辨識，非唯一依據。
+.final-standings .status-badge {
+  margin-left: var(--space-xs);
+  color: var(--color-text-muted);
+}
+
 // ---- 我的戰績 (personal stats, always unfiltered) ----
 
 .hero-card {

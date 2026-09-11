@@ -10,6 +10,38 @@ import { GroupHistoryComponent } from './group-history.component';
 const historyResponse: MemberGroupHistoryResponse = {
   group_id: 'g1',
   group_name: '週三團',
+  final_standings: [
+    {
+      roster_entry_id: 'p1',
+      nickname: '小明',
+      current_status: 'active',
+      is_self: true,
+      rank: 1,
+      total_matches: 1,
+      total_wins: 1,
+      total_losses: 0,
+    },
+    {
+      roster_entry_id: 'p2',
+      nickname: '小華',
+      current_status: 'left',
+      is_self: false,
+      rank: 2,
+      total_matches: 1,
+      total_wins: 0,
+      total_losses: 1,
+    },
+    {
+      roster_entry_id: 'p5',
+      nickname: '小強',
+      current_status: 'kicked',
+      is_self: false,
+      rank: 3,
+      total_matches: 0,
+      total_wins: 0,
+      total_losses: 0,
+    },
+  ],
   my_stats: {
     total_matches: 1,
     total_wins: 1,
@@ -180,5 +212,68 @@ describe('GroupHistoryComponent', () => {
 
     expect(matchRecordDetailCalls.length).toBe(1);
     expect(matchRecordDetailCalls[0]).toEqual(['m1']);
+  });
+
+  // 019-group-final-standings (T015)
+  it('renders final_standings rows in the pre-sorted rank order from the server', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.final-standings tbody tr');
+    expect(rows.length).toBe(3);
+    expect(rows[0].textContent).toContain('小明');
+    expect(rows[1].textContent).toContain('小華');
+    expect(rows[2].textContent).toContain('小強');
+  });
+
+  it('marks only the is_self row with the self badge and highlight class', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.final-standings tbody tr');
+    expect(rows[0].classList.contains('is-self')).toBe(true);
+    expect(rows[0].textContent).toContain('groupMemberView.standings.selfBadge');
+    expect(rows[1].classList.contains('is-self')).toBe(false);
+    expect(rows[1].textContent).not.toContain('groupMemberView.standings.selfBadge');
+  });
+
+  it('shows left/kicked status labels for non-active rows only', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.final-standings tbody tr');
+    expect(rows[0].textContent).not.toContain('groupMemberView.standings.status.');
+    expect(rows[1].textContent).toContain('groupMemberView.standings.status.left');
+    expect(rows[2].textContent).toContain('groupMemberView.standings.status.kicked');
+  });
+
+  it('shows "尚無比賽紀錄" for a zero-match row instead of "0 勝 0 敗"', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.final-standings tbody tr');
+    expect(rows[2].textContent).toContain('groupMemberView.standings.noRecordYet');
+    expect(rows[0].textContent).toContain('groupMemberView.standings.recordLabel');
+  });
+
+  it('shows the whole-block empty message when every row has zero matches', () => {
+    const { fixture } = setup({
+      getMemberGroupHistory: () =>
+        of({
+          ...historyResponse,
+          final_standings: historyResponse.final_standings.map((row) => ({
+            ...row,
+            total_matches: 0,
+            total_wins: 0,
+            total_losses: 0,
+          })),
+        }),
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.final-standings tbody')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'member.matchHistory.finalStandings.empty',
+    );
   });
 });

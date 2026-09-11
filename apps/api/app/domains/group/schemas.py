@@ -387,6 +387,25 @@ class GroupStandingsResponse(BaseModel):
     members: list[MemberStandingRow]
 
 
+class FinalStandingRow(BaseModel):
+    """019-group-final-standings: "我的團" 歷史頁面的最終團隊排名列——與
+    `MemberStandingRow`（即時戰績頁）的差異：涵蓋該團所有曾參與者（不限
+    現役，含訪客），同一位會員的多筆歷史 `RosterEntry`（先退出後又重新
+    加入）合併為一列，且不含逐輪矩陣（只有累計總數）。"""
+
+    roster_entry_id: str
+    nickname: str
+    current_status: Literal["active", "left", "kicked"]
+    is_self: bool
+    """research.md #4: 是否為目前呼叫端點的會員自己——伺服器端依
+    `member_id` 比對算好，前端 MUST 直接渲染，MUST NOT 自行比對任何 ID
+    （憲章原則 X）。"""
+    rank: int
+    total_matches: int
+    total_wins: int
+    total_losses: int
+
+
 class MatchRecordSummary(BaseModel):
     match_id: str
     round_number: int

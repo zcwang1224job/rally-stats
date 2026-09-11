@@ -5,12 +5,36 @@
     <div class="member-identity">
       <span class="friend-row__avatar" aria-hidden="true">{{ (m.nickname || m.user_number).charAt(0) }}</span>
       <div>
-        <h1>{{ m.nickname }}</h1>
+        <h1>{{ m.nickname || m.user_number }}</h1>
         <p class="user-number">{{ 'auth.userNumber' | translate }}: {{ m.user_number }}</p>
       </div>
     </div>
     @if (m.verification_status === 'unverified') {
       <p role="status" class="status-badge">{{ 'member.unverifiedNotice' | translate }}</p>
+      <div class="resend-verification">
+        <button
+          type="button"
+          class="btn btn--secondary"
+          [class.resend-verification__button--cooling-down]="resendCoolingDown()"
+          [disabled]="resendSubmitting() || resendCoolingDown()"
+          (click)="resendVerification()"
+        >
+          {{ 'member.resendVerification.button' | translate }}
+        </button>
+        @if (resendCoolingDown()) {
+          <p role="status" class="resend-verification__cooldown">
+            {{ 'member.resendVerification.cooldown' | translate }}
+          </p>
+        }
+        @if (resendSent()) {
+          <p role="status" class="resend-verification__success">
+            {{ 'member.resendVerification.success' | translate }}
+          </p>
+        }
+        @if (resendErrorKey(); as key) {
+          <p role="alert" class="resend-verification__error">{{ key | translate }}</p>
+        }
+      </div>
     }
     <nav class="member-links">
       <a class="tap-target card menu-row" routerLink="/member/match-history">

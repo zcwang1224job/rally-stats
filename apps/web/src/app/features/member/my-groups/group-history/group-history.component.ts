@@ -6,6 +6,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../../core/api/api-error';
 import { MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
 import {
+  FinalStandingRow,
   MatchRecordDetailResponse,
   MatchRecordSummary,
 } from '../../../../core/api/group-member-view.models';
@@ -37,7 +38,13 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
  * is NOT scoped to the viewer's own games (corrected after user feedback:
  * an earlier revision incorrectly narrowed it to "my matches only").
  * Reachable even for a group the member has since left or been kicked
- * from (FR-006). */
+ * from (FR-006).
+ *
+ * 019-group-final-standings adds a third, equally independent section:
+ * "最終團隊排名" (`final_standings`) — the group's whole final ranking,
+ * covering every ever-participant (active/left/kicked, member or guest).
+ * `rank`/`is_self` arrive pre-computed server-side (research.md #2/#4) —
+ * this component only renders them, never re-derives them. */
 @Component({
   selector: 'app-group-history',
   imports: [TranslatePipe, ReactiveFormsModule, DatePipe, RouterLink, MatchRecordDetailDialogComponent],
@@ -135,6 +142,14 @@ export class GroupHistoryComponent {
     return { icon: '💪', labelKey: 'member.matchHistory.tier.building' };
   });
 
+  /** FR-008: the whole "最終團隊排名" block shows one overall empty-state
+   * message instead of a table full of redundant per-row "尚無比賽紀錄"
+   * text when the team as a whole has zero completed matches yet. */
+  readonly finalStandingsAllEmpty = computed(() => {
+    const rows = this.history()?.final_standings ?? [];
+    return rows.length === 0 || rows.every((row) => row.total_matches === 0);
+  });
+
   constructor() {
     this.load(this.page());
   }
@@ -164,6 +179,25 @@ export class GroupHistoryComponent {
 
   rankBadge(index: number): string {
     return RANK_MEDALS[index] ?? String(index + 1);
+  }
+
+  /** FR-007: a row with zero completed matches MUST read "尚無比賽紀錄",
+   * never "0 勝 0 敗" (which would look like a played-and-lost record). */
+  hasNoRecordYet(row: FinalStandingRow): boolean {
+    return row.total_matches === 0;
+  }
+
+  /** FR-006: left/kicked rows carry an extra status label; active rows
+   * carry none — reuses the existing 018 標籤 keys (`kicked` was added by
+   * 019 since the live standings tab never needed it, research.md #6). */
+  finalStandingStatusKey(row: FinalStandingRow): string | null {
+    if (row.current_status === 'left') {
+      return 'groupMemberView.standings.status.left';
+    }
+    if (row.current_status === 'kicked') {
+      return 'groupMemberView.standings.status.kicked';
+    }
+    return null;
   }
 
   /** The winning side's player names, joined. */

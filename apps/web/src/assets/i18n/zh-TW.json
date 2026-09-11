@@ -169,6 +169,11 @@
   },
   "member": {
     "unverifiedNotice": "請驗證你的信箱",
+    "resendVerification": {
+      "button": "重新寄送驗證信",
+      "success": "已重新寄出驗證信，請至信箱查看",
+      "cooldown": "⏳ 請稍後再試"
+    },
     "settingsLink": "個人設定",
     "friendsLink": "好友",
     "myGroupsLink": "我的團",
@@ -177,6 +182,10 @@
       "resultWinBadge": "勝",
       "resultLossBadge": "敗",
       "myStatsTitle": "我的戰績",
+      "finalStandingsTitle": "最終團隊排名",
+      "finalStandings": {
+        "empty": "尚無比賽紀錄"
+      },
       "groupRecordsTitle": "對戰紀錄",
       "filters": {
         "nickname": "球員暱稱",
@@ -447,7 +456,8 @@
       "recordLabel": "{{wins}} 勝 {{losses}} 敗",
       "status": {
         "did_not_play": "－ 未上場",
-        "left": "⏏ 已離開"
+        "left": "⏏ 已離開",
+        "kicked": "🚫 已被踢除"
       }
     },
     "matchRecords": {

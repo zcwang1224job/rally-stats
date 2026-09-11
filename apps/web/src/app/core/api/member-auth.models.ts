@@ -8,6 +8,11 @@ export interface MemberPublic {
   nickname: string | null;
   user_number: string;
   verification_status: VerificationStatus;
+  // 020-resend-verification-email: null means resend is available right
+  // now (or the account is already verified — verification_status already
+  // disambiguates that), computed server-side (constitution X) — MUST NOT
+  // be re-derived client-side.
+  resend_verification_available_at: string | null;
 }
 
 export interface RegisterRequest {
@@ -44,6 +49,9 @@ export interface VerifyEmailResponse {
 
 export interface ResendVerificationResponse {
   sent: boolean;
+  // Cooldown end time for the *next* resend — present even on a first-ever
+  // manual resend, which always succeeds regardless of cooldown.
+  available_at: string;
 }
 
 export interface ForgotPasswordResponse {

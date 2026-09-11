@@ -67,6 +67,36 @@ h1 {
   color: var(--color-text-muted);
 }
 
+// 020-resend-verification-email
+.resend-verification {
+  margin-top: var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+}
+
+.resend-verification__success {
+  color: var(--color-brand-accent);
+  font-size: var(--font-size-caption);
+}
+
+.resend-verification__error {
+  color: var(--color-danger);
+  font-size: var(--font-size-caption);
+}
+
+// FR-008/憲章原則 VII：冷卻中狀態的 i18n 字串本身已內建圖示前綴
+// （「⏳ 請稍後再試」），這裡的樣式只是輔助辨識，非唯一依據。
+.resend-verification__button--cooling-down {
+  opacity: 0.6;
+}
+
+.resend-verification__cooldown {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
 .logout-action {
   display: block;
   width: 100%;

@@ -39,13 +39,20 @@ from app.domains.member.schemas import (
 router = APIRouter(tags=["member"])
 
 
-def _to_public(member: Member) -> MemberPublicResponse:
+async def _to_public(session: AsyncSession, member: Member) -> MemberPublicResponse:
+    """020-resend-verification-email: needs `session` (unlike the pre-020
+    sync version) to compute `resend_verification_available_at` — verified
+    members short-circuit to `None` without a query inside
+    `get_resend_verification_available_at()`."""
     return MemberPublicResponse(
         member_id=str(member.id),
         email=member.email,
         nickname=member.nickname,
         user_number=member.user_number,
         verification_status=member.verification_status,
+        resend_verification_available_at=(
+            await service.get_resend_verification_available_at(session, member)
+        ),
     )
 
 
@@ -79,17 +86,25 @@ async def resend_verification(
     member: Annotated[Member, Depends(security.require_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ResendVerificationResponse:
-    """FR-011: requires login; 60s per-account cooldown. Errors:
+    """020-resend-verification-email (FR-004/FR-009): requires login;
+    5-minute per-account cooldown between manual resends — MUST NOT count
+    the verification email sent automatically at registration, so a
+    member's first-ever manual resend always succeeds regardless of how
+    recently they registered (research.md #5). Errors:
     `MEMBER_TOKEN_INVALID`, `ALREADY_VERIFIED`, `RESEND_RATE_LIMITED`."""
-    await service.resend_verification(session, member)
-    return ResendVerificationResponse(sent=True)
+    available_at = await service.resend_verification(session, member)
+    return ResendVerificationResponse(sent=True, available_at=available_at)
 
 
 @router.get("/members/me", response_model=MemberPublicResponse)
 async def get_me(
     member: Annotated[Member, Depends(security.require_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MemberPublicResponse:
-    return _to_public(member)
+    """020-resend-verification-email (FR-009): response includes
+    `resend_verification_available_at`, letting the member home page show
+    the correct "重新寄送驗證信" cooldown state even after a page reload."""
+    return await _to_public(session, member)
 
 
 @router.patch("/members/me/nickname", response_model=MemberPublicResponse)
@@ -98,9 +113,12 @@ async def set_nickname(
     member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MemberPublicResponse:
-    """Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`, `VALIDATION_ERROR`."""
+    """Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`, `VALIDATION_ERROR`.
+    `require_verified_member` means the caller is always verified here, so
+    `resend_verification_available_at` in the response is always `null`
+    (020-resend-verification-email)."""
     updated = await service.set_nickname(session, member, payload.nickname)
-    return _to_public(updated)
+    return await _to_public(session, updated)
 
 
 @router.patch("/members/me/password", response_model=ChangePasswordResponse)
@@ -126,13 +144,17 @@ async def login(
     payload: LoginRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> LoginResponse:
-    """FR-002a: per-IP rate limit, no account lockout. Errors:
-    `INVALID_CREDENTIALS`."""
+    """FR-002a: per-IP rate limit, no account lockout. `member` in the
+    response shares `MemberPublicResponse` with `GET /members/me`, so it
+    also carries `resend_verification_available_at`
+    (020-resend-verification-email FR-009). Errors: `INVALID_CREDENTIALS`."""
     member, access_token, refresh_token = await service.login(
         session, payload.email, payload.password
     )
     return LoginResponse(
-        access_token=access_token, refresh_token=refresh_token, member=_to_public(member)
+        access_token=access_token,
+        refresh_token=refresh_token,
+        member=await _to_public(session, member),
     )
 
 
@@ -214,6 +236,15 @@ async def get_member_group_history(
     `require_verified_member`) matches the sibling
     `/members/me/match-records` endpoint's existing looser tier, since
     email-verification status is unrelated to viewing match history.
+
+    019-group-final-standings (FR-001~FR-012) adds `final_standings`: the
+    group's whole final team ranking, covering every ever-participant
+    (active/left/kicked, member or guest, multi-stint members merged),
+    also unaffected by `nickname`. Access is the same `verify_ever_group_
+    member` check used for `matches`/`my_stats` above — unlike the live
+    `GET /groups/{group_id}/standings` tab, this endpoint does NOT require
+    the caller to currently hold an active roster entry (FR-010).
+
     Errors: `MEMBER_TOKEN_INVALID`, `GROUP_NOT_FOUND`,
     `GROUP_MEMBERSHIP_NEVER_HELD`."""
     return await service.get_member_group_history(

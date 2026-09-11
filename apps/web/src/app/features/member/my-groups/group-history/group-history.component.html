@@ -7,6 +7,53 @@
 @if (errorKey()) {
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (history(); as h) {
+  <h2 class="section-title">{{ 'member.matchHistory.finalStandingsTitle' | translate }}</h2>
+  <section class="card final-standings">
+    @if (finalStandingsAllEmpty()) {
+      <p class="chart-empty">{{ 'member.matchHistory.finalStandings.empty' | translate }}</p>
+    } @else {
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>{{ 'groupMemberView.standings.rankLabel' | translate }}</th>
+              <th>{{ 'groupMemberView.standings.nicknameLabel' | translate }}</th>
+              <th>{{ 'groupMemberView.standings.totalLabel' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of h.final_standings; track row.roster_entry_id) {
+              <tr [class.is-self]="row.is_self">
+                <td>{{ 'groupMemberView.standings.rankValue' | translate: { rank: row.rank } }}</td>
+                <td>
+                  {{ row.nickname }}
+                  @if (row.is_self) {
+                    <span class="status-badge self-badge">
+                      {{ 'groupMemberView.standings.selfBadge' | translate }}
+                    </span>
+                  }
+                  @if (finalStandingStatusKey(row); as statusKey) {
+                    <span class="status-badge">{{ statusKey | translate }}</span>
+                  }
+                </td>
+                <td class="total-record">
+                  @if (hasNoRecordYet(row)) {
+                    {{ 'groupMemberView.standings.noRecordYet' | translate }}
+                  } @else {
+                    {{
+                      'groupMemberView.standings.recordLabel'
+                        | translate: { wins: row.total_wins, losses: row.total_losses }
+                    }}
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+
   <h2 class="section-title">{{ 'member.matchHistory.myStatsTitle' | translate }}</h2>
   <section class="card hero-card">
     <div class="hero-card__ring-wrap">
