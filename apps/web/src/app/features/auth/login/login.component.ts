@@ -1,9 +1,10 @@
-import { Component, inject, signal } from '@angular/core';
+import { afterNextRender, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { AuthService } from '../auth.service';
+import { getRememberedLoginEmail, setRememberedLoginEmail } from '../remembered-login-email';
 
 /** Not part of any tasks.md-listed frontend task — login/refresh were
  * scoped as Foundational (shared infra with no dedicated FR/story of their
@@ -22,11 +23,22 @@ export class LoginComponent {
 
   readonly submitting = signal(false);
   readonly errorKey = signal<string | null>(null);
+  readonly showPassword = signal(false);
+
+  readonly passwordInput = viewChild<ElementRef<HTMLInputElement>>('passwordInput');
 
   readonly form = this.fb.nonNullable.group({
-    email: ['', [Validators.required, Validators.email]],
+    email: [getRememberedLoginEmail() ?? '', [Validators.required, Validators.email]],
     password: ['', Validators.required],
+    rememberEmail: [!!getRememberedLoginEmail()],
   });
+
+  constructor() {
+    // 記住的 Email 已經帶入時，游標直接跳到密碼欄，不用使用者自己點一次。
+    if (getRememberedLoginEmail()) {
+      afterNextRender(() => this.passwordInput()?.nativeElement.focus());
+    }
+  }
 
   submit(): void {
     if (this.form.invalid) {
@@ -41,6 +53,7 @@ export class LoginComponent {
     this.auth.login({ email: raw.email, password: raw.password }).subscribe({
       next: () => {
         this.submitting.set(false);
+        setRememberedLoginEmail(raw.rememberEmail ? raw.email : null);
         void this.router.navigate(['/member']);
       },
       error: (error: ApiError) => {

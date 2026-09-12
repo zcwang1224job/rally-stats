@@ -227,12 +227,41 @@ async def get_member_group_history(
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
     nickname: Annotated[str | None, Query(max_length=20)] = None,
+    round_from: Annotated[int | None, Query(ge=1)] = None,
+    round_to: Annotated[int | None, Query(ge=1)] = None,
+    group1_player1: Annotated[str | None, Query(max_length=20)] = None,
+    group1_player2: Annotated[str | None, Query(max_length=20)] = None,
+    group2_player1: Annotated[str | None, Query(max_length=20)] = None,
+    group2_player2: Annotated[str | None, Query(max_length=20)] = None,
+    score_a_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    score_a: Annotated[int | None, Query(ge=0)] = None,
+    score_b_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    score_b: Annotated[int | None, Query(ge=0)] = None,
 ) -> MemberGroupHistoryResponse:
     """`matches` is the group's own shared match history — every completed
-    match, regardless of who played in it, optionally searched by whether
-    any participant (either team) has a nickname containing `nickname`.
+    match, regardless of who played in it, optionally narrowed by whether
+    any participant (either team) has a nickname containing `nickname`,
+    and/or by `round_from`/`round_to` (round number) — same "does this
+    match involve/fall in this range at all" scope as `nickname`.
+
+    `group1_player1`/`group1_player2` and `group2_player1`/
+    `group2_player2` (advanced filters, third round) search for a "this
+    group of people vs. that group of people" matchup — NOT which literal
+    on-court team (A or B) anyone ended up on, which the viewer has no way
+    to know and no reason to care about. Filling both fields for one group
+    requires TWO DISTINCT players who were together on the SAME side to
+    match, one per field (same distinct-matching as `opponent1`/
+    `opponent2` on the sibling `/members/me/match-records` endpoint) —
+    but unlike that endpoint, either literal side (A or B) satisfies
+    "group1", so long as the other group is on the other side. Leaving one
+    group's fields empty degenerates to "these people were on the same
+    side together," unconstrained by who else was on the opposing side.
+    `score_a_cmp`+`score_a`/`score_b_cmp`+`score_b`, by contrast, DO stay
+    tied to each match's literal A/B sides — there is no "self"/
+    "opponent" concept for a plain numeric score comparison.
+
     `my_stats` is this member's own performance in the group, always
-    unfiltered by that search. `require_member` (not
+    unfiltered by any of the above. `require_member` (not
     `require_verified_member`) matches the sibling
     `/members/me/match-records` endpoint's existing looser tier, since
     email-verification status is unrelated to viewing match history.
@@ -240,15 +269,27 @@ async def get_member_group_history(
     019-group-final-standings (FR-001~FR-012) adds `final_standings`: the
     group's whole final team ranking, covering every ever-participant
     (active/left/kicked, member or guest, multi-stint members merged),
-    also unaffected by `nickname`. Access is the same `verify_ever_group_
-    member` check used for `matches`/`my_stats` above — unlike the live
-    `GET /groups/{group_id}/standings` tab, this endpoint does NOT require
-    the caller to currently hold an active roster entry (FR-010).
+    also unaffected by any filter above. Access is the same `verify_ever_
+    group_member` check used for `matches`/`my_stats` above — unlike the
+    live `GET /groups/{group_id}/standings` tab, this endpoint does NOT
+    require the caller to currently hold an active roster entry (FR-010).
 
     Errors: `MEMBER_TOKEN_INVALID`, `GROUP_NOT_FOUND`,
     `GROUP_MEMBERSHIP_NEVER_HELD`."""
     return await service.get_member_group_history(
-        session, member.id, group_id, page, nickname=nickname
+        session,
+        member.id,
+        group_id,
+        page,
+        nickname=nickname,
+        round_from=round_from,
+        round_to=round_to,
+        group1_names=[name for name in (group1_player1, group1_player2) if name],
+        group2_names=[name for name in (group2_player1, group2_player2) if name],
+        score_a_cmp=score_a_cmp,
+        score_a=score_a,
+        score_b_cmp=score_b_cmp,
+        score_b=score_b,
     )
 
 

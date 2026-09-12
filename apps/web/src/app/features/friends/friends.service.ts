@@ -6,6 +6,7 @@ import {
   FriendRequestResponse,
   ForgotAdminPinResponse,
   IncomingFriendRequestsResponse,
+  MemberGroupHistoryFilters,
   MemberGroupHistoryResponse,
   MyGroupsResponse,
   SearchMemberResponse,
@@ -94,11 +95,13 @@ export class FriendsService {
   getMemberGroupHistory(
     groupId: string,
     page = 1,
-    nickname?: string,
+    filters: MemberGroupHistoryFilters = {},
   ): Observable<MemberGroupHistoryResponse> {
     const params = new URLSearchParams({ page: String(page) });
-    if (nickname) {
-      params.set('nickname', nickname);
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') {
+        params.set(key, String(value));
+      }
     }
     return this.api.get<MemberGroupHistoryResponse>(
       `/members/me/groups/${groupId}/history?${params.toString()}`,

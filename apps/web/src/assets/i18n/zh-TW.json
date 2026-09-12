@@ -32,8 +32,17 @@
     "confirmPassword": "確認密碼",
     "passwordTooWeak": "密碼至少需 8 碼，且需包含英文字母與數字",
     "passwordMismatch": "兩次輸入的密碼不一致",
+    "emailRequired": "請輸入 Email",
+    "emailInvalid": "請輸入有效的 Email",
+    "passwordRequired": "請輸入密碼",
+    "showPassword": "顯示密碼",
+    "hidePassword": "隱藏密碼",
     "loginTitle": "會員登入",
     "loginSubmit": "登入",
+    "loggingIn": "登入中…",
+    "rememberEmail": "記住我的 Email",
+    "noAccountYet": "還沒有帳號？",
+    "registerLink": "註冊",
     "goToLogin": "前往登入",
     "verifying": "驗證中…",
     "verifiedTitle": "信箱驗證成功",
@@ -165,7 +174,18 @@
   },
   "memberGroupHistory": {
     "empty": "尚無比賽紀錄",
-    "backToMyGroups": "返回我的團"
+    "backToMyGroups": "返回我的團",
+    "filters": {
+      "group1Player1": "選手暱稱（甲方）1",
+      "group1Player2": "選手暱稱（甲方）2",
+      "group2Player1": "選手暱稱（乙方）1",
+      "group2Player2": "選手暱稱（乙方）2",
+      "teamAScore": "A隊比分",
+      "teamBScore": "B隊比分",
+      "playerChartTitle": "球員勝場分布（依目前篩選結果）",
+      "playerChartEmpty": "目前篩選條件下沒有比賽紀錄可統計",
+      "playerChartWinsLabel": "{{wins}} 勝"
+    }
   },
   "member": {
     "unverifiedNotice": "請驗證你的信箱",

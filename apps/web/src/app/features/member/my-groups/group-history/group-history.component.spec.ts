@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
-import { MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
+import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
 import { GroupHistoryComponent } from './group-history.component';
@@ -76,6 +76,12 @@ const historyResponse: MemberGroupHistoryResponse = {
   ],
   page: 1,
   total_pages: 1,
+  player_records: [
+    { nickname: '小明', wins: 1, losses: 0, matches: 1, win_rate: 1 },
+    { nickname: '小華', wins: 0, losses: 1, matches: 1, win_rate: 0 },
+    { nickname: '路人乙', wins: 1, losses: 0, matches: 1, win_rate: 1 },
+    { nickname: '路人甲', wins: 0, losses: 1, matches: 1, win_rate: 0 },
+  ],
 };
 
 function setup(
@@ -126,6 +132,45 @@ describe('GroupHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('100%'); // my_stats win-rate ring
   });
 
+  it('renders a pie-chart legend row for every player in player_records, with win count and win rate', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.player-pie-card__legend-row');
+    expect(rows.length).toBe(4);
+    const text = fixture.nativeElement.querySelector('.player-pie-card').textContent;
+    expect(text).toContain('小明');
+    expect(text).toContain('1');
+    expect(text).toContain('100%');
+    expect(text).toContain('小華');
+    expect(text).toContain('0%');
+  });
+
+  it('shows the pie-chart empty state when the filtered result has no matches', () => {
+    const { fixture } = setup({
+      getMemberGroupHistory: () =>
+        of({
+          ...historyResponse,
+          matches: [],
+          player_records: [],
+          my_stats: {
+            total_matches: 0,
+            total_wins: 0,
+            total_losses: 0,
+            win_rate: 0,
+            round_win_rates: [],
+            opponent_records: [],
+          },
+        }),
+    });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.playerPieSlices()).toEqual([]);
+    expect(fixture.nativeElement.querySelector('.player-pie-card').textContent).toContain(
+      'memberGroupHistory.filters.playerChartEmpty',
+    );
+  });
+
   it('renders the round-trend chart and opponent leaderboard from my_stats', () => {
     const { fixture } = setup();
     fixture.detectChanges();
@@ -143,6 +188,7 @@ describe('GroupHistoryComponent', () => {
         of({
           ...historyResponse,
           matches: [],
+          player_records: [],
           my_stats: {
             total_matches: 0,
             total_wins: 0,
@@ -180,11 +226,79 @@ describe('GroupHistoryComponent', () => {
     fixture.componentInstance.applyFilters();
 
     expect(calls.length).toBe(1);
-    const [, , nickname] = calls[0] as [string, number, string | undefined];
-    expect(nickname).toBe('小華');
+    const [, , filters] = calls[0] as [string, number, MemberGroupHistoryFilters];
+    expect(filters.nickname).toBe('小華');
   });
 
-  it('clearFilters resets the form and re-fetches with no nickname', () => {
+  it('submitting the advanced round-range filters re-fetches with them applied', () => {
+    const { fixture, calls } = setup();
+    fixture.detectChanges();
+    calls.length = 0;
+
+    fixture.componentInstance.filterForm.patchValue({ round_from: '2', round_to: '4' });
+    fixture.componentInstance.applyFilters();
+
+    expect(calls.length).toBe(1);
+    const [, , filters] = calls[0] as [string, number, MemberGroupHistoryFilters];
+    expect(filters.round_from).toBe(2);
+    expect(filters.round_to).toBe(4);
+  });
+
+  it('submitting the group1/group2 nickname filters re-fetches with up to two names per group', () => {
+    const { fixture, calls } = setup();
+    fixture.detectChanges();
+    calls.length = 0;
+
+    fixture.componentInstance.filterForm.patchValue({
+      group1_player1: 'Alice',
+      group1_player2: 'Bob',
+      group2_player1: 'Carol',
+    });
+    fixture.componentInstance.applyFilters();
+
+    expect(calls.length).toBe(1);
+    const [, , filters] = calls[0] as [string, number, MemberGroupHistoryFilters];
+    expect(filters.group1_player1).toBe('Alice');
+    expect(filters.group1_player2).toBe('Bob');
+    expect(filters.group2_player1).toBe('Carol');
+    expect(filters.group2_player2).toBeUndefined();
+  });
+
+  it('submitting the team A/B score comparisons re-fetches with them applied', () => {
+    const { fixture, calls } = setup();
+    fixture.detectChanges();
+    calls.length = 0;
+
+    fixture.componentInstance.filterForm.patchValue({
+      score_a_cmp: 'gt',
+      score_a: '20',
+      score_b_cmp: 'eq',
+      score_b: '15',
+    });
+    fixture.componentInstance.applyFilters();
+
+    expect(calls.length).toBe(1);
+    const [, , filters] = calls[0] as [string, number, MemberGroupHistoryFilters];
+    expect(filters.score_a_cmp).toBe('gt');
+    expect(filters.score_a).toBe(20);
+    expect(filters.score_b_cmp).toBe('eq');
+    expect(filters.score_b).toBe(15);
+  });
+
+  it('the "clear filters" button only appears once a filter has actually been applied', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.filters-actions .btn--secondary')).toBeNull();
+
+    fixture.componentInstance.filterForm.controls.nickname.setValue('小華');
+    fixture.componentInstance.applyFilters();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.filters-actions .btn--secondary')).not.toBeNull();
+  });
+
+  it('clearFilters resets the form and re-fetches with no filters, hiding the clear button again', () => {
     const { fixture, calls } = setup();
     fixture.detectChanges();
     fixture.componentInstance.filterForm.controls.nickname.setValue('小華');
@@ -192,10 +306,15 @@ describe('GroupHistoryComponent', () => {
     calls.length = 0;
 
     fixture.componentInstance.clearFilters();
+    fixture.detectChanges();
 
     expect(calls.length).toBe(1);
-    const [, , nickname] = calls[0] as [string, number, string | undefined];
-    expect(nickname).toBeUndefined();
+    const [, , filters] = calls[0] as [string, number, MemberGroupHistoryFilters];
+    expect(filters.nickname).toBeUndefined();
+    expect(filters.round_from).toBeUndefined();
+    expect(filters.group1_player1).toBeUndefined();
+    expect(filters.score_a_cmp).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.filters-actions .btn--secondary')).toBeNull();
   });
 
   // 016-match-score-timeline (regression guard for the I1 finding from

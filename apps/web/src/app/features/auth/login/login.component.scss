@@ -1,8 +1,9 @@
 :host {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
   padding: var(--space-md);
-  max-width: 420px;
-  margin: 0 auto;
 }
 
 h1 {
@@ -10,8 +11,87 @@ h1 {
   font-weight: var(--font-weight-bold);
 }
 
+.login-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0;
+}
+
+.checkbox-label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0;
+}
+
 .forgot-password-link {
-  align-self: center;
   font-size: var(--font-size-caption);
   color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+.password-field {
+  position: relative;
+
+  input {
+    width: 100%;
+    padding-right: calc(var(--touch-target-min) + var(--space-xs));
+  }
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      color: var(--color-text-primary);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
+
+.auth-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: var(--font-size-caption);
+  text-align: center;
+
+  a {
+    color: var(--color-brand-primary);
+    font-weight: var(--font-weight-bold);
+  }
+}
+
+.auth-links__register {
+  margin: 0;
+  color: var(--color-text-muted);
 }

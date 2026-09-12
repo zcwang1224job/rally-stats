@@ -4,7 +4,6 @@ Per specs/006-member-friends/plan.md."""
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
-from itertools import permutations
 from typing import Literal
 
 from sqlalchemy import func, select
@@ -23,7 +22,9 @@ from app.domains.group.schemas import (
     RoundWinRatePoint,
 )
 from app.domains.group.service import (
+    _compare,
     _completed_matches_query,
+    _matches_distinct_terms,
     build_group_final_standings,
     build_group_match_records,
     build_match_record_detail,
@@ -336,33 +337,6 @@ async def _build_member_match_record_summaries(
     return summaries
 
 
-def _matches_distinct_terms(terms: list[str] | None, candidates: list[str]) -> bool:
-    """True if every search term in `terms` can be matched (case-insensitive
-    substring) against a *distinct* nickname in `candidates` — doubles has
-    (at most) two opponents/partners, and two search terms filtering for
-    "against these two specific people" must not both be satisfied by the
-    same one person. With at most 2 terms and 2 candidates in practice,
-    brute-forcing every assignment is cheap."""
-    cleaned = [t.strip().lower() for t in (terms or []) if t and t.strip()]
-    if not cleaned:
-        return True
-    if len(cleaned) > len(candidates):
-        return False
-    lowered = [c.lower() for c in candidates]
-    return any(
-        all(term in candidate for term, candidate in zip(cleaned, combo, strict=True))
-        for combo in permutations(lowered, len(cleaned))
-    )
-
-
-def _compare(value: int, cmp: Literal["gt", "eq", "lt"], target: int) -> bool:
-    if cmp == "gt":
-        return value > target
-    if cmp == "eq":
-        return value == target
-    return value < target
-
-
 async def build_member_match_records(
     session: AsyncSession,
     member_id: uuid.UUID,
@@ -553,6 +527,14 @@ async def get_member_group_history(
     page: int = 1,
     *,
     nickname: str | None = None,
+    round_from: int | None = None,
+    round_to: int | None = None,
+    group1_names: list[str] | None = None,
+    group2_names: list[str] | None = None,
+    score_a_cmp: Literal["gt", "eq", "lt"] | None = None,
+    score_a: int | None = None,
+    score_b_cmp: Literal["gt", "eq", "lt"] | None = None,
+    score_b: int | None = None,
 ) -> MemberGroupHistoryResponse:
     """014-member-groups-history follow-up: `matches` is the group's own
     shared match history — EVERY completed match, regardless of who played
@@ -561,14 +543,36 @@ async def get_member_group_history(
     is this member's own performance in the group (reuses
     `build_member_match_records(group_id=...)` unfiltered, FR-005). The two
     intentionally use different queries: a group-wide match list has no
-    single "my team" to filter opponent/partner/score against, so the
-    nickname search here means "does this match involve this player at
-    all," not "was this player my opponent." Errors: `GROUP_NOT_FOUND`,
+    single "my team" — `group1_names`/`group2_names` search for a "this
+    group of people vs. that group of people" matchup regardless of which
+    literal on-court side (A or B) either group landed on (see
+    `build_group_match_records()`'s docstring), and `score_a_cmp`+
+    `score_a`/`score_b_cmp`+`score_b` compare each literal side's own
+    score. None of this is a "my team vs. opponent" perspective, so the
+    nickname search and all of these mean "does this match involve/look
+    like this at all," never "was this player my opponent."
+
+    All advanced filters above are passed straight through to
+    `build_group_match_records()` and never applied to `my_stats`, which
+    stays this member's full unfiltered history. Errors: `GROUP_NOT_FOUND`,
     `GROUP_MEMBERSHIP_NEVER_HELD`."""
     group = await get_group_by_id(session, group_id)
     await verify_ever_group_member(session, group_id, member_id)
 
-    match_records = await build_group_match_records(session, group_id, page, nickname=nickname)
+    match_records = await build_group_match_records(
+        session,
+        group_id,
+        page,
+        nickname=nickname,
+        round_from=round_from,
+        round_to=round_to,
+        group1_names=group1_names,
+        group2_names=group2_names,
+        score_a_cmp=score_a_cmp,
+        score_a=score_a,
+        score_b_cmp=score_b_cmp,
+        score_b=score_b,
+    )
     member_records = await build_member_match_records(session, member_id, group_id=group_id)
     final_standings = await build_group_final_standings(
         session, group_id, viewer_member_id=member_id
@@ -589,6 +593,7 @@ async def get_member_group_history(
         matches=match_records.matches,
         page=match_records.page,
         total_pages=match_records.total_pages,
+        player_records=match_records.player_records,
     )
 
 

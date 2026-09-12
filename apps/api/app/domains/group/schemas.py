@@ -424,10 +424,31 @@ class MatchRecordSummary(BaseModel):
     ended_at: datetime | None
 
 
+class OpponentRecord(BaseModel):
+    """One row of a "球員戰績排行" table — a distinct player's win/loss
+    tally, aggregated over whatever matches/filters are active. Despite
+    the name (its original use was the cross-group "對戰對象戰績排行"),
+    this is a generic per-player win/loss shape — `GroupMatchRecordsResponse
+    .player_records` below reuses it for "every player who appeared in the
+    (filtered) matches," not specifically "opponents of someone.\""""
+
+    nickname: str
+    wins: int
+    losses: int
+    matches: int
+    win_rate: float
+
+
 class GroupMatchRecordsResponse(BaseModel):
     matches: list[MatchRecordSummary]
     page: int
     total_pages: int
+    # group-history filters follow-up (pie-chart addition): every player
+    # who appeared in the FULL filtered result set (not just this page),
+    # each with their win/loss tally — mirrors `MemberMatchRecordsResponse
+    # .opponent_records`'s "aggregate over the whole filtered set, not the
+    # page" rule (build_group_match_records()'s docstring/research.md #8).
+    player_records: list[OpponentRecord] = []
 
 
 class MemberMatchRecordSummary(MatchRecordSummary):
@@ -457,18 +478,6 @@ class RoundWinRatePoint(BaseModel):
     round_number: int
     wins: int
     losses: int
-    win_rate: float
-
-
-class OpponentRecord(BaseModel):
-    """One row of the "對戰對象戰績排行" table — every distinct opponent
-    nickname the member has faced (doubles counts each of the two opposing
-    players separately), aggregated over whatever filters are active."""
-
-    nickname: str
-    wins: int
-    losses: int
-    matches: int
     win_rate: float
 
 

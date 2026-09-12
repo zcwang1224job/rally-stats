@@ -4,11 +4,13 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../../core/api/api-error';
-import { MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
+import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
 import {
   FinalStandingRow,
   MatchRecordDetailResponse,
+  MatchRecordScoreComparison,
   MatchRecordSummary,
+  OpponentRecord,
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
 import { AuthService } from '../../../auth/auth.service';
@@ -27,6 +29,29 @@ interface PerformanceTier {
 }
 
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+/** Categorical palette for the filtered-results player pie chart — cycles
+ * if there are more players than colors. The first three reuse the app's
+ * own brand tokens; the rest are plain fixed hex values since the design
+ * system has no wider categorical ramp defined (only the 3 brand/status
+ * colors + neutrals). */
+const PLAYER_CHART_COLORS = [
+  'var(--color-brand-primary)',
+  'var(--color-brand-accent)',
+  'var(--color-danger)',
+  '#8b5cf6',
+  '#0ea5e9',
+  '#f59e0b',
+  '#ec4899',
+  '#14b8a6',
+];
+
+interface PlayerPieSlice {
+  record: OpponentRecord;
+  color: string;
+  start: number;
+  end: number;
+}
 
 /** 014-member-groups-history follow-up: two independent sections on one
  * page. "我的戰績" (`my_stats`) is this member's own performance in the
@@ -75,9 +100,22 @@ export class GroupHistoryComponent {
 
   readonly filterForm = this.fb.nonNullable.group({
     nickname: [''],
+    round_from: [''],
+    round_to: [''],
+    group1_player1: [''],
+    group1_player2: [''],
+    group2_player1: [''],
+    group2_player2: [''],
+    score_a_cmp: [''],
+    score_a: [''],
+    score_b_cmp: [''],
+    score_b: [''],
   });
 
-  readonly hasActiveFilters = computed(() => this.filterForm.controls.nickname.value !== '');
+  private readonly appliedFilters = signal<MemberGroupHistoryFilters>({});
+  readonly hasActiveFilters = computed(() =>
+    Object.values(this.appliedFilters()).some((value) => value !== undefined),
+  );
 
   /** Win/loss donut's CSS conic-gradient stops — same convention as the
    * cross-group match-history page. Always reflects `my_stats` (personal,
@@ -150,6 +188,36 @@ export class GroupHistoryComponent {
     return rows.length === 0 || rows.every((row) => row.total_matches === 0);
   });
 
+  /** Pie chart below the filters panel: each player who appeared anywhere
+   * in the FULL filtered `matches` result set (`player_records` — already
+   * computed server-side over that full set, not just the current page,
+   * per `build_group_match_records()`'s docstring), sliced by share of
+   * total wins. A player with zero wins still appears in the legend (via
+   * `history()!.player_records` directly) but contributes a zero-width
+   * slice — there's nothing to draw for "won nothing." */
+  readonly playerPieSlices = computed<PlayerPieSlice[]>(() => {
+    const records = this.history()?.player_records ?? [];
+    const totalWins = records.reduce((sum, record) => sum + record.wins, 0);
+    if (totalWins === 0) {
+      return [];
+    }
+    let cursor = 0;
+    return records.map((record, index) => {
+      const start = cursor;
+      const end = start + (record.wins / totalWins) * 100;
+      cursor = end;
+      return { record, color: PLAYER_CHART_COLORS[index % PLAYER_CHART_COLORS.length], start, end };
+    });
+  });
+
+  readonly playerPieGradient = computed(() => {
+    const slices = this.playerPieSlices();
+    if (slices.length === 0) {
+      return 'conic-gradient(var(--color-border) 0 100%)';
+    }
+    return `conic-gradient(${slices.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(', ')})`;
+  });
+
   constructor() {
     this.load(this.page());
   }
@@ -160,7 +228,19 @@ export class GroupHistoryComponent {
   }
 
   clearFilters(): void {
-    this.filterForm.reset({ nickname: '' });
+    this.filterForm.reset({
+      nickname: '',
+      round_from: '',
+      round_to: '',
+      group1_player1: '',
+      group1_player2: '',
+      group2_player1: '',
+      group2_player2: '',
+      score_a_cmp: '',
+      score_a: '',
+      score_b_cmp: '',
+      score_b: '',
+    });
     this.applyFilters();
   }
 
@@ -170,8 +250,22 @@ export class GroupHistoryComponent {
   }
 
   private load(page: number): void {
-    const nickname = this.filterForm.controls.nickname.value || undefined;
-    this.friends.getMemberGroupHistory(this.groupId, page, nickname).subscribe({
+    const raw = this.filterForm.getRawValue();
+    const filters: MemberGroupHistoryFilters = {
+      nickname: raw.nickname || undefined,
+      round_from: raw.round_from ? Number(raw.round_from) : undefined,
+      round_to: raw.round_to ? Number(raw.round_to) : undefined,
+      group1_player1: raw.group1_player1 || undefined,
+      group1_player2: raw.group1_player2 || undefined,
+      group2_player1: raw.group2_player1 || undefined,
+      group2_player2: raw.group2_player2 || undefined,
+      score_a_cmp: (raw.score_a_cmp || undefined) as MatchRecordScoreComparison | undefined,
+      score_a: raw.score_a ? Number(raw.score_a) : undefined,
+      score_b_cmp: (raw.score_b_cmp || undefined) as MatchRecordScoreComparison | undefined,
+      score_b: raw.score_b ? Number(raw.score_b) : undefined,
+    };
+    this.appliedFilters.set(filters);
+    this.friends.getMemberGroupHistory(this.groupId, page, filters).subscribe({
       next: (response) => this.history.set(response),
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });

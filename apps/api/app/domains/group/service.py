@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, time, timedelta
+from itertools import permutations
 from typing import Literal
 
 from sqlalchemy import Select, func, select, update
@@ -31,6 +32,7 @@ from app.domains.group.schemas import (
     MatchRecordDetailResponse,
     MatchRecordSummary,
     MemberStandingRow,
+    OpponentRecord,
     RoundRecord,
     ScoreEventSummary,
 )
@@ -1120,6 +1122,38 @@ def _completed_matches_query() -> Select[tuple[Match]]:
     return select(Match).where(Match.status == "completed")
 
 
+def _matches_distinct_terms(terms: list[str] | None, candidates: list[str]) -> bool:
+    """True if every search term in `terms` can be matched (case-insensitive
+    substring) against a *distinct* nickname in `candidates` — doubles has
+    (at most) two opponents/partners/team-A/team-B players, and two search
+    terms filtering for "against/on these two specific people" must not
+    both be satisfied by the same one person. With at most 2 terms and 2
+    candidates in practice, brute-forcing every assignment is cheap.
+
+    Lives here (not in `member/service.py`, its original owner) because
+    `build_group_match_records()` below now needs it too, and
+    `member/service.py` already imports from this module — the reverse
+    would be circular."""
+    cleaned = [t.strip().lower() for t in (terms or []) if t and t.strip()]
+    if not cleaned:
+        return True
+    if len(cleaned) > len(candidates):
+        return False
+    lowered = [c.lower() for c in candidates]
+    return any(
+        all(term in candidate for term, candidate in zip(cleaned, combo, strict=True))
+        for combo in permutations(lowered, len(cleaned))
+    )
+
+
+def _compare(value: int, cmp: Literal["gt", "eq", "lt"], target: int) -> bool:
+    if cmp == "gt":
+        return value > target
+    if cmp == "eq":
+        return value == target
+    return value < target
+
+
 async def _build_match_record_summaries(
     session: AsyncSession, matches: list[Match]
 ) -> list[MatchRecordSummary]:
@@ -1163,7 +1197,19 @@ async def _build_match_record_summaries(
 
 
 async def build_group_match_records(
-    session: AsyncSession, group_id: uuid.UUID, page: int = 1, *, nickname: str | None = None
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    page: int = 1,
+    *,
+    nickname: str | None = None,
+    round_from: int | None = None,
+    round_to: int | None = None,
+    group1_names: list[str] | None = None,
+    group2_names: list[str] | None = None,
+    score_a_cmp: Literal["gt", "eq", "lt"] | None = None,
+    score_a: int | None = None,
+    score_b_cmp: Literal["gt", "eq", "lt"] | None = None,
+    score_b: int | None = None,
 ) -> GroupMatchRecordsResponse:
     """005-member-view US3 (FR-011/012): 本團已完成比賽列表，僅限本團範圍，
     依比賽結束時間（`ended_at`）由新到舊排序（時間降冪；`round_number`
@@ -1176,7 +1222,41 @@ async def build_group_match_records(
     unchanged. When given, narrows to matches where ANY participant on
     EITHER team has a nickname containing it (case-insensitive substring)
     — a generic "who's in this match" search across the whole group's
-    shared history, not scoped to any one viewer's own games."""
+    shared history, not scoped to any one viewer's own games.
+
+    `round_from`/`round_to` (group-history advanced filters follow-up):
+    keyword-only, filter on `round_number` directly in SQL alongside
+    `nickname` above.
+
+    `group1_names`/`group2_names` (group-history advanced filters, third
+    round): each takes up to 2 nicknames and searches for a "this group of
+    people vs. that group of people" matchup — NOT which literal on-court
+    team (A or B) anyone landed on, which is an implementation detail the
+    viewer has no reason to know or care about. A match qualifies if
+    `group1_names` fits (as DISTINCT players, `_matches_distinct_terms()`)
+    on team A and `group2_names` fits on team B, OR the reverse (`group1_
+    names` on B, `group2_names` on A) — checking both orderings is what
+    makes "who ended up on A vs B" not matter. Leaving one group empty
+    degenerates to "these people were on the same side together" (an empty
+    group trivially fits either team, so only the filled-in group's side
+    constrains anything).
+
+    `score_a_cmp`+`score_a`/`score_b_cmp`+`score_b`: these two, unlike the
+    above, DO stay tied to the literal A/B sides — there is no "self"/
+    "opponent" here unlike the per-viewer `build_member_match_records()`
+    below, since this compares each side's own numeric score directly, not
+    a person.
+
+    None of `group1_names`/`group2_names`/the score filters can be pushed
+    into SQL the way `nickname`/`round_from`/`round_to` can, so — same
+    approach as `build_member_match_records()` — every SQL-prefiltered
+    match is loaded into Python, filtered there, and only then paginated.
+
+    The response's `player_records` (pie-chart addition) is likewise
+    computed over the FULL filtered set (`filtered`, before the `[start:
+    end]` page slice below) — every player who appeared anywhere in it,
+    with a win/loss tally — so the chart reflects "everyone in the current
+    filtered result," not just whoever's on the current page."""
     base_query = _completed_matches_query().where(Match.group_id == group_id)
     if nickname:
         participant_nickname_exists = (
@@ -1189,23 +1269,76 @@ async def build_group_match_records(
             .exists()
         )
         base_query = base_query.where(participant_nickname_exists)
+    if round_from is not None:
+        base_query = base_query.where(Match.round_number >= round_from)
+    if round_to is not None:
+        base_query = base_query.where(Match.round_number <= round_to)
 
-    count_result = await session.execute(
-        select(func.count()).select_from(base_query.subquery())
+    all_matches_result = await session.execute(
+        base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())
     )
-    total = count_result.scalar_one()
+    all_matches = list(all_matches_result.scalars())
+
+    summaries = await _build_match_record_summaries(session, all_matches)
+
+    filtered: list[MatchRecordSummary] = []
+    for match, summary in zip(all_matches, summaries, strict=True):
+        team_a_nicknames = [p.nickname for p in summary.team_a]
+        team_b_nicknames = [p.nickname for p in summary.team_b]
+        matchup_ok = (
+            _matches_distinct_terms(group1_names, team_a_nicknames)
+            and _matches_distinct_terms(group2_names, team_b_nicknames)
+        ) or (
+            _matches_distinct_terms(group1_names, team_b_nicknames)
+            and _matches_distinct_terms(group2_names, team_a_nicknames)
+        )
+        if not matchup_ok:
+            continue
+        if score_a_cmp is not None and score_a is not None and not _compare(
+            match.score_a, score_a_cmp, score_a
+        ):
+            continue
+        if score_b_cmp is not None and score_b is not None and not _compare(
+            match.score_b, score_b_cmp, score_b
+        ):
+            continue
+        filtered.append(summary)
+
+    total = len(filtered)
     page_size = await get_default_page_size(session)
     total_pages = max(1, (total + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    end = start + page_size
 
-    matches_result = await session.execute(
-        base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+    player_tallies: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for summary in filtered:
+        winners = summary.team_a if summary.winner_team == "A" else summary.team_b
+        losers = summary.team_b if summary.winner_team == "A" else summary.team_a
+        for participant in winners:
+            player_tallies[participant.nickname][0] += 1
+        for participant in losers:
+            player_tallies[participant.nickname][1] += 1
+    player_records = sorted(
+        (
+            OpponentRecord(
+                nickname=nickname,
+                wins=wins,
+                losses=losses,
+                matches=wins + losses,
+                win_rate=(wins / (wins + losses)) if (wins + losses) else 0.0,
+            )
+            for nickname, (wins, losses) in player_tallies.items()
+        ),
+        key=lambda record: record.matches,
+        reverse=True,
     )
-    matches = list(matches_result.scalars())
 
-    summaries = await _build_match_record_summaries(session, matches)
-    return GroupMatchRecordsResponse(matches=summaries, page=page, total_pages=total_pages)
+    return GroupMatchRecordsResponse(
+        matches=filtered[start:end],
+        page=page,
+        total_pages=total_pages,
+        player_records=player_records,
+    )
 
 
 async def get_completed_match_or_404(session: AsyncSession, match_id: uuid.UUID) -> Match:

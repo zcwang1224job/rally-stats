@@ -180,6 +180,65 @@ async def test_join_play_leave_still_views_history_stranger_rejected(
     assert stranger_attempt.json()["error_code"] == "GROUP_MEMBERSHIP_NEVER_HELD"
 
 
+async def test_group_history_round_range_advanced_filter(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """Advanced-filters follow-up: `round_from`/`round_to` on
+    `GET /members/me/groups/{group_id}/history` narrow `matches` down to
+    that round range end-to-end, unaffected by `my_stats` (which stays the
+    caller's full unfiltered history, per the same endpoint's docstring)."""
+    a_token = await _register_verified_and_login(
+        client, db_session, "history-flow-round1@example.com", "團長", valid_turnstile_token
+    )
+    a_headers = {"Authorization": f"Bearer {a_token}"}
+    group_response = await client.post(
+        "/groups",
+        headers=a_headers,
+        json={
+            "name": "History Flow Round Filter",
+            "max_members": 6,
+            "match_mode": "singles",
+            "scheduling_mechanism": "manual",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+    group_id = group_response.json()["group_id"]
+    a_roster_entry_id = await _roster_entry_id(db_session, group_id, "團長")
+    b_id = await _register_verified_and_login(
+        client, db_session, "history-flow-round2@example.com", "團員", valid_turnstile_token
+    )
+    join_response = await client.post(
+        f"/groups/{group_id}/join", headers={"Authorization": f"Bearer {b_id}"}, json={}
+    )
+    b_roster_entry_id = join_response.json()["roster_entry_id"]
+
+    for round_number in (1, 2, 3):
+        await _make_completed_match(
+            db_session,
+            group_id,
+            winner_team="A",
+            team_a=[a_roster_entry_id],
+            team_b=[b_roster_entry_id],
+            round_number=round_number,
+        )
+
+    unfiltered = (
+        await client.get(f"/members/me/groups/{group_id}/history", headers=a_headers)
+    ).json()
+    assert len(unfiltered["matches"]) == 3
+    assert unfiltered["my_stats"]["total_matches"] == 3
+
+    filtered = (
+        await client.get(
+            f"/members/me/groups/{group_id}/history?round_from=2&round_to=2",
+            headers=a_headers,
+        )
+    ).json()
+    assert [m["round_number"] for m in filtered["matches"]] == [2]
+    # my_stats stays the full, unfiltered history — only `matches` narrows.
+    assert filtered["my_stats"]["total_matches"] == 3
+
+
 async def test_forgot_admin_pin_unaffected_by_expanded_my_groups_list(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
 ) -> None:

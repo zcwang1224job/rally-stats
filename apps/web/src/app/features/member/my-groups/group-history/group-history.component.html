@@ -154,6 +154,61 @@
           />
         </label>
       </div>
+
+      <details class="advanced-filters">
+        <summary>{{ 'member.matchHistory.filters.moreFilters' | translate }}</summary>
+        <div class="filters-grid">
+          <label>
+            {{ 'member.matchHistory.filters.roundFrom' | translate }}
+            <input type="number" min="1" formControlName="round_from" />
+          </label>
+          <label>
+            {{ 'member.matchHistory.filters.roundTo' | translate }}
+            <input type="number" min="1" formControlName="round_to" />
+          </label>
+          <label>
+            {{ 'memberGroupHistory.filters.group1Player1' | translate }}
+            <input type="text" formControlName="group1_player1" />
+          </label>
+          <label>
+            {{ 'memberGroupHistory.filters.group1Player2' | translate }}
+            <input type="text" formControlName="group1_player2" />
+          </label>
+          <label>
+            {{ 'memberGroupHistory.filters.group2Player1' | translate }}
+            <input type="text" formControlName="group2_player1" />
+          </label>
+          <label>
+            {{ 'memberGroupHistory.filters.group2Player2' | translate }}
+            <input type="text" formControlName="group2_player2" />
+          </label>
+          <label>
+            {{ 'memberGroupHistory.filters.teamAScore' | translate }}
+            <div class="score-filter-row">
+              <select formControlName="score_a_cmp">
+                <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+                <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+                <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+                <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+              </select>
+              <input type="number" min="0" formControlName="score_a" />
+            </div>
+          </label>
+          <label>
+            {{ 'memberGroupHistory.filters.teamBScore' | translate }}
+            <div class="score-filter-row">
+              <select formControlName="score_b_cmp">
+                <option value="">{{ 'member.matchHistory.filters.scoreCmpAny' | translate }}</option>
+                <option value="gt">{{ 'member.matchHistory.filters.scoreCmpGt' | translate }}</option>
+                <option value="eq">{{ 'member.matchHistory.filters.scoreCmpEq' | translate }}</option>
+                <option value="lt">{{ 'member.matchHistory.filters.scoreCmpLt' | translate }}</option>
+              </select>
+              <input type="number" min="0" formControlName="score_b" />
+            </div>
+          </label>
+        </div>
+      </details>
+
       <div class="filters-actions">
         <button type="submit" class="btn">
           {{ 'member.matchHistory.filters.apply' | translate }}
@@ -165,6 +220,31 @@
         }
       </div>
     </form>
+  </section>
+
+  <section class="card player-pie-card">
+    <h3>{{ 'memberGroupHistory.filters.playerChartTitle' | translate }}</h3>
+    @if (playerPieSlices().length === 0) {
+      <p class="chart-empty">{{ 'memberGroupHistory.filters.playerChartEmpty' | translate }}</p>
+    } @else {
+      <div class="player-pie-card__body">
+        <div class="player-pie-card__chart-wrap">
+          <div class="pie-chart" [style.background]="playerPieGradient()"></div>
+        </div>
+        <ul class="player-pie-card__legend">
+          @for (slice of playerPieSlices(); track slice.record.nickname) {
+            <li class="player-pie-card__legend-row">
+              <span class="player-pie-card__swatch" [style.background]="slice.color"></span>
+              <span class="player-pie-card__legend-name">{{ slice.record.nickname }}</span>
+              <span class="player-pie-card__legend-stats">
+                {{ 'memberGroupHistory.filters.playerChartWinsLabel' | translate: { wins: slice.record.wins } }}
+                ・{{ (slice.record.win_rate * 100).toFixed(0) }}%
+              </span>
+            </li>
+          }
+        </ul>
+      </div>
+    }
   </section>
 
   @if (h.matches.length === 0) {

@@ -215,7 +215,14 @@ class MemberGroupHistoryResponse(BaseModel):
     `final_standings` — the group's whole final team ranking (reuses
     `build_group_final_standings()`), covering every ever-participant
     (active/left/kicked, member or guest), also unaffected by the
-    `matches` nickname filter."""
+    `matches` nickname filter.
+
+    Advanced-filters follow-up (pie-chart addition): `player_records` is
+    every player who appeared anywhere in the FULL filtered `matches`
+    result set (not just this page), each with a win/loss tally over that
+    filtered set — reuses `build_group_match_records()`'s own
+    `player_records`, so it moves with `matches`' filters exactly, never
+    with `my_stats`/`final_standings`."""
 
     group_id: str
     group_name: str
@@ -224,6 +231,7 @@ class MemberGroupHistoryResponse(BaseModel):
     matches: list[MatchRecordSummary]
     page: int
     total_pages: int
+    player_records: list[OpponentRecord] = []
 
 
 FriendshipStatus = str  # "none" | "pending_outgoing" | "pending_incoming" | "friends"

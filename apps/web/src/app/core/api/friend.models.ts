@@ -5,6 +5,7 @@
 
 import {
   FinalStandingRow,
+  MatchRecordScoreComparison,
   MatchRecordSummary,
   OpponentRecord,
   RoundWinRatePoint,
@@ -94,7 +95,10 @@ export interface MemberGroupStatsResponse {
  * team; `my_stats` is this member's personal performance in the group,
  * always unfiltered by that same search. `final_standings`
  * (019-group-final-standings) is a third, equally independent section: the
- * group's whole final team ranking, covering every ever-participant. */
+ * group's whole final team ranking, covering every ever-participant.
+ * `player_records` (pie-chart addition) moves with `matches`' filters —
+ * every player who appeared anywhere in the FULL filtered result set (not
+ * just the current page), each with a win/loss tally over that set. */
 export interface MemberGroupHistoryResponse {
   group_id: string;
   group_name: string;
@@ -103,4 +107,32 @@ export interface MemberGroupHistoryResponse {
   matches: MatchRecordSummary[];
   page: number;
   total_pages: number;
+  player_records: OpponentRecord[];
+}
+
+/** Advanced filters for `MemberGroupHistoryResponse.matches`. `nickname`
+ * matches any participant on either team. `group1_player1`/
+ * `group1_player2` and `group2_player1`/`group2_player2` search for a
+ * "this group of people vs. that group of people" matchup — NOT which
+ * literal on-court team (A or B) either group happened to land on, which
+ * the viewer can't see and shouldn't need to guess; filling both fields
+ * for one group requires two DISTINCT players who were on the SAME side
+ * together, one per field. `score_a_cmp`+`score_a`/`score_b_cmp`+
+ * `score_b`, by contrast, DO stay tied to each match's literal A/B
+ * sides — there's no "self"/"opponent" for a plain score comparison,
+ * unlike `MemberMatchRecordFilters` (this list has no single "my team").
+ * None of this narrows `my_stats`, which always stays this member's full
+ * history. */
+export interface MemberGroupHistoryFilters {
+  nickname?: string;
+  round_from?: number;
+  round_to?: number;
+  group1_player1?: string;
+  group1_player2?: string;
+  group2_player1?: string;
+  group2_player2?: string;
+  score_a_cmp?: MatchRecordScoreComparison;
+  score_a?: number;
+  score_b_cmp?: MatchRecordScoreComparison;
+  score_b?: number;
 }
