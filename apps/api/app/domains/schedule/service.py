@@ -651,6 +651,52 @@ async def _lock_group_for_round_generation(session: AsyncSession, group_id: uuid
         raise ApiError("ROUND_GENERATION_IN_PROGRESS", status_code=409) from exc
 
 
+async def _last_match_lineup_for_round(
+    session: AsyncSession, group_id: uuid.UUID, round_number: int
+) -> frozenset[uuid.UUID] | None:
+    """The full participant set (both teams) of the last-called match in the
+    given round, keyed off the same `created_at` ordering
+    `_shuffle_round_match_order` controls — or None if that round has no
+    matches (e.g. round_number < 1, or nothing generated yet). Lets a new
+    round's shuffle avoid reseating the previous round's closing lineup into
+    its own first slot."""
+    if round_number < 1:
+        return None
+
+    last_match_result = await session.execute(
+        select(Match.id)
+        .where(Match.group_id == group_id, Match.round_number == round_number)
+        .order_by(Match.created_at.desc())
+        .limit(1)
+    )
+    last_match_id = last_match_result.scalar_one_or_none()
+    if last_match_id is None:
+        return None
+
+    participants_result = await session.execute(
+        select(MatchParticipant.roster_entry_id).where(
+            MatchParticipant.match_id == last_match_id
+        )
+    )
+    return frozenset(participants_result.scalars())
+
+
+async def _fetch_match_lineups(
+    session: AsyncSession, match_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, frozenset[uuid.UUID]]:
+    """match_id -> its full participant set (both teams combined) — only
+    used for whole-lineup repeat comparisons, not team-side-aware logic."""
+    result = await session.execute(
+        select(MatchParticipant.match_id, MatchParticipant.roster_entry_id).where(
+            MatchParticipant.match_id.in_(match_ids)
+        )
+    )
+    lineups: dict[uuid.UUID, set[uuid.UUID]] = {match_id: set() for match_id in match_ids}
+    for match_id, roster_entry_id in result.all():
+        lineups[match_id].add(roster_entry_id)
+    return {match_id: frozenset(ids) for match_id, ids in lineups.items()}
+
+
 async def _shuffle_round_match_order(
     session: AsyncSession, group_id: uuid.UUID, round_number: int
 ) -> None:
@@ -661,7 +707,13 @@ async def _shuffle_round_match_order(
     `build_round_matches_list` both `order_by(Match.created_at)` (this
     file), and `created_at` is otherwise unused — never serialized to any
     schema — so overwriting it with a freshly shuffled sequence is the
-    cheapest way to randomize both without a dedicated ordering column."""
+    cheapest way to randomize both without a dedicated ordering column.
+
+    Also avoids landing the exact same 2/4-player lineup that closed out the
+    previous round into this round's opening slot: if the shuffle happens to
+    put it there and another match with a different lineup exists, the two
+    are swapped. Only the first slot is guarded — back-to-back repeats later
+    in the round are accepted as ordinary shuffle noise."""
     result = await session.execute(
         select(Match.id).where(Match.group_id == group_id, Match.round_number == round_number)
     )
@@ -670,6 +722,16 @@ async def _shuffle_round_match_order(
         return
 
     random.shuffle(match_ids)
+
+    prev_lineup = await _last_match_lineup_for_round(session, group_id, round_number - 1)
+    if prev_lineup is not None:
+        lineups = await _fetch_match_lineups(session, match_ids)
+        if lineups[match_ids[0]] == prev_lineup:
+            for i in range(1, len(match_ids)):
+                if lineups[match_ids[i]] != prev_lineup:
+                    match_ids[0], match_ids[i] = match_ids[i], match_ids[0]
+                    break
+
     base = datetime.now(UTC)
     for index, match_id in enumerate(match_ids):
         await session.execute(
