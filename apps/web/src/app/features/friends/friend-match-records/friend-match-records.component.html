@@ -1,0 +1,109 @@
+<h1 class="page-title">
+  @if (nickname(); as name) {
+    {{ 'friendMatchRecords.title' | translate: { nickname: name } }}
+  } @else {
+    {{ 'friendMatchRecords.titleGeneric' | translate }}
+  }
+</h1>
+
+@if (errorKey(); as key) {
+  <p role="alert">{{ key | translate }}</p>
+} @else if (records(); as r) {
+  <section class="card stats-summary">
+    <p class="stats-summary__total">
+      {{ 'member.matchHistory.stats.totalSuffix' | translate: { total: r.total_matches } }}
+    </p>
+    <div class="stats-summary__record">
+      <span class="stats-summary__wins"
+        >{{ r.total_wins }}{{ 'member.matchHistory.stats.winShort' | translate }}</span
+      >
+      <span class="stats-summary__sep">–</span>
+      <span class="stats-summary__losses"
+        >{{ r.total_losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}</span
+      >
+      <span class="stats-summary__rate">
+        {{ 'member.matchHistory.stats.winRate' | translate }}
+        {{ (r.win_rate * 100).toFixed(0) }}%
+      </span>
+    </div>
+  </section>
+
+  @if (r.matches.length === 0) {
+    <p class="empty-state">{{ 'friendMatchRecords.empty' | translate }}</p>
+  } @else {
+    <ul class="record-list">
+      @for (match of r.matches; track match.match_id) {
+        <li
+          class="card match-card record-row--clickable"
+          [class.match-card--win]="match.won"
+          [class.match-card--loss]="!match.won"
+          role="button"
+          tabindex="0"
+          (click)="openDetail(match.match_id)"
+          (keydown.enter)="openDetail(match.match_id)"
+          (keydown.space)="openDetail(match.match_id); $event.preventDefault()"
+        >
+          <div class="match-card__meta">
+            <span class="status-badge">{{ match.group_name }}</span>
+            <span class="status-badge">{{
+              'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number }
+            }}</span>
+            @if (match.started_at && match.ended_at) {
+              <span class="time-range">
+                🕐 {{ match.started_at | date: 'M/d HH:mm' }} - {{ match.ended_at | date: 'HH:mm' }}
+              </span>
+            }
+          </div>
+          <div class="match-card__body">
+            <span class="match-card__team">
+              @for (p of match.team_a; track p.roster_entry_id) {
+                {{ p.nickname }}
+              }
+            </span>
+            <span class="match-card__score">{{ match.score_a }} : {{ match.score_b }}</span>
+            <span class="match-card__team match-card__team--right">
+              @for (p of match.team_b; track p.roster_entry_id) {
+                {{ p.nickname }}
+              }
+            </span>
+          </div>
+          <div class="match-card__result">
+            @if (match.won) {
+              <span class="status-badge status-badge--success">
+                🏅 {{ 'member.matchHistory.resultWinBadge' | translate }}
+              </span>
+            } @else {
+              <span class="status-badge status-badge--danger">
+                ✕ {{ 'member.matchHistory.resultLossBadge' | translate }}
+              </span>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+    @if (r.total_pages > 1) {
+      <nav class="pagination">
+        @for (p of pageNumbers(); track p) {
+          <button
+            type="button"
+            class="btn"
+            [class.btn--secondary]="p !== page()"
+            [disabled]="p === page()"
+            (click)="goToPage(p)"
+          >
+            {{ p }}
+          </button>
+        }
+      </nav>
+    }
+  }
+} @else {
+  <p>{{ 'common.loading' | translate }}</p>
+}
+
+<app-match-record-detail-dialog
+  #detailDialog
+  [detail]="detail()"
+  [loading]="detailLoading()"
+  [loadError]="detailLoadError()"
+/>

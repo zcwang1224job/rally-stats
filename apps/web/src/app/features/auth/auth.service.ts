@@ -175,6 +175,29 @@ export class AuthService {
     );
   }
 
+  /** 023-view-friend-match-records: identical shape to `getMatchRecords()`
+   * above, just targeting a friend's `member_id` instead of `me` — the
+   * backend endpoint (022) already enforces friendship + the target's
+   * privacy setting on every call, so this deliberately does NOT cache or
+   * pre-check eligibility client-side (spec.md FR-008). Advanced filters
+   * are intentionally not exposed here (research.md #1). */
+  getFriendMatchRecords(memberId: string, page = 1): Observable<MemberMatchRecordsResponse> {
+    return this.api.get<MemberMatchRecordsResponse>(
+      `/members/${memberId}/match-records?page=${page}`,
+      this.authHeader(),
+    );
+  }
+
+  getFriendMatchRecordDetail(
+    memberId: string,
+    matchId: string,
+  ): Observable<MatchRecordDetailResponse> {
+    return this.api.get<MatchRecordDetailResponse>(
+      `/members/${memberId}/match-records/${matchId}`,
+      this.authHeader(),
+    );
+  }
+
   setTokens(accessToken: string, refreshToken: string): void {
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);

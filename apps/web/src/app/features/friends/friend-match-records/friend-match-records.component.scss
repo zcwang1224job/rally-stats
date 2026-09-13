@@ -1,0 +1,144 @@
+:host {
+  display: block;
+  padding: var(--space-md);
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.page-title {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-md);
+  overflow-wrap: break-word;
+}
+
+// 精簡版彙總統計（research.md #1）：僅總場次/勝/敗/勝率，無 donut 圖表。
+.stats-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.stats-summary__total {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.stats-summary__record {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.stats-summary__wins {
+  color: var(--color-brand-accent);
+  font-weight: var(--font-weight-black);
+  font-size: var(--font-size-heading);
+}
+
+.stats-summary__losses {
+  color: var(--color-danger);
+  font-weight: var(--font-weight-black);
+  font-size: var(--font-size-heading);
+}
+
+.stats-summary__sep {
+  color: var(--color-text-muted);
+}
+
+.stats-summary__rate {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-bold);
+}
+
+.empty-state {
+  color: var(--color-text-muted);
+  padding: var(--space-lg) 0;
+  text-align: center;
+}
+
+// 沿用既有 match-history.component.scss 的對戰卡片/分頁樣式慣例。
+.record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.match-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  border-left: 4px solid var(--color-border);
+}
+
+.match-card--win {
+  border-left-color: var(--color-brand-accent);
+}
+
+.match-card--loss {
+  border-left-color: var(--color-danger);
+}
+
+.match-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.time-range {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.match-card__body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.match-card__team {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--font-weight-bold);
+  overflow-wrap: break-word;
+}
+
+.match-card__team--right {
+  text-align: right;
+}
+
+.match-card__score {
+  flex-shrink: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-black);
+  white-space: nowrap;
+}
+
+.match-card__result {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pagination {
+  display: flex;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.record-row--clickable {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}

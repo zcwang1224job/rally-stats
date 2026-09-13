@@ -120,6 +120,13 @@ export const routes: Routes = [
       ),
   },
   {
+    path: 'friends/:memberId/match-records',
+    loadComponent: () =>
+      import('./features/friends/friend-match-records/friend-match-records.component').then(
+        (m) => m.FriendMatchRecordsComponent,
+      ),
+  },
+  {
     path: 'friends/requests',
     loadComponent: () =>
       import('./features/friends/friend-requests/friend-requests.component').then(

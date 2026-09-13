@@ -62,6 +62,13 @@
             <span class="nickname">{{ friend.nickname }}</span>
             <span class="user-number">{{ friend.user_number }}</span>
           </span>
+          <a
+            class="btn btn--secondary friend-row__view-records"
+            [routerLink]="['/friends', friend.member_id, 'match-records']"
+            [queryParams]="friend.nickname ? { nickname: friend.nickname } : {}"
+          >
+            {{ 'friends.viewMatchRecords' | translate }}
+          </a>
           <button
             type="button"
             class="btn btn--danger btn--icon"

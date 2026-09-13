@@ -98,6 +98,7 @@
     "filterUserNumber": "使用者編號",
     "addButton": "新增好友",
     "emptyList": "尚無好友",
+    "viewMatchRecords": "檢視戰績",
     "unfriendButton": "解除好友",
     "unfriendButtonAriaLabel": "解除與 {{nickname}} 的好友關係",
     "unfriendConfirmTitle": "確定解除與 {{nickname}} 的好友關係？",
@@ -112,6 +113,11 @@
     "backToList": "返回好友列表",
     "requestsTitle": "回覆好友申請",
     "emptyRequests": "目前沒有待處理的好友申請"
+  },
+  "friendMatchRecords": {
+    "title": "{{nickname}} 的戰績",
+    "titleGeneric": "好友的戰績",
+    "empty": "這位好友尚無對戰紀錄"
   },
   "notifications": {
     "bell": {

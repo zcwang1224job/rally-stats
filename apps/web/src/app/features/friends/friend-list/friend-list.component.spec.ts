@@ -73,6 +73,49 @@ describe('FriendListComponent', () => {
     expect(fixture.nativeElement.querySelector('.pagination')).not.toBeNull();
   });
 
+  // 023-view-friend-match-records
+  it('renders a "檢視戰績" link per friend, routed to /friends/{member_id}/match-records with nickname as a query param', () => {
+    const fixture = setup(1);
+
+    const link = fixture.nativeElement.querySelector(
+      '.friend-row__view-records',
+    ) as HTMLAnchorElement;
+    expect(link).not.toBeNull();
+    const href = link.getAttribute('href') ?? '';
+    expect(href).toContain('/friends/m1/match-records');
+    expect(decodeURIComponent(href)).toContain('nickname=小美');
+  });
+
+  it('the "檢視戰績" link omits the nickname query param when the friend has no nickname', () => {
+    TestBed.configureTestingModule({
+      imports: [FriendListComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService({}),
+        {
+          provide: FriendsService,
+          useValue: {
+            listFriends: () =>
+              of({
+                friends: [{ ...friend, nickname: null }],
+                page: 1,
+                total_pages: 1,
+              }),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(FriendListComponent);
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector(
+      '.friend-row__view-records',
+    ) as HTMLAnchorElement;
+    const href = link.getAttribute('href') ?? '';
+    expect(href).toContain('/friends/m1/match-records');
+    expect(href).not.toContain('nickname=');
+  });
+
   it('unfriending calls FriendsService.unfriend with the friend_request_id, not member_id', () => {
     let calledWith: string | undefined;
     TestBed.configureTestingModule({
