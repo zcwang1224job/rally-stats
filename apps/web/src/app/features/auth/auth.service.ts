@@ -9,14 +9,18 @@ import {
 import {
   ChangePasswordResponse,
   ForgotPasswordResponse,
+  LoginRecordsResponse,
   LoginRequest,
   LoginResponse,
   MemberPublic,
+  PrivacySettingsRequest,
+  PrivacySettingsResponse,
   RefreshResponse,
   RegisterRequest,
   RegisterResponse,
   ResendVerificationResponse,
   ResetPasswordResponse,
+  SupportedLanguagesResponse,
   VerifyEmailResponse,
 } from '../../core/api/member-auth.models';
 
@@ -139,6 +143,36 @@ export class AuthService {
         this.authHeader(),
       )
       .pipe(tap((response) => this.setTokens(response.access_token, response.refresh_token)));
+  }
+
+  getSupportedLanguages(): Observable<SupportedLanguagesResponse> {
+    return this.api.get<SupportedLanguagesResponse>(
+      '/members/me/supported-languages',
+      this.authHeader(),
+    );
+  }
+
+  setLanguagePreference(language: string): Observable<MemberPublic> {
+    return this.api.patch<MemberPublic>(
+      '/members/me/language',
+      { language },
+      this.authHeader(),
+    );
+  }
+
+  setPrivacySettings(payload: PrivacySettingsRequest): Observable<PrivacySettingsResponse> {
+    return this.api.patch<PrivacySettingsResponse>(
+      '/members/me/privacy',
+      payload,
+      this.authHeader(),
+    );
+  }
+
+  getLoginRecords(page = 1): Observable<LoginRecordsResponse> {
+    return this.api.get<LoginRecordsResponse>(
+      `/members/me/login-records?page=${page}`,
+      this.authHeader(),
+    );
   }
 
   setTokens(accessToken: string, refreshToken: string): void {

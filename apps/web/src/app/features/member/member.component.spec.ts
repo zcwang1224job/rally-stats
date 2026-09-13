@@ -14,6 +14,9 @@ const verifiedMember: MemberPublic = {
   user_number: 'U1',
   verification_status: 'verified',
   resend_verification_available_at: null,
+  language_preference: 'zh-TW',
+  allow_search: true,
+  share_match_records_with_friends: true,
 };
 
 const unverifiedMember: MemberPublic = {

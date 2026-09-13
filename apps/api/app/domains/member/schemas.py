@@ -72,6 +72,9 @@ class MemberPublicResponse(BaseModel):
     so the two `None` cases never get confused); otherwise the timestamp
     at which the cooldown ends, computed server-side
     (`get_resend_verification_available_at()`, constitution X)."""
+    language_preference: str
+    allow_search: bool
+    share_match_records_with_friends: bool
 
 
 class LoginResponse(BaseModel):
@@ -242,3 +245,50 @@ class SearchMemberResponse(BaseModel):
     nickname: str | None
     user_number: str
     friendship_status: FriendshipStatus
+
+
+# 022-member-personal-settings research.md #4: allow-list lives in code (not
+# a DB CHECK constraint) so a future language needs no migration (FR-004).
+SUPPORTED_LANGUAGES = ("zh-TW",)
+
+
+class SupportedLanguagesResponse(BaseModel):
+    languages: tuple[str, ...] = SUPPORTED_LANGUAGES
+
+
+class SetLanguagePreferenceRequest(BaseModel):
+    """`language` is intentionally NOT validated here against
+    `SUPPORTED_LANGUAGES` — unlike a plain shape error, an unsupported
+    language gets its own semantic `LANGUAGE_NOT_SUPPORTED` error code
+    (contracts/member-settings-api.md), which requires raising `ApiError`
+    from `service.set_language_preference()` rather than a Pydantic
+    validator (those only ever surface as the generic `VALIDATION_ERROR`)."""
+
+    language: str
+
+
+class PrivacySettingsRequest(BaseModel):
+    allow_search: bool | None = None
+    share_match_records_with_friends: bool | None = None
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self) -> "PrivacySettingsRequest":
+        if self.allow_search is None and self.share_match_records_with_friends is None:
+            raise ValueError("at least one privacy field must be provided")
+        return self
+
+
+class PrivacySettingsResponse(BaseModel):
+    allow_search: bool
+    share_match_records_with_friends: bool
+
+
+class LoginRecordSummary(BaseModel):
+    created_at: datetime
+    device_category: str
+
+
+class LoginRecordsResponse(BaseModel):
+    records: list[LoginRecordSummary]
+    page: int
+    total_pages: int

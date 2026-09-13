@@ -7,7 +7,7 @@ with authentication fields. EmailVerificationToken/PasswordResetToken are
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -31,6 +31,38 @@ class Member(Base):
     )
     # unverified | verified
     token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    # 022-member-personal-settings: only "zh-TW" is a valid value today — the
+    # allow-list lives in code (schemas.SUPPORTED_LANGUAGES), not a DB CHECK
+    # constraint, so a future language needs no migration (FR-004).
+    language_preference: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="zh-TW", server_default="zh-TW"
+    )
+    allow_search: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    share_match_records_with_friends: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+
+
+class MemberLoginRecord(Base):
+    """022-member-personal-settings data-model.md §2: one row per *active*
+    login (Email+password submission) — token refresh MUST NOT create a row
+    (FR-007). Append-only except for the retention trim in
+    `service.record_login()` (research.md #2), which keeps at most 50 rows
+    per member. MUST NOT gain an IP/geolocation column (FR-007)."""
+
+    __tablename__ = "member_login_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    device_category: Mapped[str] = mapped_column(String(16), nullable=False)
+    # "desktop" | "mobile" | "unknown"
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

@@ -260,7 +260,44 @@
     "passwordSectionTitle": "修改密碼",
     "currentPassword": "目前密碼",
     "savePassword": "修改密碼",
-    "passwordSaved": "密碼已修改"
+    "passwordSaved": "密碼已修改",
+    "settings": {
+      "basicSectionTab": "基本設定",
+      "accountDetailsSectionTab": "帳號詳細資訊",
+      "securitySectionTab": "安全性",
+      "privacySectionTab": "隱私設定",
+      "basic": {
+        "nicknameHint": "設定在系統中顯示給其他人看的名稱",
+        "languageLabel": "語言偏好",
+        "languageHint": "選擇介面顯示的語言，未來將支援更多語言",
+        "languageZhTW": "繁體中文",
+        "languageSaved": "語言偏好已更新"
+      },
+      "accountDetails": {
+        "title": "登入紀錄",
+        "hint": "近期登入這個帳號的時間與裝置類型，幫助你察覺不是自己的登入",
+        "empty": "尚無登入紀錄",
+        "deviceDesktop": "桌面瀏覽器",
+        "deviceMobile": "行動裝置瀏覽器",
+        "deviceUnknown": "未知裝置",
+        "pageIndicator": "第 {{page}} / {{totalPages}} 頁"
+      },
+      "security": {
+        "title": "安全性",
+        "hint": "定期更換密碼，保護你的帳號安全"
+      },
+      "privacy": {
+        "title": "隱私設定",
+        "hint": "控制其他會員能看到你哪些資訊",
+        "allowSearchLabel": "允許被搜尋",
+        "allowSearchHint": "開啟後，其他會員可以透過你的會員編號搜尋到你",
+        "shareMatchRecordsLabel": "好友可查看我的戰績",
+        "shareMatchRecordsHint": "開啟後，已成為好友的會員可以查看你的對戰紀錄與戰績統計",
+        "on": "已開啟",
+        "off": "已關閉",
+        "saved": "隱私設定已更新"
+      }
+    }
   },
   "common": {
     "submit": "送出",
@@ -579,6 +616,10 @@
     "UNKNOWN_ERROR": "發生未預期的錯誤，請稍後再試",
     "MEMBER_NOT_FOUND": "查無此使用者編號",
     "CANNOT_SEARCH_SELF": "不可搜尋自己",
+    "LANGUAGE_NOT_SUPPORTED": "目前不支援此語言",
+    "SELF_VIEW_NOT_SUPPORTED": "請改用自己的戰績頁面查看",
+    "FRIENDSHIP_REQUIRED": "需先成為好友才能查看戰績",
+    "MATCH_RECORDS_PRIVATE": "此會員已將戰績設為不公開",
     "CANNOT_FRIEND_SELF": "不可加自己為好友",
     "FRIEND_REQUEST_ALREADY_PENDING": "已有一筆待處理的好友邀請",
     "ALREADY_FRIENDS": "已經是好友",

@@ -1,59 +1,285 @@
-<section class="card">
-  <form class="form" [formGroup]="nicknameForm" (ngSubmit)="submitNickname()">
-    <h2>{{ 'member.nicknameSectionTitle' | translate }}</h2>
+<main class="settings-page">
+  <h1>{{ 'member.settingsLink' | translate }}</h1>
 
-    <label>
-      {{ 'member.nickname' | translate }}
-      <input type="text" formControlName="nickname" maxlength="20" />
-    </label>
-
-    @if (nicknameErrorKey(); as key) {
-      <p role="alert">{{ key | translate }}</p>
-    }
-    @if (nicknameSaved()) {
-      <span class="status-badge status-badge--success">{{ 'member.nicknameSaved' | translate }}</span>
-    }
-
-    <button type="submit" class="btn" [disabled]="nicknameSubmitting()">
-      {{ 'member.saveNickname' | translate }}
+  <nav class="settings-tabs" role="tablist">
+    <button
+      type="button"
+      role="tab"
+      class="settings-tab"
+      data-section="basic"
+      [class.settings-tab--active]="activeSection() === 'basic'"
+      [attr.aria-selected]="activeSection() === 'basic'"
+      (click)="setActiveSection('basic')"
+    >
+      {{ 'member.settings.basicSectionTab' | translate }}
     </button>
-  </form>
-</section>
-
-<section class="card">
-  <form class="form" [formGroup]="passwordForm" (ngSubmit)="submitPassword()">
-    <h2>{{ 'member.passwordSectionTitle' | translate }}</h2>
-
-    <label>
-      {{ 'member.currentPassword' | translate }}
-      <input type="password" formControlName="current_password" />
-    </label>
-
-    <label>
-      {{ 'auth.newPassword' | translate }}
-      <input type="password" formControlName="new_password" />
-    </label>
-    @if (passwordForm.controls.new_password.errors?.['passwordTooWeak']) {
-      <p role="alert">{{ 'auth.passwordTooWeak' | translate }}</p>
-    }
-
-    <label>
-      {{ 'auth.confirmNewPassword' | translate }}
-      <input type="password" formControlName="confirm_new_password" />
-    </label>
-    @if (passwordForm.errors?.['passwordMismatch']) {
-      <p role="alert">{{ 'auth.passwordMismatch' | translate }}</p>
-    }
-
-    @if (passwordErrorKey(); as key) {
-      <p role="alert">{{ key | translate }}</p>
-    }
-    @if (passwordSaved()) {
-      <span class="status-badge status-badge--success">{{ 'member.passwordSaved' | translate }}</span>
-    }
-
-    <button type="submit" class="btn" [disabled]="passwordSubmitting()">
-      {{ 'member.savePassword' | translate }}
+    <button
+      type="button"
+      role="tab"
+      class="settings-tab"
+      data-section="accountDetails"
+      [class.settings-tab--active]="activeSection() === 'accountDetails'"
+      [attr.aria-selected]="activeSection() === 'accountDetails'"
+      (click)="setActiveSection('accountDetails')"
+    >
+      {{ 'member.settings.accountDetailsSectionTab' | translate }}
     </button>
-  </form>
-</section>
+    <button
+      type="button"
+      role="tab"
+      class="settings-tab"
+      data-section="security"
+      [class.settings-tab--active]="activeSection() === 'security'"
+      [attr.aria-selected]="activeSection() === 'security'"
+      (click)="setActiveSection('security')"
+    >
+      {{ 'member.settings.securitySectionTab' | translate }}
+    </button>
+    <button
+      type="button"
+      role="tab"
+      class="settings-tab"
+      data-section="privacy"
+      [class.settings-tab--active]="activeSection() === 'privacy'"
+      [attr.aria-selected]="activeSection() === 'privacy'"
+      (click)="setActiveSection('privacy')"
+    >
+      {{ 'member.settings.privacySectionTab' | translate }}
+    </button>
+  </nav>
+
+  @if (activeSection() === 'basic') {
+    <section class="card">
+      <form class="form" [formGroup]="nicknameForm" (ngSubmit)="submitNickname()">
+        <div class="field-heading">
+          <h2>{{ 'member.nicknameSectionTitle' | translate }}</h2>
+          <p class="section-hint">{{ 'member.settings.basic.nicknameHint' | translate }}</p>
+        </div>
+
+        <label>
+          {{ 'member.nickname' | translate }}
+          <input type="text" formControlName="nickname" maxlength="20" />
+        </label>
+
+        @if (nicknameErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        @if (nicknameSaved()) {
+          <span class="status-badge status-badge--success">{{ 'member.nicknameSaved' | translate }}</span>
+        }
+
+        <button type="submit" class="btn" [disabled]="nicknameSubmitting()">
+          {{ 'member.saveNickname' | translate }}
+        </button>
+      </form>
+    </section>
+
+    <section class="card">
+      <form class="form" [formGroup]="languageForm" (ngSubmit)="submitLanguage()">
+        <div class="field-heading">
+          <h2>{{ 'member.settings.basic.languageLabel' | translate }}</h2>
+          <p class="section-hint">{{ 'member.settings.basic.languageHint' | translate }}</p>
+        </div>
+
+        <label>
+          {{ 'member.settings.basic.languageLabel' | translate }}
+          <select formControlName="language">
+            @for (language of languages(); track language) {
+              <option [value]="language">
+                {{ 'member.settings.basic.languageZhTW' | translate }}
+              </option>
+            }
+          </select>
+        </label>
+
+        @if (languageErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        @if (languageSaved()) {
+          <span class="status-badge status-badge--success">{{ 'member.settings.basic.languageSaved' | translate }}</span>
+        }
+
+        <button type="submit" class="btn" [disabled]="languageSubmitting()">
+          {{ 'common.submit' | translate }}
+        </button>
+      </form>
+    </section>
+  }
+
+  @if (activeSection() === 'accountDetails') {
+    <section class="card">
+      <div class="field-heading">
+        <h2>{{ 'member.settings.accountDetails.title' | translate }}</h2>
+        <p class="section-hint">{{ 'member.settings.accountDetails.hint' | translate }}</p>
+      </div>
+
+      @if (loginRecordsErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
+
+      @if (!loginRecordsLoading() && loginRecords().length === 0) {
+        <p class="empty-state">
+          <span class="empty-state__icon" aria-hidden="true">🕐</span>
+          {{ 'member.settings.accountDetails.empty' | translate }}
+        </p>
+      }
+
+      @if (loginRecords().length > 0) {
+        <ul class="login-records">
+          @for (record of loginRecords(); track record.created_at) {
+            <li class="login-records__row">
+              <span class="login-records__device" aria-hidden="true">
+                @if (record.device_category === 'mobile') {
+                  📱
+                } @else if (record.device_category === 'desktop') {
+                  🖥️
+                } @else {
+                  ❔
+                }
+              </span>
+              <span class="login-records__time">{{ record.created_at | date: 'yyyy/MM/dd HH:mm:ss' }}</span>
+              <span class="login-records__label">
+                @if (record.device_category === 'mobile') {
+                  {{ 'member.settings.accountDetails.deviceMobile' | translate }}
+                } @else if (record.device_category === 'desktop') {
+                  {{ 'member.settings.accountDetails.deviceDesktop' | translate }}
+                } @else {
+                  {{ 'member.settings.accountDetails.deviceUnknown' | translate }}
+                }
+              </span>
+            </li>
+          }
+        </ul>
+
+        <div class="pagination">
+          <button
+            type="button"
+            class="btn btn--secondary"
+            [disabled]="loginRecordsPage() <= 1"
+            (click)="loadLoginRecords(loginRecordsPage() - 1)"
+          >
+            {{ 'common.previousPage' | translate }}
+          </button>
+          <span class="pagination__indicator">
+            {{
+              'member.settings.accountDetails.pageIndicator'
+                | translate: { page: loginRecordsPage(), totalPages: loginRecordsTotalPages() }
+            }}
+          </span>
+          <button
+            type="button"
+            class="btn btn--secondary"
+            [disabled]="loginRecordsPage() >= loginRecordsTotalPages()"
+            (click)="loadLoginRecords(loginRecordsPage() + 1)"
+          >
+            {{ 'common.nextPage' | translate }}
+          </button>
+        </div>
+      }
+    </section>
+  }
+
+  @if (activeSection() === 'security') {
+    <section class="card">
+      <form class="form" [formGroup]="passwordForm" (ngSubmit)="submitPassword()">
+        <div class="field-heading">
+          <h2>{{ 'member.settings.security.title' | translate }}</h2>
+          <p class="section-hint">{{ 'member.settings.security.hint' | translate }}</p>
+        </div>
+
+        <label>
+          {{ 'member.currentPassword' | translate }}
+          <input type="password" formControlName="current_password" autocomplete="current-password" />
+        </label>
+
+        <label>
+          {{ 'auth.newPassword' | translate }}
+          <input type="password" formControlName="new_password" autocomplete="new-password" />
+        </label>
+        @if (passwordForm.controls.new_password.errors?.['passwordTooWeak']) {
+          <p role="alert">{{ 'auth.passwordTooWeak' | translate }}</p>
+        }
+
+        <label>
+          {{ 'auth.confirmNewPassword' | translate }}
+          <input type="password" formControlName="confirm_new_password" autocomplete="new-password" />
+        </label>
+        @if (passwordForm.errors?.['passwordMismatch']) {
+          <p role="alert">{{ 'auth.passwordMismatch' | translate }}</p>
+        }
+
+        @if (passwordErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        @if (passwordSaved()) {
+          <span class="status-badge status-badge--success">{{ 'member.passwordSaved' | translate }}</span>
+        }
+
+        <button type="submit" class="btn" [disabled]="passwordSubmitting()">
+          {{ 'member.savePassword' | translate }}
+        </button>
+      </form>
+    </section>
+  }
+
+  @if (activeSection() === 'privacy') {
+    <section class="card">
+      <form class="form form--privacy" [formGroup]="privacyForm" (ngSubmit)="submitPrivacy()">
+        <div class="field-heading">
+          <h2>{{ 'member.settings.privacy.title' | translate }}</h2>
+          <p class="section-hint">{{ 'member.settings.privacy.hint' | translate }}</p>
+        </div>
+
+        <div class="toggle-list">
+          <div class="toggle-row">
+            <div class="toggle-row__text">
+              <span class="toggle-row__label">{{ 'member.settings.privacy.allowSearchLabel' | translate }}</span>
+              <span class="toggle-row__hint">{{ 'member.settings.privacy.allowSearchHint' | translate }}</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" formControlName="allow_search" />
+              <span class="toggle-switch__state" [class.toggle-switch__state--on]="privacyForm.controls.allow_search.value">
+                @if (privacyForm.controls.allow_search.value) {
+                  {{ 'member.settings.privacy.on' | translate }}
+                } @else {
+                  {{ 'member.settings.privacy.off' | translate }}
+                }
+              </span>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <div class="toggle-row__text">
+              <span class="toggle-row__label">{{ 'member.settings.privacy.shareMatchRecordsLabel' | translate }}</span>
+              <span class="toggle-row__hint">{{ 'member.settings.privacy.shareMatchRecordsHint' | translate }}</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" formControlName="share_match_records_with_friends" />
+              <span
+                class="toggle-switch__state"
+                [class.toggle-switch__state--on]="privacyForm.controls.share_match_records_with_friends.value"
+              >
+                @if (privacyForm.controls.share_match_records_with_friends.value) {
+                  {{ 'member.settings.privacy.on' | translate }}
+                } @else {
+                  {{ 'member.settings.privacy.off' | translate }}
+                }
+              </span>
+            </label>
+          </div>
+        </div>
+
+        @if (privacyErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        @if (privacySaved()) {
+          <span class="status-badge status-badge--success">{{ 'member.settings.privacy.saved' | translate }}</span>
+        }
+
+        <button type="submit" class="btn" [disabled]="privacySubmitting()">
+          {{ 'common.submit' | translate }}
+        </button>
+      </form>
+    </section>
+  }
+</main>

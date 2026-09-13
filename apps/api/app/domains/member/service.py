@@ -1,12 +1,13 @@
 """Member domain service layer: auth, verification, profile, and search.
 Per specs/006-member-friends/plan.md."""
 
+import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -32,8 +33,16 @@ from app.domains.group.service import (
     get_group_by_id,
     verify_ever_group_member,
 )
-from app.domains.member.models import EmailVerificationToken, Member, PasswordResetToken
+from app.domains.member.models import (
+    EmailVerificationToken,
+    Member,
+    MemberLoginRecord,
+    PasswordResetToken,
+)
 from app.domains.member.schemas import (
+    SUPPORTED_LANGUAGES,
+    LoginRecordsResponse,
+    LoginRecordSummary,
     MemberGroupHistoryResponse,
     MemberGroupStatsResponse,
     MyGroupsResponse,
@@ -57,19 +66,200 @@ from app.system_config.service import (
     get_verification_token_ttl_hours,
 )
 
+# 022-member-personal-settings research.md #2: retain at most this many
+# login records per member; trimmed synchronously on every insert, no
+# background job needed.
+_LOGIN_RECORD_RETENTION_LIMIT = 50
 
-async def login(session: AsyncSession, email: str, password: str) -> tuple[Member, str, str]:
+# research.md #3: a deliberately coarse, dependency-free heuristic — no
+# `user-agents`/`ua-parser` package (constitution IX).
+_MOBILE_USER_AGENT_PATTERN = re.compile(r"Mobile|Android|iPhone|iPad", re.IGNORECASE)
+
+
+def classify_device(user_agent: str | None) -> str:
+    """FR-007: "desktop" | "mobile" | "unknown" — never IP/geolocation."""
+    if not user_agent:
+        return "unknown"
+    return "mobile" if _MOBILE_USER_AGENT_PATTERN.search(user_agent) else "desktop"
+
+
+async def login(
+    session: AsyncSession, email: str, password: str, *, user_agent: str | None = None
+) -> tuple[Member, str, str]:
     """FR-009: unverified members MUST still be able to log in successfully
     — verification-gating happens per-endpoint (`require_verified_member`),
-    not at login itself."""
+    not at login itself. 022-member-personal-settings FR-007: every
+    successful call here is an "active login" and MUST record one login
+    record (token refresh, a separate function, MUST NOT)."""
     result = await session.execute(select(Member).where(Member.email == email.lower()))
     member = result.scalar_one_or_none()
     if member is None or not verify_password(password, member.password_hash):
         raise ApiError("INVALID_CREDENTIALS", status_code=401)
 
+    await record_login(session, member.id, classify_device(user_agent))
+
     access_token = issue_access_token(str(member.id), member.token_version)
     refresh_token = issue_refresh_token(str(member.id), member.token_version)
     return member, access_token, refresh_token
+
+
+async def record_login(session: AsyncSession, member_id: uuid.UUID, device_category: str) -> None:
+    """022-member-personal-settings research.md #2: inserts one row, then
+    trims this member's records down to the most recent
+    `_LOGIN_RECORD_RETENTION_LIMIT`, all in the caller's transaction (no
+    background job)."""
+    session.add(MemberLoginRecord(member_id=member_id, device_category=device_category))
+    await session.flush()
+
+    keep_ids_subquery = (
+        select(MemberLoginRecord.id)
+        .where(MemberLoginRecord.member_id == member_id)
+        .order_by(MemberLoginRecord.created_at.desc())
+        .limit(_LOGIN_RECORD_RETENTION_LIMIT)
+    )
+    await session.execute(
+        delete(MemberLoginRecord).where(
+            MemberLoginRecord.member_id == member_id,
+            MemberLoginRecord.id.not_in(keep_ids_subquery),
+        )
+    )
+    await session.commit()
+
+
+async def list_login_records(
+    session: AsyncSession, member_id: uuid.UUID, page: int
+) -> LoginRecordsResponse:
+    """FR-008/FR-009: newest-first, paginated (default_page_size, same
+    convention as `build_member_match_records()`)."""
+    count_result = await session.execute(
+        select(func.count(MemberLoginRecord.id)).where(MemberLoginRecord.member_id == member_id)
+    )
+    total = count_result.scalar_one()
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+
+    result = await session.execute(
+        select(MemberLoginRecord)
+        .where(MemberLoginRecord.member_id == member_id)
+        .order_by(MemberLoginRecord.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    records = [
+        LoginRecordSummary(created_at=row.created_at, device_category=row.device_category)
+        for row in result.scalars()
+    ]
+    return LoginRecordsResponse(records=records, page=page, total_pages=total_pages)
+
+
+async def set_language_preference(session: AsyncSession, member: Member, language: str) -> Member:
+    """FR-004/FR-005. Errors: `LANGUAGE_NOT_SUPPORTED` — deliberately raised
+    here (not a Pydantic validator) so it surfaces as this specific
+    semantic error code rather than the generic `VALIDATION_ERROR`
+    (contracts/member-settings-api.md)."""
+    if language not in SUPPORTED_LANGUAGES:
+        raise ApiError("LANGUAGE_NOT_SUPPORTED", status_code=400)
+    member.language_preference = language
+    await session.commit()
+    await session.refresh(member)
+    return member
+
+
+async def update_privacy_settings(
+    session: AsyncSession,
+    member: Member,
+    *,
+    allow_search: bool | None,
+    share_match_records_with_friends: bool | None,
+) -> Member:
+    """FR-016/FR-020~023. `PrivacySettingsRequest`'s own validator already
+    guarantees at least one field is provided — this only applies whichever
+    field(s) were actually given, leaving the other untouched."""
+    if allow_search is not None:
+        member.allow_search = allow_search
+    if share_match_records_with_friends is not None:
+        member.share_match_records_with_friends = share_match_records_with_friends
+    await session.commit()
+    await session.refresh(member)
+    return member
+
+
+async def _resolve_viewable_member(
+    session: AsyncSession, viewer_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """022-member-personal-settings research.md #1/#6, contracts/
+    member-settings-api.md 授權檢查順序: shared by `view_member_match_records()`
+    and `view_member_match_record_detail()`. Errors, in order:
+    `SELF_VIEW_NOT_SUPPORTED` (checked first — a member viewing their own
+    id would otherwise fall through to `FRIENDSHIP_REQUIRED`, since nobody
+    ever has a `FriendRequest` with themselves), `MEMBER_NOT_FOUND` (target
+    missing/unverified — mirrors `search_member()`'s non-disclosure),
+    `FRIENDSHIP_REQUIRED`, `MATCH_RECORDS_PRIVATE`."""
+    if viewer_id == member_id:
+        raise ApiError("SELF_VIEW_NOT_SUPPORTED", status_code=400)
+
+    result = await session.execute(select(Member).where(Member.id == member_id))
+    target = result.scalar_one_or_none()
+    if target is None or target.verification_status != "verified":
+        raise ApiError("MEMBER_NOT_FOUND", status_code=404)
+
+    status = await get_friendship_status(session, viewer_id, member_id)
+    if status != "friends":
+        raise ApiError("FRIENDSHIP_REQUIRED", status_code=403)
+    if not target.share_match_records_with_friends:
+        raise ApiError("MATCH_RECORDS_PRIVATE", status_code=403)
+
+
+async def view_member_match_records(
+    session: AsyncSession,
+    viewer_id: uuid.UUID,
+    member_id: uuid.UUID,
+    page: int = 1,
+    *,
+    opponents: list[str] | None = None,
+    partners: list[str] | None = None,
+    result: Literal["win", "loss"] | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    round_from: int | None = None,
+    round_to: int | None = None,
+    self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    self_score: int | None = None,
+    opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    opponent_score: int | None = None,
+    match_mode: Literal["singles", "doubles"] | None = None,
+) -> MemberMatchRecordsResponse:
+    """FR-018/FR-019: once authorized, delegates to the SAME
+    `build_member_match_records()` the self-viewing `/members/me/
+    match-records` endpoint uses — no parallel logic (research.md #1).
+    Mirrors that function's full filter surface (minus `group_id`, which is
+    only ever used internally by `get_member_group_history()`)."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    return await build_member_match_records(
+        session,
+        member_id,
+        page,
+        opponents=opponents,
+        partners=partners,
+        result=result,
+        date_from=date_from,
+        date_to=date_to,
+        round_from=round_from,
+        round_to=round_to,
+        self_score_cmp=self_score_cmp,
+        self_score=self_score,
+        opponent_score_cmp=opponent_score_cmp,
+        opponent_score=opponent_score,
+        match_mode=match_mode,
+    )
+
+
+async def view_member_match_record_detail(
+    session: AsyncSession, viewer_id: uuid.UUID, member_id: uuid.UUID, match_id: uuid.UUID
+) -> MatchRecordDetailResponse:
+    """FR-018/FR-019, see `view_member_match_records()`."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    return await get_member_match_record_detail(session, member_id, match_id)
 
 
 def _verification_link(token: str) -> str:
@@ -620,9 +810,13 @@ async def search_member(
     session: AsyncSession, user_number: str, requester_id: uuid.UUID
 ) -> SearchMemberResponse:
     """FR-038: case-insensitive user_number lookup. Errors: `MEMBER_NOT_FOUND`
-    (also covers an unverified target account, FR-036), `CANNOT_SEARCH_SELF`
+    (also covers an unverified target account, FR-036, and — 022-member-
+    personal-settings FR-017 — a verified target who has closed
+    `allow_search`, deliberately indistinguishable from "doesn't exist" so a
+    hidden account's existence is never leaked), `CANNOT_SEARCH_SELF`
     (FR-037, checked after existence so a self-search still surfaces as its
-    own distinct code rather than the generic not-found)."""
+    own distinct code rather than the generic not-found, regardless of the
+    searcher's own `allow_search` value)."""
     result = await session.execute(
         select(Member).where(func.lower(Member.user_number) == user_number.lower())
     )
@@ -631,6 +825,8 @@ async def search_member(
         raise ApiError("MEMBER_NOT_FOUND", status_code=404)
     if target.id == requester_id:
         raise ApiError("CANNOT_SEARCH_SELF", status_code=400)
+    if not target.allow_search:
+        raise ApiError("MEMBER_NOT_FOUND", status_code=404)
 
     status = await get_friendship_status(session, requester_id, target.id)
     return SearchMemberResponse(

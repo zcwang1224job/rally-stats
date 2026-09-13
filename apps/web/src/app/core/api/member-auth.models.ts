@@ -13,6 +13,35 @@ export interface MemberPublic {
   // disambiguates that), computed server-side (constitution X) — MUST NOT
   // be re-derived client-side.
   resend_verification_available_at: string | null;
+  // 022-member-personal-settings
+  language_preference: string;
+  allow_search: boolean;
+  share_match_records_with_friends: boolean;
+}
+
+export interface SupportedLanguagesResponse {
+  languages: string[];
+}
+
+export interface PrivacySettingsRequest {
+  allow_search?: boolean;
+  share_match_records_with_friends?: boolean;
+}
+
+export interface PrivacySettingsResponse {
+  allow_search: boolean;
+  share_match_records_with_friends: boolean;
+}
+
+export interface LoginRecordSummary {
+  created_at: string;
+  device_category: 'desktop' | 'mobile' | 'unknown';
+}
+
+export interface LoginRecordsResponse {
+  records: LoginRecordSummary[];
+  page: number;
+  total_pages: number;
 }
 
 export interface RegisterRequest {

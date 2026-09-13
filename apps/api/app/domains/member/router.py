@@ -19,11 +19,14 @@ from app.domains.member.schemas import (
     ChangePasswordResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
+    LoginRecordsResponse,
     LoginRequest,
     LoginResponse,
     MemberGroupHistoryResponse,
     MemberPublicResponse,
     MyGroupsResponse,
+    PrivacySettingsRequest,
+    PrivacySettingsResponse,
     RefreshRequest,
     RefreshResponse,
     RegisterRequest,
@@ -32,7 +35,9 @@ from app.domains.member.schemas import (
     ResetPasswordRequest,
     ResetPasswordResponse,
     SearchMemberResponse,
+    SetLanguagePreferenceRequest,
     SetNicknameRequest,
+    SupportedLanguagesResponse,
     VerifyEmailResponse,
 )
 
@@ -53,6 +58,9 @@ async def _to_public(session: AsyncSession, member: Member) -> MemberPublicRespo
         resend_verification_available_at=(
             await service.get_resend_verification_available_at(session, member)
         ),
+        language_preference=member.language_preference,
+        allow_search=member.allow_search,
+        share_match_records_with_friends=member.share_match_records_with_friends,
     )
 
 
@@ -140,16 +148,22 @@ async def change_password(
 @router.post("/auth/login", response_model=LoginResponse)
 @limiter.limit("20/minute")
 async def login(
-    request: Request,  # noqa: ARG001 - required by slowapi
+    request: Request,
     payload: LoginRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> LoginResponse:
     """FR-002a: per-IP rate limit, no account lockout. `member` in the
     response shares `MemberPublicResponse` with `GET /members/me`, so it
     also carries `resend_verification_available_at`
-    (020-resend-verification-email FR-009). Errors: `INVALID_CREDENTIALS`."""
+    (020-resend-verification-email FR-009). 022-member-personal-settings
+    FR-007: `request`'s User-Agent header backs the new login record's
+    device category — no longer unused, so its `noqa: ARG001` is dropped.
+    Errors: `INVALID_CREDENTIALS`."""
     member, access_token, refresh_token = await service.login(
-        session, payload.email, payload.password
+        session,
+        payload.email,
+        payload.password,
+        user_agent=request.headers.get("user-agent"),
     )
     return LoginResponse(
         access_token=access_token,
@@ -355,3 +369,122 @@ async def get_member_match_record_detail(
     已驗證，比照既有 `/members/me/match-records`）。Errors:
     `MEMBER_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`GROUP_MEMBERSHIP_NEVER_HELD`。"""
     return await service.get_member_match_record_detail(session, member.id, match_id)
+
+
+@router.get("/members/me/supported-languages", response_model=SupportedLanguagesResponse)
+async def get_supported_languages(
+    member: Annotated[Member, Depends(security.require_member)],  # noqa: ARG001
+) -> SupportedLanguagesResponse:
+    """022-member-personal-settings FR-004: backs the「基本設定」language
+    dropdown's options — `require_member` (not `require_verified_member`),
+    mirroring `GET /members/me`'s looser tier (research.md #4)."""
+    return SupportedLanguagesResponse()
+
+
+@router.patch("/members/me/language", response_model=MemberPublicResponse)
+async def set_language_preference(
+    payload: SetLanguagePreferenceRequest,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MemberPublicResponse:
+    """FR-004/FR-005. Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`,
+    `LANGUAGE_NOT_SUPPORTED`."""
+    updated = await service.set_language_preference(session, member, payload.language)
+    return await _to_public(session, updated)
+
+
+@router.patch("/members/me/privacy", response_model=PrivacySettingsResponse)
+async def set_privacy_settings(
+    payload: PrivacySettingsRequest,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> PrivacySettingsResponse:
+    """FR-016/FR-020~023. Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`,
+    `VALIDATION_ERROR` (both fields omitted — `PrivacySettingsRequest`'s own
+    validator)."""
+    updated = await service.update_privacy_settings(
+        session,
+        member,
+        allow_search=payload.allow_search,
+        share_match_records_with_friends=payload.share_match_records_with_friends,
+    )
+    return PrivacySettingsResponse(
+        allow_search=updated.allow_search,
+        share_match_records_with_friends=updated.share_match_records_with_friends,
+    )
+
+
+@router.get("/members/me/login-records", response_model=LoginRecordsResponse)
+async def get_login_records(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> LoginRecordsResponse:
+    """FR-006~010. Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`."""
+    return await service.list_login_records(session, member.id, page)
+
+
+@router.get(
+    "/members/{member_id}/match-records", response_model=MemberMatchRecordsResponse
+)
+async def get_viewed_member_match_records(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    opponent1: Annotated[str | None, Query(max_length=20)] = None,
+    opponent2: Annotated[str | None, Query(max_length=20)] = None,
+    partner: Annotated[str | None, Query(max_length=20)] = None,
+    result: Annotated[Literal["win", "loss"] | None, Query()] = None,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+    round_from: Annotated[int | None, Query(ge=1)] = None,
+    round_to: Annotated[int | None, Query(ge=1)] = None,
+    self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    self_score: Annotated[int | None, Query(ge=0)] = None,
+    opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    opponent_score: Annotated[int | None, Query(ge=0)] = None,
+    match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+) -> MemberMatchRecordsResponse:
+    """022-member-personal-settings FR-018/FR-019 (好友檢視他人戰績):
+    query 參數與既有 `/members/me/match-records` 完全相同、直接透傳
+    （research.md #1）。授權檢查順序見
+    contracts/member-settings-api.md：`SELF_VIEW_NOT_SUPPORTED` →
+    `MEMBER_NOT_FOUND` → `FRIENDSHIP_REQUIRED` → `MATCH_RECORDS_PRIVATE`。
+    Errors: `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、上述四者。"""
+    return await service.view_member_match_records(
+        session,
+        member.id,
+        member_id,
+        page,
+        opponents=[name for name in (opponent1, opponent2) if name],
+        partners=[partner] if partner else [],
+        result=result,
+        date_from=date_from,
+        date_to=date_to,
+        round_from=round_from,
+        round_to=round_to,
+        self_score_cmp=self_score_cmp,
+        self_score=self_score,
+        opponent_score_cmp=opponent_score_cmp,
+        opponent_score=opponent_score,
+        match_mode=match_mode,
+    )
+
+
+@router.get(
+    "/members/{member_id}/match-records/{match_id}",
+    response_model=MatchRecordDetailResponse,
+)
+async def get_viewed_member_match_record_detail(
+    member_id: uuid.UUID,
+    match_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MatchRecordDetailResponse:
+    """022-member-personal-settings FR-018/FR-019, see
+    `get_viewed_member_match_records()` above. Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、`SELF_VIEW_NOT_SUPPORTED`、
+    `MEMBER_NOT_FOUND`、`FRIENDSHIP_REQUIRED`、`MATCH_RECORDS_PRIVATE`、
+    `MATCH_NOT_FOUND`、`GROUP_MEMBERSHIP_NEVER_HELD`。"""
+    return await service.view_member_match_record_detail(session, member.id, member_id, match_id)

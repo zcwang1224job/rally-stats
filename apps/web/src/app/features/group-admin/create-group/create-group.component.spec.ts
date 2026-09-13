@@ -14,6 +14,9 @@ const nicknameMember = {
   user_number: 'U1',
   verification_status: 'verified' as const,
   resend_verification_available_at: null,
+  language_preference: 'zh-TW',
+  allow_search: true,
+  share_match_records_with_friends: true,
 };
 
 const noNicknameMember = { ...nicknameMember, nickname: null };
