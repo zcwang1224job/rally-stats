@@ -111,6 +111,57 @@ describe('JoinFlowComponent (US5 modal presentation)', () => {
   });
 });
 
+/** User-reported gap: a Guest who decides mid-flow not to join had no way
+ * to back out of the password/nickname entry steps (no cancel/✕). Both
+ * steps are pre-submit, so backing out is always safe; 'confirm' and the
+ * post-submit steps deliberately keep their existing behavior unchanged. */
+describe('JoinFlowComponent: cancel out of the join dialog', () => {
+  it('shows a ✕ close button on the nickname step, which navigates to /groups', () => {
+    const navigateCalls: unknown[][] = [];
+    const fixture = setup({
+      hasPassword: false,
+      isLoggedIn: false,
+      navigate: (...args: unknown[]) => {
+        navigateCalls.push(args);
+        return Promise.resolve(true);
+      },
+    });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    const closeButton = dialog.querySelector('.dialog-close') as HTMLButtonElement | null;
+    expect(closeButton).not.toBeNull();
+
+    closeButton?.click();
+    expect(navigateCalls).toEqual([[['/groups']]]);
+  });
+
+  it('shows a ✕ close button on the password step', () => {
+    const fixture = setup({ hasPassword: true, isLoggedIn: false });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('.dialog-close')).not.toBeNull();
+  });
+
+  it('does not show a ✕ close button on the confirm step', () => {
+    const fixture = setup({ hasPassword: false, isLoggedIn: true, nickname: '小明' });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('.dialog-close')).toBeNull();
+  });
+
+  it('does not show a ✕ close button on the done step', () => {
+    const fixture = setup({
+      hasPassword: true,
+      isLoggedIn: true,
+      nickname: '小明',
+      alreadyJoined: true,
+    });
+
+    const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
+    expect(dialog.querySelector('.dialog-close')).toBeNull();
+  });
+});
+
 /** Retrying the join button can't ever succeed for this specific error —
  * the member has to leave their other group first, not resubmit the same
  * request — so the confirm step swaps the join button for a way back to

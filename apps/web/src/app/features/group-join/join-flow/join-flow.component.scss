@@ -21,3 +21,16 @@ h1 {
     background: rgb(0 0 0 / 50%);
   }
 }
+
+// Matches match-record-detail-dialog.component.scss's own `.dialog-close`
+// — same visual language for "leave this modal" across the app.
+.dialog-close {
+  float: right;
+  border: none;
+  background: none;
+  font-size: var(--font-size-heading);
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  cursor: pointer;
+  color: var(--color-text-muted);
+}

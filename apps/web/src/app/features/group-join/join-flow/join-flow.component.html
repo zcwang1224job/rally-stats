@@ -1,4 +1,15 @@
 <dialog #dialog class="join-dialog">
+  @if (cancellable()) {
+    <button
+      type="button"
+      class="dialog-close"
+      (click)="goToGroupList()"
+      [attr.aria-label]="'groupJoin.cancelJoin' | translate"
+    >
+      ✕
+    </button>
+  }
+
   @switch (step()) {
     @case ('loading') {
       <p>{{ 'common.loading' | translate }}</p>

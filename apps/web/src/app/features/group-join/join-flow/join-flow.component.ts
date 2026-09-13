@@ -65,6 +65,18 @@ export class JoinFlowComponent implements AfterViewInit {
     () => this.errorKey() === 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP',
   );
 
+  // User-reported gap: a Guest who changes their mind on the
+  // password/nickname entry steps had no way out of the dialog (no
+  // "cancel"/✕) — those are the two steps where they haven't submitted
+  // anything yet, so backing out is always safe. Deliberately NOT shown on
+  // 'confirm' (member-only, single click, already has its own
+  // ALREADY_ACTIVE_IN_ANOTHER_GROUP escape hatch) or the post-submit
+  // 'done'/'restored' steps, where there's nothing left to cancel.
+  readonly cancellable = computed(() => {
+    const step = this.step();
+    return step === 'password' || step === 'nickname';
+  });
+
   readonly passwordForm = this.fb.nonNullable.group({
     password: ['', Validators.required],
   });
