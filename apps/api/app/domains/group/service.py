@@ -399,6 +399,37 @@ async def edit_scoring_settings(
     return group
 
 
+async def set_scoreboard_scoring(session: AsyncSession, group: Group, enabled: bool) -> Group:
+    """018-plan-then-start follow-up: a plain immediate toggle, same shape
+    as schedule's `set_auto_next_round()` — no `base_settings_version` bump,
+    since this isn't part of the optimistic-locked settings form.
+
+    Broadcasts to every one of the group's courts afterward (same per-court
+    `court_channel` loop `disband_group()` above already uses) so an
+    already-open scoreboard/control-panel refetches its state and picks up
+    the new `scoreboard_scoring_enabled` value immediately — without this,
+    a device that already has the page open would only see the change on
+    its next unrelated refetch (a score update, a match ending, ...) or a
+    manual reload. Reuses `match.nextRound` purely as a refetch trigger
+    (contracts/ably-events.md's established pattern — every subscriber
+    already just re-fetches on it, regardless of payload)."""
+    group.scoreboard_scoring_enabled = enabled
+    await session.commit()
+    await session.refresh(group)
+
+    result = await session.execute(
+        select(Court.id).where(Court.group_id == group.id, Court.deleted_at.is_(None))
+    )
+    for (court_id,) in result.all():
+        await publish(
+            court_channel(str(group.id), str(court_id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
+
+    return group
+
+
 async def disband_group(
     session: AsyncSession,
     group: Group,

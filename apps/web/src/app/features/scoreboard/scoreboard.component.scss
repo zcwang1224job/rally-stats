@@ -122,6 +122,26 @@ h1 {
   margin-top: var(--space-lg);
 }
 
+// 018-plan-then-start follow-up: 只在該團開啟 scoreboard_scoring_enabled
+// 時才會畫出來（見 canScore()）——沿用 control-panel.component.scss 同款
+// 「比一般 .btn 更大」的計分按鈕比例，因為這也是站在場邊、快速連按的操作，
+// 不是一般表單按鈕。
+.buttons {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+
+  .btn {
+    min-width: 64px;
+    min-height: 64px;
+    font-size: var(--font-size-heading);
+  }
+}
+
+.end-match-button {
+  margin-top: var(--space-lg);
+}
+
 // Mirrors .next-up's fixed corner placement (opposite corner, so the two
 // never collide) — this is the only same-tab path to a chrome-less view
 // when the page was reached by scanning the courtside QR code, since that

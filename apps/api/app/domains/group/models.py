@@ -94,6 +94,11 @@ class Group(Base):
 
     current_round_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     auto_next_round: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 018-plan-then-start follow-up: off by default — the scoreboard link is
+    # typically shared more widely (posted for spectators) than the
+    # control-panel link, so letting it also score is an admin-opt-in widening
+    # of who can mutate scores, not a client-side/per-device preference.
+    scoreboard_scoring_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # 011-round-robin-scheduling: only meaningful when scheduling_mechanism ==
     # "fixed_partner" — "manual" reads the partnerships table (existing

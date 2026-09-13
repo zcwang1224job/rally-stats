@@ -43,6 +43,8 @@ from app.domains.group.schemas import (
     RegenerateJoinLinkResponse,
     RegenerateLinkRequest,
     RegeneratePinResponse,
+    ScoreboardScoringRequest,
+    ScoreboardScoringResponse,
     VerifyPasswordRequest,
     VerifyPasswordResponse,
 )
@@ -104,6 +106,7 @@ def _to_admin_view(group: Group) -> AdminGroupResponse:
         join_link_version=group.join_link_version,
         all_courts_control_panel_token=str(group.all_courts_control_panel_token),
         all_courts_link_version=group.all_courts_link_version,
+        scoreboard_scoring_enabled=group.scoreboard_scoring_enabled,
     )
 
 
@@ -367,6 +370,27 @@ async def edit_scoring_settings(
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     updated = await service.edit_scoring_settings(session, group, payload)
     return _to_admin_view(updated)
+
+
+@router.patch("/{group_id}/scoreboard-scoring", response_model=ScoreboardScoringResponse)
+async def set_scoreboard_scoring(
+    group_id: uuid.UUID,
+    payload: ScoreboardScoringRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreboardScoringResponse:
+    """018-plan-then-start follow-up: lets the admin opt the group's
+    scoreboard link into also being able to score (normally only the
+    separate control-panel link can) — same lightweight dedicated-toggle
+    shape as schedule's `PATCH /groups/{group_id}/auto-next-round`, not
+    folded into the `base_settings_version`-guarded `EditGroupRequest` form.
+    Errors: `ADMIN_TOKEN_INVALID`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.set_scoreboard_scoring(session, group, payload.enabled)
+    return ScoreboardScoringResponse(
+        scoreboard_scoring_enabled=updated.scoreboard_scoring_enabled
+    )
 
 
 @router.post("/{group_id}/disband", response_model=GroupPublicResponse)

@@ -41,6 +41,10 @@ export interface CourtStateResponse {
   link_version: number;
   deleted: boolean;
   group_disbanded: boolean;
+  // 018-plan-then-start follow-up: the group's admin-controlled opt-in for
+  // letting a `scoreboard` link also score — always the group's actual
+  // setting regardless of this response's own `link_type`.
+  scoreboard_scoring_enabled: boolean;
   round_number: number;
   current_match: MatchLiveDetail | null;
   waiting_reason: WaitingReason | null;

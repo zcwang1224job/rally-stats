@@ -93,6 +93,9 @@ export class AdminPageComponent {
   readonly scoringErrorKey = signal<string | null>(null);
   readonly saveSuccess = signal(false);
   readonly scoringSaveSuccess = signal(false);
+  readonly scoreboardScoringPending = signal(false);
+  readonly scoreboardScoringErrorKey = signal<string | null>(null);
+  readonly scoreboardScoringSaved = signal(false);
   readonly newPin = signal<string | null>(null);
   readonly copiedPin = signal(false);
   readonly copyPinErrorKey = signal<string | null>(null);
@@ -466,6 +469,39 @@ export class AdminPageComponent {
     this.groupAdmin.regenerateAllCourtsLink(this.groupId, view.all_courts_link_version).subscribe({
       next: () => this.load(),
       error: (error: ApiError) => this.handleAuthFailure(error),
+    });
+  }
+
+  /** 018-plan-then-start follow-up: 讓計分板連結也能計分——管理員在「設定」
+   * 分頁開關，立即生效，不需要送出整份設定表單（跟 auto_next_round 一樣是
+   * immediate toggle，只是這個設定屬於群組本體、走 group-admin API，所以
+   * 更新的是 `adminView` 而不是 `schedule`）。 */
+  toggleScoreboardScoring(enabled: boolean): void {
+    this.scoreboardScoringErrorKey.set(null);
+    this.scoreboardScoringPending.set(true);
+    this.groupAdmin.setScoreboardScoring(this.groupId, enabled).subscribe({
+      next: (response) => {
+        this.scoreboardScoringPending.set(false);
+        const view = this.adminView();
+        if (view) {
+          this.adminView.set({
+            ...view,
+            scoreboard_scoring_enabled: response.scoreboard_scoring_enabled,
+          });
+        }
+        // 立即生效的 toggle，沒有「儲存」按鈕可以按——用跟其他設定表單一樣
+        // 的「✓ 已儲存」短暫提示，讓管理員知道剛剛的點擊真的存到後端了。
+        this.scoreboardScoringSaved.set(true);
+        setTimeout(() => this.scoreboardScoringSaved.set(false), 3000);
+      },
+      error: (error: ApiError) => {
+        this.scoreboardScoringPending.set(false);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.scoreboardScoringErrorKey.set(error.i18nKey);
+      },
     });
   }
 

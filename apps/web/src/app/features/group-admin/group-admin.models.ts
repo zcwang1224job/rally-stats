@@ -77,6 +77,9 @@ export interface AdminGroupResponse {
   join_link_version: number;
   all_courts_control_panel_token: string;
   all_courts_link_version: number;
+  // 018-plan-then-start follow-up: admin-only, deliberately not part of
+  // GroupPublic (that also backs the public join-flow lookup).
+  scoreboard_scoring_enabled: boolean;
 }
 
 export interface EditGroupRequest {
@@ -112,4 +115,8 @@ export interface RegenerateJoinLinkResponse {
 export interface RegenerateAllCourtsLinkResponse {
   all_courts_control_panel_token: string;
   all_courts_link_version: number;
+}
+
+export interface ScoreboardScoringResponse {
+  scoreboard_scoring_enabled: boolean;
 }

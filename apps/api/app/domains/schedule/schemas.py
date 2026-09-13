@@ -242,6 +242,11 @@ class CourtStateResponse(BaseModel):
     link_version: int
     deleted: bool
     group_disbanded: bool
+    # 018-plan-then-start follow-up: the group's admin-controlled opt-in for
+    # letting THIS (scoreboard) link also score — always the group's actual
+    # setting regardless of `link_type`, so a `control_panel` link (already
+    # always allowed to score) doesn't need special-casing on the frontend.
+    scoreboard_scoring_enabled: bool
     round_number: int
     current_match: MatchLiveDetail | None
     waiting_reason: WaitingReason | None

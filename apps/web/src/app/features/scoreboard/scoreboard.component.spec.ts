@@ -27,7 +27,11 @@ function reconnectStub() {
   return { onReconnect: () => EMPTY };
 }
 
-function setup(courtState: unknown, connected = true) {
+function setup(
+  courtState: unknown,
+  connected = true,
+  courtControl: Partial<CourtControlService> = {},
+) {
   TestBed.configureTestingModule({
     imports: [ScoreboardComponent],
     providers: [
@@ -39,7 +43,10 @@ function setup(courtState: unknown, connected = true) {
       { provide: LinkHeartbeatService, useValue: { watchCourtLink: () => of(courtInfo) } },
       { provide: RealtimeService, useFactory: () => realtimeStub(connected) },
       { provide: ReconnectRefetchService, useFactory: reconnectStub },
-      { provide: CourtControlService, useValue: { getState: () => of(courtState) } },
+      {
+        provide: CourtControlService,
+        useValue: { getState: () => of(courtState), ...courtControl },
+      },
     ],
   });
   const fixture = TestBed.createComponent(ScoreboardComponent);
@@ -136,5 +143,65 @@ describe('ScoreboardComponent', () => {
     );
 
     expect(fixture.nativeElement.querySelector('.offline-banner')).not.toBeNull();
+  });
+
+  // 018-plan-then-start follow-up
+  const scoringMatchState = {
+    court_id: 'c1',
+    round_number: 1,
+    scoreboard_scoring_enabled: true,
+    current_match: {
+      match_id: 'm1',
+      status: 'in_progress',
+      score_a: 1,
+      score_b: 2,
+      participants: [
+        { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+        { roster_entry_id: 'p2', nickname: '徐丙', team: 'B' },
+      ],
+    },
+    waiting_reason: null,
+    next_up: null,
+  };
+
+  it('does not show scoring buttons when scoreboard_scoring_enabled is absent (default)', () => {
+    const fixture = setup({ ...scoringMatchState, scoreboard_scoring_enabled: false });
+
+    expect(fixture.nativeElement.querySelector('.buttons')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.end-match-button')).toBeNull();
+  });
+
+  it('shows +1/-1 and end-match controls once scoreboard_scoring_enabled is true', () => {
+    const fixture = setup(scoringMatchState);
+
+    expect(fixture.nativeElement.querySelectorAll('.buttons').length).toBe(2);
+    expect(fixture.nativeElement.querySelector('.end-match-button')).not.toBeNull();
+  });
+
+  it('clicking +1 on team A calls CourtControlService.score with side A', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({ applied: true, match_id: 'm1', status: 'in_progress', score_a: 2, score_b: 2, winner_team: null }),
+    );
+    const fixture = setup(scoringMatchState, true, { score: scoreSpy });
+
+    const teamAButtons = fixture.nativeElement.querySelector('.team--a .buttons');
+    const plusOne: HTMLButtonElement = teamAButtons.querySelector('button');
+    plusOne.click();
+
+    expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('2');
+  });
+
+  it('confirming the end-match dialog calls CourtControlService.endMatch', () => {
+    const endMatchSpy = vi.fn().mockReturnValue(
+      of({ applied: true, match_id: 'm1', status: 'abandoned', score_a: 1, score_b: 2, winner_team: null }),
+    );
+    const fixture = setup(scoringMatchState, true, { endMatch: endMatchSpy });
+    const component = fixture.componentInstance;
+
+    component.confirmEndMatch();
+
+    expect(endMatchSpy).toHaveBeenCalledWith('tok', 'm1');
   });
 });

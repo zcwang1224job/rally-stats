@@ -480,6 +480,26 @@
               <button type="submit" class="btn">{{ 'adminPage.saveScoring' | translate }}</button>
             </form>
 
+            <section class="card">
+              <h2>{{ 'adminPage.scoreboardScoringSectionTitle' | translate }}</h2>
+              <p class="section-hint">{{ 'adminPage.scoreboardScoringHint' | translate }}</p>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="view.scoreboard_scoring_enabled"
+                  [disabled]="scoreboardScoringPending()"
+                  (change)="toggleScoreboardScoring($any($event.target).checked)"
+                />
+                {{ 'adminPage.scoreboardScoringToggle' | translate }}
+              </label>
+              @if (scoreboardScoringSaved()) {
+                <span class="status-badge status-badge--success">{{ 'adminPage.saveSuccess' | translate }}</span>
+              }
+              @if (scoreboardScoringErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+            </section>
+
             <section class="card card--danger-zone">
               <h2>{{ 'adminPage.dangerZoneSectionTitle' | translate }}</h2>
               <button type="button" class="btn btn--danger" (click)="openDisbandDialog()">{{ 'adminPage.disband' | translate }}</button>

@@ -63,7 +63,9 @@ class ScoreEvent(Base):
     delta: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 | -1
     score_a: Mapped[int] = mapped_column(Integer, nullable=False)  # resulting totals
     score_b: Mapped[int] = mapped_column(Integer, nullable=False)
-    # which control surface issued the action: control_panel | admin | all_courts
+    # which control surface issued the action: control_panel | admin |
+    # all_courts | scoreboard (018-plan-then-start follow-up — only reachable
+    # once a group opts into `scoreboard_scoring_enabled`)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()

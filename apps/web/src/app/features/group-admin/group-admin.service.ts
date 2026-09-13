@@ -16,6 +16,7 @@ import {
   RegenerateAllCourtsLinkResponse,
   RegenerateJoinLinkResponse,
   RegeneratePinResponse,
+  ScoreboardScoringResponse,
 } from './group-admin.models';
 
 const SESSION_KEY_PREFIX = 'rally-stats:admin-token:';
@@ -61,6 +62,17 @@ export class GroupAdminService {
     return this.api.patch<AdminGroupResponse>(
       `/groups/${groupId}/scoring-settings`,
       payload,
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 018-plan-then-start follow-up: 讓計分板連結也能計分——預設關閉，管理員
+   * 主動開啟才生效（不像 auto_next_round 那樣直接改變版本，這是單純的
+   * immediate toggle，同一顆按鈕模式）。 */
+  setScoreboardScoring(groupId: string, enabled: boolean): Observable<ScoreboardScoringResponse> {
+    return this.api.patch<ScoreboardScoringResponse>(
+      `/groups/${groupId}/scoreboard-scoring`,
+      { enabled },
       this.authHeader(groupId),
     );
   }

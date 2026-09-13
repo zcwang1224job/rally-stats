@@ -29,6 +29,11 @@ h2 {
   color: var(--color-text-muted);
 }
 
+.section-hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
 // Every logical block on this page (settings form, PIN, disband, links,
 // schedule control) is a .card — a clear visual boundary so scrolling
 // through the page on a phone never reads as one undifferentiated block

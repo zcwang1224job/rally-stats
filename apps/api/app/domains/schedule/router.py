@@ -408,10 +408,23 @@ def _court_state_response(
         else court.control_panel_link_version,
         deleted=court.deleted_at is not None,
         group_disbanded=group.status == "disbanded",
+        scoreboard_scoring_enabled=group.scoreboard_scoring_enabled,
         round_number=state.round_number,
         current_match=state.current_match,
         waiting_reason=state.waiting_reason,
         next_up=state.next_up,
+    )
+
+
+def _can_score_by_token(link_type: str, group: Group) -> bool:
+    """018-plan-then-start follow-up: `control_panel` links can always
+    score (research.md #3's original boundary); a `scoreboard` link can
+    ALSO score, but only once the group's admin has opted in via
+    `PATCH /groups/{group_id}/scoreboard-scoring` — off by default, since
+    the scoreboard link is typically shared more widely (posted for
+    spectators) than the control-panel one."""
+    return link_type == "control_panel" or (
+        link_type == "scoreboard" and group.scoreboard_scoring_enabled
     )
 
 
@@ -437,13 +450,14 @@ async def score_by_token(
     payload: ScoreRequest,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ScoreMutationResult:
-    """僅接受 `control_panel_token`（research.md #3）。Errors:
-    `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`。"""
-    court, _group, link_type = await court_service.get_court_by_token(session, token)
-    if link_type != "control_panel":
+    """接受 `control_panel_token`，或該團已開啟 `scoreboard_scoring_enabled`
+    時的 `scoreboard_token`（research.md #3 + 018-plan-then-start
+    follow-up）。Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`。"""
+    court, group, link_type = await court_service.get_court_by_token(session, token)
+    if not _can_score_by_token(link_type, group):
         raise ApiError("LINK_NOT_FOUND", status_code=404)
     return await service.apply_score_delta(
-        session, court, match_id, payload.side, payload.delta, source="control_panel"
+        session, court, match_id, payload.side, payload.delta, source=link_type
     )
 
 
@@ -453,10 +467,11 @@ async def end_match_by_token(
     match_id: uuid.UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ScoreMutationResult:
-    """僅接受 `control_panel_token`（research.md #3）。Errors:
-    `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`。"""
-    court, _group, link_type = await court_service.get_court_by_token(session, token)
-    if link_type != "control_panel":
+    """接受 `control_panel_token`，或該團已開啟 `scoreboard_scoring_enabled`
+    時的 `scoreboard_token`（research.md #3 + 018-plan-then-start
+    follow-up）。Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`。"""
+    court, group, link_type = await court_service.get_court_by_token(session, token)
+    if not _can_score_by_token(link_type, group):
         raise ApiError("LINK_NOT_FOUND", status_code=404)
     return await service.end_match_early(session, court, match_id)
 

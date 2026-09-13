@@ -47,6 +47,12 @@
             </div>
           }
           <span class="score">{{ state.current_match?.score_a ?? 0 }}</span>
+          @if (canScore() && state.current_match) {
+            <div class="buttons">
+              <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">+1</button>
+              <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('A', -1)">-1</button>
+            </div>
+          }
         </div>
         <div class="team team--b">
           @if (state.current_match; as match) {
@@ -59,8 +65,31 @@
             </div>
           }
           <span class="score">{{ state.current_match?.score_b ?? 0 }}</span>
+          @if (canScore() && state.current_match) {
+            <div class="buttons">
+              <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">+1</button>
+              <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('B', -1)">-1</button>
+            </div>
+          }
         </div>
       </div>
+
+      @if (canScore() && state.current_match) {
+        <button
+          type="button"
+          class="btn btn--danger end-match-button"
+          [disabled]="connectionState() !== 'connected'"
+          (click)="openEndMatchDialog()"
+        >
+          {{ 'controlPanel.endMatch' | translate }}
+        </button>
+        <app-confirm-dialog
+          #endMatchDialog
+          [title]="'controlPanel.endMatchConfirmTitle' | translate"
+          [body]="'controlPanel.endMatchConfirmBody' | translate"
+          (confirmed)="confirmEndMatch()"
+        />
+      }
 
       @if (!state.current_match) {
         @if (state.waiting_reason === 'manual_assignment') {

@@ -1,21 +1,31 @@
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
-import { CourtStateResponse } from '../../core/api/court-live-state.models';
+import { CourtStateResponse, Team } from '../../core/api/court-live-state.models';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
+import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
 
 /** 計分板：連結初始化/心跳（T042）+ link.regenerated 專屬失效提示
- * （T041，FR-035）+ 大字體即時比分/Round/即將登場顯示（007 US3，公開
- * 唯讀，不提供任何操作）。 */
+ * （T041，FR-035）+ 大字體即時比分/Round/即將登場顯示（007 US3，預設
+ * 公開唯讀）。
+ *
+ * 018-plan-then-start follow-up: `canScore()`——當該團開啟
+ * `scoreboard_scoring_enabled`（管理頁設定分頁的開關）時，`liveState()`
+ * 會回傳 `scoreboard_scoring_enabled: true`，這裡才會顯示 +1/-1／提前結束
+ * 操作，直接沿用控制板既有的 `CourtControlService.score()`/`endMatch()`
+ * ——後端也是靠同一個旗標放行 `scoreboard_token` 呼叫這兩支 API（見
+ * apps/api/app/domains/schedule/router.py `_can_score_by_token`），前端
+ * 這裡只是「沒開的話乾脆不畫按鈕」，不是唯一的權限防線。預設關閉，所以
+ * 沒特別設定的團，這個畫面跟以前完全一樣。 */
 @Component({
   selector: 'app-scoreboard',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, ConfirmDialogComponent],
   templateUrl: './scoreboard.component.html',
   styleUrl: './scoreboard.component.scss',
 })
@@ -37,6 +47,9 @@ export class ScoreboardComponent {
   readonly errorKey = signal<string | null>(null);
 
   readonly connectionState = this.realtime.connectionState;
+
+  readonly canScore = computed(() => this.liveState()?.scoreboard_scoring_enabled === true);
+  readonly endMatchDialog = viewChild<ConfirmDialogComponent>('endMatchDialog');
 
   // Already launched from a home-screen icon (manifest.json's "fullscreen"
   // display mode, or iOS's own standalone mode) — no browser chrome to hide,
@@ -140,6 +153,49 @@ export class ScoreboardComponent {
 
     this.realtime
       .subscribe(this.subscribedChannel, 'match.nextRound')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadState());
+  }
+
+  /** 同 ControlPanelComponent.score()——`canScore()` 已經在模板端決定按鈕
+   * 要不要畫出來，這裡的 connectionState 判斷單純是離線時避免送出注定失敗
+   * 的請求（FR-023），不是這個功能唯一的守門邏輯。 */
+  score(side: Team, delta: 1 | -1): void {
+    if (this.connectionState() !== 'connected') {
+      return;
+    }
+    const matchId = this.liveState()?.current_match?.match_id;
+    if (!matchId) {
+      return;
+    }
+    this.courtControl
+      .score(this.token, matchId, side, delta)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        const state = this.liveState();
+        if (state?.current_match?.match_id === result.match_id && result.status === 'in_progress') {
+          this.liveState.set({
+            ...state,
+            current_match: { ...state.current_match, score_a: result.score_a, score_b: result.score_b },
+          });
+        }
+      });
+  }
+
+  openEndMatchDialog(): void {
+    this.endMatchDialog()?.open();
+  }
+
+  confirmEndMatch(): void {
+    if (this.connectionState() !== 'connected') {
+      return;
+    }
+    const matchId = this.liveState()?.current_match?.match_id;
+    if (!matchId) {
+      return;
+    }
+    this.courtControl
+      .endMatch(this.token, matchId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.loadState());
   }

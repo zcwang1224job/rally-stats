@@ -816,9 +816,20 @@ async def test_swap_on_live_match_publishes_rotation_updated_to_its_court(
     result = await db_session.execute(
         select(Match).where(Match.group_id == group.id, Match.status == "queued")
     )
-    other_queued = result.scalars().first()
-    other_lineup = await _lineup(db_session, other_queued.id)
-    swap_target = next(iter(other_lineup - lineup))
+    queued = result.scalars().all()
+    # Pick a queued match with NO overlap with live_match's lineup — a
+    # partial-overlap pick (Postgres row order is otherwise unspecified)
+    # can make the chosen swap collide with the untouched participant
+    # already sitting in the other match, raising DUPLICATE_PARTICIPANT.
+    other_queued = None
+    for candidate in queued:
+        candidate_lineup = await _lineup(db_session, candidate.id)
+        if not (candidate_lineup & lineup):
+            other_queued = candidate
+            other_lineup = candidate_lineup
+            break
+    assert other_queued is not None
+    swap_target = next(iter(other_lineup))
 
     calls = _patch_publish(monkeypatch)
     await swap_planned_match_players(

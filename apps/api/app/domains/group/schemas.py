@@ -217,6 +217,18 @@ class AdminGroupResponse(BaseModel):
     join_link_version: int
     all_courts_control_panel_token: str
     all_courts_link_version: int
+    # 018-plan-then-start follow-up: admin-only, deliberately not part of
+    # `GroupPublicResponse` (that schema also backs the public join-flow
+    # lookup — this setting has no reason to be visible there).
+    scoreboard_scoring_enabled: bool
+
+
+class ScoreboardScoringRequest(BaseModel):
+    enabled: bool
+
+
+class ScoreboardScoringResponse(BaseModel):
+    scoreboard_scoring_enabled: bool
 
 
 class RegenerateLinkRequest(BaseModel):
