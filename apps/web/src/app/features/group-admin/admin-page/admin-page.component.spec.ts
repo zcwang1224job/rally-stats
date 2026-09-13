@@ -41,6 +41,12 @@ const scheduleResponse: ScheduleResponse = {
   current_round_number: 1,
   scheduling_mechanism: 'fair_rotation',
   auto_next_round: false,
+  // 'awaiting_plan' is the only phase that keeps app-round-matches-list's
+  // editable auto-load off by default (editable now covers both
+  // 'awaiting_start' AND 'in_progress' — see round-matches-list.component.ts)
+  // so tests unrelated to the plan/start flow don't need a getRoundMatches()
+  // mock; tests that DO care about that flow override round_phase explicitly.
+  round_phase: 'awaiting_plan',
   courts: [],
   roster: [],
 };

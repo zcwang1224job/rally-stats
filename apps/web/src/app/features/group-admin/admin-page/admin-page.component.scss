@@ -135,16 +135,32 @@ section.card {
   }
 }
 
+// 賽程分頁的每一塊（本輪賽程清單、各場地控制、checkbox、動作按鈕、搭檔
+// 設定）改用同一個 flex column + gap 統一間距，取代原本各元素各自的
+// margin——不然瀏覽器預設的段落間距、按鈕零間距混在一起，畫面會忽鬆忽緊。
+// 預設 stretch 讓賽程清單／場地卡片撐滿寬度；按鈕跟 checkbox 不需要撐滿，
+// 個別覆寫回自然寬度。
+.schedule-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+
+  > p {
+    margin: 0;
+  }
+
+  > .btn {
+    align-self: flex-start;
+  }
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
+  align-self: flex-start;
   gap: var(--space-xs);
-  margin: var(--space-sm) 0;
 }
 
-.court-control-block {
-  margin-bottom: var(--space-md);
-}
 
 .roster-list,
 .invite-friend-list {

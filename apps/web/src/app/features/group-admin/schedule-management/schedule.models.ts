@@ -2,6 +2,9 @@
 
 export type Team = 'A' | 'B';
 export type WaitingReason = 'manual_assignment' | 'no_queued_match';
+// 018-plan-then-start: null for scheduling_mechanism === 'manual', which has
+// no plan/start split.
+export type RoundPhase = 'awaiting_plan' | 'awaiting_start' | 'in_progress';
 
 export interface ParticipantSummary {
   roster_entry_id: string;
@@ -53,6 +56,7 @@ export interface ScheduleResponse {
   current_round_number: number;
   scheduling_mechanism: string;
   auto_next_round: boolean;
+  round_phase: RoundPhase | null;
   courts: CourtScheduleStatus[];
   roster: RosterScheduleStatus[];
 }

@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field
 
 Team = Literal["A", "B"]
 WaitingReason = Literal["manual_assignment", "no_queued_match"]
+# 018-plan-then-start: derived (not stored) round state for the algorithmic
+# mechanisms' "規劃賽程安排" -> "Next Round" two-step admin flow — always
+# None for scheduling_mechanism == "manual", which has no plan/start split.
+RoundPhase = Literal["awaiting_plan", "awaiting_start", "in_progress"]
 
 
 class ParticipantSummary(BaseModel):
@@ -53,6 +57,7 @@ class ScheduleResponse(BaseModel):
     current_round_number: int
     scheduling_mechanism: str
     auto_next_round: bool
+    round_phase: RoundPhase | None
     courts: list[CourtScheduleStatus]
     roster: list[RosterScheduleStatus]
 
@@ -129,6 +134,37 @@ class TemporaryPairingInput(BaseModel):
 
 class NextRoundRequest(BaseModel):
     temporary_pairings: list[TemporaryPairingInput] = Field(default_factory=list)
+
+
+class SwapPlannedMatchPlayersRequest(BaseModel):
+    """018-plan-then-start: swaps two players' match assignments while the
+    current round is `awaiting_start` (planned, not yet pulled onto any
+    court) — e.g. the admin wants these two to trade opponents/partners
+    before play begins."""
+
+    match_id_1: str
+    roster_entry_id_1: str
+    match_id_2: str
+    roster_entry_id_2: str
+
+
+class ReorderPlannedMatchesRequest(BaseModel):
+    """018-plan-then-start: `match_ids` in the admin's desired new call-up
+    order — MUST be a permutation of the current round's existing match ids
+    (drag-reordering, not adding/removing matches)."""
+
+    match_ids: list[str]
+
+
+class ChangeMatchPlayerRequest(BaseModel):
+    """018-plan-then-start: directly replaces `old_roster_entry_id` in
+    `match_id` with `new_roster_entry_id` — a specific substitute, as
+    opposed to `SwapPlannedMatchPlayersRequest`'s "trade with another
+    match"."""
+
+    match_id: str
+    old_roster_entry_id: str
+    new_roster_entry_id: str
 
 
 class ManualAssignRequest(BaseModel):

@@ -13,25 +13,120 @@
         @if (roundNumber(); as round) {
           <span>{{ 'scheduleManagement.roundLabel' | translate: { round } }}</span>
         }
-        <button type="button" class="btn btn--secondary" (click)="load()">
+        @if (actionSuccess()) {
+          <span class="status-badge status-badge--success">{{ 'scheduleManagement.adjustSuccess' | translate }}</span>
+        }
+        <button type="button" class="btn btn--secondary" [disabled]="saving()" (click)="load()">
           {{ 'scheduleManagement.refresh' | translate }}
         </button>
       </div>
+
+      @if (actionErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
+
+      @if (editable()) {
+        <p class="swap-hint">
+          {{ (roundPhase() === 'awaiting_start' ? 'scheduleManagement.swapPickHint' : 'scheduleManagement.inProgressAdjustHint') | translate }}
+        </p>
+      }
+
       @if (matches().length === 0) {
         <p>{{ 'scheduleManagement.noRoundMatchesYet' | translate }}</p>
       } @else {
-        <ul class="round-matches-list">
+        <ul
+          class="round-matches-list"
+          cdkDropList
+          [cdkDropListDisabled]="!editable() || saving()"
+          (cdkDropListDropped)="onDrop($event)"
+        >
           @for (match of matches(); track match.match_id) {
-            <li>
-              <span class="status-badge" [attr.data-status]="match.status">
-                {{ 'scheduleManagement.matchStatus.' + match.status | translate }}
-              </span>
-              <span class="vs">{{ vsLabel(match) }}</span>
-              @if (match.court_name) {
-                <span class="court-name">{{ match.court_name }}</span>
-              }
-              @if (match.status === 'completed' || match.status === 'in_progress') {
-                <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+            <li cdkDrag [cdkDragDisabled]="!isReorderable(match) || saving()">
+              <div class="match-meta">
+                @if (isReorderable(match)) {
+                  <span class="drag-handle" cdkDragHandle aria-hidden="true">⠿</span>
+                }
+                <span class="status-badge" [attr.data-status]="match.status">
+                  {{ 'scheduleManagement.matchStatus.' + match.status | translate }}
+                </span>
+                @if (match.court_name) {
+                  <span class="court-name">{{ match.court_name }}</span>
+                }
+                @if (match.status === 'completed' || match.status === 'in_progress') {
+                  <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+                }
+              </div>
+
+              @if (editable() && isAdjustable(match)) {
+                <div class="match-teams">
+                  <div class="team-row">
+                    @for (p of participantsByTeam(match, 'A'); track p.roster_entry_id) {
+                      <span class="player-adjust">
+                        <button
+                          type="button"
+                          class="btn btn--secondary"
+                          [disabled]="saving()"
+                          [class.is-selected]="isSelected(match.match_id, p.roster_entry_id)"
+                          [attr.aria-pressed]="isSelected(match.match_id, p.roster_entry_id)"
+                          (click)="pick(match.match_id, p.roster_entry_id)"
+                        >
+                          @if (isSelected(match.match_id, p.roster_entry_id)) {
+                            <span aria-hidden="true">✓ </span>
+                          }
+                          {{ p.nickname }}
+                        </button>
+                        @if (changeCandidates(match).length > 0) {
+                          <select
+                            class="change-select"
+                            [disabled]="saving()"
+                            [attr.aria-label]="'scheduleManagement.changeToPlaceholder' | translate"
+                            (change)="changeTo(match.match_id, p.roster_entry_id, $any($event.target).value); $any($event.target).value = ''"
+                          >
+                            <option value="">{{ 'scheduleManagement.changeToPlaceholder' | translate }}</option>
+                            @for (candidate of changeCandidates(match); track candidate.roster_entry_id) {
+                              <option [value]="candidate.roster_entry_id">{{ candidate.nickname }}</option>
+                            }
+                          </select>
+                        }
+                      </span>
+                    }
+                  </div>
+                  <span class="vs-divider" aria-hidden="true">vs</span>
+                  <div class="team-row">
+                    @for (p of participantsByTeam(match, 'B'); track p.roster_entry_id) {
+                      <span class="player-adjust">
+                        <button
+                          type="button"
+                          class="btn btn--secondary"
+                          [disabled]="saving()"
+                          [class.is-selected]="isSelected(match.match_id, p.roster_entry_id)"
+                          [attr.aria-pressed]="isSelected(match.match_id, p.roster_entry_id)"
+                          (click)="pick(match.match_id, p.roster_entry_id)"
+                        >
+                          @if (isSelected(match.match_id, p.roster_entry_id)) {
+                            <span aria-hidden="true">✓ </span>
+                          }
+                          {{ p.nickname }}
+                        </button>
+                        @if (changeCandidates(match).length > 0) {
+                          <select
+                            class="change-select"
+                            [disabled]="saving()"
+                            [attr.aria-label]="'scheduleManagement.changeToPlaceholder' | translate"
+                            (change)="changeTo(match.match_id, p.roster_entry_id, $any($event.target).value); $any($event.target).value = ''"
+                          >
+                            <option value="">{{ 'scheduleManagement.changeToPlaceholder' | translate }}</option>
+                            @for (candidate of changeCandidates(match); track candidate.roster_entry_id) {
+                              <option [value]="candidate.roster_entry_id">{{ candidate.nickname }}</option>
+                            }
+                          </select>
+                        }
+                      </span>
+                    }
+                  </div>
+                </div>
+              } @else {
+                <p class="vs">{{ vsLabel(match) }}</p>
               }
             </li>
           }

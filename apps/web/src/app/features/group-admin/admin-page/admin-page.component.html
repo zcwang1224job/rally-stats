@@ -87,10 +87,15 @@
               <h2>{{ 'scheduleManagement.sectionTitle' | translate }}</h2>
 
               @if (schedule(); as sched) {
+                <div class="schedule-panel">
                 <p>{{ 'scheduleManagement.roundLabel' | translate: { round: sched.current_round_number } }}</p>
 
                 @if (sched.scheduling_mechanism !== 'manual') {
-                  <app-round-matches-list [groupId]="groupId" />
+                  <app-round-matches-list
+                    [groupId]="groupId"
+                    [roundPhase]="sched.round_phase"
+                    [roster]="sched.roster"
+                  />
                 }
 
                 @if (sched.courts.length === 0) {
@@ -144,9 +149,43 @@
                   </label>
                 }
 
-                <button type="button" class="btn" (click)="openNextRoundDialog()">
-                  {{ 'scheduleManagement.nextRound' | translate }}
-                </button>
+                @if (sched.scheduling_mechanism === 'manual') {
+                  <button
+                    type="button"
+                    class="btn"
+                    [disabled]="roundActionPending()"
+                    (click)="openNextRoundDialog()"
+                  >
+                    {{ 'scheduleManagement.nextRound' | translate }}
+                  </button>
+                } @else if (sched.round_phase === 'in_progress') {
+                  <button
+                    type="button"
+                    class="btn btn--danger"
+                    [disabled]="roundActionPending()"
+                    (click)="openEndRoundDialog()"
+                  >
+                    {{ 'scheduleManagement.endRound' | translate }}
+                  </button>
+                } @else if (sched.round_phase === 'awaiting_plan') {
+                  <button
+                    type="button"
+                    class="btn"
+                    [disabled]="roundActionPending()"
+                    (click)="confirmPlanRound()"
+                  >
+                    {{ 'scheduleManagement.planRound' | translate }}
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="btn"
+                    [disabled]="roundActionPending()"
+                    (click)="confirmStartRound()"
+                  >
+                    {{ 'scheduleManagement.startRound' | translate }}
+                  </button>
+                }
 
                 @if (sched.scheduling_mechanism === 'fixed_partner') {
                   <app-partnership-settings
@@ -155,6 +194,7 @@
                     (temporaryPairingsChange)="onTemporaryPairingsChange($event)"
                   />
                 }
+              </div>
               }
             </section>
           }
@@ -494,6 +534,13 @@
     ) | translate
   "
   (confirmed)="confirmNextRound()"
+/>
+
+<app-confirm-dialog
+  #endRoundDialog
+  [title]="'scheduleManagement.endRoundConfirmTitle' | translate"
+  [body]="'scheduleManagement.endRoundConfirmBody' | translate"
+  (confirmed)="confirmEndRound()"
 />
 
 <app-confirm-dialog

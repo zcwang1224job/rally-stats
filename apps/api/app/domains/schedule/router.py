@@ -20,6 +20,7 @@ from app.domains.schedule import service
 from app.domains.schedule.schemas import (
     AutoNextRoundRequest,
     AutoNextRoundResponse,
+    ChangeMatchPlayerRequest,
     CourtLiveState,
     CourtStateResponse,
     KickMemberResponse,
@@ -29,10 +30,12 @@ from app.domains.schedule.schemas import (
     PartnershipReassignRequest,
     PartnershipsResponse,
     RegenerateGuestLinkResponse,
+    ReorderPlannedMatchesRequest,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
+    SwapPlannedMatchPlayersRequest,
     TemporaryPairingsResponse,
 )
 
@@ -106,6 +109,137 @@ async def next_round(
     )
     updated = await service.generate_next_round(session, group, temporary_pairings)
     return await service.build_schedule_snapshot(session, updated)
+
+
+@router.post("/groups/{group_id}/schedule/end-round", response_model=ScheduleResponse)
+async def end_round(
+    group_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScheduleResponse:
+    """018-plan-then-start: the admin-facing "結束這一輪" step — force-ends
+    whatever's still unfinished in the current round, without generating a
+    new one. Errors: `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`
+    (manual mode — use `/next-round` instead), `ROUND_GENERATION_IN_PROGRESS`,
+    `ROUND_NOT_IN_PROGRESS` (nothing to end — the round is already
+    finished)."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.end_current_round(session, group)
+    return await service.build_schedule_snapshot(session, updated)
+
+
+@router.post("/groups/{group_id}/schedule/plan", response_model=ScheduleResponse)
+async def plan_round(
+    group_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    payload: NextRoundRequest | None = None,
+) -> ScheduleResponse:
+    """018-plan-then-start: the admin-facing "規劃賽程安排" step for
+    algorithmic mechanisms — generates the next round's matches without
+    starting them, so the admin can review/adjust the plan (see
+    `GET .../schedule/matches` and `POST .../schedule/matches/swap`) before
+    `POST .../schedule/start`. Errors: `ADMIN_TOKEN_INVALID`,
+    `SCHEDULING_MECHANISM_MISMATCH` (manual mode — use `/next-round`
+    instead), `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`,
+    `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    temporary_pairings = (
+        [(uuid.UUID(p.player_a_id), uuid.UUID(p.player_b_id)) for p in payload.temporary_pairings]
+        if payload is not None
+        else None
+    )
+    updated = await service.plan_next_round(session, group, temporary_pairings)
+    return await service.build_schedule_snapshot(session, updated)
+
+
+@router.post("/groups/{group_id}/schedule/start", response_model=ScheduleResponse)
+async def start_round(
+    group_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScheduleResponse:
+    """018-plan-then-start: the "Next Round" confirm step that follows
+    `POST .../schedule/plan` — pulls the already-planned round's matches
+    onto courts. Errors: `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`,
+    `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`, `ROUND_NOT_PLANNED`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.start_planned_round(session, group)
+    return await service.build_schedule_snapshot(session, updated)
+
+
+@router.post("/groups/{group_id}/schedule/matches/swap", response_model=RoundMatchesResponse)
+async def swap_planned_match_players(
+    group_id: uuid.UUID,
+    payload: SwapPlannedMatchPlayersRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RoundMatchesResponse:
+    """018-plan-then-start: swaps two players' match assignments for any two
+    not-yet-terminal matches (`queued`/`in_progress`) — including a round
+    already under way, not just `awaiting_start`. Errors:
+    `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`,
+    `MATCH_ALREADY_ENDED`, `VALIDATION_ERROR`, `DUPLICATE_PARTICIPANT`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    await service.swap_planned_match_players(
+        session,
+        group,
+        uuid.UUID(payload.match_id_1),
+        uuid.UUID(payload.roster_entry_id_1),
+        uuid.UUID(payload.match_id_2),
+        uuid.UUID(payload.roster_entry_id_2),
+    )
+    return await service.build_round_matches_list(session, group)
+
+
+@router.post(
+    "/groups/{group_id}/schedule/matches/change-player", response_model=RoundMatchesResponse
+)
+async def change_match_player(
+    group_id: uuid.UUID,
+    payload: ChangeMatchPlayerRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RoundMatchesResponse:
+    """018-plan-then-start: directly replaces one match participant with a
+    specific substitute (as opposed to swapping with another match).
+    Errors: `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`,
+    `MATCH_ALREADY_ENDED`, `VALIDATION_ERROR`, `DUPLICATE_PARTICIPANT`,
+    `PARTICIPANT_NOT_ACTIVE`, `PARTICIPANT_ALREADY_PLAYING`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    await service.change_match_player(
+        session,
+        group,
+        uuid.UUID(payload.match_id),
+        uuid.UUID(payload.old_roster_entry_id),
+        uuid.UUID(payload.new_roster_entry_id),
+    )
+    return await service.build_round_matches_list(session, group)
+
+
+@router.post("/groups/{group_id}/schedule/matches/reorder", response_model=RoundMatchesResponse)
+async def reorder_planned_matches(
+    group_id: uuid.UUID,
+    payload: ReorderPlannedMatchesRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RoundMatchesResponse:
+    """018-plan-then-start: drag-reorders the round's still-`queued`
+    call-up order — works whether the round is `awaiting_start` or already
+    `in_progress`. Errors: `ADMIN_TOKEN_INVALID`, `SCHEDULING_MECHANISM_MISMATCH`,
+    `ROUND_NOT_PLANNED` (nothing queued left to reorder), `VALIDATION_ERROR`
+    (match_ids isn't exactly a permutation of the round's queued matches)."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    await service.reorder_planned_matches(
+        session, group, [uuid.UUID(match_id) for match_id in payload.match_ids]
+    )
+    return await service.build_round_matches_list(session, group)
 
 
 @router.patch("/groups/{group_id}/auto-next-round", response_model=AutoNextRoundResponse)

@@ -98,6 +98,11 @@ export class AdminPageComponent {
   readonly copyPinErrorKey = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
   readonly nextRoundErrorKey = signal<string | null>(null);
+  // 018-plan-then-start UX polish: disables the 結束/規劃/開始 button while
+  // its request is in flight, so a fast double-click can't fire it twice
+  // (the backend's generation lock would just reject the second one with a
+  // generic "try again" error — better to not let that race happen at all).
+  readonly roundActionPending = signal(false);
   // 017-fixed-partner-autofill: the partnership-settings child's current
   // temporary-pairing draft (research.md #5) — held here only so
   // confirmNextRound() can pass it along; never persisted, never read back
@@ -117,6 +122,7 @@ export class AdminPageComponent {
     'regenerateAllCourtsLinkDialog',
   );
   readonly nextRoundDialog = viewChild.required<ConfirmDialogComponent>('nextRoundDialog');
+  readonly endRoundDialog = viewChild.required<ConfirmDialogComponent>('endRoundDialog');
   readonly kickMemberDialog = viewChild.required<ConfirmDialogComponent>('kickMemberDialog');
   readonly kickMemberTarget = signal<{ rosterEntryId: string; nickname: string } | null>(null);
   readonly kickMemberErrorKey = signal<string | null>(null);
@@ -485,16 +491,99 @@ export class AdminPageComponent {
     this.nextRoundDialog().open();
   }
 
+  /** manual 模式維持原本「一鍵直接開下一輪」的行為——force-abandon 未完成
+   * 的比賽並立刻產生下一輪。018-plan-then-start 之後，這是唯一還會用到
+   * `nextRoundDialog`（與其 hasUnfinishedMatches() 文案判斷）的地方；其餘
+   * 機制的「結束/規劃/開始」三步驟分別是各自獨立、語意單純的動作。 */
   confirmNextRound(): void {
     this.nextRoundErrorKey.set(null);
+    this.roundActionPending.set(true);
     this.scheduleService.nextRound(this.groupId, this.temporaryPairings()).subscribe({
       next: (response) => {
         this.schedule.set(response);
         // A round was just generated (or force-ended) using this draft —
         // it's round-scoped only (FR-004), so it MUST NOT carry over.
         this.temporaryPairings.set([]);
+        this.roundActionPending.set(false);
       },
       error: (error: ApiError) => {
+        this.roundActionPending.set(false);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  openEndRoundDialog(): void {
+    this.endRoundDialog().open();
+  }
+
+  /** 018-plan-then-start: 「結束這一輪」——round_phase === 'in_progress'
+   * 時顯示，是唯一會強制捨棄未完成比賽的動作，所以獨立經過確認對話框
+   * （文案固定，不像 manual 的 nextRoundDialog 要視情況二選一——這顆按鈕
+   * 只在真的還有未完成比賽時才會出現）。結束後 round_phase 變成
+   * 'awaiting_plan'，畫面自然換成「規劃賽程安排」按鈕。 */
+  confirmEndRound(): void {
+    this.nextRoundErrorKey.set(null);
+    this.roundActionPending.set(true);
+    this.scheduleService.endRound(this.groupId).subscribe({
+      next: (response) => {
+        this.schedule.set(response);
+        this.roundActionPending.set(false);
+      },
+      error: (error: ApiError) => {
+        this.roundActionPending.set(false);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  /** 018-plan-then-start: 「規劃賽程安排」——round_phase === 'awaiting_plan'
+   * 時顯示。本輪這時已經沒有任何未完成的比賽（要嘛自然打完，要嘛剛被
+   * confirmEndRound() 結束），所以這一步不會捨棄任何東西，不需要確認
+   * 對話框，點下去就直接送出。成功後 round_phase 變成 'awaiting_start'，
+   * 讓管理員接著用 `app-round-matches-list` 檢視/調整（交換場次、拖曳排
+   * 序），再按下方出現的「比賽開始」。 */
+  confirmPlanRound(): void {
+    this.nextRoundErrorKey.set(null);
+    this.roundActionPending.set(true);
+    this.scheduleService.planRound(this.groupId, this.temporaryPairings()).subscribe({
+      next: (response) => {
+        this.schedule.set(response);
+        this.temporaryPairings.set([]);
+        this.roundActionPending.set(false);
+      },
+      error: (error: ApiError) => {
+        this.roundActionPending.set(false);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  /** 018-plan-then-start: 「比賽開始」——round_phase === 'awaiting_start'
+   * 時顯示，確認已規劃好的賽程並派上場地開打。這一步同樣不會強制結束任何
+   * 比賽（規劃階段就已經處理過），不經過確認對話框。 */
+  confirmStartRound(): void {
+    this.nextRoundErrorKey.set(null);
+    this.roundActionPending.set(true);
+    this.scheduleService.startRound(this.groupId).subscribe({
+      next: (response) => {
+        this.schedule.set(response);
+        this.roundActionPending.set(false);
+      },
+      error: (error: ApiError) => {
+        this.roundActionPending.set(false);
         if (error.status === 401) {
           this.handleAuthFailure(error);
           return;

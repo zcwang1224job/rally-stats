@@ -1,13 +1,27 @@
+// 同 admin-page 的 .schedule-panel 做法：一律用 flex column + gap 統一
+// 間距，子元素（載入中/錯誤/提示文字等 <p>）不再各自帶預設段落間距。
 .round-matches {
-  margin-top: var(--space-sm);
+  margin-top: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+
+  > p {
+    margin: 0;
+  }
 }
 
 .round-matches-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
+
+  // Refresh button stays pinned to the trailing edge regardless of how
+  // many items (round label, success flash) sit before it.
+  .btn {
+    margin-inline-start: auto;
+  }
 }
 
 .round-matches-list {
@@ -16,17 +30,118 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: var(--space-md);
 
   li {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-sm);
-    padding: var(--space-xs) var(--space-sm);
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-md);
+    padding: var(--space-md);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
   }
+}
+
+.match-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+// 018-plan-then-start: 拖曳排序——把手獨立於整列，避免跟「點選手互換」的
+// 按鈕搶點擊事件（cdkDragHandle 只讓把手本身可以發起拖曳）。
+.drag-handle {
+  cursor: grab;
+  color: var(--color-text-muted);
+  font-size: 1.1em;
+  line-height: 1;
+  touch-action: none;
+  padding-inline: 2px;
+}
+
+.round-matches-list .cdk-drag-preview {
+  box-sizing: border-box;
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 5px 5px -3px rgba(0, 0, 0, 0.2),
+    0 8px 10px 1px rgba(0, 0, 0, 0.14),
+    0 3px 14px 2px rgba(0, 0, 0, 0.12);
+}
+
+.round-matches-list .cdk-drag-placeholder {
+  opacity: 0.3;
+}
+
+.round-matches-list.cdk-drop-list-dragging li:not(.cdk-drag-placeholder) {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.swap-hint {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// 賽程規劃/開打後可調整選手——刻意直向排列（隊伍 A 一行、隊伍 B 一行，
+// 中間夾一個 vs 分隔），而不是把所有人擠在同一行裡：雙打會有到 4 位選手，
+// 每人又各帶一顆「互換」按鈕跟一個「換成」下拉選單，塞成一行會非常擁擠。
+.match-teams {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.team-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.vs-divider {
+  align-self: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+// 「互換」按鈕跟「換成誰」下拉選單綁在同一位選手旁邊，視覺上是一組——組內
+// 間距小、組跟組之間的間距（.team-row 的 gap）大，靠間距差異表達分組，
+// 不需要再疊一層卡片背景。
+.player-adjust {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.change-select {
+  height: var(--touch-target-min);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 0 var(--space-xs);
+  max-width: 7em;
+}
+
+// 同 partnership-settings 的「點兩人互換」慣例：勾選符號 + aria-pressed
+// 才是實際的選取依據，顏色變化只是輔助（constitution VII）。
+.match-teams .btn.is-selected {
+  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
+}
+
+.vs {
+  margin: 0;
+  font-size: var(--font-size-body);
 }
 
 .court-name {
@@ -36,6 +151,7 @@
 
 .score {
   font-weight: var(--font-weight-bold);
+  margin-inline-start: auto;
 }
 
 // 同 groupMemberView 的做法：顏色只是輔助，i18n 字串本身已附帶符號前綴

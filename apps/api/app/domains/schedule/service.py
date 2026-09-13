@@ -48,6 +48,7 @@ from app.domains.schedule.schemas import (
     RosterSummary,
     RoundMatchesResponse,
     RoundMatchSummary,
+    RoundPhase,
     ScheduleResponse,
     ScoreMutationResult,
     Team,
@@ -319,6 +320,39 @@ async def _publish_rotation_updated(
             "participants": participants,
         },
     )
+
+
+async def _publish_lineup_changed(
+    session: AsyncSession, group: Group, touched_matches: Sequence[Match]
+) -> None:
+    """018-plan-then-start follow-up: after `swap_planned_match_players()`/
+    `change_match_player()` mutates who's playing in a match, any open
+    scoreboard/control-panel for it needs to refresh — otherwise a
+    substitution only shows up in the admin's own view, never on the court
+    itself, until some unrelated event happens to trigger a refetch.
+    Callers MUST have already committed. A touched match already bound to a
+    court (`in_progress`) reuses `rotation.updated` (contracts/ably-
+    events.md: "a court's current match changed" — the same participants
+    payload a live scoreboard/control panel already re-renders from); a
+    still-`queued` touched match has no court of its own yet, so this falls
+    back to broadcasting `match.nextRound` to every court — the same
+    reuse-as-refetch-trigger convention `end_current_round()`/
+    `plan_next_round()` lean on — since only whichever court is currently
+    peeking it as `next_up` cares."""
+    any_still_queued = False
+    for match in touched_matches:
+        if match.court_id is not None:
+            await _publish_rotation_updated(session, group.id, match.court_id, match)
+        else:
+            any_still_queued = True
+
+    if any_still_queued:
+        for court in await _get_active_courts_ordered(session, group.id):
+            await publish(
+                court_channel(str(group.id), str(court.id)),
+                "match.nextRound",
+                {"round_number": group.current_round_number},
+            )
 
 
 async def _generate_fair_rotation_matches(
@@ -741,37 +775,14 @@ async def _shuffle_round_match_order(
         )
 
 
-async def generate_next_round(
-    session: AsyncSession,
-    group: Group,
-    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None = None,
-) -> Group:
-    """Round generation entry point — both the manual "Next Round" button
-    (FR-031~033) and Auto Next Round funnel through here. Force-abandons
-    whatever is still queued/in_progress (a no-op if the round already
-    finished naturally), then dispatches per `scheduling_mechanism`: for
-    algorithmic modes, creates the round's matches as `queued` and
-    immediately pulls one per available court (research.md #7); manual mode
-    generates nothing (FR-033) — courts simply show "waiting for admin".
-    017-fixed-partner-autofill: `temporary_pairings` is only meaningful for
-    `scheduling_mechanism == "fixed_partner"` + `partner_source == "manual"`
-    (`_generate_fixed_partner_matches`) — every other mechanism/branch
-    ignores it, so passing it here for other mechanisms is a harmless no-op
-    (FR-005/US3)."""
-    courts = await _get_active_courts_ordered(session, group.id)
-    if not courts:
-        raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
-
-    # 011-round-robin-scheduling FR-003: fixed_partner's team round-robin
-    # requires an even headcount to pair everyone up — checked before any
-    # side effect (lock/abandon/round-number bump), same style as the
-    # zero-courts guard above.
-    if group.scheduling_mechanism == "fixed_partner":
-        active_count = len(await _get_active_roster_ordered(session, group.id))
-        if active_count % 2 != 0:
-            raise ApiError("FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT", status_code=400)
-
-    await _lock_group_for_round_generation(session, group.id)
+async def _begin_new_round(session: AsyncSession, group: Group) -> None:
+    """Shared prefix of both the fused `generate_next_round()` and the
+    two-step `plan_next_round()`: force-abandons whatever is still queued/
+    in_progress (a no-op if the round already finished naturally, but also
+    how an admin force-skips an unfinished round), then bumps
+    `current_round_number` and writes the round's `RoundHistory` row. Caller
+    is responsible for the zero-courts/odd-headcount guards and the
+    generation lock beforehand."""
     await abandon_group_matches(session, group.id)
 
     history_count_result = await session.execute(
@@ -795,6 +806,19 @@ async def generate_next_round(
         )
     )
 
+
+async def _generate_round_matches_for_mechanism(
+    session: AsyncSession,
+    group: Group,
+    courts: list[Court],
+    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None,
+) -> None:
+    """Dispatches per `scheduling_mechanism` to create the round's matches as
+    `queued` (manual mode generates nothing, FR-033), then randomizes call-up
+    order — everything `generate_next_round()` used to do between the round-
+    number bump and pulling matches onto courts. 017-fixed-partner-autofill:
+    `temporary_pairings` is only meaningful for `scheduling_mechanism ==
+    "fixed_partner"` + `partner_source == "manual"`; ignored otherwise."""
     if group.scheduling_mechanism == "manual":
         pass
     elif group.scheduling_mechanism == "fair_rotation":
@@ -815,14 +839,55 @@ async def generate_next_round(
     if group.scheduling_mechanism != "manual":
         await _shuffle_round_match_order(session, group.id, group.current_round_number)
 
+
+async def _pull_matches_onto_courts(
+    session: AsyncSession, group: Group, courts: list[Court]
+) -> list[tuple[uuid.UUID, Match]]:
+    """Pulls one queued match per available court onto that court — the
+    "start the round" step shared by `generate_next_round()`'s fused flow
+    and `start_planned_round()`."""
     pulled: list[tuple[uuid.UUID, Match]] = []
-    if group.scheduling_mechanism != "manual":
-        for court in courts:
-            match = await pull_queued_match_for_court(
-                session, group.id, group.current_round_number, court.id
-            )
-            if match is not None:
-                pulled.append((court.id, match))
+    for court in courts:
+        match = await pull_queued_match_for_court(
+            session, group.id, group.current_round_number, court.id
+        )
+        if match is not None:
+            pulled.append((court.id, match))
+    return pulled
+
+
+async def generate_next_round(
+    session: AsyncSession,
+    group: Group,
+    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None = None,
+) -> Group:
+    """Round generation entry point for manual mode's "Next Round" button
+    (FR-031~033) and Auto Next Round (018-plan-then-start moved the
+    algorithmic mechanisms' admin-initiated path to the two-step
+    `plan_next_round()` / `start_planned_round()` below, since neither of
+    those callers has a human in the loop to review a plan before it
+    starts). Force-abandons whatever is still queued/in_progress, then
+    dispatches per `scheduling_mechanism`: for algorithmic modes, creates the
+    round's matches as `queued` and immediately pulls one per available
+    court (research.md #7); manual mode generates nothing (FR-033) — courts
+    simply show "waiting for admin"."""
+    courts = await _get_active_courts_ordered(session, group.id)
+    if not courts:
+        raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
+
+    # 011-round-robin-scheduling FR-003: fixed_partner's team round-robin
+    # requires an even headcount to pair everyone up — checked before any
+    # side effect (lock/abandon/round-number bump), same style as the
+    # zero-courts guard above.
+    if group.scheduling_mechanism == "fixed_partner":
+        active_count = len(await _get_active_roster_ordered(session, group.id))
+        if active_count % 2 != 0:
+            raise ApiError("FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT", status_code=400)
+
+    await _lock_group_for_round_generation(session, group.id)
+    await _begin_new_round(session, group)
+    await _generate_round_matches_for_mechanism(session, group, courts, temporary_pairings)
+    pulled = await _pull_matches_onto_courts(session, group, courts)
 
     # Starting a round is real usage, not idleness — resets the auto-disband
     # clock (apps/api/app/scheduler/auto_disband.py) same as join/edit/reauth.
@@ -844,6 +909,349 @@ async def generate_next_round(
         await _publish_rotation_updated(session, group.id, court_id, match)
 
     return group
+
+
+async def get_round_phase(session: AsyncSession, group: Group) -> RoundPhase:
+    """018-plan-then-start: derives the current round's admin-facing
+    "plan → start" state from `Match` rows alone (no new column) — there is
+    deliberately no "manual" case here; that mechanism has no plan/start
+    split (its admin-facing "Next Round" always fully advances via
+    `generate_next_round()`), so callers must gate on
+    `scheduling_mechanism` before consulting this.
+
+    - `awaiting_plan`: no round generated yet, or the current round is
+      finished (every match completed/abandoned) — the admin should plan
+      the next one.
+    - `awaiting_start`: `plan_next_round()` has queued this round's matches
+      but none have been pulled onto a court yet — the admin can still
+      `swap_planned_match_players()` before confirming.
+    - `in_progress`: at least one match has been pulled onto a court.
+    """
+    result = await session.execute(
+        select(Match.status, Match.court_id).where(
+            Match.group_id == group.id, Match.round_number == group.current_round_number
+        )
+    )
+    rows = result.all()
+    if not rows:
+        return "awaiting_plan"
+    if all(status in ("completed", "abandoned") for status, _ in rows):
+        return "awaiting_plan"
+    if all(court_id is None for _, court_id in rows):
+        return "awaiting_start"
+    return "in_progress"
+
+
+async def end_current_round(session: AsyncSession, group: Group) -> Group:
+    """018-plan-then-start: the admin-facing "結束這一輪" step — force-
+    abandons whatever is still queued/in_progress in the current round
+    WITHOUT bumping `current_round_number` or generating anything, so
+    `get_round_phase()` reads the round as `awaiting_plan` afterwards (every
+    match is now terminal) and the admin proceeds to `plan_next_round()`
+    separately. Split out from `plan_next_round()` so the "this discards
+    unfinished matches" confirmation is its own explicit step, distinct from
+    the (now non-destructive, dialog-free) planning step that follows it.
+    Only meaningful while a round is actually still going — rejects
+    otherwise. Manual mode keeps its old single-button `generate_next_round()`
+    instead, which still does both in one step."""
+    if group.scheduling_mechanism == "manual":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+
+    await _lock_group_for_round_generation(session, group.id)
+    if await get_round_phase(session, group) != "in_progress":
+        raise ApiError("ROUND_NOT_IN_PROGRESS", status_code=409)
+
+    await abandon_group_matches(session, group.id)
+    group.last_activity_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(group)
+
+    # Same reuse-as-refetch-trigger convention as generate_next_round()/
+    # plan_next_round(): round_number is unchanged here, but every live
+    # court/member/scoreboard view listening for match.nextRound just
+    # refetches on it regardless of payload, which is exactly what a court
+    # whose match just got abandoned needs to do (show "waiting" instead of
+    # a stale in-progress match).
+    for court in await _get_active_courts_ordered(session, group.id):
+        await publish(
+            court_channel(str(group.id), str(court.id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
+
+    return group
+
+
+async def plan_next_round(
+    session: AsyncSession,
+    group: Group,
+    temporary_pairings: list[tuple[uuid.UUID, uuid.UUID]] | None = None,
+) -> Group:
+    """018-plan-then-start: the admin-facing "規劃賽程安排" step for
+    algorithmic mechanisms — everything `generate_next_round()` does except
+    pulling matches onto courts, so the admin can review the planned
+    matchups (via `build_round_matches_list()`) and adjust them
+    (`swap_planned_match_players()`, `reorder_planned_matches()`) before
+    `start_planned_round()` actually puts anyone on a court. The admin-page
+    UI only ever calls this once the round is already `awaiting_plan` (via
+    `end_current_round()` or the round finishing naturally), so in practice
+    this never has anything left to force-abandon — the `_begin_new_round()`
+    call below still does it defensively for any other caller. Manual mode
+    has no "plan" concept (the admin's per-court manual-assign already IS
+    the plan) and keeps using `generate_next_round()` directly instead."""
+    if group.scheduling_mechanism == "manual":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+
+    courts = await _get_active_courts_ordered(session, group.id)
+    if not courts:
+        raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
+
+    if group.scheduling_mechanism == "fixed_partner":
+        active_count = len(await _get_active_roster_ordered(session, group.id))
+        if active_count % 2 != 0:
+            raise ApiError("FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT", status_code=400)
+
+    await _lock_group_for_round_generation(session, group.id)
+    await _begin_new_round(session, group)
+    await _generate_round_matches_for_mechanism(session, group, courts, temporary_pairings)
+
+    group.last_activity_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(group)
+
+    # Every court re-fetches on this, same as the fused flow — nothing is on
+    # a court yet, so there's no rotation.updated to pair it with.
+    for court in courts:
+        await publish(
+            court_channel(str(group.id), str(court.id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
+
+    return group
+
+
+async def start_planned_round(session: AsyncSession, group: Group) -> Group:
+    """018-plan-then-start: the "Next Round" confirm step that follows
+    `plan_next_round()` — pulls the current round's already-planned `queued`
+    matches onto available courts. Rejects if the round isn't in
+    `awaiting_start` (nothing planned yet, or it was already started) —
+    same generation lock as planning, since this also mutates round state."""
+    if group.scheduling_mechanism == "manual":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+
+    courts = await _get_active_courts_ordered(session, group.id)
+    if not courts:
+        raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
+
+    await _lock_group_for_round_generation(session, group.id)
+    if await get_round_phase(session, group) != "awaiting_start":
+        raise ApiError("ROUND_NOT_PLANNED", status_code=409)
+
+    pulled = await _pull_matches_onto_courts(session, group, courts)
+
+    group.last_activity_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(group)
+
+    for court_id, match in pulled:
+        await _publish_rotation_updated(session, group.id, court_id, match)
+
+    return group
+
+
+async def swap_planned_match_players(
+    session: AsyncSession,
+    group: Group,
+    match_id_1: uuid.UUID,
+    roster_entry_id_1: uuid.UUID,
+    match_id_2: uuid.UUID,
+    roster_entry_id_2: uuid.UUID,
+) -> None:
+    """018-plan-then-start: swaps two players' match assignments for any two
+    not-yet-terminal matches (`queued` or `in_progress`) — not just a
+    planned-but-unstarted round (research.md follow-up: the admin also
+    needs this once a round is already underway, e.g. an injury mid-round,
+    for any of its matches that haven't finished yet). Gated per-match
+    rather than per-round-phase for exactly that reason. Each participant
+    row keeps its match and team-letter slot, only the `roster_entry_id`
+    values trade places, so a swap never changes a match's A/B side balance
+    or its court/order. Known limitation: `PairHistory` was already
+    incremented for the pre-swap pairing at plan time
+    (`_increment_pair_history`) and is deliberately NOT corrected here —
+    recomputing it correctly for doubles' partner+opponent structure is its
+    own scoped problem, and the fairness drift from an occasional manual
+    swap is minor compared to that complexity. Publishes via
+    `_publish_lineup_changed()` so any open scoreboard/control panel for
+    either match refreshes in real time."""
+    if match_id_1 == match_id_2:
+        raise ApiError("VALIDATION_ERROR", status_code=400)
+
+    if group.scheduling_mechanism == "manual":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+
+    await _lock_group_for_round_generation(session, group.id)
+
+    matches_result = await session.execute(
+        select(Match).where(Match.id.in_((match_id_1, match_id_2)))
+    )
+    matches_by_id = {m.id: m for m in matches_result.scalars()}
+    if len(matches_by_id) != 2 or any(m.group_id != group.id for m in matches_by_id.values()):
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    if any(m.status not in ("queued", "in_progress") for m in matches_by_id.values()):
+        raise ApiError("MATCH_ALREADY_ENDED", status_code=409)
+
+    result = await session.execute(
+        select(MatchParticipant).where(MatchParticipant.match_id.in_((match_id_1, match_id_2)))
+    )
+    by_match: dict[uuid.UUID, list[MatchParticipant]] = {}
+    for participant in result.scalars():
+        by_match.setdefault(participant.match_id, []).append(participant)
+
+    participant_1 = next(
+        (p for p in by_match.get(match_id_1, []) if p.roster_entry_id == roster_entry_id_1), None
+    )
+    participant_2 = next(
+        (p for p in by_match.get(match_id_2, []) if p.roster_entry_id == roster_entry_id_2), None
+    )
+    if participant_1 is None or participant_2 is None:
+        raise ApiError("VALIDATION_ERROR", status_code=400)
+
+    match_1_ids = {p.roster_entry_id for p in by_match.get(match_id_1, [])}
+    match_2_ids = {p.roster_entry_id for p in by_match.get(match_id_2, [])}
+    if roster_entry_id_1 in match_2_ids or roster_entry_id_2 in match_1_ids:
+        raise ApiError("DUPLICATE_PARTICIPANT", status_code=400)
+
+    participant_1.roster_entry_id, participant_2.roster_entry_id = (
+        roster_entry_id_2,
+        roster_entry_id_1,
+    )
+    await session.commit()
+    await _publish_lineup_changed(session, group, list(matches_by_id.values()))
+
+
+async def change_match_player(
+    session: AsyncSession,
+    group: Group,
+    match_id: uuid.UUID,
+    old_roster_entry_id: uuid.UUID,
+    new_roster_entry_id: uuid.UUID,
+) -> None:
+    """018-plan-then-start: replaces one match participant with a specific,
+    directly-chosen roster member — a substitute who wasn't necessarily
+    playing anywhere else this round, as opposed to
+    `swap_planned_match_players()`'s "trade with someone else's match".
+    Allowed for any not-yet-terminal match (`queued`/`in_progress`), same
+    scope as swap. If the match is currently `in_progress` (live on a
+    court), the new player MUST NOT already be `in_progress` elsewhere —
+    they can't physically be on two courts at once; no such restriction for
+    a still-`queued` match, since a round-robin schedule already routinely
+    lists the same person in several queued matches at once (only one gets
+    pulled onto a court at a time). Same PairHistory caveat as
+    `swap_planned_match_players()`. Publishes via `_publish_lineup_changed()`
+    so any open scoreboard/control panel for the match refreshes in real
+    time."""
+    if group.scheduling_mechanism == "manual":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+
+    await _lock_group_for_round_generation(session, group.id)
+
+    match_result = await session.execute(select(Match).where(Match.id == match_id))
+    match = match_result.scalar_one_or_none()
+    if match is None or match.group_id != group.id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    if match.status not in ("queued", "in_progress"):
+        raise ApiError("MATCH_ALREADY_ENDED", status_code=409)
+
+    participants_result = await session.execute(
+        select(MatchParticipant).where(MatchParticipant.match_id == match_id)
+    )
+    participants = list(participants_result.scalars())
+    target = next((p for p in participants if p.roster_entry_id == old_roster_entry_id), None)
+    if target is None:
+        raise ApiError("VALIDATION_ERROR", status_code=400)
+    if any(p.roster_entry_id == new_roster_entry_id for p in participants):
+        raise ApiError("DUPLICATE_PARTICIPANT", status_code=400)
+
+    new_entry_result = await session.execute(
+        select(RosterEntry.id).where(
+            RosterEntry.id == new_roster_entry_id,
+            RosterEntry.group_id == group.id,
+            RosterEntry.status == "active",
+        )
+    )
+    if new_entry_result.scalar_one_or_none() is None:
+        raise ApiError("PARTICIPANT_NOT_ACTIVE", status_code=400)
+
+    if match.status == "in_progress":
+        busy_result = await session.execute(
+            select(MatchParticipant.id)
+            .join(Match, Match.id == MatchParticipant.match_id)
+            .where(
+                Match.group_id == group.id,
+                Match.status == "in_progress",
+                Match.id != match_id,
+                MatchParticipant.roster_entry_id == new_roster_entry_id,
+            )
+        )
+        if busy_result.scalar_one_or_none() is not None:
+            raise ApiError("PARTICIPANT_ALREADY_PLAYING", status_code=400)
+
+    target.roster_entry_id = new_roster_entry_id
+    await session.commit()
+    await _publish_lineup_changed(session, group, [match])
+
+
+async def reorder_planned_matches(
+    session: AsyncSession, group: Group, match_ids: Sequence[uuid.UUID]
+) -> None:
+    """018-plan-then-start: lets the admin drag-reorder the round's still-
+    `queued` call-up order — same `created_at`-rewrite mechanism as
+    `_shuffle_round_match_order` (random.shuffle), just admin-driven instead
+    of random. Follow-up requirement: this now works whether the round is
+    still fully `awaiting_start` or already `in_progress` (some matches
+    already on courts, the rest still queued) — only a match that hasn't
+    been pulled onto a court yet has a "call-up order" left to adjust, so
+    the eligible set is exactly `status == "queued"`, not the whole round.
+    `match_ids` MUST be a permutation of exactly that queued set — the
+    whole point is reordering, not adding/removing matches, so anything
+    else is rejected outright rather than guessed at. Broadcasts
+    `match.nextRound` to every court afterward so a court currently peeking
+    one of these matches as `next_up` refreshes to the new order — same
+    reuse-as-refetch-trigger convention as `_publish_lineup_changed()`."""
+    if group.scheduling_mechanism == "manual":
+        raise ApiError("SCHEDULING_MECHANISM_MISMATCH", status_code=409)
+
+    await _lock_group_for_round_generation(session, group.id)
+
+    result = await session.execute(
+        select(Match.id).where(
+            Match.group_id == group.id,
+            Match.round_number == group.current_round_number,
+            Match.status == "queued",
+        )
+    )
+    queued_ids = set(result.scalars())
+    if not queued_ids:
+        raise ApiError("ROUND_NOT_PLANNED", status_code=409)
+    if set(match_ids) != queued_ids or len(match_ids) != len(queued_ids):
+        raise ApiError("VALIDATION_ERROR", status_code=400)
+
+    base = datetime.now(UTC)
+    for index, match_id in enumerate(match_ids):
+        await session.execute(
+            update(Match)
+            .where(Match.id == match_id)
+            .values(created_at=base + timedelta(microseconds=index))
+        )
+    await session.commit()
+
+    for court in await _get_active_courts_ordered(session, group.id):
+        await publish(
+            court_channel(str(group.id), str(court.id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
 
 
 async def round_is_complete(
@@ -992,10 +1400,15 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
         for entry in roster_result.scalars()
     ]
 
+    round_phase = (
+        None if group.scheduling_mechanism == "manual" else await get_round_phase(session, group)
+    )
+
     return ScheduleResponse(
         current_round_number=group.current_round_number,
         scheduling_mechanism=group.scheduling_mechanism,
         auto_next_round=group.auto_next_round,
+        round_phase=round_phase,
         courts=court_statuses,
         roster=roster_statuses,
     )
