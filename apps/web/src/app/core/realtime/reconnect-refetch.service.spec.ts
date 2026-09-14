@@ -57,6 +57,24 @@ describe('ReconnectRefetchService', () => {
     expect(emissions.length).toBe(0);
   });
 
+  // Regression: NG0203 ("must be called in an injection context") used to
+  // be thrown here — `NotificationService.init()` calls `onReconnect()`
+  // from inside a reactive `effect()` callback in nav-shell, which is NOT
+  // itself an injection context.
+  it('onReconnect() can be called and subscribed to outside an injection context', () => {
+    const service = TestBed.runInInjectionContext(() => new ReconnectRefetchService());
+    const emissions: void[] = [];
+
+    expect(() => {
+      service.onReconnect().subscribe(() => emissions.push(undefined));
+    }).not.toThrow();
+
+    set('disconnected');
+    set('connected');
+
+    expect(emissions.length).toBe(1);
+  });
+
   it('does not emit again for repeated connected states without an intervening disconnect', () => {
     const service = TestBed.runInInjectionContext(() => new ReconnectRefetchService());
     const emissions: void[] = [];

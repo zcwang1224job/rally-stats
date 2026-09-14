@@ -11,14 +11,27 @@ import { RealtimeService } from './ably.service';
 export class ReconnectRefetchService {
   private readonly realtime = inject(RealtimeService);
 
+  /** `toObservable()` MUST run inside an injection context — building it
+   * once here, during this service's own construction (itself always
+   * injection-context-safe, since Angular's DI is what constructs this
+   * class), means `onReconnect()` below stays safe to call from anywhere,
+   * including from *inside* another service's method invoked from a
+   * reactive `effect()` callback (`NotificationService.init()`, called
+   * from `nav-shell`'s login-state effect) — that call site is NOT itself
+   * an injection context, which is exactly what previously threw NG0203
+   * ("must be called in an injection context") there. */
+  private readonly reconnected$: Observable<void> = toObservable(
+    this.realtime.connectionState,
+  ).pipe(
+    pairwise(),
+    filter(([previous, current]) => previous !== 'connected' && current === 'connected'),
+    map(() => undefined),
+  );
+
   /** 僅在連線狀態從「非 connected」轉為「connected」時觸發一次（即真正
    * 的斷線後重連，MUST NOT 包含初次連線）——呼叫端應在收到此事件時強制
    * 重新拉取完整狀態並覆蓋畫面，MUST NOT 信任重連前的本地暫存內容。 */
   onReconnect(): Observable<void> {
-    return toObservable(this.realtime.connectionState).pipe(
-      pairwise(),
-      filter(([previous, current]) => previous !== 'connected' && current === 'connected'),
-      map(() => undefined),
-    );
+    return this.reconnected$;
   }
 }
