@@ -175,6 +175,17 @@ class ChangePasswordResponse(BaseModel):
     refresh_token: str
 
 
+class DeleteAccountRequest(BaseModel):
+    """025-delete-account FR-002: password re-entry is the confirmation
+    step, matching `ChangePasswordRequest`'s existing precedent."""
+
+    current_password: str
+
+
+class DeleteAccountResponse(BaseModel):
+    deleted: bool
+
+
 class MyGroupSummary(BaseModel):
     group_id: str
     group_number: int

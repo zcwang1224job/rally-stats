@@ -17,6 +17,8 @@ from app.domains.member.models import Member
 from app.domains.member.schemas import (
     ChangePasswordRequest,
     ChangePasswordResponse,
+    DeleteAccountRequest,
+    DeleteAccountResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     LoginRecordsResponse,
@@ -143,6 +145,21 @@ async def change_password(
     return ChangePasswordResponse(
         changed=True, access_token=access_token, refresh_token=refresh_token
     )
+
+
+@router.post("/members/me/delete", response_model=DeleteAccountResponse)
+async def delete_account(
+    payload: DeleteAccountRequest,
+    member: Annotated[Member, Depends(security.require_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DeleteAccountResponse:
+    """025-delete-account FR-008: deliberately `require_member`, not
+    `require_verified_member` — an unverified member can still delete their
+    own account (Edge Cases). No target-member-id parameter exists on this
+    endpoint at all, so there is no code path for deleting anyone else's
+    account. Errors: `MEMBER_TOKEN_INVALID`, `CURRENT_PASSWORD_INCORRECT`."""
+    await service.delete_account(session, member, payload.current_password)
+    return DeleteAccountResponse(deleted=True)
 
 
 @router.post("/auth/login", response_model=LoginResponse)

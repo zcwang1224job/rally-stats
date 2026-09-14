@@ -70,7 +70,7 @@ async def send_invite(
 
     invitee_result = await session.execute(select(Member).where(Member.id == invitee_member_id))
     invitee = invitee_result.scalar_one_or_none()
-    if invitee is None:
+    if invitee is None or invitee.deleted_at is not None:
         raise ApiError("MEMBER_NOT_FOUND", status_code=404)
 
     status = await get_friendship_status(session, inviter_member_id, invitee_member_id)
@@ -182,7 +182,10 @@ async def list_invitable_friends(session: AsyncSession, group: Group) -> Invitab
     summaries: list[InvitableFriendSummary] = []
     for friend_id in friend_ids:
         member = members_by_id.get(friend_id)
-        if member is None:
+        # 025-delete-account: a friend whose account has since been deleted
+        # can't accept an invite, so they're excluded here just like a
+        # missing member row.
+        if member is None or member.deleted_at is not None:
             continue
         latest = latest_invite_by_friend.get(friend_id)
         invite_status: InviteStatusForFriend

@@ -220,6 +220,28 @@
         </button>
       </form>
     </section>
+
+    <section class="card card--danger">
+      <form class="form" [formGroup]="deleteAccountForm" (ngSubmit)="submitDeleteAccount()">
+        <div class="field-heading">
+          <h2>{{ 'member.settings.deleteAccount.title' | translate }}</h2>
+          <p class="section-hint">{{ 'member.settings.deleteAccount.hint' | translate }}</p>
+        </div>
+
+        <label>
+          {{ 'member.currentPassword' | translate }}
+          <input type="password" formControlName="current_password" autocomplete="current-password" />
+        </label>
+
+        @if (deleteAccountErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+
+        <button type="submit" class="btn btn--danger" [disabled]="deleteAccountSubmitting()">
+          {{ 'member.settings.deleteAccount.submit' | translate }}
+        </button>
+      </form>
+    </section>
   }
 
   @if (activeSection() === 'privacy') {

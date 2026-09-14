@@ -8,6 +8,7 @@ import {
 } from '../../core/api/group-member-view.models';
 import {
   ChangePasswordResponse,
+  DeleteAccountResponse,
   ForgotPasswordResponse,
   LoginRecordsResponse,
   LoginRequest,
@@ -143,6 +144,14 @@ export class AuthService {
         this.authHeader(),
       )
       .pipe(tap((response) => this.setTokens(response.access_token, response.refresh_token)));
+  }
+
+  deleteAccount(currentPassword: string): Observable<DeleteAccountResponse> {
+    return this.api.post<DeleteAccountResponse>(
+      '/members/me/delete',
+      { current_password: currentPassword },
+      this.authHeader(),
+    );
   }
 
   getSupportedLanguages(): Observable<SupportedLanguagesResponse> {

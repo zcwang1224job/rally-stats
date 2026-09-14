@@ -8,6 +8,7 @@ import {
   MatchRecordSummary,
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
+import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { GroupMemberViewService } from '../group-member-view.service';
 
 /** US3 (FR-011/012): 團內對戰紀錄——逐場列表，僅限本團，載入時查詢。
@@ -16,7 +17,7 @@ import { GroupMemberViewService } from '../group-member-view.service';
  * 刻意不透過任何「依 groupId 有無決定端點」的共用邏輯）。 */
 @Component({
   selector: 'app-match-records',
-  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent],
+  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent, NicknameComponent],
   templateUrl: './match-records.component.html',
   styleUrl: './match-records.component.scss',
 })

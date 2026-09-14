@@ -11,6 +11,7 @@ import {
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
+import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
 
@@ -34,7 +35,13 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
  * 片與圖表都反映篩選後的完整結果集，而非僅目前頁面。 */
 @Component({
   selector: 'app-match-history',
-  imports: [TranslatePipe, ReactiveFormsModule, DatePipe, MatchRecordDetailDialogComponent],
+  imports: [
+    TranslatePipe,
+    ReactiveFormsModule,
+    DatePipe,
+    MatchRecordDetailDialogComponent,
+    NicknameComponent,
+  ],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
 })

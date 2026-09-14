@@ -81,6 +81,14 @@ export class SettingsComponent implements OnInit {
     { validators: [passwordsMatchValidator('new_password', 'confirm_new_password')] },
   );
 
+  // --- 安全性：刪除帳號（025-delete-account FR-001/FR-002） ---
+  readonly deleteAccountSubmitting = signal(false);
+  readonly deleteAccountErrorKey = signal<string | null>(null);
+
+  readonly deleteAccountForm = this.fb.nonNullable.group({
+    current_password: ['', Validators.required],
+  });
+
   // --- 隱私設定（022-member-personal-settings FR-016~023） ---
   // 使用者要求：checkbox 只是暫存草稿，切換不會立即送出；MUST 按下「儲存」
   // 才呼叫 PATCH /members/me/privacy——與其他三個分區「填寫後按按鈕送出」
@@ -180,6 +188,28 @@ export class SettingsComponent implements OnInit {
           this.passwordErrorKey.set(error.i18nKey);
         },
       });
+  }
+
+  submitDeleteAccount(): void {
+    if (this.deleteAccountForm.invalid) {
+      this.deleteAccountForm.markAllAsTouched();
+      return;
+    }
+    this.deleteAccountSubmitting.set(true);
+    this.deleteAccountErrorKey.set(null);
+    this.auth.deleteAccount(this.deleteAccountForm.getRawValue().current_password).subscribe({
+      next: () => {
+        this.deleteAccountSubmitting.set(false);
+        // Deletion already invalidated every token server-side (token_version
+        // bump) — logout() here just clears the now-stale local copy.
+        this.auth.logout();
+        void this.router.navigateByUrl('/');
+      },
+      error: (error: ApiError) => {
+        this.deleteAccountSubmitting.set(false);
+        this.deleteAccountErrorKey.set(error.i18nKey);
+      },
+    });
   }
 
   loadLoginRecords(page: number): void {

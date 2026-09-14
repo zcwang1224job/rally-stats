@@ -44,6 +44,9 @@ class Member(Base):
     share_match_records_with_friends: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
+    # 025-delete-account: NULL = active account. Non-NULL = this account has
+    # been deleted (anonymized in place, row kept — see service.delete_account()).
+    deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
 
 class MemberLoginRecord(Base):

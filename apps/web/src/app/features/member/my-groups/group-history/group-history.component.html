@@ -26,7 +26,7 @@
               <tr [class.is-self]="row.is_self">
                 <td>{{ 'groupMemberView.standings.rankValue' | translate: { rank: row.rank } }}</td>
                 <td>
-                  {{ row.nickname }}
+                  <app-nickname [value]="row.nickname" />
                   @if (row.is_self) {
                     <span class="status-badge self-badge">
                       {{ 'groupMemberView.standings.selfBadge' | translate }}
@@ -125,7 +125,7 @@
           @for (opponent of h.my_stats.opponent_records; track opponent.nickname; let i = $index) {
             <li class="ranking-row">
               <span class="ranking-row__rank">{{ rankBadge(i) }}</span>
-              <span class="ranking-row__name">{{ opponent.nickname }}</span>
+              <span class="ranking-row__name"><app-nickname [value]="opponent.nickname" /></span>
               <div class="ranking-row__bar-track">
                 <div class="ranking-row__bar-fill" [style.width.%]="opponent.win_rate * 100"></div>
               </div>
@@ -235,7 +235,7 @@
           @for (slice of playerPieSlices(); track slice.record.nickname) {
             <li class="player-pie-card__legend-row">
               <span class="player-pie-card__swatch" [style.background]="slice.color"></span>
-              <span class="player-pie-card__legend-name">{{ slice.record.nickname }}</span>
+              <span class="player-pie-card__legend-name"><app-nickname [value]="slice.record.nickname" /></span>
               <span class="player-pie-card__legend-stats">
                 {{ 'memberGroupHistory.filters.playerChartWinsLabel' | translate: { wins: slice.record.wins } }}
                 ・{{ (slice.record.win_rate * 100).toFixed(0) }}%
@@ -266,11 +266,11 @@
           }
           <span class="teams">
             @for (p of match.team_a; track p.roster_entry_id) {
-              {{ p.nickname }}
+              <app-nickname [value]="p.nickname" />
             }
             vs
             @for (p of match.team_b; track p.roster_entry_id) {
-              {{ p.nickname }}
+              <app-nickname [value]="p.nickname" />
             }
           </span>
           <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>

@@ -22,6 +22,16 @@ section.card {
   margin-bottom: var(--space-md);
 }
 
+// 025-delete-account: visually sets the danger zone apart from the
+// ordinary password-change form directly above it in the 安全性 tab.
+.card--danger {
+  border: 1px solid var(--color-danger);
+}
+
+.card--danger h2 {
+  color: var(--color-danger);
+}
+
 .field-heading {
   display: flex;
   flex-direction: column;

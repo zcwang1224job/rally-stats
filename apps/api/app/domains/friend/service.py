@@ -70,15 +70,19 @@ async def get_friendship_status(
 async def create_friend_request(
     session: AsyncSession, requester_id: uuid.UUID, addressee_user_number: str
 ) -> FriendRequestResponse:
-    """Errors: `MEMBER_NOT_FOUND` (FR-036, unverified accounts included),
-    `CANNOT_FRIEND_SELF` (FR-037), `FRIEND_REQUEST_ALREADY_PENDING` (FR-039,
-    either from the pre-check or the DB's own partial unique index),
-    `ALREADY_FRIENDS`."""
+    """Errors: `MEMBER_NOT_FOUND` (FR-036, unverified accounts included; a
+    deleted account, 025-delete-account), `CANNOT_FRIEND_SELF` (FR-037),
+    `FRIEND_REQUEST_ALREADY_PENDING` (FR-039, either from the pre-check or
+    the DB's own partial unique index), `ALREADY_FRIENDS`."""
     result = await session.execute(
         select(Member).where(func.lower(Member.user_number) == addressee_user_number.lower())
     )
     addressee = result.scalar_one_or_none()
-    if addressee is None or addressee.verification_status != "verified":
+    if (
+        addressee is None
+        or addressee.verification_status != "verified"
+        or addressee.deleted_at is not None
+    ):
         raise ApiError("MEMBER_NOT_FOUND", status_code=404)
     if addressee.id == requester_id:
         raise ApiError("CANNOT_FRIEND_SELF", status_code=400)
@@ -139,7 +143,11 @@ async def list_friends(
     friends: list[FriendSummary] = []
     for other_id in other_ids:
         member = members_by_id.get(other_id)
-        if member is None:
+        # 025-delete-account: a deleted friend drops out of the friend list
+        # entirely (unlike match/roster history, which keeps showing them
+        # under the placeholder nickname) — the underlying `FriendRequest`
+        # row is left untouched, only this read-time view excludes them.
+        if member is None or member.deleted_at is not None:
             continue
         if nickname and (
             member.nickname is None or nickname.lower() not in member.nickname.lower()

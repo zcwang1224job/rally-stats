@@ -8,6 +8,7 @@ import {
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
+import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { AuthService } from '../../auth/auth.service';
 
 /** 023-view-friend-match-records US1/US2: a deliberately thin sibling of
@@ -22,7 +23,7 @@ import { AuthService } from '../../auth/auth.service';
  * component never remembers "was I allowed last time" and skips the call. */
 @Component({
   selector: 'app-friend-match-records',
-  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent],
+  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent, NicknameComponent],
   templateUrl: './friend-match-records.component.html',
   styleUrl: './friend-match-records.component.scss',
 })

@@ -2,12 +2,13 @@
 Per specs/006-member-friends/plan.md."""
 
 import re
+import secrets
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -526,6 +527,64 @@ async def change_password(
     return member, access_token, refresh_token
 
 
+# 025-delete-account research.md #5: a fixed, language-neutral literal —
+# nicknames are user-generated data, not UI chrome, and were never routed
+# through the i18n translation-file system (a nickname doesn't change when
+# the viewer switches display language). Used for both `Member.nickname`
+# and the `roster_entries.nickname` cascade below.
+DELETED_MEMBER_PLACEHOLDER_NICKNAME = "Deleted User"
+
+
+async def delete_account(session: AsyncSession, member: Member, current_password: str) -> Member:
+    """FR-001~008: anonymizes the account in place rather than deleting the
+    row (research.md #1) — every FK pointing at `member.id` (match
+    participants, roster entries, friend requests, group creators) stays
+    valid. Errors: `CURRENT_PASSWORD_INCORRECT`.
+
+    FR-003a (Clarifications 2026-09-14): also cascades the placeholder
+    nickname to every `roster_entries` row for this member, regardless of
+    match/round status — a deliberate, deletion-only exception to the
+    otherwise-permanent nickname-snapshot isolation from `set_nickname()`
+    (see `test_nickname_snapshot_isolation.py`, 006). No other code path is
+    allowed to write to `roster_entries.nickname` for a reason other than
+    joining a new roster."""
+    if not verify_password(current_password, member.password_hash):
+        raise ApiError("CURRENT_PASSWORD_INCORRECT", status_code=400)
+
+    now = datetime.now(UTC)
+    member.email = f"deleted-{member.id}@rally-stats.invalid"
+    member.password_hash = hash_password(secrets.token_urlsafe(32))
+    member.nickname = DELETED_MEMBER_PLACEHOLDER_NICKNAME
+    member.deleted_at = now
+    member.token_version += 1
+
+    await session.execute(
+        update(RosterEntry)
+        .where(RosterEntry.member_id == member.id)
+        .values(nickname=DELETED_MEMBER_PLACEHOLDER_NICKNAME)
+    )
+    await session.execute(
+        update(EmailVerificationToken)
+        .where(
+            EmailVerificationToken.member_id == member.id,
+            EmailVerificationToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+    await session.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.member_id == member.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+
+    await session.commit()
+    await session.refresh(member)
+    return member
+
+
 async def _build_member_match_record_summaries(
     session: AsyncSession,
     matches: list[Match],
@@ -862,18 +921,19 @@ async def search_member(
     session: AsyncSession, user_number: str, requester_id: uuid.UUID
 ) -> SearchMemberResponse:
     """FR-038: case-insensitive user_number lookup. Errors: `MEMBER_NOT_FOUND`
-    (also covers an unverified target account, FR-036, and — 022-member-
-    personal-settings FR-017 — a verified target who has closed
-    `allow_search`, deliberately indistinguishable from "doesn't exist" so a
-    hidden account's existence is never leaked), `CANNOT_SEARCH_SELF`
-    (FR-037, checked after existence so a self-search still surfaces as its
-    own distinct code rather than the generic not-found, regardless of the
-    searcher's own `allow_search` value)."""
+    (also covers an unverified target account, FR-036; a deleted account,
+    025-delete-account; and — 022-member-personal-settings FR-017 — a
+    verified target who has closed `allow_search`, deliberately
+    indistinguishable from "doesn't exist" so a hidden/deleted account's
+    existence is never leaked), `CANNOT_SEARCH_SELF` (FR-037, checked after
+    existence so a self-search still surfaces as its own distinct code
+    rather than the generic not-found, regardless of the searcher's own
+    `allow_search` value)."""
     result = await session.execute(
         select(Member).where(func.lower(Member.user_number) == user_number.lower())
     )
     target = result.scalar_one_or_none()
-    if target is None or target.verification_status != "verified":
+    if target is None or target.verification_status != "verified" or target.deleted_at is not None:
         raise ApiError("MEMBER_NOT_FOUND", status_code=404)
     if target.id == requester_id:
         raise ApiError("CANNOT_SEARCH_SELF", status_code=400)

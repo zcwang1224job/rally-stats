@@ -11,6 +11,7 @@ from app.domains.group.schemas import CreateGroupRequest
 from app.domains.group.service import create_group
 from app.domains.group_invite.models import GroupInvite
 from app.domains.group_invite.service import send_invite
+from app.domains.member.service import delete_account
 from app.domains.notification.models import Notification
 from tests.unit.domains.group_invite._helpers import (
     become_friends,
@@ -109,3 +110,17 @@ async def test_send_invite_rejects_anonymous_group(db_session: AsyncSession) -> 
     with pytest.raises(ApiError) as exc_info:
         await send_invite(db_session, group, a.id, b.id)
     assert exc_info.value.error_code == "GROUP_NOT_MEMBER_CREATED"
+
+
+async def test_send_invite_rejects_deleted_invitee(db_session: AsyncSession) -> None:
+    """025-delete-account: a deleted account is reported as MEMBER_NOT_FOUND,
+    same as a nonexistent one."""
+    a = await verified_member(db_session, "send-a6@example.com", "A")
+    b = await verified_member(db_session, "send-b6@example.com", "B")
+    await become_friends(db_session, a, b)
+    group = await member_created_group(db_session, a)
+    await delete_account(db_session, b, "abc12345")
+
+    with pytest.raises(ApiError) as exc_info:
+        await send_invite(db_session, group, a.id, b.id)
+    assert exc_info.value.error_code == "MEMBER_NOT_FOUND"

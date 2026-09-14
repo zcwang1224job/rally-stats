@@ -163,4 +163,21 @@ describe('MatchRecordDetailDialogComponent — completeness states (US3)', () =>
     expect(alert).not.toBeNull();
     expect(alert.textContent).toContain('matchRecordDetail.loadError');
   });
+
+  // 025-delete-account follow-up
+  it('shows a deleted participant\'s placeholder nickname muted in the header', () => {
+    const fixture = setup({
+      ...completeDetail,
+      team_a: [{ roster_entry_id: 'p1', nickname: 'Deleted User', team: 'A' }],
+    });
+
+    const basicInfo = fixture.nativeElement.querySelector('.basic-info') as HTMLElement;
+    const deletedSpan = basicInfo.querySelector('.nickname--deleted') as HTMLElement | null;
+    expect(deletedSpan).not.toBeNull();
+    expect(deletedSpan?.textContent).toContain('Deleted User');
+    const realSpan = Array.from<HTMLElement>(basicInfo.querySelectorAll('.nickname')).find((el) =>
+      el.textContent?.includes('小華'),
+    );
+    expect(realSpan?.classList.contains('nickname--deleted')).toBe(false);
+  });
 });

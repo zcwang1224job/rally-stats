@@ -13,6 +13,7 @@ from app.domains.group_invite.service import (
     list_invitable_friends,
     send_invite,
 )
+from app.domains.member.service import delete_account
 from tests.unit.domains.group_invite._helpers import (
     become_friends,
     member_created_group,
@@ -110,3 +111,17 @@ async def test_accepted_then_left_reverts_to_not_invited_and_allows_reinvite(
     # And re-inviting must actually succeed, not just be offered in the UI.
     reinvited = await send_invite(db_session, group, a.id, b.id)
     assert reinvited.status == "pending"
+
+
+async def test_deleted_friend_is_excluded_from_the_list(db_session: AsyncSession) -> None:
+    """025-delete-account: a friend whose account has since been deleted
+    can't accept an invite, so they must not be offered as invitable."""
+    a = await verified_member(db_session, "list-a5@example.com", "A")
+    b = await verified_member(db_session, "list-b5@example.com", "B")
+    await become_friends(db_session, a, b)
+    group = await member_created_group(db_session, a)
+    await delete_account(db_session, b, "abc12345")
+
+    response = await list_invitable_friends(db_session, group)
+
+    assert str(b.id) not in {f.member_id for f in response.friends}

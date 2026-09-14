@@ -20,11 +20,11 @@
           }
           <span class="teams">
             @for (p of match.team_a; track p.roster_entry_id) {
-              {{ p.nickname }}
+              <app-nickname [value]="p.nickname" />
             }
             vs
             @for (p of match.team_b; track p.roster_entry_id) {
-              {{ p.nickname }}
+              <app-nickname [value]="p.nickname" />
             }
           </span>
           <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>

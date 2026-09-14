@@ -169,7 +169,7 @@
           @for (opponent of r.opponent_records; track opponent.nickname; let i = $index) {
             <li class="ranking-row">
               <span class="ranking-row__rank">{{ rankBadge(i) }}</span>
-              <span class="ranking-row__name">{{ opponent.nickname }}</span>
+              <span class="ranking-row__name"><app-nickname [value]="opponent.nickname" /></span>
               <div class="ranking-row__bar-track">
                 <div class="ranking-row__bar-fill" [style.width.%]="opponent.win_rate * 100"></div>
               </div>
@@ -212,13 +212,13 @@
           <div class="match-card__body">
             <span class="match-card__team">
               @for (p of match.team_a; track p.roster_entry_id) {
-                {{ p.nickname }}
+                <app-nickname [value]="p.nickname" />
               }
             </span>
             <span class="match-card__score">{{ match.score_a }} : {{ match.score_b }}</span>
             <span class="match-card__team match-card__team--right">
               @for (p of match.team_b; track p.roster_entry_id) {
-                {{ p.nickname }}
+                <app-nickname [value]="p.nickname" />
               }
             </span>
           </div>

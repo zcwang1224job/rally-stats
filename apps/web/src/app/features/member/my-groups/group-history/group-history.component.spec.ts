@@ -345,6 +345,27 @@ describe('GroupHistoryComponent', () => {
     expect(rows[2].textContent).toContain('小強');
   });
 
+  // 025-delete-account follow-up
+  it('shows a deleted member\'s placeholder nickname muted in the final standings table', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    const current = fixture.componentInstance.history();
+    fixture.componentInstance.history.set({
+      ...current!,
+      final_standings: [
+        { ...current!.final_standings[0], nickname: 'Deleted User' },
+        ...current!.final_standings.slice(1),
+      ],
+    });
+    fixture.detectChanges();
+
+    const deletedSpan = fixture.nativeElement.querySelector(
+      '.final-standings .nickname--deleted',
+    ) as HTMLElement | null;
+    expect(deletedSpan).not.toBeNull();
+    expect(deletedSpan?.textContent).toContain('Deleted User');
+  });
+
   it('marks only the is_self row with the self badge and highlight class', () => {
     const { fixture } = setup();
     fixture.detectChanges();

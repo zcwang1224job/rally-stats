@@ -1,0 +1,12 @@
+:host {
+  display: inline;
+}
+
+.nickname--deleted {
+  // Lighter than the standard --color-text-muted — this placeholder is
+  // meant to read as "no longer here", fainter than any normal secondary
+  // text on the page.
+  color: color-mix(in srgb, var(--color-text-muted) 55%, white);
+  font-style: italic;
+  text-decoration: line-through;
+}

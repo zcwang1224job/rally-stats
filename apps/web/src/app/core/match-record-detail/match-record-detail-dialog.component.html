@@ -16,7 +16,14 @@
     <h2>{{ 'matchRecordDetail.title' | translate }}</h2>
     <p class="basic-info">
       {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: d.round_number } }}
-      · {{ teamANames() }} vs {{ teamBNames() }}
+      ·
+      @for (p of d.team_a; track p.roster_entry_id; let last = $last) {
+        <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+      }
+      vs
+      @for (p of d.team_b; track p.roster_entry_id; let last = $last) {
+        <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+      }
       · <strong>{{ d.score_a }} : {{ d.score_b }}</strong>
     </p>
 

@@ -76,4 +76,26 @@ describe('MatchHistoryComponent', () => {
     expect(detailCalls.length).toBe(1);
     expect(detailCalls[0]).toEqual(['m1']);
   });
+
+  // 025-delete-account follow-up
+  it('shows a deleted participant\'s placeholder nickname muted in the match-card row', () => {
+    const fixture = setup();
+    // Patch after setup: cheaper than duplicating the whole response fixture.
+    fixture.componentInstance.records.set({
+      ...recordsResponse,
+      matches: [
+        {
+          ...recordsResponse.matches[0],
+          team_a: [{ roster_entry_id: 'p1', nickname: 'Deleted User', team: 'A' }],
+        },
+      ],
+    });
+    fixture.detectChanges();
+
+    const deletedSpan = fixture.nativeElement.querySelector(
+      '.match-card__team .nickname--deleted',
+    ) as HTMLElement | null;
+    expect(deletedSpan).not.toBeNull();
+    expect(deletedSpan?.textContent).toContain('Deleted User');
+  });
 });

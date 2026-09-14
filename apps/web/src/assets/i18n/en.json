@@ -299,6 +299,11 @@
         "title": "Security",
         "hint": "Change your password regularly to keep your account secure"
       },
+      "deleteAccount": {
+        "title": "Delete Account",
+        "hint": "This cannot be undone: your account will be immediately unable to log in, and your email, password, and nickname will be cleared. Past match records and rotation rosters are kept, but your nickname in them will show as \"Deleted User\". Enter your current password to confirm.",
+        "submit": "Confirm Account Deletion"
+      },
       "privacy": {
         "title": "Privacy",
         "hint": "Control what other members can see about you",

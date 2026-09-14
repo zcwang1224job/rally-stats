@@ -100,3 +100,11 @@ export interface ChangePasswordResponse {
   access_token: string;
   refresh_token: string;
 }
+
+export interface DeleteAccountRequest {
+  current_password: string;
+}
+
+export interface DeleteAccountResponse {
+  deleted: boolean;
+}

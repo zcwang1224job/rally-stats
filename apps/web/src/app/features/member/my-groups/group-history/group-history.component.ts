@@ -13,6 +13,7 @@ import {
   OpponentRecord,
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
+import { NicknameComponent } from '../../../../core/nickname/nickname.component';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
 
@@ -72,7 +73,14 @@ interface PlayerPieSlice {
  * this component only renders them, never re-derives them. */
 @Component({
   selector: 'app-group-history',
-  imports: [TranslatePipe, ReactiveFormsModule, DatePipe, RouterLink, MatchRecordDetailDialogComponent],
+  imports: [
+    TranslatePipe,
+    ReactiveFormsModule,
+    DatePipe,
+    RouterLink,
+    MatchRecordDetailDialogComponent,
+    NicknameComponent,
+  ],
   templateUrl: './group-history.component.html',
   styleUrl: './group-history.component.scss',
 })

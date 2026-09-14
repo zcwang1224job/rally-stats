@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.friend.service import create_friend_request, list_friends, respond_friend_request
 from app.domains.member.models import Member
-from app.domains.member.service import register
+from app.domains.member.service import delete_account, register
 
 pytestmark = pytest.mark.asyncio
 
@@ -37,6 +37,25 @@ async def test_friend_list_filters_by_nickname_substring(db_session: AsyncSessio
 
     assert len(result.friends) == 1
     assert result.friends[0].nickname == "陳小美"
+
+
+async def test_friend_list_excludes_a_friend_who_deleted_their_account(
+    db_session: AsyncSession,
+) -> None:
+    """025-delete-account follow-up: unlike match/roster history, the
+    friend list drops a deleted friend entirely rather than showing them
+    under a placeholder — the underlying friendship row is untouched."""
+    me = await _verified(db_session, "listfilter4@example.com", "我")
+    still_here = await _verified(db_session, "listfilter5@example.com", "還在")
+    deleted = await _verified(db_session, "listfilter6@example.com", "已刪除")
+    await _become_friends(db_session, me, still_here)
+    await _become_friends(db_session, me, deleted)
+    await delete_account(db_session, deleted, "abc12345")
+
+    result = await list_friends(db_session, me.id)
+
+    nicknames = {f.nickname for f in result.friends}
+    assert nicknames == {"還在"}
 
 
 async def test_friend_list_filters_by_user_number_substring(db_session: AsyncSession) -> None:

@@ -1,6 +1,7 @@
 import { Component, ElementRef, computed, input, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { MatchRecordDetailResponse, ScoreEventSummary } from '../api/group-member-view.models';
+import { NicknameComponent } from '../nickname/nickname.component';
 
 interface ChartPoint {
   x: number;
@@ -16,7 +17,7 @@ interface ChartPoint {
  * groupId 參數決定端點」導致的 I1 那類錯誤。 */
 @Component({
   selector: 'app-match-record-detail-dialog',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, NicknameComponent],
   templateUrl: './match-record-detail-dialog.component.html',
   styleUrl: './match-record-detail-dialog.component.scss',
 })

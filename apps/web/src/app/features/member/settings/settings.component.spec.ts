@@ -38,9 +38,11 @@ function setup(
     setPrivacySettings?: () => unknown;
     setNickname?: () => unknown;
     changePassword?: () => unknown;
+    deleteAccount?: () => unknown;
   } = {},
 ) {
-  const calls = { setPrivacySettings: 0 };
+  const calls = { setPrivacySettings: 0, logout: 0 };
+  const deleteAccountCalls: unknown[] = [];
   const authServiceStub = {
     getMe: () => of(overrides.member ?? member),
     getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
@@ -61,12 +63,22 @@ function setup(
             share_match_records_with_friends: true,
           } satisfies PrivacySettingsResponse);
     },
+    deleteAccount: (currentPassword: string) => {
+      deleteAccountCalls.push(currentPassword);
+      return overrides.deleteAccount ? overrides.deleteAccount() : of({ deleted: true });
+    },
+    logout: () => {
+      calls.logout += 1;
+    },
   };
 
   TestBed.configureTestingModule({
     imports: [SettingsComponent],
     providers: [
-      provideRouter([{ path: 'member', component: StubMemberComponent }]),
+      provideRouter([
+        { path: '', component: StubMemberComponent },
+        { path: 'member', component: StubMemberComponent },
+      ]),
       provideTranslateService({}),
       { provide: AuthService, useValue: authServiceStub },
       {
@@ -77,7 +89,7 @@ function setup(
   });
   const fixture = TestBed.createComponent(SettingsComponent);
   fixture.detectChanges();
-  return { fixture, calls };
+  return { fixture, calls, deleteAccountCalls };
 }
 
 type Section = 'basic' | 'accountDetails' | 'security' | 'privacy';
@@ -154,6 +166,54 @@ describe('SettingsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelectorAll('.status-badge--success').length).toBe(1);
+  });
+
+  // 025-delete-account: danger-zone delete-account form.
+  it('submitting the delete-account form with the wrong password shows the error inline and does not log out', () => {
+    const { fixture, calls } = setup({
+      deleteAccount: () =>
+        throwError(
+          () =>
+            ({
+              errorCode: 'CURRENT_PASSWORD_INCORRECT',
+              i18nKey: 'errors.CURRENT_PASSWORD_INCORRECT',
+              detail: null,
+              status: 400,
+            }) satisfies ApiError,
+        ),
+    });
+    switchTo(fixture, 'security');
+
+    const deleteAccountForm = fixture.nativeElement.querySelectorAll('form')[1] as HTMLFormElement;
+    const passwordInput = deleteAccountForm.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    passwordInput.value = 'wrong-password';
+    passwordInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    deleteAccountForm.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('errors.CURRENT_PASSWORD_INCORRECT');
+    expect(calls.logout).toBe(0);
+  });
+
+  it('submitting the delete-account form with the correct password logs out and navigates away', () => {
+    const { fixture, calls, deleteAccountCalls } = setup();
+    switchTo(fixture, 'security');
+
+    const deleteAccountForm = fixture.nativeElement.querySelectorAll('form')[1] as HTMLFormElement;
+    const passwordInput = deleteAccountForm.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    passwordInput.value = 'abc12345';
+    passwordInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    deleteAccountForm.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+
+    expect(deleteAccountCalls).toEqual(['abc12345']);
+    expect(calls.logout).toBe(1);
   });
 
   // US1: language preference dropdown.
