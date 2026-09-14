@@ -214,7 +214,7 @@
               @for (p of match.team_a; track p.roster_entry_id) {
                 <app-nickname [value]="p.nickname" />
                 @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" />
+                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" [iconStyle]="true" [nickname]="p.nickname" />
                 }
               }
             </span>
@@ -223,7 +223,7 @@
               @for (p of match.team_b; track p.roster_entry_id) {
                 <app-nickname [value]="p.nickname" />
                 @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" />
+                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" [iconStyle]="true" [nickname]="p.nickname" />
                 }
               }
             </span>
