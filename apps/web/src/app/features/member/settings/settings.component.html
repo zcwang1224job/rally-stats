@@ -187,10 +187,12 @@
           <p class="section-hint">{{ 'member.settings.security.hint' | translate }}</p>
         </div>
 
-        <label>
-          {{ 'member.currentPassword' | translate }}
-          <input type="password" formControlName="current_password" autocomplete="current-password" />
-        </label>
+        @if (member()?.has_password) {
+          <label>
+            {{ 'member.currentPassword' | translate }}
+            <input type="password" formControlName="current_password" autocomplete="current-password" />
+          </label>
+        }
 
         <label>
           {{ 'auth.newPassword' | translate }}
@@ -221,6 +223,73 @@
       </form>
     </section>
 
+    <section class="card">
+      <div class="field-heading">
+        <h2>{{ 'member.settings.oauth.title' | translate }}</h2>
+        <p class="section-hint">{{ 'member.settings.oauth.hint' | translate }}</p>
+      </div>
+
+      @if (showAccountRecoveryReminder()) {
+        <p class="account-recovery-reminder" role="status">
+          {{ 'member.settings.oauth.recoveryReminder' | translate }}
+        </p>
+      }
+
+      @if (oauthLinkMessageKey(); as key) {
+        <p role="status">{{ key | translate }}</p>
+      }
+      @if (unlinkErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
+
+      <ul class="oauth-link-list">
+        @for (provider of oauthProviders; track provider) {
+          <li class="oauth-link-row">
+            <span class="oauth-link-row__label">
+              {{ ('member.settings.oauth.' + provider) | translate }}
+            </span>
+            @if (isOauthLinked(provider)) {
+              <span class="status-badge status-badge--success">
+                {{ 'member.settings.oauth.linked' | translate }}
+              </span>
+              <button type="button" class="btn btn--secondary" (click)="unlinkOauth(provider)">
+                {{ 'member.settings.oauth.unlink' | translate }}
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="btn btn--secondary"
+                [disabled]="oauthLinkSubmitting() === provider"
+                (click)="linkOauth(provider)"
+              >
+                {{ 'member.settings.oauth.link' | translate }}
+              </button>
+            }
+          </li>
+        }
+      </ul>
+
+      @if (!member()?.email) {
+        <form class="form" [formGroup]="addEmailForm" (ngSubmit)="submitAddEmail()">
+          <label>
+            {{ 'member.settings.oauth.addEmailLabel' | translate }}
+            <input type="email" formControlName="email" autocomplete="email" />
+          </label>
+          @if (addEmailErrorKey(); as key) {
+            <p role="alert">{{ key | translate }}</p>
+          }
+          @if (addEmailSent()) {
+            <span class="status-badge status-badge--success">
+              {{ 'member.settings.oauth.addEmailSent' | translate }}
+            </span>
+          }
+          <button type="submit" class="btn" [disabled]="addEmailSubmitting()">
+            {{ 'member.settings.oauth.addEmailSubmit' | translate }}
+          </button>
+        </form>
+      }
+    </section>
+
     <section class="card card--danger">
       <form class="form" [formGroup]="deleteAccountForm" (ngSubmit)="submitDeleteAccount()">
         <div class="field-heading">
@@ -228,10 +297,12 @@
           <p class="section-hint">{{ 'member.settings.deleteAccount.hint' | translate }}</p>
         </div>
 
-        <label>
-          {{ 'member.currentPassword' | translate }}
-          <input type="password" formControlName="current_password" autocomplete="current-password" />
-        </label>
+        @if (member()?.has_password) {
+          <label>
+            {{ 'member.currentPassword' | translate }}
+            <input type="password" formControlName="current_password" autocomplete="current-password" />
+          </label>
+        }
 
         @if (deleteAccountErrorKey(); as key) {
           <p role="alert">{{ key | translate }}</p>

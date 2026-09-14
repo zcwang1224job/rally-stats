@@ -21,7 +21,7 @@ plugins = ["pydantic.mypy"]
 exclude = ["alembic/versions"]
 
 [[tool.mypy.overrides]]
-module = ["ably.*", "apscheduler.*", "boto3.*", "botocore.*"]
+module = ["ably.*", "apscheduler.*", "boto3.*", "botocore.*", "authlib.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

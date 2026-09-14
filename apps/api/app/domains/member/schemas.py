@@ -3,6 +3,7 @@ specs/006-member-friends/contracts/auth-api.md and member-api.md."""
 
 import re
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
@@ -68,7 +69,9 @@ class LoginRequest(BaseModel):
 
 class MemberPublicResponse(BaseModel):
     member_id: str
-    email: str
+    # 027-google-line-oauth-login: nullable — a LINE-only account may not
+    # have one (FR-004).
+    email: str | None
     nickname: str | None
     user_number: str
     verification_status: VerificationStatus
@@ -83,6 +86,15 @@ class MemberPublicResponse(BaseModel):
     allow_search: bool
     share_match_records_with_friends: bool
     allow_friend_invite_from_match_pages: bool
+    # 027-google-line-oauth-login: which providers this member currently
+    # has a `member_oauth_identities` binding for (US3, at most one entry
+    # per provider — FR-006).
+    linked_oauth_providers: list[Literal["google", "line"]]
+    # Whether `password_hash` is set — lets the frontend decide whether
+    # "current password" is required on the change-password/delete-account
+    # forms (research.md #7) and whether the FR-013 reminder should show
+    # (email is None AND has_password is False).
+    has_password: bool
 
 
 class LoginResponse(BaseModel):
@@ -153,7 +165,11 @@ class SetNicknameRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
+    # 027-google-line-oauth-login research.md #7: optional — a member whose
+    # `password_hash` is still `None` (never set one) has nothing to
+    # re-confirm; `service.change_password()` skips the check for them and
+    # treats the call as "set my first password" rather than "change it".
+    current_password: str | None = None
     new_password: str
     confirm_new_password: str
 
@@ -178,13 +194,35 @@ class ChangePasswordResponse(BaseModel):
 
 class DeleteAccountRequest(BaseModel):
     """025-delete-account FR-002: password re-entry is the confirmation
-    step, matching `ChangePasswordRequest`'s existing precedent."""
+    step, matching `ChangePasswordRequest`'s existing precedent.
+    027-google-line-oauth-login research.md #7: optional — a password-less
+    OAuth-only member has nothing to re-confirm; the authenticated session
+    itself is the proof of identity for them."""
 
-    current_password: str
+    current_password: str | None = None
 
 
 class DeleteAccountResponse(BaseModel):
     deleted: bool
+
+
+class OAuthStartResponse(BaseModel):
+    """027-google-line-oauth-login contracts/oauth-login-api.md:
+    GET /auth/oauth/{provider}/start."""
+
+    authorize_url: str
+
+
+class AddEmailRequest(BaseModel):
+    """027-google-line-oauth-login contracts/account-recovery-api.md:
+    POST /members/me/email — only for a member whose `email` is currently
+    `None` (FR-013); "changing" an existing email is out of scope."""
+
+    email: EmailStr
+
+
+class AddEmailResponse(BaseModel):
+    verification_email_sent: bool
 
 
 class MyGroupSummary(BaseModel):

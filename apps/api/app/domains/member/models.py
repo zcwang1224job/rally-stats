@@ -21,8 +21,14 @@ class Member(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 027-google-line-oauth-login: nullable — a LINE-only account may have
+    # declined the (optional) email scope (FR-004), and any OAuth-only
+    # account (Google or LINE) has no password at all. `ux_members_email`
+    # is a *partial* unique index (WHERE email IS NOT NULL, see the
+    # d4e5f6a7b8c9 migration) so multiple NULL emails can coexist while any
+    # non-NULL value stays globally unique.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     nickname: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # NULL = 尚未完成首次暱稱設定 (FR-012)
     user_number: Mapped[str] = mapped_column(String(8), nullable=False)
@@ -91,6 +97,35 @@ class EmailVerificationToken(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class MemberOAuthIdentity(Base):
+    """027-google-line-oauth-login data-model.md §2: one row per (member,
+    provider) binding. `UNIQUE(provider, provider_user_id)` (FR-007) stops
+    the same external account from being linked to two members;
+    `UNIQUE(member_id, provider)` (FR-006) caps each member at one binding
+    per provider — the application layer (service.complete_oauth_callback())
+    MUST still check both before writing (research.md #4/plan.md
+    Constraints), these constraints are the concurrency backstop, not the
+    primary mechanism."""
+
+    __tablename__ = "member_oauth_identities"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("members.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    # "google" | "line"
+    provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    email_at_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Display-only snapshot ("已綁定 xxx@gmail.com") — never used for auth
+    # decisions, those always key off (provider, provider_user_id).
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

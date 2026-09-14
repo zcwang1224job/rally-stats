@@ -187,6 +187,41 @@ h2 {
   flex-direction: column;
 }
 
+// 027-google-line-oauth-login US3
+.oauth-link-list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-sm) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oauth-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--color-border);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.oauth-link-row__label {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.account-recovery-reminder {
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-caption);
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

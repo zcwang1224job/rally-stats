@@ -3,18 +3,25 @@ auth-api.md and member-api.md."""
 
 import uuid
 from datetime import date
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session
+from app.core.errors import ApiError
 from app.core.rate_limit import limiter
 from app.core.turnstile import verify_turnstile_token
 from app.domains.group.schemas import MatchRecordDetailResponse, MemberMatchRecordsResponse
 from app.domains.member import security, service
 from app.domains.member.models import Member
+from app.domains.member.oauth_providers import Provider
 from app.domains.member.schemas import (
+    AddEmailRequest,
+    AddEmailResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
     DeleteAccountRequest,
@@ -27,6 +34,7 @@ from app.domains.member.schemas import (
     MemberGroupHistoryResponse,
     MemberPublicResponse,
     MyGroupsResponse,
+    OAuthStartResponse,
     PrivacySettingsRequest,
     PrivacySettingsResponse,
     RefreshRequest,
@@ -44,6 +52,14 @@ from app.domains.member.schemas import (
 )
 
 router = APIRouter(tags=["member"])
+
+_OAUTH_PROVIDERS: tuple[Provider, ...] = ("google", "line")
+
+
+def _require_valid_provider(provider: str) -> Provider:
+    if provider not in _OAUTH_PROVIDERS:
+        raise ApiError("OAUTH_PROVIDER_UNKNOWN", status_code=404)
+    return cast("Provider", provider)
 
 
 async def _to_public(session: AsyncSession, member: Member) -> MemberPublicResponse:
@@ -64,6 +80,8 @@ async def _to_public(session: AsyncSession, member: Member) -> MemberPublicRespo
         allow_search=member.allow_search,
         share_match_records_with_friends=member.share_match_records_with_friends,
         allow_friend_invite_from_match_pages=member.allow_friend_invite_from_match_pages,
+        linked_oauth_providers=await service.get_linked_oauth_providers(session, member.id),
+        has_password=member.password_hash is not None,
     )
 
 
@@ -223,6 +241,103 @@ async def reset_password(
     `RESET_TOKEN_ALREADY_USED`."""
     await service.reset_password(session, token, payload.new_password)
     return ResetPasswordResponse(reset=True)
+
+
+def _oauth_callback_redirect_url(result: service.OAuthCallbackResult) -> str:
+    """contracts/oauth-login-api.md's callback redirect-target table."""
+    settings = get_settings()
+    if result.intent == "login":
+        base = f"{settings.frontend_base_url}/auth/oauth-callback"
+        if result.status == "success":
+            params = {
+                "status": "success",
+                "access_token": result.access_token or "",
+                "refresh_token": result.refresh_token or "",
+                "is_new_member": "true" if result.is_new_member else "false",
+            }
+        elif result.status == "cancelled":
+            params = {"status": "cancelled"}
+        else:
+            params = {"status": "error", "code": result.error_code or ""}
+        return f"{base}#{urlencode(params)}"
+
+    base = f"{settings.frontend_base_url}/settings"
+    if result.status == "success":
+        return f"{base}?{urlencode({'oauth_link': 'success', 'provider': result.provider or ''})}"
+    if result.status == "cancelled":
+        return f"{base}?oauth_link=cancelled"
+    return f"{base}?{urlencode({'oauth_link': 'error', 'code': result.error_code or ''})}"
+
+
+@router.get("/auth/oauth/{provider}/start", response_model=OAuthStartResponse)
+@limiter.limit("20/minute")
+async def start_oauth(
+    request: Request,  # noqa: ARG001 - required by slowapi
+    provider: str,
+    member: Annotated[Member | None, Depends(security.optional_member)],
+    intent: Literal["login", "link"] = "login",
+) -> OAuthStartResponse:
+    """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/start`.
+    `intent=login` (US1/US2) is public; `intent=link` (US3) requires a
+    verified member session. Errors: `OAUTH_PROVIDER_UNKNOWN`,
+    `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`."""
+    valid_provider = _require_valid_provider(provider)
+    member_id: str | None = None
+    if intent == "link":
+        if member is None:
+            raise ApiError("MEMBER_TOKEN_INVALID", status_code=401)
+        if member.verification_status != "verified":
+            raise ApiError("EMAIL_NOT_VERIFIED", status_code=403)
+        member_id = str(member.id)
+    authorize_url = await service.start_oauth_flow(valid_provider, intent, member_id)
+    return OAuthStartResponse(authorize_url=authorize_url)
+
+
+@router.get("/auth/oauth/{provider}/callback")
+@limiter.limit("20/minute")
+async def oauth_callback(
+    request: Request,  # noqa: ARG001 - required by slowapi
+    provider: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+) -> RedirectResponse:
+    """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/callback`.
+    Public — the browser lands here fresh from Google/LINE's own redirect,
+    with no `Authorization` header. Always a 302, never a JSON body (the
+    browser is mid-navigation, not an API caller)."""
+    valid_provider = _require_valid_provider(provider)
+    result = await service.complete_oauth_callback(
+        session, valid_provider, code=code, state=state, error=error
+    )
+    return RedirectResponse(_oauth_callback_redirect_url(result), status_code=302)
+
+
+@router.delete("/members/me/oauth-identities/{provider}", status_code=204)
+async def unlink_oauth_identity(
+    provider: str,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """contracts/account-recovery-api.md. Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `OAUTH_PROVIDER_UNKNOWN`,
+    `OAUTH_IDENTITY_NOT_LINKED`, `LAST_LOGIN_METHOD`."""
+    valid_provider = _require_valid_provider(provider)
+    await service.unlink_oauth_identity(session, member, valid_provider)
+
+
+@router.post("/members/me/email", response_model=AddEmailResponse, status_code=202)
+async def add_email(
+    payload: AddEmailRequest,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AddEmailResponse:
+    """contracts/account-recovery-api.md (FR-013). Errors:
+    `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`, `EMAIL_ALREADY_SET`,
+    `EMAIL_ALREADY_REGISTERED`."""
+    await service.add_email(session, member, payload.email)
+    return AddEmailResponse(verification_email_sent=True)
 
 
 @router.get("/members/search", response_model=SearchMemberResponse)

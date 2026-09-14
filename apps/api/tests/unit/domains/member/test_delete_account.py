@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ApiError
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
-from app.domains.member.models import EmailVerificationToken, PasswordResetToken
+from app.domains.member.models import EmailVerificationToken, Member, PasswordResetToken
 from app.domains.member.security import verify_password
 from app.domains.member.service import (
     DELETED_MEMBER_PLACEHOLDER_NICKNAME,
@@ -58,6 +58,24 @@ async def test_delete_account_rejects_wrong_password(db_session: AsyncSession) -
     await db_session.refresh(member)
     assert member.email == original_email
     assert member.deleted_at is None
+
+
+async def test_delete_account_password_less_member_skips_verification(
+    db_session: AsyncSession,
+) -> None:
+    """027-google-line-oauth-login research.md #7: a pure OAuth member
+    (`password_hash is None`) can delete their own account without
+    providing any `current_password` — the authenticated session itself is
+    sufficient proof."""
+    member = Member(email="oauthdel@example.com", password_hash=None, user_number="aB3dEfGh")
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+
+    updated = await delete_account(db_session, member, None)
+
+    assert updated.deleted_at is not None
+    assert updated.email != "oauthdel@example.com"
 
 
 async def test_delete_account_overwrites_pii_and_marks_deleted(db_session: AsyncSession) -> None:

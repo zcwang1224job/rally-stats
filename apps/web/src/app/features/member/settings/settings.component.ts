@@ -5,6 +5,8 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { LoginRecordSummary, MemberPublic } from '../../../core/api/member-auth.models';
+
+type OAuthProvider = 'google' | 'line';
 import { AuthService } from '../../auth/auth.service';
 import {
   passwordStrengthValidator,
@@ -40,6 +42,11 @@ export class SettingsComponent implements OnInit {
   readonly activeSection = signal<SettingsSection>('basic');
 
   readonly member = signal<MemberPublic | null>(null);
+
+  // 027-google-line-oauth-login: iterated in the template's OAuth-binding
+  // list — a class field so Angular's template type-checker sees
+  // `OAuthProvider`, not a widened `string`, from the `@for` loop variable.
+  readonly oauthProviders: readonly OAuthProvider[] = ['google', 'line'];
 
   // --- 基本設定：暱稱（既有，行為不變） ---
   readonly nicknameSubmitting = signal(false);
@@ -89,6 +96,20 @@ export class SettingsComponent implements OnInit {
     current_password: ['', Validators.required],
   });
 
+  // --- 安全性：Google／LINE 帳號綁定（027-google-line-oauth-login US3） ---
+  readonly oauthLinkMessageKey = signal<string | null>(null);
+  readonly oauthLinkSubmitting = signal<OAuthProvider | null>(null);
+  readonly unlinkErrorKey = signal<string | null>(null);
+
+  // --- 安全性：補上 Email（027-google-line-oauth-login FR-013） ---
+  readonly addEmailSubmitting = signal(false);
+  readonly addEmailErrorKey = signal<string | null>(null);
+  readonly addEmailSent = signal(false);
+
+  readonly addEmailForm = this.fb.nonNullable.group({
+    email: ['', [Validators.required, Validators.email]],
+  });
+
   // --- 隱私設定（022-member-personal-settings FR-016~023） ---
   // 使用者要求：checkbox 只是暫存草稿，切換不會立即送出；MUST 按下「儲存」
   // 才呼叫 PATCH /members/me/privacy——與其他三個分區「填寫後按按鈕送出」
@@ -115,12 +136,43 @@ export class SettingsComponent implements OnInit {
           share_match_records_with_friends: member.share_match_records_with_friends,
           allow_friend_invite_from_match_pages: member.allow_friend_invite_from_match_pages,
         });
+        // research.md #7: a member with no password yet has nothing to
+        // re-confirm — "目前密碼" becomes optional (the template also
+        // hides the field entirely in that case).
+        if (!member.has_password) {
+          this.passwordForm.controls.current_password.clearValidators();
+          this.passwordForm.controls.current_password.updateValueAndValidity();
+          this.deleteAccountForm.controls.current_password.clearValidators();
+          this.deleteAccountForm.controls.current_password.updateValueAndValidity();
+        }
       },
     });
     this.auth.getSupportedLanguages().subscribe({
       next: (response) => this.languages.set(response.languages),
     });
     this.loadLoginRecords(1);
+    this.readOauthLinkResult();
+  }
+
+  /** contracts/oauth-login-api.md's `intent=link` redirect target
+   * (`?oauth_link=success|cancelled|error&provider=&code=`) — read once on
+   * load, then stripped from the URL so a page refresh doesn't re-show it. */
+  private readOauthLinkResult(): void {
+    const params = this.route.snapshot.queryParamMap;
+    const status = params.get('oauth_link');
+    if (!status) {
+      return;
+    }
+    if (status === 'success') {
+      this.oauthLinkMessageKey.set('member.settings.oauth.linkSuccess');
+      this.auth.getMe().subscribe({ next: (member) => this.member.set(member) });
+    } else if (status === 'cancelled') {
+      this.oauthLinkMessageKey.set('member.settings.oauth.linkCancelled');
+    } else {
+      const code = params.get('code');
+      this.oauthLinkMessageKey.set(code ? `errors.${code}` : 'errors.OAUTH_PROVIDER_ERROR');
+    }
+    void this.router.navigate([], { queryParams: {}, replaceUrl: true });
   }
 
   setActiveSection(section: SettingsSection): void {
@@ -261,5 +313,67 @@ export class SettingsComponent implements OnInit {
           this.privacyErrorKey.set(error.i18nKey);
         },
       });
+  }
+
+  isOauthLinked(provider: OAuthProvider): boolean {
+    return this.member()?.linked_oauth_providers.includes(provider) ?? false;
+  }
+
+  /** FR-013: a member with neither a password nor an email has no way to
+   * recover their account if their sole OAuth binding ever becomes
+   * unusable — shown as a non-blocking reminder, never enforced. */
+  showAccountRecoveryReminder(): boolean {
+    const member = this.member();
+    return !!member && !member.has_password && !member.email;
+  }
+
+  linkOauth(provider: OAuthProvider): void {
+    this.oauthLinkSubmitting.set(provider);
+    this.auth.startOAuthFlow(provider, 'link').subscribe({
+      next: (response) => this.navigateToAuthorizeUrl(response.authorize_url),
+      error: (error: ApiError) => {
+        this.oauthLinkSubmitting.set(null);
+        this.oauthLinkMessageKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  unlinkOauth(provider: OAuthProvider): void {
+    this.unlinkErrorKey.set(null);
+    this.auth.unlinkOauthIdentity(provider).subscribe({
+      next: () => {
+        const current = this.member();
+        if (current) {
+          this.member.set({
+            ...current,
+            linked_oauth_providers: current.linked_oauth_providers.filter((p) => p !== provider),
+          });
+        }
+      },
+      error: (error: ApiError) => this.unlinkErrorKey.set(error.i18nKey),
+    });
+  }
+
+  submitAddEmail(): void {
+    if (this.addEmailForm.invalid) {
+      this.addEmailForm.markAllAsTouched();
+      return;
+    }
+    this.addEmailSubmitting.set(true);
+    this.addEmailErrorKey.set(null);
+    this.auth.addEmail(this.addEmailForm.getRawValue().email).subscribe({
+      next: () => {
+        this.addEmailSubmitting.set(false);
+        this.addEmailSent.set(true);
+      },
+      error: (error: ApiError) => {
+        this.addEmailSubmitting.set(false);
+        this.addEmailErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  protected navigateToAuthorizeUrl(url: string): void {
+    window.location.href = url;
   }
 }

@@ -7,6 +7,7 @@ import {
   MemberMatchRecordsResponse,
 } from '../../core/api/group-member-view.models';
 import {
+  AddEmailResponse,
   ChangePasswordResponse,
   DeleteAccountResponse,
   ForgotPasswordResponse,
@@ -14,6 +15,7 @@ import {
   LoginRequest,
   LoginResponse,
   MemberPublic,
+  OAuthStartResponse,
   PrivacySettingsRequest,
   PrivacySettingsResponse,
   RefreshResponse,
@@ -52,6 +54,20 @@ export class AuthService {
         this.setTokens(response.access_token, response.refresh_token);
         this.setCachedMemberId(response.member.member_id);
       }),
+    );
+  }
+
+  /** 027-google-line-oauth-login contracts/oauth-login-api.md
+   * `GET /auth/oauth/{provider}/start`. `intent=login` (US1/US2) needs no
+   * auth header; `intent=link` (US3, from Settings) does — the backend
+   * rejects an unauthenticated `link` attempt with 401. */
+  startOAuthFlow(
+    provider: 'google' | 'line',
+    intent: 'login' | 'link' = 'login',
+  ): Observable<OAuthStartResponse> {
+    return this.api.get<OAuthStartResponse>(
+      `/auth/oauth/${provider}/start?intent=${intent}`,
+      intent === 'link' ? this.authHeader() : {},
     );
   }
 
@@ -128,8 +144,12 @@ export class AuthService {
     return this.api.patch<MemberPublic>('/members/me/nickname', { nickname }, this.authHeader());
   }
 
+  /** 027-google-line-oauth-login research.md #7: `currentPassword` is
+   * optional — omit it (or pass `null`) for a member who has never set a
+   * password yet (`MemberPublic.has_password === false`); the backend
+   * treats that call as "set my first password" rather than "change it". */
   changePassword(
-    currentPassword: string,
+    currentPassword: string | null,
     newPassword: string,
     confirmNewPassword: string,
   ): Observable<ChangePasswordResponse> {
@@ -137,7 +157,7 @@ export class AuthService {
       .patch<ChangePasswordResponse>(
         '/members/me/password',
         {
-          current_password: currentPassword,
+          current_password: currentPassword ?? undefined,
           new_password: newPassword,
           confirm_new_password: confirmNewPassword,
         },
@@ -146,10 +166,10 @@ export class AuthService {
       .pipe(tap((response) => this.setTokens(response.access_token, response.refresh_token)));
   }
 
-  deleteAccount(currentPassword: string): Observable<DeleteAccountResponse> {
+  deleteAccount(currentPassword: string | null): Observable<DeleteAccountResponse> {
     return this.api.post<DeleteAccountResponse>(
       '/members/me/delete',
-      { current_password: currentPassword },
+      { current_password: currentPassword ?? undefined },
       this.authHeader(),
     );
   }
@@ -205,6 +225,20 @@ export class AuthService {
       `/members/${memberId}/match-records/${matchId}`,
       this.authHeader(),
     );
+  }
+
+  /** 027-google-line-oauth-login contracts/account-recovery-api.md
+   * `DELETE /members/me/oauth-identities/{provider}` (US3). */
+  unlinkOauthIdentity(provider: 'google' | 'line'): Observable<void> {
+    return this.api.delete<void>(`/members/me/oauth-identities/${provider}`, this.authHeader());
+  }
+
+  /** 027-google-line-oauth-login contracts/account-recovery-api.md
+   * `POST /members/me/email` (FR-013) — only valid while the member's
+   * `email` is still `null`; the backend is the source of truth for that
+   * guard (`EMAIL_ALREADY_SET` otherwise). */
+  addEmail(email: string): Observable<AddEmailResponse> {
+    return this.api.post<AddEmailResponse>('/members/me/email', { email }, this.authHeader());
   }
 
   setTokens(accessToken: string, refreshToken: string): void {

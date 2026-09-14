@@ -27,6 +27,8 @@ const member: MemberPublic = {
   allow_search: true,
   share_match_records_with_friends: true,
   allow_friend_invite_from_match_pages: true,
+  linked_oauth_providers: [],
+  has_password: true,
 };
 
 const emptyLoginRecords: LoginRecordsResponse = { records: [], page: 1, total_pages: 1 };
@@ -40,11 +42,18 @@ function setup(
     setNickname?: () => unknown;
     changePassword?: () => unknown;
     deleteAccount?: () => unknown;
+    startOAuthFlow?: () => unknown;
+    unlinkOauthIdentity?: () => unknown;
+    addEmail?: () => unknown;
+    queryParams?: Record<string, string>;
   } = {},
 ) {
   const calls = { setPrivacySettings: 0, logout: 0 };
   const deleteAccountCalls: unknown[] = [];
   const privacyPayloads: unknown[] = [];
+  const startOAuthFlowCalls: unknown[] = [];
+  const unlinkOauthIdentityCalls: unknown[] = [];
+  const addEmailCalls: unknown[] = [];
   const authServiceStub = {
     getMe: () => of(overrides.member ?? member),
     getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
@@ -73,6 +82,22 @@ function setup(
     logout: () => {
       calls.logout += 1;
     },
+    startOAuthFlow: (...args: unknown[]) => {
+      startOAuthFlowCalls.push(args);
+      return overrides.startOAuthFlow
+        ? overrides.startOAuthFlow()
+        : of({ authorize_url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' });
+    },
+    unlinkOauthIdentity: (...args: unknown[]) => {
+      unlinkOauthIdentityCalls.push(args);
+      return overrides.unlinkOauthIdentity ? overrides.unlinkOauthIdentity() : of(undefined);
+    },
+    addEmail: (...args: unknown[]) => {
+      addEmailCalls.push(args);
+      return overrides.addEmail
+        ? overrides.addEmail()
+        : of({ verification_email_sent: true });
+    },
   };
 
   TestBed.configureTestingModule({
@@ -86,13 +111,21 @@ function setup(
       { provide: AuthService, useValue: authServiceStub },
       {
         provide: ActivatedRoute,
-        useValue: { snapshot: { queryParamMap: convertToParamMap({}) } },
+        useValue: { snapshot: { queryParamMap: convertToParamMap(overrides.queryParams ?? {}) } },
       },
     ],
   });
   const fixture = TestBed.createComponent(SettingsComponent);
   fixture.detectChanges();
-  return { fixture, calls, deleteAccountCalls, privacyPayloads };
+  return {
+    fixture,
+    calls,
+    deleteAccountCalls,
+    privacyPayloads,
+    startOAuthFlowCalls,
+    unlinkOauthIdentityCalls,
+    addEmailCalls,
+  };
 }
 
 type Section = 'basic' | 'accountDetails' | 'security' | 'privacy';
@@ -457,5 +490,141 @@ describe('SettingsComponent', () => {
       'input[formControlName="nickname"]',
     ) as HTMLInputElement;
     expect(nicknameInputAgain.value).toBe('草稿暱稱');
+  });
+
+  // 027-google-line-oauth-login US3 (T037)
+  describe('OAuth account linking', () => {
+    it('shows "已綁定" for a linked provider and a "綁定" button for an unlinked one', () => {
+      const { fixture } = setup({ member: { ...member, linked_oauth_providers: ['google'] } });
+      switchTo(fixture, 'security');
+
+      const rows = fixture.nativeElement.querySelectorAll('.oauth-link-row');
+      expect(rows.length).toBe(2);
+      expect(rows[0].querySelector('.status-badge--success')).not.toBeNull();
+      expect(rows[1].querySelector('.status-badge--success')).toBeNull();
+      expect(rows[1].querySelector('button')?.textContent).toContain(
+        'member.settings.oauth.link',
+      );
+    });
+
+    it('clicking 綁定 calls startOAuthFlow(provider, "link") and navigates to the authorize_url', () => {
+      const { fixture, startOAuthFlowCalls } = setup();
+      switchTo(fixture, 'security');
+      const navigateSpy = vi.spyOn(
+        fixture.componentInstance as unknown as { navigateToAuthorizeUrl: (url: string) => void },
+        'navigateToAuthorizeUrl',
+      );
+
+      fixture.componentInstance.linkOauth('google');
+
+      expect(startOAuthFlowCalls).toEqual([['google', 'link']]);
+      expect(navigateSpy).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/v2/auth?x=1');
+    });
+
+    it('clicking 解除綁定 calls unlinkOauthIdentity and removes the provider from the badge state', () => {
+      const { fixture, unlinkOauthIdentityCalls } = setup({
+        member: { ...member, linked_oauth_providers: ['google'] },
+      });
+      switchTo(fixture, 'security');
+
+      fixture.componentInstance.unlinkOauth('google');
+      fixture.detectChanges();
+
+      expect(unlinkOauthIdentityCalls).toEqual([['google']]);
+      expect(fixture.componentInstance.isOauthLinked('google')).toBe(false);
+    });
+
+    it('shows an inline error when unlinking is refused as the last login method', () => {
+      const { fixture } = setup({
+        member: { ...member, linked_oauth_providers: ['google'] },
+        unlinkOauthIdentity: () =>
+          throwError(
+            () =>
+              ({
+                errorCode: 'LAST_LOGIN_METHOD',
+                i18nKey: 'errors.LAST_LOGIN_METHOD',
+                detail: null,
+                status: 409,
+              }) satisfies ApiError,
+          ),
+      });
+      switchTo(fixture, 'security');
+
+      fixture.componentInstance.unlinkOauth('google');
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('errors.LAST_LOGIN_METHOD');
+    });
+
+    it('shows the FR-013 reminder only when the member has neither a password nor an email', () => {
+      const { fixture } = setup({
+        member: { ...member, has_password: false, email: null },
+      });
+      switchTo(fixture, 'security');
+
+      expect(fixture.nativeElement.querySelector('.account-recovery-reminder')).not.toBeNull();
+    });
+
+    it('does not show the FR-013 reminder for a member with a password', () => {
+      const { fixture } = setup({ member: { ...member, has_password: true, email: null } });
+      switchTo(fixture, 'security');
+
+      expect(fixture.nativeElement.querySelector('.account-recovery-reminder')).toBeNull();
+    });
+
+    it('hides the "目前密碼" field on both forms when the member has no password yet', () => {
+      const { fixture } = setup({ member: { ...member, has_password: false } });
+      switchTo(fixture, 'security');
+
+      const passwordInputs = fixture.nativeElement.querySelectorAll('input[type="password"]');
+      // Only new_password + confirm_new_password remain (current_password hidden
+      // on both the password form and the delete-account form).
+      expect(passwordInputs.length).toBe(2);
+    });
+
+    it('renders the add-email form only when the member has no email yet, and submitting it calls addEmail', () => {
+      const { fixture, addEmailCalls } = setup({ member: { ...member, email: null } });
+      switchTo(fixture, 'security');
+
+      const emailInput = fixture.nativeElement.querySelector(
+        'input[formControlName="email"]',
+      ) as HTMLInputElement;
+      expect(emailInput).not.toBeNull();
+      emailInput.value = 'new@example.com';
+      emailInput.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      const addEmailForm = emailInput.closest('form') as HTMLFormElement;
+      addEmailForm.dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+
+      expect(addEmailCalls).toEqual([['new@example.com']]);
+      expect(fixture.nativeElement.textContent).toContain('member.settings.oauth.addEmailSent');
+    });
+
+    it('does not render the add-email form for a member who already has an email', () => {
+      const { fixture } = setup();
+      switchTo(fixture, 'security');
+
+      expect(fixture.nativeElement.querySelector('input[formControlName="email"]')).toBeNull();
+    });
+
+    it('reads a successful oauth_link redirect result, shows the message, and refreshes the member', () => {
+      const { fixture } = setup({
+        queryParams: { oauth_link: 'success', provider: 'google' },
+        member: { ...member, linked_oauth_providers: ['google'] },
+      });
+      switchTo(fixture, 'security');
+
+      expect(fixture.nativeElement.textContent).toContain('member.settings.oauth.linkSuccess');
+    });
+
+    it('reads an error oauth_link redirect result and shows the mapped error key', () => {
+      const { fixture } = setup({
+        queryParams: { oauth_link: 'error', code: 'OAUTH_PROVIDER_ALREADY_LINKED' },
+      });
+      switchTo(fixture, 'security');
+
+      expect(fixture.nativeElement.textContent).toContain('errors.OAUTH_PROVIDER_ALREADY_LINKED');
+    });
   });
 });

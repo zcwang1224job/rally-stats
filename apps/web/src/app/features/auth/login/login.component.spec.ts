@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AuthService } from '../auth.service';
 import { LanguageService } from '../../../core/language/language.service';
 import { LoginComponent } from './login.component';
@@ -18,8 +18,13 @@ const defaultLoginResponse = {
   member: { language_preference: 'zh-TW' },
 };
 
+const defaultAuth: Partial<AuthService> = {
+  login: () => of(defaultLoginResponse) as never,
+  startOAuthFlow: () => of({ authorize_url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' }) as never,
+};
+
 describe('LoginComponent', () => {
-  function setup(auth: Partial<AuthService> = { login: () => of(defaultLoginResponse) as never }) {
+  function setup(auth: Partial<AuthService> = defaultAuth) {
     TestBed.configureTestingModule({
       imports: [LoginComponent],
       providers: [
@@ -104,5 +109,54 @@ describe('LoginComponent', () => {
     const languageService = TestBed.inject(LanguageService);
     expect(languageService.current()).toBe('zh-TW');
     expect(localStorage.getItem('rally-stats:language')).toBe('zh-TW');
+  });
+
+  // 027-google-line-oauth-login US1/US2
+  it('renders both OAuth continue buttons', () => {
+    const fixture = setup();
+    const buttons = fixture.nativeElement.querySelectorAll('.oauth-buttons button');
+    expect(buttons.length).toBe(2);
+  });
+
+  it('clicking "使用 Google 繼續" fetches the authorize_url with intent=login and navigates there', () => {
+    const startOAuthFlow = vi.fn(
+      () => of({ authorize_url: 'https://accounts.google.com/o/oauth2/v2/auth?x=1' }) as never,
+    );
+    const fixture = setup({ ...defaultAuth, startOAuthFlow });
+    const navigateSpy = vi.spyOn(
+      fixture.componentInstance as unknown as { navigateToAuthorizeUrl: (url: string) => void },
+      'navigateToAuthorizeUrl',
+    );
+
+    fixture.componentInstance.continueWithOAuth('google');
+
+    expect(startOAuthFlow).toHaveBeenCalledWith('google', 'login');
+    expect(navigateSpy).toHaveBeenCalledWith('https://accounts.google.com/o/oauth2/v2/auth?x=1');
+  });
+
+  it('clicking "使用 LINE 繼續" fetches the authorize_url with intent=login', () => {
+    const startOAuthFlow = vi.fn(
+      () => of({ authorize_url: 'https://access.line.me/oauth2/v2.1/authorize?x=1' }) as never,
+    );
+    const fixture = setup({ ...defaultAuth, startOAuthFlow });
+    vi.spyOn(
+      fixture.componentInstance as unknown as { navigateToAuthorizeUrl: (url: string) => void },
+      'navigateToAuthorizeUrl',
+    );
+
+    fixture.componentInstance.continueWithOAuth('line');
+
+    expect(startOAuthFlow).toHaveBeenCalledWith('line', 'login');
+  });
+
+  it('shows an error message when starting the OAuth flow fails', () => {
+    const startOAuthFlow = vi.fn(
+      () => throwError(() => ({ i18nKey: 'errors.OAUTH_PROVIDER_ERROR' })) as never,
+    );
+    const fixture = setup({ ...defaultAuth, startOAuthFlow });
+
+    fixture.componentInstance.continueWithOAuth('google');
+
+    expect(fixture.componentInstance.errorKey()).toBe('errors.OAUTH_PROVIDER_ERROR');
   });
 });

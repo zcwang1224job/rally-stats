@@ -1,14 +1,19 @@
 """Member domain service layer: auth, verification, profile, and search.
 Per specs/006-member-friends/plan.md."""
 
+import base64
+import hashlib
 import re
 import secrets
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Literal
+from typing import Literal, cast
+from urllib.parse import urlencode
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -38,8 +43,11 @@ from app.domains.member.models import (
     EmailVerificationToken,
     Member,
     MemberLoginRecord,
+    MemberOAuthIdentity,
     PasswordResetToken,
 )
+from app.domains.member.oauth_client import OAuthProfile, exchange_code_for_profile
+from app.domains.member.oauth_providers import Provider, get_provider_config
 from app.domains.member.schemas import (
     SUPPORTED_LANGUAGES,
     LoginRecordsResponse,
@@ -51,9 +59,11 @@ from app.domains.member.schemas import (
     SearchMemberResponse,
 )
 from app.domains.member.security import (
+    decode_oauth_state,
     generate_unique_user_number,
     hash_password,
     issue_access_token,
+    issue_oauth_state,
     issue_refresh_token,
     verify_password,
 )
@@ -84,6 +94,329 @@ def classify_device(user_agent: str | None) -> str:
     return "mobile" if _MOBILE_USER_AGENT_PATTERN.search(user_agent) else "desktop"
 
 
+async def get_linked_oauth_providers(
+    session: AsyncSession, member_id: uuid.UUID
+) -> list[Literal["google", "line"]]:
+    """027-google-line-oauth-login contracts/account-recovery-api.md
+    (`GET /members/me`): providers this member currently has a
+    `member_oauth_identities` binding for (US3)."""
+    result = await session.execute(
+        select(MemberOAuthIdentity.provider).where(MemberOAuthIdentity.member_id == member_id)
+    )
+    return cast(list[Literal["google", "line"]], list(result.scalars().all()))
+
+
+def _oauth_redirect_uri(provider: Provider) -> str:
+    """The `redirect_uri` registered with the provider — the frontend's own
+    origin (proxied to the backend via the existing `/api` Nginx rule), not
+    a raw backend URL (research.md #1: `code`/`state` never need to be
+    directly reachable at a non-frontend origin)."""
+    settings = get_settings()
+    return f"{settings.frontend_base_url}/api/auth/oauth/{provider}/callback"
+
+
+def _pkce_code_challenge(code_verifier: str) -> str:
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+async def start_oauth_flow(
+    provider: Provider, intent: Literal["login", "link"], member_id: str | None = None
+) -> str:
+    """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/start`.
+    `member_id` MUST be provided for `intent == "link"` (the caller's own
+    id, from an already-authenticated request) and MUST be `None` for
+    `intent == "login"` — the router enforces this via which dependency
+    (`optional_member` vs `require_verified_member`) it uses per intent."""
+    config = get_provider_config(provider)
+    code_verifier = secrets.token_urlsafe(64)
+    nonce = secrets.token_urlsafe(16)
+    state = issue_oauth_state(
+        provider=provider,
+        intent=intent,
+        code_verifier=code_verifier,
+        nonce=nonce,
+        member_id=member_id,
+    )
+    params = {
+        "client_id": config.client_id,
+        "redirect_uri": _oauth_redirect_uri(provider),
+        "response_type": "code",
+        "scope": config.scopes,
+        "state": state,
+        "code_challenge": _pkce_code_challenge(code_verifier),
+        "code_challenge_method": "S256",
+        "nonce": nonce,
+    }
+    return f"{config.authorize_url}?{urlencode(params)}"
+
+
+@dataclass(frozen=True)
+class OAuthCallbackResult:
+    """What `complete_oauth_callback()` decided — the router translates this
+    into the matching redirect from contracts/oauth-login-api.md's table.
+    `intent` is always populated (even on failure) so the router knows
+    whether to redirect to `/auth/oauth-callback` or back to `/settings`."""
+
+    intent: Literal["login", "link"]
+    status: Literal["success", "cancelled", "error"]
+    error_code: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    is_new_member: bool = False
+    provider: Provider | None = None
+
+
+async def _find_oauth_identity(
+    session: AsyncSession, provider: Provider, provider_user_id: str
+) -> MemberOAuthIdentity | None:
+    result = await session.execute(
+        select(MemberOAuthIdentity).where(
+            MemberOAuthIdentity.provider == provider,
+            MemberOAuthIdentity.provider_user_id == provider_user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _complete_oauth_login(
+    session: AsyncSession, provider: Provider, profile: OAuthProfile
+) -> OAuthCallbackResult:
+    existing = await _find_oauth_identity(session, provider, profile.sub)
+    if existing is not None:
+        member = await session.get(Member, existing.member_id)
+        if member is None or member.deleted_at is not None:
+            # FR-011: a deleted account's binding row is deliberately left
+            # in place (delete_account() never touches it) — the rejection
+            # happens here, at login time, every time.
+            return OAuthCallbackResult(
+                intent="login", status="error", error_code="ACCOUNT_DELETED"
+            )
+        return OAuthCallbackResult(
+            intent="login",
+            status="success",
+            access_token=issue_access_token(str(member.id), member.token_version),
+            refresh_token=issue_refresh_token(str(member.id), member.token_version),
+            is_new_member=False,
+        )
+
+    normalized_email = profile.email.lower() if profile.email else None
+    if normalized_email is not None:
+        # FR-005: collides with ANY existing member's email, regardless of
+        # that member's own auth method — not just Email/password members.
+        collision = await session.execute(
+            select(Member.id).where(Member.email == normalized_email)
+        )
+        if collision.scalar_one_or_none() is not None:
+            return OAuthCallbackResult(
+                intent="login", status="error", error_code="OAUTH_EMAIL_ALREADY_REGISTERED"
+            )
+
+    user_number = await generate_unique_user_number(session)
+    member = Member(
+        email=normalized_email,
+        password_hash=None,
+        user_number=user_number,
+        # Clarifications 2026-09-14 / research.md #6: immediately verified —
+        # the OAuth provider's own authentication is the trust signal, no
+        # separate verification-email step is triggered.
+        verification_status="verified",
+    )
+    try:
+        session.add(member)
+        await session.flush()
+        session.add(
+            MemberOAuthIdentity(
+                member_id=member.id,
+                provider=provider,
+                provider_user_id=profile.sub,
+                email_at_link=profile.email,
+            )
+        )
+        await session.commit()
+    except IntegrityError:
+        # E3: two concurrent requests both passed the collision check above
+        # before either committed. The email-uniqueness index and the
+        # identity-uniqueness index are the only two ways this can fire —
+        # translate whichever one it was into the matching error code
+        # rather than letting the raw IntegrityError propagate as a 500.
+        await session.rollback()
+        error_code = (
+            "OAUTH_EMAIL_ALREADY_REGISTERED"
+            if normalized_email is not None
+            else "OAUTH_IDENTITY_ALREADY_LINKED"
+        )
+        return OAuthCallbackResult(intent="login", status="error", error_code=error_code)
+    await session.refresh(member)
+
+    return OAuthCallbackResult(
+        intent="login",
+        status="success",
+        access_token=issue_access_token(str(member.id), member.token_version),
+        refresh_token=issue_refresh_token(str(member.id), member.token_version),
+        is_new_member=True,
+    )
+
+
+async def _complete_oauth_link(
+    session: AsyncSession, provider: Provider, profile: OAuthProfile, member_id: str | None
+) -> OAuthCallbackResult:
+    if member_id is None:
+        return OAuthCallbackResult(
+            intent="link", status="error", error_code="OAUTH_STATE_INVALID", provider=provider
+        )
+    caller_id = uuid.UUID(member_id)
+
+    existing = await _find_oauth_identity(session, provider, profile.sub)
+    if existing is not None:
+        if existing.member_id == caller_id:
+            return OAuthCallbackResult(intent="link", status="success", provider=provider)
+        return OAuthCallbackResult(
+            intent="link",
+            status="error",
+            error_code="OAUTH_IDENTITY_ALREADY_LINKED",
+            provider=provider,
+        )
+
+    # C1 (/speckit-analyze 2026-09-14 remediation): the caller already has a
+    # DIFFERENT external account bound for this same provider. Rejected —
+    # MUST NOT delete-then-replace the existing binding.
+    caller_existing = await session.execute(
+        select(MemberOAuthIdentity.id).where(
+            MemberOAuthIdentity.member_id == caller_id,
+            MemberOAuthIdentity.provider == provider,
+        )
+    )
+    if caller_existing.scalar_one_or_none() is not None:
+        return OAuthCallbackResult(
+            intent="link",
+            status="error",
+            error_code="OAUTH_PROVIDER_ALREADY_LINKED",
+            provider=provider,
+        )
+
+    try:
+        session.add(
+            MemberOAuthIdentity(
+                member_id=caller_id,
+                provider=provider,
+                provider_user_id=profile.sub,
+                email_at_link=profile.email,
+            )
+        )
+        await session.commit()
+    except IntegrityError:
+        # E3: concurrent race on either unique constraint.
+        await session.rollback()
+        return OAuthCallbackResult(
+            intent="link",
+            status="error",
+            error_code="OAUTH_IDENTITY_ALREADY_LINKED",
+            provider=provider,
+        )
+
+    return OAuthCallbackResult(intent="link", status="success", provider=provider)
+
+
+async def complete_oauth_callback(
+    session: AsyncSession,
+    provider: Provider,
+    *,
+    code: str | None,
+    state: str | None,
+    error: str | None,
+) -> OAuthCallbackResult:
+    """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/callback`.
+    Every branch below matches one row of that contract's table."""
+    if not state:
+        return OAuthCallbackResult(intent="login", status="error", error_code="OAUTH_STATE_INVALID")
+    try:
+        oauth_state = decode_oauth_state(state)
+    except ApiError:
+        return OAuthCallbackResult(intent="login", status="error", error_code="OAUTH_STATE_INVALID")
+    if oauth_state.provider != provider:
+        return OAuthCallbackResult(
+            intent=oauth_state.intent, status="error", error_code="OAUTH_STATE_INVALID"
+        )
+
+    intent = oauth_state.intent
+
+    if error is not None:
+        # FR-010: user cancelled/denied on the provider's own screen.
+        return OAuthCallbackResult(intent=intent, status="cancelled", provider=provider)
+    if not code:
+        return OAuthCallbackResult(
+            intent=intent, status="error", error_code="OAUTH_PROVIDER_ERROR", provider=provider
+        )
+
+    config = get_provider_config(provider)
+    try:
+        profile = await exchange_code_for_profile(
+            config,
+            code=code,
+            code_verifier=oauth_state.code_verifier,
+            redirect_uri=_oauth_redirect_uri(provider),
+            nonce=oauth_state.nonce,
+        )
+    except ApiError:
+        return OAuthCallbackResult(
+            intent=intent, status="error", error_code="OAUTH_PROVIDER_ERROR", provider=provider
+        )
+
+    if intent == "link":
+        return await _complete_oauth_link(session, provider, profile, oauth_state.member_id)
+    return await _complete_oauth_login(session, provider, profile)
+
+
+async def unlink_oauth_identity(session: AsyncSession, member: Member, provider: Provider) -> None:
+    """contracts/account-recovery-api.md `DELETE
+    /members/me/oauth-identities/{provider}`. Errors:
+    `OAUTH_IDENTITY_NOT_LINKED`, `LAST_LOGIN_METHOD` (FR-008 — refuses to
+    leave the member with zero remaining ways to sign in)."""
+    result = await session.execute(
+        select(MemberOAuthIdentity).where(
+            MemberOAuthIdentity.member_id == member.id,
+            MemberOAuthIdentity.provider == provider,
+        )
+    )
+    identity = result.scalar_one_or_none()
+    if identity is None:
+        raise ApiError("OAUTH_IDENTITY_NOT_LINKED", status_code=404)
+
+    other_bindings = await session.execute(
+        select(func.count(MemberOAuthIdentity.id)).where(
+            MemberOAuthIdentity.member_id == member.id,
+            MemberOAuthIdentity.provider != provider,
+        )
+    )
+    if member.password_hash is None and other_bindings.scalar_one() == 0:
+        raise ApiError("LAST_LOGIN_METHOD", status_code=409)
+
+    await session.delete(identity)
+    await session.commit()
+
+
+async def add_email(session: AsyncSession, member: Member, email: str) -> None:
+    """contracts/account-recovery-api.md `POST /members/me/email` (FR-013):
+    only for a member whose `email` is currently `None` — "changing" an
+    existing email is out of scope. Errors: `EMAIL_ALREADY_SET`,
+    `EMAIL_ALREADY_REGISTERED`."""
+    if member.email is not None:
+        raise ApiError("EMAIL_ALREADY_SET", status_code=409)
+
+    normalized_email = email.lower()
+    collision = await session.execute(
+        select(Member.id).where(Member.email == normalized_email)
+    )
+    if collision.scalar_one_or_none() is not None:
+        raise ApiError("EMAIL_ALREADY_REGISTERED", status_code=409)
+
+    member.email = normalized_email
+    await session.commit()
+    await session.refresh(member)
+    await _issue_verification_token_and_email(session, member)
+
+
 async def login(
     session: AsyncSession, email: str, password: str, *, user_agent: str | None = None
 ) -> tuple[Member, str, str]:
@@ -94,7 +427,12 @@ async def login(
     record (token refresh, a separate function, MUST NOT)."""
     result = await session.execute(select(Member).where(Member.email == email.lower()))
     member = result.scalar_one_or_none()
-    if member is None or not verify_password(password, member.password_hash):
+    # 027-google-line-oauth-login: an OAuth-only member (password_hash is
+    # None) can never match an Email/password login attempt — there is no
+    # password to verify against, not even a wrong one.
+    if member is None or member.password_hash is None:
+        raise ApiError("INVALID_CREDENTIALS", status_code=401)
+    if not verify_password(password, member.password_hash):
         raise ApiError("INVALID_CREDENTIALS", status_code=401)
 
     await record_login(session, member.id, classify_device(user_agent))
@@ -313,6 +651,11 @@ def _email_for_language(
 async def _issue_verification_token_and_email(
     session: AsyncSession, member: Member
 ) -> EmailVerificationToken:
+    # 027-google-line-oauth-login: only ever called by register() (always
+    # has an email — RegisterRequest.email is required) and add_email()
+    # (writes member.email immediately before calling this) — never for an
+    # OAuth-created member (research.md #6 — those skip this entirely).
+    assert member.email is not None
     ttl_hours = await get_verification_token_ttl_hours(session)
     verification_token = EmailVerificationToken(
         member_id=member.id, expires_at=datetime.now(UTC) + timedelta(hours=ttl_hours)
@@ -461,6 +804,10 @@ async def forgot_password(session: AsyncSession, email: str) -> None:
     member = result.scalar_one_or_none()
     if member is None:
         return
+    # 027-google-line-oauth-login: found via Member.email == email.lower(),
+    # so it's non-None by construction — mypy just can't see that through
+    # the query.
+    assert member.email is not None
 
     ttl_hours = await get_password_reset_token_ttl_hours(session)
     reset_token = PasswordResetToken(
@@ -514,11 +861,21 @@ async def set_nickname(session: AsyncSession, member: Member, nickname: str) -> 
 
 
 async def change_password(
-    session: AsyncSession, member: Member, current_password: str, new_password: str
+    session: AsyncSession, member: Member, current_password: str | None, new_password: str
 ) -> tuple[Member, str, str]:
     """FR-025/026: bumps `token_version` (invalidating every other device)
-    but immediately issues a fresh token pair for the requesting device."""
-    if not verify_password(current_password, member.password_hash):
+    but immediately issues a fresh token pair for the requesting device.
+
+    027-google-line-oauth-login research.md #7: when `member.password_hash`
+    is `None` (a pure OAuth member who has never set a password), this
+    call is "set my first password" rather than "change it" —
+    `current_password` is ignored even if provided, since there is nothing
+    to re-confirm; the caller's authenticated session is itself sufficient
+    proof of identity, the same trust level `require_verified_member`
+    already grants for every other self-service action."""
+    if member.password_hash is not None and (
+        current_password is None or not verify_password(current_password, member.password_hash)
+    ):
         raise ApiError("CURRENT_PASSWORD_INCORRECT", status_code=400)
 
     member.password_hash = hash_password(new_password)
@@ -539,7 +896,9 @@ async def change_password(
 DELETED_MEMBER_PLACEHOLDER_NICKNAME = "Deleted User"
 
 
-async def delete_account(session: AsyncSession, member: Member, current_password: str) -> Member:
+async def delete_account(
+    session: AsyncSession, member: Member, current_password: str | None
+) -> Member:
     """FR-001~008: anonymizes the account in place rather than deleting the
     row (research.md #1) — every FK pointing at `member.id` (match
     participants, roster entries, friend requests, group creators) stays
@@ -551,8 +910,15 @@ async def delete_account(session: AsyncSession, member: Member, current_password
     otherwise-permanent nickname-snapshot isolation from `set_nickname()`
     (see `test_nickname_snapshot_isolation.py`, 006). No other code path is
     allowed to write to `roster_entries.nickname` for a reason other than
-    joining a new roster."""
-    if not verify_password(current_password, member.password_hash):
+    joining a new roster.
+
+    027-google-line-oauth-login research.md #7: a pure OAuth member
+    (`password_hash is None`) has nothing to re-confirm — the frontend's
+    existing two-step confirm dialog (constitution V) is the only
+    safeguard for them, matching `change_password()`'s same relaxation."""
+    if member.password_hash is not None and (
+        current_password is None or not verify_password(current_password, member.password_hash)
+    ):
         raise ApiError("CURRENT_PASSWORD_INCORRECT", status_code=400)
 
     now = datetime.now(UTC)

@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
+from app.domains.member.models import Member
 from app.domains.member.security import require_member, verify_password
 from app.domains.member.service import change_password, register
 
@@ -45,3 +46,23 @@ async def test_change_password_issues_valid_token_for_current_device(
 
     resolved = await require_member(authorization=f"Bearer {access_token}", session=db_session)
     assert resolved.id == member.id
+
+
+async def test_change_password_sets_first_password_when_none_exists(
+    db_session: AsyncSession,
+) -> None:
+    """027-google-line-oauth-login research.md #7: a pure OAuth member
+    (`password_hash is None`) can set an initial password without
+    providing `current_password` — it's ignored even if present."""
+    member = Member(
+        email="oauthchpw@example.com", password_hash=None, user_number="aB3dEfGh"
+    )
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+
+    updated_member, _access, _refresh = await change_password(
+        db_session, member, None, "newpass123"
+    )
+
+    assert verify_password("newpass123", updated_member.password_hash)

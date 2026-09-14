@@ -4,7 +4,9 @@ export type VerificationStatus = 'unverified' | 'verified';
 
 export interface MemberPublic {
   member_id: string;
-  email: string;
+  // 027-google-line-oauth-login: nullable — a LINE-only account may not
+  // have one (FR-004).
+  email: string | null;
   nickname: string | null;
   user_number: string;
   verification_status: VerificationStatus;
@@ -19,6 +21,13 @@ export interface MemberPublic {
   share_match_records_with_friends: boolean;
   // 026-match-record-friend-invite
   allow_friend_invite_from_match_pages: boolean;
+  // 027-google-line-oauth-login: providers this member currently has a
+  // binding for (at most one entry per provider — FR-006).
+  linked_oauth_providers: ('google' | 'line')[];
+  // Whether the member has ever set a password (false for a pure OAuth
+  // account) — drives whether "current password" is required on the
+  // change-password/delete-account forms and the FR-013 reminder.
+  has_password: boolean;
 }
 
 export interface SupportedLanguagesResponse {
@@ -106,9 +115,19 @@ export interface ChangePasswordResponse {
 }
 
 export interface DeleteAccountRequest {
-  current_password: string;
+  // 027-google-line-oauth-login research.md #7: optional — a password-less
+  // OAuth-only member has nothing to re-confirm.
+  current_password?: string;
 }
 
 export interface DeleteAccountResponse {
   deleted: boolean;
+}
+
+export interface OAuthStartResponse {
+  authorize_url: string;
+}
+
+export interface AddEmailResponse {
+  verification_email_sent: boolean;
 }

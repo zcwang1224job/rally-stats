@@ -18,6 +18,8 @@ const verifiedMember: MemberPublic = {
   allow_search: true,
   share_match_records_with_friends: true,
   allow_friend_invite_from_match_pages: true,
+  linked_oauth_providers: [],
+  has_password: true,
 };
 
 const unverifiedMember: MemberPublic = {

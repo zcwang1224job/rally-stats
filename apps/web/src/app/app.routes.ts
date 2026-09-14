@@ -144,6 +144,13 @@ export const routes: Routes = [
       import('./features/auth/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    path: 'auth/oauth-callback',
+    loadComponent: () =>
+      import('./features/auth/oauth-callback/oauth-callback.component').then(
+        (m) => m.OauthCallbackComponent,
+      ),
+  },
+  {
     path: 'auth/verify-email/:token',
     loadComponent: () =>
       import('./features/auth/verify-email/verify-email.component').then(

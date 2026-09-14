@@ -54,6 +54,17 @@
     {{ (submitting() ? 'auth.loggingIn' : 'auth.loginSubmit') | translate }}
   </button>
 
+  <div class="oauth-divider">{{ 'auth.oauthDivider' | translate }}</div>
+
+  <div class="oauth-buttons">
+    <button type="button" class="btn btn--secondary" (click)="continueWithOAuth('google')">
+      {{ 'auth.continueWithGoogle' | translate }}
+    </button>
+    <button type="button" class="btn btn--secondary" (click)="continueWithOAuth('line')">
+      {{ 'auth.continueWithLine' | translate }}
+    </button>
+  </div>
+
   <div class="auth-links">
     <p class="auth-links__register">
       {{ 'auth.noAccountYet' | translate }}

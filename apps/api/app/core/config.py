@@ -37,6 +37,19 @@ class Settings(BaseSettings):
     member_access_token_ttl_minutes: int = 60
     member_refresh_token_ttl_days: int = 30
 
+    # specs/027-google-line-oauth-login: OAuth app credentials for each
+    # provider. Default to empty strings (rather than required-with-no-
+    # default like the Turnstile keys) so the existing test suite and local
+    # dev don't need every test file to set these — tests that actually
+    # exercise the OAuth flow set a concrete value via monkeypatch. MUST be
+    # set to real values via environment variables for any environment that
+    # needs the "使用 Google／LINE 繼續" entry points to actually work.
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    line_oauth_channel_id: str = ""
+    line_oauth_channel_secret: str = ""
+    oauth_state_ttl_minutes: int = 10
+
     # Production's CloudFront distribution has custom error responses
     # (403/404 -> /index.html, needed for Angular client-side routes that
     # 403 straight from the S3 origin) configured distribution-wide, not

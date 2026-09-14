@@ -42,6 +42,23 @@ export class LoginComponent {
     }
   }
 
+  /** 027-google-line-oauth-login US1/US2: the whole handshake is a full-page
+   * redirect (research.md #1) — this component's only job is to fetch the
+   * `authorize_url` and navigate there. `navigateToAuthorizeUrl()` is
+   * broken out so tests can spy on it instead of letting jsdom attempt a
+   * real navigation. */
+  continueWithOAuth(provider: 'google' | 'line'): void {
+    this.errorKey.set(null);
+    this.auth.startOAuthFlow(provider, 'login').subscribe({
+      next: (response) => this.navigateToAuthorizeUrl(response.authorize_url),
+      error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+    });
+  }
+
+  protected navigateToAuthorizeUrl(url: string): void {
+    window.location.href = url;
+  }
+
   submit(): void {
     if (this.form.invalid) {
       this.form.markAllAsTouched();

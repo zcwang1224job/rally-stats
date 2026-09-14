@@ -7,6 +7,7 @@ a shared "password rule" the two domains should stay coupled on.
 """
 
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
@@ -112,6 +113,64 @@ async def refresh_access_token(session: AsyncSession, refresh_token: str) -> str
     payload = _decode_token(refresh_token, expected_type="refresh")
     member = await _load_member_for_token(session, payload, error_code="REFRESH_TOKEN_INVALID")
     return issue_access_token(str(member.id), member.token_version)
+
+
+@dataclass(frozen=True)
+class OAuthState:
+    """027-google-line-oauth-login research.md #2: the decoded contents of
+    an OAuth `state` parameter — a signed JWT, not a DB row. `code_verifier`
+    rides along so the same backend that started the handshake can complete
+    the PKCE exchange without any server-side storage."""
+
+    provider: str
+    intent: Literal["login", "link"]
+    code_verifier: str
+    nonce: str
+    member_id: str | None
+
+
+def issue_oauth_state(
+    *,
+    provider: str,
+    intent: Literal["login", "link"],
+    code_verifier: str,
+    nonce: str,
+    member_id: str | None = None,
+) -> str:
+    settings = get_settings()
+    now = datetime.now(UTC)
+    payload = {
+        "type": "oauth_state",
+        "provider": provider,
+        "intent": intent,
+        "code_verifier": code_verifier,
+        "nonce": nonce,
+        "member_id": member_id,
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.oauth_state_ttl_minutes),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=JWT_ALGORITHM)
+
+
+def decode_oauth_state(state: str) -> OAuthState:
+    """Errors: `OAUTH_STATE_INVALID` for a missing/tampered/expired state,
+    or one issued with a different `type` (e.g. an access/refresh token
+    passed in by mistake) — mirrors `_decode_token()`'s `expected_type`
+    guard for the existing access/refresh tokens."""
+    settings = get_settings()
+    try:
+        payload = dict(jwt.decode(state, settings.jwt_secret, algorithms=[JWT_ALGORITHM]))
+    except jwt.PyJWTError as exc:
+        raise ApiError("OAUTH_STATE_INVALID", status_code=400) from exc
+    if payload.get("type") != "oauth_state":
+        raise ApiError("OAUTH_STATE_INVALID", status_code=400)
+    return OAuthState(
+        provider=str(payload["provider"]),
+        intent=payload["intent"],
+        code_verifier=str(payload["code_verifier"]),
+        nonce=str(payload["nonce"]),
+        member_id=payload.get("member_id"),
+    )
 
 
 async def require_member(

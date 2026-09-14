@@ -393,3 +393,105 @@ async def test_all_new_endpoints_reject_unverified_member(
         response = await coro
         assert response.status_code == 403
         assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
+
+
+# --- 027-google-line-oauth-login contracts/account-recovery-api.md ----------
+# /speckit-analyze 2026-09-14 remediation, finding C1's OAUTH_PROVIDER_ALREADY_LINKED
+# branch is covered by tests/unit/domains/member/test_oauth_flow.py (service layer);
+# these are the contract-level (HTTP) tests for the surrounding endpoints.
+
+
+async def test_delete_oauth_identity_not_linked(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _register_and_verify(db_session, "unlinkc1@example.com")
+    token = await _login(client, "unlinkc1@example.com")
+
+    response = await client.delete("/members/me/oauth-identities/google", headers=_auth(token))
+
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "OAUTH_IDENTITY_NOT_LINKED"
+
+
+async def test_delete_oauth_identity_unknown_provider(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _register_and_verify(db_session, "unlinkc2@example.com")
+    token = await _login(client, "unlinkc2@example.com")
+
+    response = await client.delete("/members/me/oauth-identities/facebook", headers=_auth(token))
+
+    assert response.status_code == 404
+
+
+async def test_add_email_contract_success_and_conflicts(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    member = await _register_and_verify(db_session, "addemailc1@example.com")
+    token = await _login(client, "addemailc1@example.com")
+    # Clear the email only after logging in — login() itself still requires
+    # the member's original email/password to authenticate.
+    member.email = None
+    await db_session.commit()
+
+    response = await client.post(
+        "/members/me/email", json={"email": "newlyadded@example.com"}, headers=_auth(token)
+    )
+    assert response.status_code == 202
+    assert response.json()["verification_email_sent"] is True
+
+    already_set = await client.post(
+        "/members/me/email", json={"email": "another@example.com"}, headers=_auth(token)
+    )
+    assert already_set.status_code == 409
+    assert already_set.json()["error_code"] == "EMAIL_ALREADY_SET"
+
+
+async def test_change_password_accepts_omitted_current_password_for_oauth_only(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from app.domains.member.security import issue_access_token
+
+    member = Member(email="oauthonlyc1@example.com", password_hash=None, user_number="aB3dEfGh")
+    member.verification_status = "verified"
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+    token = issue_access_token(str(member.id), member.token_version)
+
+    change_response = await client.patch(
+        "/members/me/password",
+        json={"new_password": "newpass123", "confirm_new_password": "newpass123"},
+        headers=_auth(token),
+    )
+    assert change_response.status_code == 200
+    new_token = change_response.json()["access_token"]
+
+    # Now that a password exists, current_password becomes required again.
+    reject_response = await client.patch(
+        "/members/me/password",
+        json={"new_password": "another123", "confirm_new_password": "another123"},
+        headers=_auth(new_token),
+    )
+    assert reject_response.status_code == 400
+    assert reject_response.json()["error_code"] == "CURRENT_PASSWORD_INCORRECT"
+
+
+async def test_delete_account_accepts_omitted_current_password_for_oauth_only(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from app.domains.member.security import issue_access_token
+
+    member = Member(
+        email="oauthonlyc2@example.com", password_hash=None, user_number="cD4eFgHi"
+    )
+    member.verification_status = "verified"
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+    token = issue_access_token(str(member.id), member.token_version)
+
+    response = await client.post("/members/me/delete", json={}, headers=_auth(token))
+
+    assert response.status_code == 200
+    assert response.json()["deleted"] is True

@@ -1,0 +1,8 @@
+@if (errorKey) {
+  <section class="card">
+    <p role="alert">{{ errorKey | translate }}</p>
+    <button type="button" class="btn" (click)="goToLogin()">{{ 'auth.goToLogin' | translate }}</button>
+  </section>
+} @else {
+  <p>{{ 'auth.oauthProcessing' | translate }}</p>
+}
