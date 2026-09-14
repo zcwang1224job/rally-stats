@@ -289,6 +289,26 @@
               </span>
             </label>
           </div>
+
+          <div class="toggle-row">
+            <div class="toggle-row__text">
+              <span class="toggle-row__label">{{ 'member.settings.privacy.allowMatchPageInviteLabel' | translate }}</span>
+              <span class="toggle-row__hint">{{ 'member.settings.privacy.allowMatchPageInviteHint' | translate }}</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" formControlName="allow_friend_invite_from_match_pages" />
+              <span
+                class="toggle-switch__state"
+                [class.toggle-switch__state--on]="privacyForm.controls.allow_friend_invite_from_match_pages.value"
+              >
+                @if (privacyForm.controls.allow_friend_invite_from_match_pages.value) {
+                  {{ 'member.settings.privacy.on' | translate }}
+                } @else {
+                  {{ 'member.settings.privacy.off' | translate }}
+                }
+              </span>
+            </label>
+          </div>
         </div>
 
         @if (privacyErrorKey(); as key) {

@@ -5,6 +5,7 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ApiError
 from app.domains.friend.service import (
     create_friend_request,
     get_friendship_status,
@@ -50,3 +51,23 @@ async def test_status_is_friends_after_accepted(db_session: AsyncSession) -> Non
 
     assert await get_friendship_status(db_session, a.id, b.id) == "friends"
     assert await get_friendship_status(db_session, b.id, a.id) == "friends"
+
+
+async def test_create_friend_request_by_user_number_unchanged_after_refactor(
+    db_session: AsyncSession,
+) -> None:
+    """026-match-record-friend-invite T018: create_friend_request()'s
+    by-user_number behavior MUST be byte-for-byte unchanged after extracting
+    the shared _create_friend_request_for_addressee() core — success still
+    creates a pending request, and a second attempt still hits the same
+    FRIEND_REQUEST_ALREADY_PENDING dedup path."""
+    a = await _verified(db_session, "statusa4@example.com", "A")
+    b = await _verified(db_session, "statusb4@example.com", "B")
+
+    created = await create_friend_request(db_session, a.id, b.user_number)
+    assert created.status == "pending"
+    assert await get_friendship_status(db_session, a.id, b.id) == "pending_outgoing"
+
+    with pytest.raises(ApiError) as exc_info:
+        await create_friend_request(db_session, a.id, b.user_number)
+    assert exc_info.value.error_code == "FRIEND_REQUEST_ALREADY_PENDING"

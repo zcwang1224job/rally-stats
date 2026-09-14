@@ -21,10 +21,16 @@
           <span class="teams">
             @for (p of match.team_a; track p.roster_entry_id) {
               <app-nickname [value]="p.nickname" />
+              @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
+                <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" />
+              }
             }
             vs
             @for (p of match.team_b; track p.roster_entry_id) {
               <app-nickname [value]="p.nickname" />
+              @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
+                <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" />
+              }
             }
           </span>
           <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>

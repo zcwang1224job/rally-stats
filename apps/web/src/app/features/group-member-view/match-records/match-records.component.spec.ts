@@ -2,6 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { GroupMatchRecordsResponse } from '../../../core/api/group-member-view.models';
+import { InviteCandidatesResponse } from '../../../core/api/friend.models';
+import { AuthService } from '../../auth/auth.service';
+import { FriendsService } from '../../friends/friends.service';
 import { GroupMemberViewService } from '../group-member-view.service';
 import { MatchRecordsComponent } from './match-records.component';
 
@@ -11,11 +14,11 @@ const recordsResponse: GroupMatchRecordsResponse = {
       match_id: 'm1',
       round_number: 1,
       team_a: [
-        { roster_entry_id: 'p1', nickname: '小明', team: 'A' },
-        { roster_entry_id: 'p2', nickname: '小華', team: 'A' },
+        { roster_entry_id: 'p1', nickname: '小明', team: 'A', member_id: 'self-id' },
+        { roster_entry_id: 'p2', nickname: '小華', team: 'A', member_id: 'm2' },
       ],
       team_b: [
-        { roster_entry_id: 'p3', nickname: '小美', team: 'B' },
+        { roster_entry_id: 'p3', nickname: '小美', team: 'B', member_id: 'm3' },
         { roster_entry_id: 'p4', nickname: '小強', team: 'B' },
       ],
       score_a: 21,
@@ -27,8 +30,8 @@ const recordsResponse: GroupMatchRecordsResponse = {
     {
       match_id: 'm2',
       round_number: 2,
-      team_a: [{ roster_entry_id: 'p1', nickname: '小明', team: 'A' }],
-      team_b: [{ roster_entry_id: 'p3', nickname: '小美', team: 'B' }],
+      team_a: [{ roster_entry_id: 'p1', nickname: '小明', team: 'A', member_id: 'self-id' }],
+      team_b: [{ roster_entry_id: 'p3', nickname: '小美', team: 'B', member_id: 'm3' }],
       score_a: 10,
       score_b: 21,
       winner_team: 'B',
@@ -40,9 +43,17 @@ const recordsResponse: GroupMatchRecordsResponse = {
   total_pages: 1,
 };
 
+const defaultCandidates: InviteCandidatesResponse = {
+  candidates: [
+    { member_id: 'm2', friendship_status: 'none', invite_eligible: true },
+    { member_id: 'm3', friendship_status: 'none', invite_eligible: true },
+  ],
+};
+
 function setup(
   response: GroupMatchRecordsResponse = recordsResponse,
   detailCalls: unknown[][] = [],
+  candidates: InviteCandidatesResponse = defaultCandidates,
 ) {
   TestBed.configureTestingModule({
     imports: [MatchRecordsComponent],
@@ -57,6 +68,14 @@ function setup(
             return of(null);
           },
         },
+      },
+      {
+        provide: AuthService,
+        useValue: { getCachedMemberId: () => 'self-id' },
+      },
+      {
+        provide: FriendsService,
+        useValue: { getInviteCandidatesStatus: () => of(candidates) },
       },
     ],
   });
@@ -128,5 +147,58 @@ describe('MatchRecordsComponent match detail', () => {
 
     expect(detailCalls.length).toBe(1);
     expect(detailCalls[0]).toEqual(['g1', 'm1']);
+  });
+});
+
+// 026-match-record-friend-invite (US1, T017)
+describe('MatchRecordsComponent add-friend entries', () => {
+  it('renders add-friend entries for both a teammate and an opponent, not self or a Guest', () => {
+    const fixture = setup();
+
+    // First row: self (hidden), teammate m2 (shown), opponent m3 (shown),
+    // Guest p4 (hidden) — 2 buttons. Second row: self + opponent m3 again
+    // — 1 more button (dedup happens at the candidate-lookup level, not
+    // per-row rendering, since the same member can legitimately appear in
+    // multiple matches).
+    const buttons = fixture.nativeElement.querySelectorAll('app-add-friend-button');
+    expect(buttons.length).toBe(3);
+  });
+
+  it('renders nothing for a Guest participant (no member_id)', () => {
+    const fixture = setup(
+      {
+        ...recordsResponse,
+        matches: [
+          {
+            ...recordsResponse.matches[0],
+            team_a: [{ roster_entry_id: 'p1', nickname: '小明', team: 'A', member_id: 'self-id' }],
+            team_b: [{ roster_entry_id: 'p4', nickname: '訪客', team: 'B' }],
+          },
+        ],
+      },
+      [],
+      { candidates: [] },
+    );
+
+    expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
+  });
+
+  it('renders nothing for the viewer\'s own row', () => {
+    const fixture = setup(
+      {
+        ...recordsResponse,
+        matches: [
+          {
+            ...recordsResponse.matches[0],
+            team_a: [{ roster_entry_id: 'p1', nickname: '小明', team: 'A', member_id: 'self-id' }],
+            team_b: [],
+          },
+        ],
+      },
+      [],
+      { candidates: [] },
+    );
+
+    expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
   });
 });

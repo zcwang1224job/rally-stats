@@ -434,3 +434,31 @@ async def test_match_mode_filter_narrows_to_singles_or_doubles(db_session: Async
 
     unfiltered = await build_member_match_records(db_session, member.id)
     assert unfiltered.total_matches == 2
+
+
+async def test_participant_member_id_populated_for_members_none_for_guests(
+    db_session: AsyncSession,
+) -> None:
+    """026-match-record-friend-invite research.md #1: ParticipantSummary.member_id
+    MUST reflect RosterEntry.member_id in the cross-group builder too —
+    including for the viewer's own opponent, a different Member than the
+    viewer themself."""
+    member = await _make_member(db_session, "viewer-participant@example.com")
+    opponent = await _make_member(db_session, "opponent-participant@example.com")
+    group = await _make_group(db_session, "Group")
+
+    my_entry = await _make_entry(db_session, group, "小明", member.id)
+    opponent_entry = await _make_entry(db_session, group, "對手", opponent.id)
+    guest_entry = await _make_entry(db_session, group, "訪客", None)
+    match = await _make_completed_match(
+        db_session, group, round_number=1, winner_team="A",
+        team_a=[my_entry.id, opponent_entry.id], team_b=[guest_entry.id],
+    )
+
+    response = await build_member_match_records(db_session, member.id)
+
+    (summary,) = [m for m in response.matches if m.match_id == str(match.id)]
+    team_a_by_nickname = {p.nickname: p for p in summary.team_a}
+    assert team_a_by_nickname["小明"].member_id == str(member.id)
+    assert team_a_by_nickname["對手"].member_id == str(opponent.id)
+    assert summary.team_b[0].member_id is None

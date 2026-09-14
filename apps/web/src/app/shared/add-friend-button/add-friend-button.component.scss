@@ -1,0 +1,15 @@
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+// Slightly tighter padding than the default .btn for inline use next to a
+// nickname in a match-record list row — still respects .btn's
+// min-width/min-height touch-target floor (constitution VII), only the
+// padding shrinks. Scoped off the icon variant, which relies on the
+// global .btn--icon's own square padding instead (_base.scss).
+.add-friend-button:not(.btn--icon) {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-caption);
+}

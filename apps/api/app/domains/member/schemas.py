@@ -82,6 +82,7 @@ class MemberPublicResponse(BaseModel):
     language_preference: str
     allow_search: bool
     share_match_records_with_friends: bool
+    allow_friend_invite_from_match_pages: bool
 
 
 class LoginResponse(BaseModel):
@@ -289,10 +290,15 @@ class SetLanguagePreferenceRequest(BaseModel):
 class PrivacySettingsRequest(BaseModel):
     allow_search: bool | None = None
     share_match_records_with_friends: bool | None = None
+    allow_friend_invite_from_match_pages: bool | None = None
 
     @model_validator(mode="after")
     def check_at_least_one_field(self) -> "PrivacySettingsRequest":
-        if self.allow_search is None and self.share_match_records_with_friends is None:
+        if (
+            self.allow_search is None
+            and self.share_match_records_with_friends is None
+            and self.allow_friend_invite_from_match_pages is None
+        ):
             raise ValueError("at least one privacy field must be provided")
         return self
 
@@ -300,6 +306,7 @@ class PrivacySettingsRequest(BaseModel):
 class PrivacySettingsResponse(BaseModel):
     allow_search: bool
     share_match_records_with_friends: bool
+    allow_friend_invite_from_match_pages: bool
 
 
 class LoginRecordSummary(BaseModel):

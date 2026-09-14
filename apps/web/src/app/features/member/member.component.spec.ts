@@ -17,6 +17,7 @@ const verifiedMember: MemberPublic = {
   language_preference: 'zh-TW',
   allow_search: true,
   share_match_records_with_friends: true,
+  allow_friend_invite_from_match_pages: true,
 };
 
 const unverifiedMember: MemberPublic = {

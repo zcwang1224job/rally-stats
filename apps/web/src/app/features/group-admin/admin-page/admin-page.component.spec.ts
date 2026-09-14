@@ -5,6 +5,8 @@ import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { CourtManagementService } from '../court-management/court-management.service';
 import { RealtimeService } from '../../../core/realtime/ably.service';
+import { AuthService } from '../../auth/auth.service';
+import { FriendsService } from '../../friends/friends.service';
 import { GroupAdminService } from '../group-admin.service';
 import { AdminGroupResponse } from '../group-admin.models';
 import { ScheduleService } from '../schedule-management/schedule.service';
@@ -57,6 +59,10 @@ describe('AdminPageComponent', () => {
     readOnly = false,
     groupAdminOverrides: Partial<GroupAdminService> = {},
     scheduleOverrides: Partial<ScheduleService> = {},
+    friendInviteOverrides: {
+      selfMemberId?: string | null;
+      getInviteCandidatesStatus?: FriendsService['getInviteCandidatesStatus'];
+    } = {},
   ) {
     TestBed.configureTestingModule({
       imports: [AdminPageComponent],
@@ -91,6 +97,23 @@ describe('AdminPageComponent', () => {
         {
           provide: CourtManagementService,
           useValue: { listCourts: () => of({ courts: [], active_court_count: 0 }) },
+        },
+        // 026-match-record-friend-invite: the roster-list "加好友" entry
+        // needs these too — default to no member login (PIN-only session),
+        // matching most existing tests' fixtures (no roster member_ids).
+        {
+          provide: AuthService,
+          useValue: {
+            getCachedMemberId: () =>
+              friendInviteOverrides.selfMemberId === undefined ? null : friendInviteOverrides.selfMemberId,
+          },
+        },
+        {
+          provide: FriendsService,
+          useValue: {
+            getInviteCandidatesStatus:
+              friendInviteOverrides.getInviteCandidatesStatus ?? (() => of({ candidates: [] })),
+          },
         },
       ],
     });
@@ -366,6 +389,61 @@ describe('AdminPageComponent', () => {
     const link = fixture.nativeElement.querySelector('.link-section input[readonly]');
     expect(link.value).toContain('/guest-access/tok-abc');
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareLinkTitle');
+  });
+
+  // 026-match-record-friend-invite (roster-list redesign)
+  it('shows an icon-style add-friend entry on the roster list for another member, not self or a Guest', () => {
+    let requestedIds: string[] = [];
+    const fixture = setup(
+      false,
+      {},
+      {
+        getSchedule: () =>
+          of({
+            ...scheduleResponse,
+            roster: [
+              { roster_entry_id: 'r0', nickname: '管理員自己', status: 'active', wait_count: null, currently_playing: false, is_creator: true, is_guest: false, member_id: 'self-id' },
+              { roster_entry_id: 'r1', nickname: '訪客小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+              { roster_entry_id: 'r2', nickname: '會員小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: false, member_id: 'm2' },
+            ],
+          }),
+      },
+      {
+        selfMemberId: 'self-id',
+        getInviteCandidatesStatus: (ids: string[]) => {
+          requestedIds = ids;
+          return of({
+            candidates: ids.map((id) => ({ member_id: id, friendship_status: 'none' as const, invite_eligible: true })),
+          });
+        },
+      },
+    );
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+
+    expect(requestedIds).toEqual(['m2']);
+    const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+    expect(rows[0].querySelector('app-add-friend-button')).toBeNull(); // self
+    expect(rows[1].querySelector('app-add-friend-button')).toBeNull(); // guest
+    expect(rows[2].querySelector('app-add-friend-button button.btn--icon')).not.toBeNull();
+  });
+
+  it('shows no add-friend entries when operating via PIN-only session (no member login)', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r2', nickname: '會員小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: false, member_id: 'm2' },
+          ],
+        }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
   });
 
   it('only shows the regenerate-link button on guest rows, not member rows', () => {

@@ -12,8 +12,11 @@ from app.domains.friend import service
 from app.domains.friend.schemas import (
     FriendListResponse,
     FriendRequestCreate,
+    FriendRequestCreateByMemberId,
     FriendRequestResponse,
     IncomingFriendRequestsResponse,
+    InviteCandidatesRequest,
+    InviteCandidatesResponse,
 )
 from app.domains.group_invite.service import invalidate_pending_invites_for_member_pair
 from app.domains.member.models import Member
@@ -45,6 +48,36 @@ async def create_friend_request(
     """Errors: `MEMBER_NOT_FOUND`, `CANNOT_FRIEND_SELF`,
     `FRIEND_REQUEST_ALREADY_PENDING`, `ALREADY_FRIENDS`."""
     return await service.create_friend_request(session, member.id, payload.addressee_user_number)
+
+
+@router.post(
+    "/friends/requests/by-member", response_model=FriendRequestResponse, status_code=201
+)
+async def create_friend_request_by_member(
+    payload: FriendRequestCreateByMemberId,
+    member: Annotated[Member, Depends(require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FriendRequestResponse:
+    """026-match-record-friend-invite FR-001~005: send a friend request by
+    `member_id` (from a match-record/live-status page) instead of
+    `user_number`. Errors: `MEMBER_NOT_FOUND`, `CANNOT_FRIEND_SELF`,
+    `FRIEND_REQUEST_ALREADY_PENDING`, `ALREADY_FRIENDS`,
+    `INVITE_VIA_MATCH_PAGES_NOT_ALLOWED`."""
+    return await service.create_friend_request_by_member_id(
+        session, member.id, uuid.UUID(payload.addressee_member_id)
+    )
+
+
+@router.post("/friends/invite-candidates", response_model=InviteCandidatesResponse)
+async def get_invite_candidates(
+    payload: InviteCandidatesRequest,
+    member: Annotated[Member, Depends(require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> InviteCandidatesResponse:
+    """026-match-record-friend-invite: batched relationship + eligibility
+    status for every `member_id` a match-record/live-status page currently
+    has visible, per contracts/friend-invite-from-pages-api.md."""
+    return await service.get_invite_candidates_status(session, member.id, payload.member_ids)
 
 
 @router.get("/friends/requests/incoming", response_model=IncomingFriendRequestsResponse)

@@ -80,3 +80,51 @@ h3 {
     color: var(--color-danger);
   }
 }
+
+// Roster list (026-match-record-friend-invite): same row anatomy as
+// group-admin's roster/invite lists (component-scoped styles don't leak
+// across components, so it's copied rather than shared, same precedent as
+// .round-matches-list above).
+.roster-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.friend-row__avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
+}
+
+.friend-row__identity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.nickname {
+  font-weight: var(--font-weight-bold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

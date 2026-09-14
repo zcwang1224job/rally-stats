@@ -189,14 +189,18 @@ async def update_privacy_settings(
     *,
     allow_search: bool | None,
     share_match_records_with_friends: bool | None,
+    allow_friend_invite_from_match_pages: bool | None = None,
 ) -> Member:
-    """FR-016/FR-020~023. `PrivacySettingsRequest`'s own validator already
-    guarantees at least one field is provided — this only applies whichever
-    field(s) were actually given, leaving the other untouched."""
+    """FR-016/FR-020~023, plus 026-match-record-friend-invite FR-006.
+    `PrivacySettingsRequest`'s own validator already guarantees at least one
+    field is provided — this only applies whichever field(s) were actually
+    given, leaving the others untouched (independently of one another)."""
     if allow_search is not None:
         member.allow_search = allow_search
     if share_match_records_with_friends is not None:
         member.share_match_records_with_friends = share_match_records_with_friends
+    if allow_friend_invite_from_match_pages is not None:
+        member.allow_friend_invite_from_match_pages = allow_friend_invite_from_match_pages
     await session.commit()
     await session.refresh(member)
     return member
@@ -616,7 +620,13 @@ async def _build_member_match_record_summaries(
         team_b: list[ParticipantSummary] = []
         for participant, entry in participants_by_match.get(match.id, []):
             summary = ParticipantSummary(
-                roster_entry_id=str(entry.id), nickname=entry.nickname, team=participant.team
+                roster_entry_id=str(entry.id),
+                nickname=entry.nickname,
+                team=participant.team,
+                # 026-match-record-friend-invite research.md #1: this
+                # builder is one of the three authenticated paths allowed
+                # to populate member_id.
+                member_id=str(entry.member_id) if entry.member_id else None,
             )
             (team_a if participant.team == "A" else team_b).append(summary)
         summaries.append(

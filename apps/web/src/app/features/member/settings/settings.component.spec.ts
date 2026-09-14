@@ -26,6 +26,7 @@ const member: MemberPublic = {
   language_preference: 'zh-TW',
   allow_search: true,
   share_match_records_with_friends: true,
+  allow_friend_invite_from_match_pages: true,
 };
 
 const emptyLoginRecords: LoginRecordsResponse = { records: [], page: 1, total_pages: 1 };
@@ -43,6 +44,7 @@ function setup(
 ) {
   const calls = { setPrivacySettings: 0, logout: 0 };
   const deleteAccountCalls: unknown[] = [];
+  const privacyPayloads: unknown[] = [];
   const authServiceStub = {
     getMe: () => of(overrides.member ?? member),
     getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
@@ -55,12 +57,13 @@ function setup(
       overrides.changePassword ?? (() => of({ changed: true, access_token: 'a', refresh_token: 'r' })),
     setPrivacySettings: (payload: unknown) => {
       calls.setPrivacySettings += 1;
-      void payload;
+      privacyPayloads.push(payload);
       return overrides.setPrivacySettings
         ? overrides.setPrivacySettings()
         : of({
             allow_search: true,
             share_match_records_with_friends: true,
+            allow_friend_invite_from_match_pages: true,
           } satisfies PrivacySettingsResponse);
     },
     deleteAccount: (currentPassword: string) => {
@@ -89,7 +92,7 @@ function setup(
   });
   const fixture = TestBed.createComponent(SettingsComponent);
   fixture.detectChanges();
-  return { fixture, calls, deleteAccountCalls };
+  return { fixture, calls, deleteAccountCalls, privacyPayloads };
 }
 
 type Section = 'basic' | 'accountDetails' | 'security' | 'privacy';
@@ -359,12 +362,40 @@ describe('SettingsComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('.status-badge--success').length).toBe(1);
   });
 
+  // 026-match-record-friend-invite (US3, T043)
+  it('renders the new toggle at its current value and persists a change via PATCH', () => {
+    const { fixture, privacyPayloads } = setup({
+      member: { ...member, allow_friend_invite_from_match_pages: true },
+    });
+    switchTo(fixture, 'privacy');
+
+    const checkboxes = Array.from<HTMLInputElement>(
+      fixture.nativeElement.querySelectorAll('input[type="checkbox"]'),
+    );
+    const inviteToggle = checkboxes[2];
+    expect(inviteToggle.checked).toBe(true);
+
+    inviteToggle.checked = false;
+    inviteToggle.dispatchEvent(new Event('change'));
+    const form = fixture.nativeElement.querySelector('.card form') as HTMLFormElement;
+    form.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+
+    expect(privacyPayloads).toEqual([
+      {
+        allow_search: true,
+        share_match_records_with_friends: true,
+        allow_friend_invite_from_match_pages: false,
+      },
+    ]);
+  });
+
   it('shows a non-color on/off text label next to each privacy toggle (constitution VII), on the same row as its description', () => {
     const { fixture } = setup();
     switchTo(fixture, 'privacy');
 
     const rows = fixture.nativeElement.querySelectorAll('.toggle-row');
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(3);
     for (const row of Array.from(rows)) {
       const el = row as HTMLElement;
       // description text and the toggle control MUST be in the same row.

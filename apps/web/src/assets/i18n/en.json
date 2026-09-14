@@ -119,7 +119,9 @@
     "alreadyFriends": "Already Friends",
     "backToList": "Back to Friends",
     "requestsTitle": "Friend Requests",
-    "emptyRequests": "No pending friend requests"
+    "emptyRequests": "No pending friend requests",
+    "addFromMatchButton": "Add Friend",
+    "addFromMatchButtonAriaLabel": "Add {{nickname}} as a friend"
   },
   "friendMatchRecords": {
     "title": "{{nickname}}'s Match Records",
@@ -311,6 +313,8 @@
         "allowSearchHint": "When enabled, other members can find you by your user number",
         "shareMatchRecordsLabel": "Friends Can View My Match Records",
         "shareMatchRecordsHint": "When enabled, members who are your friends can view your match records and stats",
+        "allowMatchPageInviteLabel": "Allow Friend Requests from Match Pages",
+        "allowMatchPageInviteHint": "When enabled, members you've played a match with can send you a friend request directly from match records or live status pages — independent of \"allow being found via search\"",
         "on": "On",
         "off": "Off",
         "saved": "Privacy settings updated"
@@ -641,6 +645,7 @@
     "CANNOT_FRIEND_SELF": "You can't add yourself as a friend",
     "FRIEND_REQUEST_ALREADY_PENDING": "There's already a pending friend request",
     "ALREADY_FRIENDS": "Already friends",
+    "INVITE_VIA_MATCH_PAGES_NOT_ALLOWED": "This member has turned off friend requests from match pages",
     "FRIEND_REQUEST_NOT_FOUND": "Friend request not found",
     "FRIEND_REQUEST_NOT_PENDING": "This request has already been handled",
     "FRIEND_REQUEST_NOT_ACCEPTED": "This relationship isn't currently a friendship",

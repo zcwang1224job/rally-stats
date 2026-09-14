@@ -63,6 +63,7 @@ async def _to_public(session: AsyncSession, member: Member) -> MemberPublicRespo
         language_preference=member.language_preference,
         allow_search=member.allow_search,
         share_match_records_with_friends=member.share_match_records_with_friends,
+        allow_friend_invite_from_match_pages=member.allow_friend_invite_from_match_pages,
     )
 
 
@@ -425,10 +426,12 @@ async def set_privacy_settings(
         member,
         allow_search=payload.allow_search,
         share_match_records_with_friends=payload.share_match_records_with_friends,
+        allow_friend_invite_from_match_pages=payload.allow_friend_invite_from_match_pages,
     )
     return PrivacySettingsResponse(
         allow_search=updated.allow_search,
         share_match_records_with_friends=updated.share_match_records_with_friends,
+        allow_friend_invite_from_match_pages=updated.allow_friend_invite_from_match_pages,
     )
 
 

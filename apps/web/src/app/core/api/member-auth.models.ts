@@ -17,6 +17,8 @@ export interface MemberPublic {
   language_preference: string;
   allow_search: boolean;
   share_match_records_with_friends: boolean;
+  // 026-match-record-friend-invite
+  allow_friend_invite_from_match_pages: boolean;
 }
 
 export interface SupportedLanguagesResponse {
@@ -26,11 +28,13 @@ export interface SupportedLanguagesResponse {
 export interface PrivacySettingsRequest {
   allow_search?: boolean;
   share_match_records_with_friends?: boolean;
+  allow_friend_invite_from_match_pages?: boolean;
 }
 
 export interface PrivacySettingsResponse {
   allow_search: boolean;
   share_match_records_with_friends: boolean;
+  allow_friend_invite_from_match_pages: boolean;
 }
 
 export interface LoginRecordSummary {

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -8,7 +8,11 @@ import { interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
+import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
+import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
+import { AuthService } from '../../auth/auth.service';
+import { FriendsService } from '../../friends/friends.service';
 import { GroupAdminService } from '../group-admin.service';
 import {
   AdminGroupResponse,
@@ -61,6 +65,7 @@ type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'settings';
     PartnershipSettingsComponent,
     CourtControlComponent,
     RoundMatchesListComponent,
+    AddFriendButtonComponent,
   ],
   templateUrl: './admin-page.component.html',
   styleUrl: './admin-page.component.scss',
@@ -73,6 +78,8 @@ export class AdminPageComponent {
   private readonly realtime = inject(RealtimeService);
   private readonly fb = inject(FormBuilder);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly auth = inject(AuthService);
+  private readonly friends = inject(FriendsService);
 
   readonly groupId = this.route.snapshot.paramMap.get('groupId')!;
   // 013-group-invite-friends: a `?section=invites` query param lets the
@@ -100,6 +107,15 @@ export class AdminPageComponent {
   readonly copiedPin = signal(false);
   readonly copyPinErrorKey = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
+  // 026-match-record-friend-invite (roster-list redesign): batched
+  // relationship + eligibility status for every roster member, re-batched
+  // by the effect below whenever the roster's member id set changes. The
+  // admin page can be operated via PIN-only session without a member
+  // login at all (constitution IV) — when that's the case there's no
+  // member_id to exclude "self" with, so the entry point simply never
+  // renders (no batch call is even attempted).
+  readonly inviteCandidates = signal<Map<string, InviteCandidateStatus>>(new Map());
+  private lastBatchedRosterKey: string | null = null;
   readonly nextRoundErrorKey = signal<string | null>(null);
   // 018-plan-then-start UX polish: disables the 結束/規劃/開始 button while
   // its request is in flight, so a fast double-click can't fire it twice
@@ -183,6 +199,55 @@ export class AdminPageComponent {
     interval(HEARTBEAT_INTERVAL_MS)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.load());
+
+    // 026-match-record-friend-invite: re-batch whenever the roster's set
+    // of member ids changes (join/leave), not on every unrelated schedule
+    // refresh (e.g. a score tick).
+    effect(() => {
+      const roster = this.schedule()?.roster ?? [];
+      const key = roster
+        .map((r) => r.member_id)
+        .filter((id): id is string => !!id)
+        .sort()
+        .join(',');
+      if (key === this.lastBatchedRosterKey) {
+        return;
+      }
+      this.lastBatchedRosterKey = key;
+      this.loadInviteCandidates(roster);
+    });
+  }
+
+  private loadInviteCandidates(roster: RosterScheduleStatus[]): void {
+    const selfMemberId = this.auth.getCachedMemberId();
+    if (!selfMemberId) {
+      this.inviteCandidates.set(new Map());
+      return;
+    }
+    const memberIds = [
+      ...new Set(
+        roster
+          .map((r) => r.member_id)
+          .filter((id): id is string => !!id && id !== selfMemberId),
+      ),
+    ];
+    if (memberIds.length === 0) {
+      this.inviteCandidates.set(new Map());
+      return;
+    }
+    this.friends
+      .getInviteCandidatesStatus(memberIds)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          this.inviteCandidates.set(new Map(result.candidates.map((c) => [c.member_id, c])));
+        },
+        error: () => this.inviteCandidates.set(new Map()),
+      });
+  }
+
+  inviteCandidateFor(memberId: string): InviteCandidateStatus | undefined {
+    return this.inviteCandidates().get(memberId);
   }
 
   private load(): void {

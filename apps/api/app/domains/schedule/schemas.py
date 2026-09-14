@@ -17,6 +17,15 @@ class ParticipantSummary(BaseModel):
     roster_entry_id: str
     nickname: str
     team: Team
+    # 026-match-record-friend-invite: RosterEntry.member_id, projected only
+    # by the two already-authenticated match-record builders that need it
+    # (_build_match_record_summaries(), _build_member_match_record_summaries())
+    # — MUST stay None everywhere else, including every schedule/live-status
+    # builder (build_schedule_snapshot()'s current_match/next_up,
+    # _match_participants_payload()/court_live_state(), build_round_matches_list()):
+    # the "加好友" entry point for live/roster contexts lives on
+    # RosterScheduleStatus.member_id instead, per research.md #1's redesign.
+    member_id: str | None = None
 
 
 class NextUpPreview(BaseModel):
@@ -51,6 +60,10 @@ class RosterScheduleStatus(BaseModel):
     # admin page uses this to decide whether "regenerate guest link" makes
     # sense for the row (a Member entry has no guest_session_token concept).
     is_guest: bool
+    # 026-match-record-friend-invite: the roster list (both the member-facing
+    # and admin-facing schedule pages, same builder) is the "加好友" entry
+    # point's canonical home — None for Guests (mirrors is_guest).
+    member_id: str | None = None
 
 
 class ScheduleResponse(BaseModel):

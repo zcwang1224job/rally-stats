@@ -102,3 +102,82 @@ async def test_reject_contract(client: AsyncClient, db_session: AsyncSession) ->
 
     friends_a = await client.get("/friends", headers={"Authorization": f"Bearer {token_a}"})
     assert friends_a.json()["friends"] == []
+
+
+# --- 026-match-record-friend-invite ---
+
+
+async def test_create_friend_request_by_member_contract(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _register_and_verify(db_session, "bymemberc1@example.com", "甲")
+    await _register_and_verify(db_session, "bymemberc2@example.com", "乙")
+    token_a = await _login(client, "bymemberc1@example.com")
+    token_b = await _login(client, "bymemberc2@example.com")
+    b_id = (
+        await client.get("/members/me", headers={"Authorization": f"Bearer {token_b}"})
+    ).json()["member_id"]
+
+    response = await client.post(
+        "/friends/requests/by-member",
+        json={"addressee_member_id": b_id},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending"
+    assert "friend_request_id" in response.json()
+
+    duplicate = await client.post(
+        "/friends/requests/by-member",
+        json={"addressee_member_id": b_id},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error_code"] == "FRIEND_REQUEST_ALREADY_PENDING"
+
+
+async def test_create_friend_request_by_member_error_mapping(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _register_and_verify(db_session, "bymemberc3@example.com", "丙")
+    token_a = await _login(client, "bymemberc3@example.com")
+    a_id = (
+        await client.get("/members/me", headers={"Authorization": f"Bearer {token_a}"})
+    ).json()["member_id"]
+
+    not_found = await client.post(
+        "/friends/requests/by-member",
+        json={"addressee_member_id": "00000000-0000-0000-0000-000000000000"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert not_found.status_code == 404
+    assert not_found.json()["error_code"] == "MEMBER_NOT_FOUND"
+
+    self_invite = await client.post(
+        "/friends/requests/by-member",
+        json={"addressee_member_id": a_id},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert self_invite.status_code == 400
+    assert self_invite.json()["error_code"] == "CANNOT_FRIEND_SELF"
+
+
+async def test_invite_candidates_contract(client: AsyncClient, db_session: AsyncSession) -> None:
+    await _register_and_verify(db_session, "candc1@example.com", "甲")
+    await _register_and_verify(db_session, "candc2@example.com", "乙")
+    token_a = await _login(client, "candc1@example.com")
+    token_b = await _login(client, "candc2@example.com")
+    target_id = (
+        await client.get("/members/me", headers={"Authorization": f"Bearer {token_b}"})
+    ).json()["member_id"]
+
+    response = await client.post(
+        "/friends/invite-candidates",
+        json={"member_ids": [target_id]},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert response.status_code == 200
+    (candidate,) = response.json()["candidates"]
+    assert candidate["member_id"] == target_id
+    assert candidate["friendship_status"] == "none"
+    assert candidate["invite_eligible"] is True

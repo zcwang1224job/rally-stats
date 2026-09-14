@@ -10,6 +10,12 @@ export interface ParticipantSummary {
   roster_entry_id: string;
   nickname: string;
   team: Team;
+  /** 026-match-record-friend-invite: populated only on match-record rows
+   * (match-history, group-member-view/match-records) — always undefined/
+   * null on every schedule/live-status participant (current_match,
+   * next_up), where the roster list's own member_id is the "加好友" entry
+   * point's source instead (research.md #1's redesign). */
+  member_id?: string | null;
 }
 
 export interface NextUpPreview {
@@ -50,6 +56,10 @@ export interface RosterScheduleStatus {
   currently_playing: boolean;
   is_creator: boolean;
   is_guest: boolean;
+  /** 026-match-record-friend-invite: null for Guests — the roster list
+   * (member-schedule page and admin roster tab, same backend builder) is
+   * the "加好友" entry point's canonical home. */
+  member_id?: string | null;
 }
 
 export interface ScheduleResponse {

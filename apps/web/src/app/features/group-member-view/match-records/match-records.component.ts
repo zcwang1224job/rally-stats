@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import {
   GroupMatchRecordsResponse,
   MatchRecordDetailResponse,
@@ -9,6 +10,9 @@ import {
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
+import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
+import { AuthService } from '../../auth/auth.service';
+import { FriendsService } from '../../friends/friends.service';
 import { GroupMemberViewService } from '../group-member-view.service';
 
 /** US3 (FR-011/012): 團內對戰紀錄——逐場列表，僅限本團，載入時查詢。
@@ -17,7 +21,13 @@ import { GroupMemberViewService } from '../group-member-view.service';
  * 刻意不透過任何「依 groupId 有無決定端點」的共用邏輯）。 */
 @Component({
   selector: 'app-match-records',
-  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent, NicknameComponent],
+  imports: [
+    TranslatePipe,
+    DatePipe,
+    MatchRecordDetailDialogComponent,
+    NicknameComponent,
+    AddFriendButtonComponent,
+  ],
   templateUrl: './match-records.component.html',
   styleUrl: './match-records.component.scss',
 })
@@ -25,6 +35,16 @@ export class MatchRecordsComponent {
   readonly groupId = input.required<string>();
 
   private readonly memberView = inject(GroupMemberViewService);
+  private readonly auth = inject(AuthService);
+  private readonly friends = inject(FriendsService);
+
+  /** 026-match-record-friend-invite: the viewer's own member_id, so their
+   * own row never renders an "加好友" entry (FR-003). */
+  private readonly selfMemberId = this.auth.getCachedMemberId();
+
+  /** Batched relationship + eligibility status for every other member
+   * visible in the current page (research.md #2). */
+  readonly inviteCandidates = signal<Map<string, InviteCandidateStatus>>(new Map());
 
   readonly records = signal<GroupMatchRecordsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
@@ -51,9 +71,41 @@ export class MatchRecordsComponent {
 
   private load(page: number): void {
     this.memberView.getMatchRecords(this.groupId(), page).subscribe({
-      next: (response) => this.records.set(response),
+      next: (response) => {
+        this.records.set(response);
+        this.loadInviteCandidates(response);
+      },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
+  }
+
+  /** 026-match-record-friend-invite: collects every other member visible
+   * in this page's matches (excluding self and Guests) and looks up their
+   * "加好友" status in one batch call — includes teammates, not just
+   * opponents (US1 acceptance scenario 2). */
+  private loadInviteCandidates(response: GroupMatchRecordsResponse): void {
+    const memberIds = new Set<string>();
+    for (const match of response.matches) {
+      for (const p of [...match.team_a, ...match.team_b]) {
+        if (p.member_id && p.member_id !== this.selfMemberId) {
+          memberIds.add(p.member_id);
+        }
+      }
+    }
+    if (memberIds.size === 0) {
+      this.inviteCandidates.set(new Map());
+      return;
+    }
+    this.friends.getInviteCandidatesStatus([...memberIds]).subscribe({
+      next: (result) => {
+        this.inviteCandidates.set(new Map(result.candidates.map((c) => [c.member_id, c])));
+      },
+      error: () => this.inviteCandidates.set(new Map()),
+    });
+  }
+
+  inviteCandidateFor(memberId: string): InviteCandidateStatus | undefined {
+    return this.inviteCandidates().get(memberId);
   }
 
   goToPage(page: number): void {

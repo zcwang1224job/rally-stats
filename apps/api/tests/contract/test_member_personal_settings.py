@@ -227,6 +227,34 @@ async def test_patch_privacy_rejects_unverified_member(
     assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
 
 
+async def test_allow_friend_invite_from_match_pages_defaults_true_and_is_independently_settable(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """026-match-record-friend-invite FR-007 (T040): a member who has never
+    touched this setting reads True from GET /members/me before any PATCH;
+    PATCH can then flip it without affecting the other two privacy fields,
+    and the change round-trips through both PATCH's own response and a
+    subsequent GET."""
+    await _register_and_verify(db_session, "priv-c4@example.com")
+    token = await _login(client, "priv-c4@example.com")
+
+    before = await client.get("/members/me", headers=_auth(token))
+    assert before.json()["allow_friend_invite_from_match_pages"] is True
+
+    patched = await client.patch(
+        "/members/me/privacy",
+        json={"allow_friend_invite_from_match_pages": False},
+        headers=_auth(token),
+    )
+    assert patched.status_code == 200
+    assert patched.json()["allow_friend_invite_from_match_pages"] is False
+    assert patched.json()["allow_search"] is True
+    assert patched.json()["share_match_records_with_friends"] is True
+
+    after = await client.get("/members/me", headers=_auth(token))
+    assert after.json()["allow_friend_invite_from_match_pages"] is False
+
+
 # --- GET /members/search privacy gate (US4, FR-017) ---------------------------
 
 

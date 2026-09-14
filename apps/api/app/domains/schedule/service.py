@@ -1396,6 +1396,12 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             currently_playing=entry.id in playing_roster_ids,
             is_creator=entry.is_creator,
             is_guest=entry.member_id is None,
+            # 026-match-record-friend-invite research.md #1 (redesign): the
+            # "加好友" entry point now lives on the roster list (both the
+            # member-schedule page and the admin schedule/roster tab, same
+            # function/response) instead of next to live-match participants
+            # — this is the one place it's populated within this function.
+            member_id=str(entry.member_id) if entry.member_id else None,
         )
         for entry in roster_result.scalars()
     ]

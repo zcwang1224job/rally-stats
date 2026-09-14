@@ -51,6 +51,18 @@ export interface IncomingFriendRequestsResponse {
   requests: IncomingFriendRequest[];
 }
 
+// --- 026-match-record-friend-invite ---
+
+export interface InviteCandidateStatus {
+  member_id: string;
+  friendship_status: FriendshipStatus;
+  invite_eligible: boolean;
+}
+
+export interface InviteCandidatesResponse {
+  candidates: InviteCandidateStatus[];
+}
+
 export interface MyGroupSummary {
   group_id: string;
   group_number: number;

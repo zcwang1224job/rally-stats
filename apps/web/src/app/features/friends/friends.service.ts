@@ -6,6 +6,7 @@ import {
   FriendRequestResponse,
   ForgotAdminPinResponse,
   IncomingFriendRequestsResponse,
+  InviteCandidatesResponse,
   MemberGroupHistoryFilters,
   MemberGroupHistoryResponse,
   MyGroupsResponse,
@@ -105,6 +106,28 @@ export class FriendsService {
     }
     return this.api.get<MemberGroupHistoryResponse>(
       `/members/me/groups/${groupId}/history?${params.toString()}`,
+      this.authHeader(),
+    );
+  }
+
+  /** 026-match-record-friend-invite: send a friend request by member_id
+   * (already known from a match-record/live-status page), rather than
+   * requiring the user's user_number. */
+  sendFriendRequestByMemberId(memberId: string): Observable<FriendRequestResponse> {
+    return this.api.post<FriendRequestResponse>(
+      '/friends/requests/by-member',
+      { addressee_member_id: memberId },
+      this.authHeader(),
+    );
+  }
+
+  /** Batched relationship + eligibility lookup for every member_id a
+   * match-record/live-status page currently has visible — avoids one
+   * request per rendered "加好友" entry (research.md #2). */
+  getInviteCandidatesStatus(memberIds: string[]): Observable<InviteCandidatesResponse> {
+    return this.api.post<InviteCandidatesResponse>(
+      '/friends/invite-candidates',
+      { member_ids: memberIds },
       this.authHeader(),
     );
   }

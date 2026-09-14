@@ -1208,7 +1208,13 @@ async def _build_match_record_summaries(
         team_b: list[ParticipantSummary] = []
         for participant, entry in participants_by_match.get(match.id, []):
             summary = ParticipantSummary(
-                roster_entry_id=str(entry.id), nickname=entry.nickname, team=participant.team
+                roster_entry_id=str(entry.id),
+                nickname=entry.nickname,
+                team=participant.team,
+                # 026-match-record-friend-invite research.md #1: this
+                # builder is one of the three authenticated paths allowed
+                # to populate member_id.
+                member_id=str(entry.member_id) if entry.member_id else None,
             )
             (team_a if participant.team == "A" else team_b).append(summary)
         summaries.append(

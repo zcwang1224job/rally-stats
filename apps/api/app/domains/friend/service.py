@@ -17,6 +17,8 @@ from app.domains.friend.schemas import (
     FriendSummary,
     IncomingFriendRequest,
     IncomingFriendRequestsResponse,
+    InviteCandidatesResponse,
+    InviteCandidateStatus,
 )
 from app.domains.member.models import Member
 from app.domains.notification.service import (
@@ -67,23 +69,18 @@ async def get_friendship_status(
     return "pending_outgoing" if row.requester_id == member_a else "pending_incoming"
 
 
-async def create_friend_request(
-    session: AsyncSession, requester_id: uuid.UUID, addressee_user_number: str
+async def _create_friend_request_for_addressee(
+    session: AsyncSession, requester_id: uuid.UUID, addressee: Member
 ) -> FriendRequestResponse:
-    """Errors: `MEMBER_NOT_FOUND` (FR-036, unverified accounts included; a
-    deleted account, 025-delete-account), `CANNOT_FRIEND_SELF` (FR-037),
-    `FRIEND_REQUEST_ALREADY_PENDING` (FR-039, either from the pre-check or
-    the DB's own partial unique index), `ALREADY_FRIENDS`."""
-    result = await session.execute(
-        select(Member).where(func.lower(Member.user_number) == addressee_user_number.lower())
-    )
-    addressee = result.scalar_one_or_none()
-    if (
-        addressee is None
-        or addressee.verification_status != "verified"
-        or addressee.deleted_at is not None
-    ):
-        raise ApiError("MEMBER_NOT_FOUND", status_code=404)
+    """026-match-record-friend-invite research.md #3: the core shared by
+    every "send a friend request" entry point, regardless of how the
+    `addressee` `Member` was looked up. Callers MUST already have validated
+    that `addressee` exists/is verified/is not deleted — this only checks
+    self-targeting and the current relationship state.
+
+    Errors: `CANNOT_FRIEND_SELF` (FR-037), `FRIEND_REQUEST_ALREADY_PENDING`
+    (FR-039, either from the pre-check or the DB's own partial unique
+    index), `ALREADY_FRIENDS`."""
     if addressee.id == requester_id:
         raise ApiError("CANNOT_FRIEND_SELF", status_code=400)
 
@@ -108,6 +105,89 @@ async def create_friend_request(
     return FriendRequestResponse(
         friend_request_id=str(friend_request.id), status=friend_request.status
     )
+
+
+async def create_friend_request(
+    session: AsyncSession, requester_id: uuid.UUID, addressee_user_number: str
+) -> FriendRequestResponse:
+    """Errors: `MEMBER_NOT_FOUND` (FR-036, unverified accounts included; a
+    deleted account, 025-delete-account), plus `_create_friend_request_for_addressee`'s."""
+    result = await session.execute(
+        select(Member).where(func.lower(Member.user_number) == addressee_user_number.lower())
+    )
+    addressee = result.scalar_one_or_none()
+    if (
+        addressee is None
+        or addressee.verification_status != "verified"
+        or addressee.deleted_at is not None
+    ):
+        raise ApiError("MEMBER_NOT_FOUND", status_code=404)
+    return await _create_friend_request_for_addressee(session, requester_id, addressee)
+
+
+async def create_friend_request_by_member_id(
+    session: AsyncSession, requester_id: uuid.UUID, addressee_member_id: uuid.UUID
+) -> FriendRequestResponse:
+    """026-match-record-friend-invite FR-001~005: the match-record/
+    live-status entry point's send action — addresses the target by
+    `member_id` (already known to the caller) instead of `user_number`, but
+    otherwise shares every rule with `create_friend_request()` via
+    `_create_friend_request_for_addressee()`. The `user_number`-based path
+    above is deliberately NOT subject to `allow_friend_invite_from_match_pages`
+    — that toggle only governs this entry point (FR-006).
+
+    Errors: `MEMBER_NOT_FOUND` (a Guest-only roster id has no `Member` row
+    at all; also covers unverified/deleted), `INVITE_VIA_MATCH_PAGES_NOT_ALLOWED`
+    (FR-008 — only when no relationship already exists, FR-009), plus
+    `_create_friend_request_for_addressee`'s."""
+    result = await session.execute(select(Member).where(Member.id == addressee_member_id))
+    addressee = result.scalar_one_or_none()
+    if (
+        addressee is None
+        or addressee.verification_status != "verified"
+        or addressee.deleted_at is not None
+    ):
+        raise ApiError("MEMBER_NOT_FOUND", status_code=404)
+    if addressee.id != requester_id and not addressee.allow_friend_invite_from_match_pages:
+        status = await get_friendship_status(session, requester_id, addressee.id)
+        if status == "none":
+            raise ApiError("INVITE_VIA_MATCH_PAGES_NOT_ALLOWED", status_code=403)
+    return await _create_friend_request_for_addressee(session, requester_id, addressee)
+
+
+async def get_invite_candidates_status(
+    session: AsyncSession, viewer_id: uuid.UUID, member_ids: list[str]
+) -> InviteCandidatesResponse:
+    """026-match-record-friend-invite research.md #2: batched relationship
+    + eligibility lookup for the "加好友" entries a match-record/live-status
+    page renders in one load. A requested id with no matching (or deleted)
+    `Member` row is silently omitted, not an error (FR-002's Guest case and
+    any race with account deletion both resolve to "no entry shown")."""
+    if not member_ids:
+        return InviteCandidatesResponse(candidates=[])
+    unique_ids = {uuid.UUID(mid) for mid in member_ids}
+    result = await session.execute(select(Member).where(Member.id.in_(unique_ids)))
+    members_by_id = {m.id: m for m in result.scalars()}
+
+    candidates: list[InviteCandidateStatus] = []
+    for member_id in unique_ids:
+        target = members_by_id.get(member_id)
+        if target is None or target.deleted_at is not None:
+            continue
+        status = await get_friendship_status(session, viewer_id, member_id)
+        invite_eligible = (
+            status == "none"
+            and target.verification_status == "verified"
+            and target.allow_friend_invite_from_match_pages
+        )
+        candidates.append(
+            InviteCandidateStatus(
+                member_id=str(member_id),
+                friendship_status=status,
+                invite_eligible=invite_eligible,
+            )
+        )
+    return InviteCandidatesResponse(candidates=candidates)
 
 
 async def list_friends(

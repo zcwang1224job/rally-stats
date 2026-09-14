@@ -100,6 +100,8 @@ export class SettingsComponent implements OnInit {
   readonly privacyForm = this.fb.nonNullable.group({
     allow_search: [true],
     share_match_records_with_friends: [true],
+    // 026-match-record-friend-invite FR-006: independent of the other two.
+    allow_friend_invite_from_match_pages: [true],
   });
 
   ngOnInit(): void {
@@ -111,6 +113,7 @@ export class SettingsComponent implements OnInit {
         this.privacyForm.patchValue({
           allow_search: member.allow_search,
           share_match_records_with_friends: member.share_match_records_with_friends,
+          allow_friend_invite_from_match_pages: member.allow_friend_invite_from_match_pages,
         });
       },
     });
@@ -237,6 +240,7 @@ export class SettingsComponent implements OnInit {
       .setPrivacySettings({
         allow_search: raw.allow_search,
         share_match_records_with_friends: raw.share_match_records_with_friends,
+        allow_friend_invite_from_match_pages: raw.allow_friend_invite_from_match_pages,
       })
       .subscribe({
         next: (response) => {
@@ -247,6 +251,7 @@ export class SettingsComponent implements OnInit {
               ...current,
               allow_search: response.allow_search,
               share_match_records_with_friends: response.share_match_records_with_friends,
+              allow_friend_invite_from_match_pages: response.allow_friend_invite_from_match_pages,
             });
           }
           this.privacySaved.set(true);

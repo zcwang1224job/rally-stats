@@ -42,3 +42,36 @@ class IncomingFriendRequest(BaseModel):
 
 class IncomingFriendRequestsResponse(BaseModel):
     requests: list[IncomingFriendRequest]
+
+
+# --- 026-match-record-friend-invite ---
+
+
+class FriendRequestCreateByMemberId(BaseModel):
+    """Sibling of `FriendRequestCreate` — addresses the target by
+    `member_id` (already known from a match-record/live-status page)
+    instead of `user_number`."""
+
+    addressee_member_id: str
+
+
+class InviteCandidatesRequest(BaseModel):
+    """Deduplicated `member_id`s the caller can currently see on a
+    match-record/live-status page (self and Guests already excluded by the
+    caller) — no hard size limit, see contracts/
+    friend-invite-from-pages-api.md."""
+
+    member_ids: list[str]
+
+
+class InviteCandidateStatus(BaseModel):
+    member_id: str
+    friendship_status: str  # "none" | "friends" | "pending_outgoing" | "pending_incoming"
+    invite_eligible: bool
+    # True only when friendship_status == "none" and the target is a
+    # verified, non-deleted member with allow_friend_invite_from_match_pages
+    # == True — a UI hint only, never authoritative (FR-010).
+
+
+class InviteCandidatesResponse(BaseModel):
+    candidates: list[InviteCandidateStatus]

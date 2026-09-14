@@ -2,12 +2,15 @@
 read model, showing every match in the current round regardless of status
 (not just each court's current match, per build_schedule_snapshot())."""
 
+import uuid
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.court.models import Court
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
+from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.service import build_round_matches_list, create_match_with_participants
 
@@ -37,8 +40,10 @@ async def _make_court(session: AsyncSession, group: Group, name: str) -> Court:
     return court
 
 
-async def _make_entry(session: AsyncSession, group: Group, nickname: str) -> RosterEntry:
-    entry = RosterEntry(group_id=group.id, nickname=nickname, status="active")
+async def _make_entry(
+    session: AsyncSession, group: Group, nickname: str, member_id: uuid.UUID | None = None
+) -> RosterEntry:
+    entry = RosterEntry(group_id=group.id, nickname=nickname, member_id=member_id, status="active")
     session.add(entry)
     await session.commit()
     await session.refresh(entry)
@@ -111,3 +116,38 @@ async def test_empty_when_no_round_generated_yet(db_session: AsyncSession) -> No
 
     assert response.round_number == 1
     assert response.matches == []
+
+
+@pytest.mark.asyncio
+async def test_participants_never_carry_member_id(db_session: AsyncSession) -> None:
+    """026-match-record-friend-invite research.md #1 (T031): the admin's
+    "本輪賽程清單" is a separate display from the "場地控制區塊" FR-001(d)
+    targets — it MUST NOT gain member_id, even for a Member-linked
+    participant, since spec.md deliberately scopes the friend-invite entry
+    point to build_schedule_snapshot()'s current-match display only."""
+    group = await _make_group(db_session)
+    await _make_court(db_session, group, "1號場")
+    member = Member(
+        email="round-matches-participant@example.com",
+        password_hash="x",
+        nickname="會員",
+        user_number=str(uuid.uuid4())[:8],
+        verification_status="verified",
+    )
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+
+    p1 = await _make_entry(db_session, group, "會員", member.id)
+    p2 = await _make_entry(db_session, group, "訪客")
+    await create_match_with_participants(
+        db_session, group, court_id=None, round_number=1, status="queued",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    response = await build_round_matches_list(db_session, group)
+
+    for match in response.matches:
+        for participant in match.participants:
+            assert participant.member_id is None

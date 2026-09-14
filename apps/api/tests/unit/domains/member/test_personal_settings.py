@@ -214,6 +214,40 @@ async def test_update_privacy_settings_updates_only_provided_field(
     assert updated.share_match_records_with_friends is True
 
 
+async def test_update_privacy_settings_allow_friend_invite_from_match_pages_independent(
+    db_session: AsyncSession,
+) -> None:
+    """026-match-record-friend-invite FR-006/007: the new field defaults to
+    True and can be changed independently of the other two — updating it
+    alone MUST NOT touch allow_search/share_match_records_with_friends, and
+    vice versa (T039)."""
+    member = await _make_verified_member(db_session, "priv2@example.com")
+    assert member.allow_friend_invite_from_match_pages is True
+
+    updated = await update_privacy_settings(
+        db_session,
+        member,
+        allow_search=None,
+        share_match_records_with_friends=None,
+        allow_friend_invite_from_match_pages=False,
+    )
+
+    assert updated.allow_friend_invite_from_match_pages is False
+    assert updated.allow_search is True
+    assert updated.share_match_records_with_friends is True
+
+    updated_again = await update_privacy_settings(
+        db_session,
+        updated,
+        allow_search=False,
+        share_match_records_with_friends=None,
+    )
+
+    assert updated_again.allow_search is False
+    # Omitted from this second call — MUST stay at whatever the first call left it.
+    assert updated_again.allow_friend_invite_from_match_pages is False
+
+
 # --- search_member allow_search gate (US4, FR-017) --------------------------
 
 

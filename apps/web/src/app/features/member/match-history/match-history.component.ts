@@ -3,6 +3,7 @@ import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import {
   MatchRecordDetailResponse,
   MatchRecordResultFilter,
@@ -12,8 +13,10 @@ import {
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
+import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
+import { FriendsService } from '../../friends/friends.service';
 
 interface RoundTrendPoint {
   round: number;
@@ -41,6 +44,7 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
     DatePipe,
     MatchRecordDetailDialogComponent,
     NicknameComponent,
+    AddFriendButtonComponent,
   ],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
@@ -48,6 +52,16 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 export class MatchHistoryComponent {
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+  private readonly friends = inject(FriendsService);
+
+  /** 026-match-record-friend-invite: the viewer's own member_id, so their
+   * own row never renders an "加好友" entry (FR-003). */
+  private readonly selfMemberId = this.auth.getCachedMemberId();
+
+  /** Batched relationship + eligibility status for every other member
+   * visible in the current page of match records (research.md #2) —
+   * re-fetched whenever `records` reloads. */
+  readonly inviteCandidates = signal<Map<string, InviteCandidateStatus>>(new Map());
 
   private readonly detailDialogRef =
     viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');
@@ -210,9 +224,41 @@ export class MatchHistoryComponent {
     };
     this.appliedFilters.set(filters);
     this.auth.getMatchRecords(page, filters).subscribe({
-      next: (response) => this.records.set(response),
+      next: (response) => {
+        this.records.set(response);
+        this.loadInviteCandidates(response);
+      },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
+  }
+
+  /** 026-match-record-friend-invite: collects every other member visible
+   * in this page's matches (excluding self and Guests, whose participants
+   * have no member_id) and looks up their "加好友" status in one batch
+   * call. */
+  private loadInviteCandidates(response: MemberMatchRecordsResponse): void {
+    const memberIds = new Set<string>();
+    for (const match of response.matches) {
+      for (const p of [...match.team_a, ...match.team_b]) {
+        if (p.member_id && p.member_id !== this.selfMemberId) {
+          memberIds.add(p.member_id);
+        }
+      }
+    }
+    if (memberIds.size === 0) {
+      this.inviteCandidates.set(new Map());
+      return;
+    }
+    this.friends.getInviteCandidatesStatus([...memberIds]).subscribe({
+      next: (result) => {
+        this.inviteCandidates.set(new Map(result.candidates.map((c) => [c.member_id, c])));
+      },
+      error: () => this.inviteCandidates.set(new Map()),
+    });
+  }
+
+  inviteCandidateFor(memberId: string): InviteCandidateStatus | undefined {
+    return this.inviteCandidates().get(memberId);
   }
 
   /** Medal for the top 3 rows of the opponent leaderboard, plain rank

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
 from app.domains.group.service import build_group_match_records
+from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, MatchParticipant
 
@@ -32,8 +33,10 @@ async def _make_group(session: AsyncSession) -> Group:
     return group
 
 
-async def _make_entry(session: AsyncSession, group: Group, nickname: str) -> RosterEntry:
-    entry = RosterEntry(group_id=group.id, nickname=nickname, status="active")
+async def _make_entry(
+    session: AsyncSession, group: Group, nickname: str, member_id: uuid.UUID | None = None
+) -> RosterEntry:
+    entry = RosterEntry(group_id=group.id, nickname=nickname, member_id=member_id, status="active")
     session.add(entry)
     await session.commit()
     await session.refresh(entry)
@@ -335,3 +338,35 @@ async def test_round_range_filter_narrows_by_round_number(db_session: AsyncSessi
     assert [m.match_id for m in response.matches] == [str(r2.id)]
     assert str(r1.id) not in [m.match_id for m in response.matches]
     assert str(r3.id) not in [m.match_id for m in response.matches]
+
+
+async def test_participant_member_id_populated_for_members_none_for_guests(
+    db_session: AsyncSession,
+) -> None:
+    """026-match-record-friend-invite research.md #1: ParticipantSummary.member_id
+    MUST reflect RosterEntry.member_id — the logged-in-member's own id for a
+    Member-linked entry, None for a Guest one."""
+    group = await _make_group(db_session)
+    member = Member(
+        email="member-participant@example.com",
+        password_hash="x",
+        nickname="會員",
+        user_number=str(uuid.uuid4())[:8],
+        verification_status="verified",
+    )
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+
+    member_entry = await _make_entry(db_session, group, "會員", member.id)
+    guest_entry = await _make_entry(db_session, group, "訪客")
+    match = await _make_match(
+        db_session, group, round_number=1, status="completed", winner_team="A",
+        team_a=[member_entry.id], team_b=[guest_entry.id],
+    )
+
+    response = await build_group_match_records(db_session, group.id)
+
+    (summary,) = [m for m in response.matches if m.match_id == str(match.id)]
+    assert summary.team_a[0].member_id == str(member.id)
+    assert summary.team_b[0].member_id is None

@@ -2,7 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
+import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import { AuthService } from '../../auth/auth.service';
+import { FriendsService } from '../../friends/friends.service';
 import { MatchHistoryComponent } from './match-history.component';
 
 const recordsResponse: MemberMatchRecordsResponse = {
@@ -13,8 +15,8 @@ const recordsResponse: MemberMatchRecordsResponse = {
       group_id: 'g1',
       group_name: '週三團',
       won: true,
-      team_a: [{ roster_entry_id: 'p1', nickname: '小明', team: 'A' }],
-      team_b: [{ roster_entry_id: 'p2', nickname: '小華', team: 'B' }],
+      team_a: [{ roster_entry_id: 'p1', nickname: '小明', team: 'A', member_id: 'self-id' }],
+      team_b: [{ roster_entry_id: 'p2', nickname: '小華', team: 'B', member_id: 'm2' }],
       score_a: 21,
       score_b: 15,
       winner_team: 'A',
@@ -32,7 +34,18 @@ const recordsResponse: MemberMatchRecordsResponse = {
   total_pages: 1,
 };
 
-function setup(detailCalls: unknown[][] = []) {
+const defaultCandidates: InviteCandidatesResponse = {
+  candidates: [{ member_id: 'm2', friendship_status: 'none', invite_eligible: true }],
+};
+
+function setup(
+  detailCalls: unknown[][] = [],
+  options: {
+    records?: MemberMatchRecordsResponse;
+    candidates?: InviteCandidatesResponse;
+    selfMemberId?: string | null;
+  } = {},
+) {
   TestBed.configureTestingModule({
     imports: [MatchHistoryComponent],
     providers: [
@@ -40,11 +53,18 @@ function setup(detailCalls: unknown[][] = []) {
       {
         provide: AuthService,
         useValue: {
-          getMatchRecords: () => of(recordsResponse),
+          getMatchRecords: () => of(options.records ?? recordsResponse),
           getMatchRecordDetail: (...args: unknown[]) => {
             detailCalls.push(args);
             return of(null);
           },
+          getCachedMemberId: () => (options.selfMemberId === undefined ? 'self-id' : options.selfMemberId),
+        },
+      },
+      {
+        provide: FriendsService,
+        useValue: {
+          getInviteCandidatesStatus: () => of(options.candidates ?? defaultCandidates),
         },
       },
     ],
@@ -97,5 +117,51 @@ describe('MatchHistoryComponent', () => {
     ) as HTMLElement | null;
     expect(deletedSpan).not.toBeNull();
     expect(deletedSpan?.textContent).toContain('Deleted User');
+  });
+
+  // 026-match-record-friend-invite (US1, T016)
+  it('renders the add-friend button next to a participant with a member_id, not self', () => {
+    const fixture = setup();
+
+    const buttons = fixture.nativeElement.querySelectorAll('app-add-friend-button');
+    expect(buttons.length).toBe(1);
+  });
+
+  it('renders nothing for a Guest participant (no member_id)', () => {
+    const fixture = setup(undefined, {
+      records: {
+        ...recordsResponse,
+        matches: [
+          {
+            ...recordsResponse.matches[0],
+            team_a: [{ roster_entry_id: 'p1', nickname: '小明' as const, team: 'A' as const }],
+            team_b: [{ roster_entry_id: 'p3', nickname: '訪客', team: 'B' as const }],
+          },
+        ],
+      },
+      candidates: { candidates: [] },
+    });
+
+    expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
+  });
+
+  it('renders nothing for the viewer\'s own row even when it has a member_id', () => {
+    const fixture = setup(undefined, {
+      records: {
+        ...recordsResponse,
+        matches: [
+          {
+            ...recordsResponse.matches[0],
+            team_a: [
+              { roster_entry_id: 'p1', nickname: '小明', team: 'A' as const, member_id: 'self-id' },
+            ],
+            team_b: [],
+          },
+        ],
+      },
+      candidates: { candidates: [] },
+    });
+
+    expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
   });
 });

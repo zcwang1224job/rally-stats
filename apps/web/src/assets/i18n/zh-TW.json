@@ -119,7 +119,9 @@
     "alreadyFriends": "已是好友",
     "backToList": "返回好友列表",
     "requestsTitle": "回覆好友申請",
-    "emptyRequests": "目前沒有待處理的好友申請"
+    "emptyRequests": "目前沒有待處理的好友申請",
+    "addFromMatchButton": "加好友",
+    "addFromMatchButtonAriaLabel": "加 {{nickname}} 為好友"
   },
   "friendMatchRecords": {
     "title": "{{nickname}} 的戰績",
@@ -311,6 +313,8 @@
         "allowSearchHint": "開啟後，其他會員可以透過你的會員編號搜尋到你",
         "shareMatchRecordsLabel": "好友可查看我的戰績",
         "shareMatchRecordsHint": "開啟後，已成為好友的會員可以查看你的對戰紀錄與戰績統計",
+        "allowMatchPageInviteLabel": "允許透過對戰紀錄／即時戰況被加好友",
+        "allowMatchPageInviteHint": "開啟後，曾與你同場比賽的會員可以在對戰紀錄或即時戰況頁面直接對你發送好友邀請，與「允許被搜尋」互不相關",
         "on": "已開啟",
         "off": "已關閉",
         "saved": "隱私設定已更新"
@@ -641,6 +645,7 @@
     "CANNOT_FRIEND_SELF": "不可加自己為好友",
     "FRIEND_REQUEST_ALREADY_PENDING": "已有一筆待處理的好友邀請",
     "ALREADY_FRIENDS": "已經是好友",
+    "INVITE_VIA_MATCH_PAGES_NOT_ALLOWED": "此會員已關閉透過對戰紀錄／即時戰況加好友",
     "FRIEND_REQUEST_NOT_FOUND": "找不到此好友邀請",
     "FRIEND_REQUEST_NOT_PENDING": "此邀請已被處理過",
     "FRIEND_REQUEST_NOT_ACCEPTED": "此關係目前並非好友狀態",

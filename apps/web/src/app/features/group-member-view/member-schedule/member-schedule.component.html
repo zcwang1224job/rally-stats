@@ -63,6 +63,34 @@
       }
     </section>
   }
+
+  <section class="card">
+    <h3>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h3>
+    <ul class="roster-list">
+      @for (member of s.roster; track member.roster_entry_id) {
+        <li class="card friend-row">
+          <span class="friend-row__avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
+          <span class="friend-row__identity">
+            <span class="nickname">{{ member.nickname }}</span>
+            @if (member.currently_playing) {
+              <span class="status-badge status-badge--success">{{ 'scheduleManagement.currentlyPlaying' | translate }}</span>
+            } @else if (s.scheduling_mechanism === 'manual' && member.wait_count !== null) {
+              <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
+            }
+          </span>
+          @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {
+            <app-add-friend-button
+              [memberId]="candidate.member_id"
+              [friendshipStatus]="candidate.friendship_status"
+              [inviteEligible]="candidate.invite_eligible"
+              [iconStyle]="true"
+              [nickname]="member.nickname"
+            />
+          }
+        </li>
+      }
+    </ul>
+  </section>
 } @else {
   <p>{{ 'common.loading' | translate }}</p>
 }

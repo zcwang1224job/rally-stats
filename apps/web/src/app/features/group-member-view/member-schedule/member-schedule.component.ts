@@ -2,9 +2,14 @@ import { Component, DestroyRef, effect, inject, input, signal } from '@angular/c
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
+import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
+import { AuthService } from '../../auth/auth.service';
+import { FriendsService } from '../../friends/friends.service';
 import {
+  RosterScheduleStatus,
   RoundMatchesResponse,
   RoundMatchSummary,
   ScheduleResponse,
@@ -19,7 +24,7 @@ const GROUP_EVENTS = ['member.joined', 'member.left'];
  * Real-time sync reuses 007's existing Ably channels/events verbatim. */
 @Component({
   selector: 'app-member-schedule',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, AddFriendButtonComponent],
   templateUrl: './member-schedule.component.html',
   styleUrl: './member-schedule.component.scss',
 })
@@ -30,11 +35,19 @@ export class MemberScheduleComponent {
   private readonly realtime = inject(RealtimeService);
   private readonly reconnectRefetch = inject(ReconnectRefetchService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly auth = inject(AuthService);
+  private readonly friends = inject(FriendsService);
 
   readonly connectionState = this.realtime.connectionState;
   readonly schedule = signal<ScheduleResponse | null>(null);
   readonly roundMatches = signal<RoundMatchesResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
+
+  /** 026-match-record-friend-invite (roster-list redesign): batched
+   * relationship + eligibility status for every roster member, re-batched
+   * on every `load()` (which already fires on every relevant Ably event,
+   * so this naturally updates as members join/leave). */
+  readonly inviteCandidates = signal<Map<string, InviteCandidateStatus>>(new Map());
 
   private readonly subscribedCourtChannels = new Set<string>();
   private groupChannelSubscribed = false;
@@ -66,6 +79,7 @@ export class MemberScheduleComponent {
       next: (response) => {
         this.schedule.set(response);
         this.subscribeToGroupChannel();
+        this.loadInviteCandidates(response.roster);
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
@@ -75,6 +89,35 @@ export class MemberScheduleComponent {
       next: (response) => this.roundMatches.set(response),
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
+  }
+
+  private loadInviteCandidates(roster: RosterScheduleStatus[]): void {
+    const selfMemberId = this.auth.getCachedMemberId();
+    if (!selfMemberId) {
+      this.inviteCandidates.set(new Map());
+      return;
+    }
+    const memberIds = [
+      ...new Set(
+        roster
+          .map((r) => r.member_id)
+          .filter((id): id is string => !!id && id !== selfMemberId),
+      ),
+    ];
+    if (memberIds.length === 0) {
+      this.inviteCandidates.set(new Map());
+      return;
+    }
+    this.friends.getInviteCandidatesStatus(memberIds).subscribe({
+      next: (result) => {
+        this.inviteCandidates.set(new Map(result.candidates.map((c) => [c.member_id, c])));
+      },
+      error: () => this.inviteCandidates.set(new Map()),
+    });
+  }
+
+  inviteCandidateFor(memberId: string): InviteCandidateStatus | undefined {
+    return this.inviteCandidates().get(memberId);
   }
 
   vsLabel(match: RoundMatchSummary): string {

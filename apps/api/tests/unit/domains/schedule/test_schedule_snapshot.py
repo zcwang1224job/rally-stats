@@ -2,12 +2,15 @@
 之 score_a/score_b、CourtScheduleStatus 之 next_up（供管理頁場地控制
 區塊重用，research.md #10）。"""
 
+import uuid
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.court.models import Court
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
+from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.service import build_schedule_snapshot, create_match_with_participants
 
@@ -40,8 +43,10 @@ async def _make_court(session: AsyncSession, group: Group) -> Court:
     return court
 
 
-async def _make_roster_entry(session: AsyncSession, group: Group, nickname: str) -> RosterEntry:
-    entry = RosterEntry(group_id=group.id, nickname=nickname, status="active")
+async def _make_roster_entry(
+    session: AsyncSession, group: Group, nickname: str, member_id: uuid.UUID | None = None
+) -> RosterEntry:
+    entry = RosterEntry(group_id=group.id, nickname=nickname, member_id=member_id, status="active")
     session.add(entry)
     await session.commit()
     await session.refresh(entry)
@@ -100,3 +105,63 @@ async def test_manual_mode_next_up_always_none(db_session: AsyncSession) -> None
     assert court_status.current_match is None
     assert court_status.waiting_reason == "manual_assignment"
     assert court_status.next_up is None
+
+
+async def test_match_participants_never_carry_member_id(db_session: AsyncSession) -> None:
+    """026-match-record-friend-invite research.md #1 (redesign): the
+    "加好友" entry point lives on the roster list now, not next to live
+    match participants — current_match/next_up participants MUST NOT carry
+    member_id, whether in progress or queued."""
+    group = await _make_group(db_session)
+    court = await _make_court(db_session, group)
+    member = Member(
+        email="schedule-participant@example.com",
+        password_hash="x",
+        nickname="會員",
+        user_number=str(uuid.uuid4())[:8],
+        verification_status="verified",
+    )
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+
+    p1 = await _make_roster_entry(db_session, group, "會員", member.id)
+    p2 = await _make_roster_entry(db_session, group, "訪客")
+    await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+
+    snapshot = await build_schedule_snapshot(db_session, group)
+
+    court_status = next(c for c in snapshot.courts if c.court_id == str(court.id))
+    assert court_status.current_match is not None
+    for participant in court_status.current_match.participants:
+        assert participant.member_id is None
+
+
+async def test_roster_member_id_populated_none_for_guest(db_session: AsyncSession) -> None:
+    """026-match-record-friend-invite research.md #1 (redesign): the roster
+    list — shared by the member-schedule page and the admin schedule/roster
+    tab — MUST carry member_id per entry (None for a Guest)."""
+    group = await _make_group(db_session)
+    await _make_court(db_session, group)
+    member = Member(
+        email="roster-participant@example.com",
+        password_hash="x",
+        nickname="會員",
+        user_number=str(uuid.uuid4())[:8],
+        verification_status="verified",
+    )
+    db_session.add(member)
+    await db_session.commit()
+    await db_session.refresh(member)
+
+    await _make_roster_entry(db_session, group, "會員", member.id)
+    await _make_roster_entry(db_session, group, "訪客")
+
+    snapshot = await build_schedule_snapshot(db_session, group)
+
+    by_nickname = {r.nickname: r for r in snapshot.roster}
+    assert by_nickname["會員"].member_id == str(member.id)
+    assert by_nickname["訪客"].member_id is None

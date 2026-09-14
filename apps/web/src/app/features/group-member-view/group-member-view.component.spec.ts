@@ -7,6 +7,8 @@ import { GroupMemberViewComponent } from './group-member-view.component';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { GroupJoinService } from '../group-join/group-join.service';
 import { GroupPublic } from '../group-admin/group-admin.models';
+import { AuthService } from '../auth/auth.service';
+import { FriendsService } from '../friends/friends.service';
 import { signal } from '@angular/core';
 
 const scheduleResponse = {
@@ -63,6 +65,10 @@ function setup(options: { getGroupPublic?: () => Observable<GroupPublic> } = {})
           getGroupPublic: options.getGroupPublic ?? (() => of(groupPublic)),
         },
       },
+      // 026-match-record-friend-invite: MemberScheduleComponent (this
+      // shell's default child) now injects these too.
+      { provide: AuthService, useValue: { getCachedMemberId: () => null } },
+      { provide: FriendsService, useValue: { getInviteCandidatesStatus: () => of({ candidates: [] }) } },
     ],
   });
   const fixture = TestBed.createComponent(GroupMemberViewComponent);

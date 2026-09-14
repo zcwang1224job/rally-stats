@@ -254,6 +254,15 @@
                           <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
                         }
                       </span>
+                      @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {
+                        <app-add-friend-button
+                          [memberId]="candidate.member_id"
+                          [friendshipStatus]="candidate.friendship_status"
+                          [inviteEligible]="candidate.invite_eligible"
+                          [iconStyle]="true"
+                          [nickname]="member.nickname"
+                        />
+                      }
                       @if (member.is_guest) {
                         <button
                           type="button"
