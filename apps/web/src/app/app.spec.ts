@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Component, signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
+import { of } from 'rxjs';
 import { AuthService } from './features/auth/auth.service';
 import { NotificationService } from './features/notifications/notification.service';
 import { App } from './app';
@@ -20,7 +21,15 @@ describe('App', () => {
           { path: 'groups', component: StubComponent },
         ]),
         provideTranslateService({}),
-        { provide: AuthService, useValue: { loggedIn: () => false, logout: () => undefined } },
+        {
+          provide: AuthService,
+          useValue: {
+            loggedIn: () => false,
+            isLoggedIn: () => false,
+            logout: () => undefined,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
         {
           provide: NotificationService,
           useValue: { unreadCount: signal(0), init: () => undefined, reset: () => undefined },

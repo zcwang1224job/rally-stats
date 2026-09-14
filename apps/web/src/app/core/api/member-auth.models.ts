@@ -49,6 +49,10 @@ export interface RegisterRequest {
   password: string;
   confirm_password: string;
   turnstile_token: string;
+  // 024-add-english-language FR-009: the registering browser's current
+  // display language, used to seed `language_preference` (optional — an
+  // absent or unsupported value falls back to the backend's default).
+  language?: string;
 }
 
 export interface RegisterResponse {

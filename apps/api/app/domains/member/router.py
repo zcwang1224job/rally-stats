@@ -72,7 +72,7 @@ async def register(
     """FR-001: Turnstile MUST be verified before the account is created.
     Errors: `CAPTCHA_INVALID`, `CAPTCHA_EXPIRED`, `EMAIL_ALREADY_REGISTERED`."""
     await verify_turnstile_token(payload.turnstile_token)
-    member = await service.register(session, payload.email, payload.password)
+    member = await service.register(session, payload.email, payload.password, payload.language)
     return RegisterResponse(
         member_id=str(member.id), email=member.email, user_number=member.user_number
     )
@@ -372,12 +372,13 @@ async def get_member_match_record_detail(
 
 
 @router.get("/members/me/supported-languages", response_model=SupportedLanguagesResponse)
-async def get_supported_languages(
-    member: Annotated[Member, Depends(security.require_member)],  # noqa: ARG001
-) -> SupportedLanguagesResponse:
+async def get_supported_languages() -> SupportedLanguagesResponse:
     """022-member-personal-settings FR-004: backs the「基本設定」language
-    dropdown's options — `require_member` (not `require_verified_member`),
-    mirroring `GET /members/me`'s looser tier (research.md #4)."""
+    dropdown's options. 024-add-english-language: auth requirement removed
+    (was `require_member`) — the content is static, non-member-specific
+    config, and anonymous visitors plus the nav-shell-less court/scoreboard/
+    control-panel routes now need this list too (FR-003/FR-003a,
+    research.md #1)."""
     return SupportedLanguagesResponse()
 
 

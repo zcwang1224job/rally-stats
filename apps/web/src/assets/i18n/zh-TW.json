@@ -1,4 +1,11 @@
 {
+  "languageNames": {
+    "zh-TW": "繁體中文",
+    "en": "English"
+  },
+  "languageSwitcher": {
+    "ariaLabel": "切換顯示語言"
+  },
   "nav": {
     "home": "首頁",
     "groups": "揪團列表",
@@ -276,8 +283,7 @@
       "basic": {
         "nicknameHint": "設定在系統中顯示給其他人看的名稱",
         "languageLabel": "語言偏好",
-        "languageHint": "選擇介面顯示的語言，未來將支援更多語言",
-        "languageZhTW": "繁體中文",
+        "languageHint": "選擇介面顯示的語言",
         "languageSaved": "語言偏好已更新"
       },
       "accountDetails": {

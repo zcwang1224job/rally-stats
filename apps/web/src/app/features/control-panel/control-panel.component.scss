@@ -154,3 +154,9 @@ h1 {
     margin: var(--space-xs) 0;
   }
 }
+
+// 024-add-english-language FR-003a
+.control-panel-language-switcher {
+  display: block;
+  margin: 0 0 var(--space-md);
+}

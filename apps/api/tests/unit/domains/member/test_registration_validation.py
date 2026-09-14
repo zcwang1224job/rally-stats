@@ -35,3 +35,37 @@ async def test_register_rejects_duplicate_email_different_case(db_session: Async
 async def test_register_assigns_unique_user_number(db_session: AsyncSession) -> None:
     member = await register(db_session, "usernum@example.com", "abc12345")
     assert len(member.user_number) == 8
+
+
+# --- 024-add-english-language FR-009: seed language_preference from the ---
+# --- registering browser's current choice, when valid.                  ---
+
+
+async def test_register_seeds_language_preference_from_valid_request_value(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "lang-seed-en@example.com", "abc12345", language="en")
+    assert member.language_preference == "en"
+
+
+async def test_register_falls_back_to_default_when_language_omitted(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "lang-seed-omitted@example.com", "abc12345")
+    assert member.language_preference == "zh-TW"
+
+
+async def test_register_normalizes_language_case(db_session: AsyncSession) -> None:
+    member = await register(db_session, "lang-seed-case@example.com", "abc12345", language="EN")
+    assert member.language_preference == "en"
+
+
+async def test_register_falls_back_to_default_when_language_unsupported(
+    db_session: AsyncSession,
+) -> None:
+    """An unsupported value MUST NOT block registration — it's silently
+    ignored, falling back to the existing column default (research.md #5)."""
+    member = await register(
+        db_session, "lang-seed-invalid@example.com", "abc12345", language="fr"
+    )
+    assert member.language_preference == "zh-TW"

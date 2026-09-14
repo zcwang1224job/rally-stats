@@ -4,6 +4,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { AuthService } from '../../features/auth/auth.service';
 import { NotificationBellComponent } from '../../features/notifications/notification-bell/notification-bell.component';
 import { NotificationService } from '../../features/notifications/notification.service';
+import { LanguageSwitcherComponent } from '../language/language-switcher.component';
 
 /** Global nav shell (009) — rendered from the app root on every route that
  * doesn't opt out via `data.navShell: false` (see app.routes.ts). Not used
@@ -14,7 +15,7 @@ import { NotificationService } from '../../features/notifications/notification.s
  * member sees (FR-006). */
 @Component({
   selector: 'app-nav-shell',
-  imports: [RouterLink, TranslatePipe, NotificationBellComponent],
+  imports: [RouterLink, TranslatePipe, NotificationBellComponent, LanguageSwitcherComponent],
   templateUrl: './nav-shell.component.html',
   styleUrl: './nav-shell.component.scss',
 })

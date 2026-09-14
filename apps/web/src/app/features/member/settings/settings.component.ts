@@ -10,6 +10,7 @@ import {
   passwordStrengthValidator,
   passwordsMatchValidator,
 } from '../../auth/auth-form-validators';
+import { LanguageService } from '../../../core/language/language.service';
 
 type SettingsSection = 'basic' | 'accountDetails' | 'security' | 'privacy';
 
@@ -34,6 +35,7 @@ export class SettingsComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly languageService = inject(LanguageService);
 
   readonly activeSection = signal<SettingsSection>('basic');
 
@@ -146,6 +148,9 @@ export class SettingsComponent implements OnInit {
         this.languageSubmitting.set(false);
         this.languageSaved.set(true);
         this.member.set(member);
+        // FR-003c: converge with the global switcher — apply the new
+        // language immediately instead of only persisting it server-side.
+        this.languageService.applyLanguage(member.language_preference);
       },
       error: (error: ApiError) => {
         this.languageSubmitting.set(false);

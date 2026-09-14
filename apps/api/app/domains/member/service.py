@@ -152,14 +152,31 @@ async def list_login_records(
     return LoginRecordsResponse(records=records, page=page, total_pages=total_pages)
 
 
+def _normalize_language(language: str | None) -> str | None:
+    """Case-insensitively matches `language` against `SUPPORTED_LANGUAGES`
+    and returns the canonical stored form (e.g. `"EN"`/`"en"` → `"en"`), or
+    `None` if it isn't a supported language at all. Shared by both
+    `register()` and `set_language_preference()` so their membership test
+    can't silently drift apart — each still decides independently what to
+    do with a `None` result (register() falls back to the column default;
+    set_language_preference() raises `LANGUAGE_NOT_SUPPORTED`)."""
+    if language is None:
+        return None
+    for supported in SUPPORTED_LANGUAGES:
+        if supported.lower() == language.lower():
+            return supported
+    return None
+
+
 async def set_language_preference(session: AsyncSession, member: Member, language: str) -> Member:
     """FR-004/FR-005. Errors: `LANGUAGE_NOT_SUPPORTED` — deliberately raised
     here (not a Pydantic validator) so it surfaces as this specific
     semantic error code rather than the generic `VALIDATION_ERROR`
     (contracts/member-settings-api.md)."""
-    if language not in SUPPORTED_LANGUAGES:
+    normalized = _normalize_language(language)
+    if normalized is None:
         raise ApiError("LANGUAGE_NOT_SUPPORTED", status_code=400)
-    member.language_preference = language
+    member.language_preference = normalized
     await session.commit()
     await session.refresh(member)
     return member
@@ -266,6 +283,28 @@ def _verification_link(token: str) -> str:
     return f"{get_settings().frontend_base_url}/auth/verify-email/{token}"
 
 
+# 024-add-english-language FR-010/research.md #4: subject/body per language,
+# keyed by `member.language_preference`. An unrecognized/legacy value falls
+# back to "zh-TW" (`_email_for_language()`) — never raises, since a bad
+# stored value must not block sending the email at all.
+_VERIFICATION_EMAIL = {
+    "zh-TW": ("請驗證你的信箱", "請點擊以下連結完成信箱驗證：{link}"),
+    "en": ("Verify your email", "Please click the following link to verify your email: {link}"),
+}
+
+_PASSWORD_RESET_EMAIL = {
+    "zh-TW": ("重設密碼", "請點擊以下連結重設密碼：{link}"),
+    "en": ("Reset your password", "Please click the following link to reset your password: {link}"),
+}
+
+
+def _email_for_language(
+    templates: dict[str, tuple[str, str]], language: str, link: str
+) -> tuple[str, str]:
+    subject, body_template = templates.get(language, templates["zh-TW"])
+    return subject, body_template.format(link=link)
+
+
 async def _issue_verification_token_and_email(
     session: AsyncSession, member: Member
 ) -> EmailVerificationToken:
@@ -277,19 +316,28 @@ async def _issue_verification_token_and_email(
     await session.flush()
     await session.commit()
     await session.refresh(verification_token)
-    await send_email(
-        member.email,
-        "請驗證你的信箱",
-        f"請點擊以下連結完成信箱驗證：{_verification_link(str(verification_token.token))}",
+    subject, body = _email_for_language(
+        _VERIFICATION_EMAIL,
+        member.language_preference,
+        _verification_link(str(verification_token.token)),
     )
+    await send_email(member.email, subject, body)
     return verification_token
 
 
-async def register(session: AsyncSession, email: str, password: str) -> Member:
+async def register(
+    session: AsyncSession, email: str, password: str, language: str | None = None
+) -> Member:
     """Turnstile verification happens at the router layer (matches
     group/router.py's create_group precedent) — this function has no
     knowledge of it. FR-004: Email uniqueness is case-insensitive
-    (normalized to lowercase, per FR-006)."""
+    (normalized to lowercase, per FR-006).
+
+    024-add-english-language FR-009: `language`, when a valid member of
+    `SUPPORTED_LANGUAGES`, seeds the new member's `language_preference`
+    instead of relying on the column default. An absent or unsupported
+    value falls back to that default silently — never blocks registration
+    (research.md #5)."""
     normalized_email = email.lower()
     existing = await session.execute(select(Member.id).where(Member.email == normalized_email))
     if existing.scalar_one_or_none() is not None:
@@ -299,6 +347,9 @@ async def register(session: AsyncSession, email: str, password: str) -> Member:
     member = Member(
         email=normalized_email, password_hash=hash_password(password), user_number=user_number
     )
+    normalized_language = _normalize_language(language)
+    if normalized_language is not None:
+        member.language_preference = normalized_language
     session.add(member)
     await session.flush()
     await session.refresh(member)
@@ -414,11 +465,12 @@ async def forgot_password(session: AsyncSession, email: str) -> None:
     await session.flush()
     await session.commit()
     await session.refresh(reset_token)
-    await send_email(
-        member.email,
-        "重設密碼",
-        f"請點擊以下連結重設密碼：{_reset_link(str(reset_token.token))}",
+    subject, body = _email_for_language(
+        _PASSWORD_RESET_EMAIL,
+        member.language_preference,
+        _reset_link(str(reset_token.token)),
     )
+    await send_email(member.email, subject, body)
 
 
 async def reset_password(session: AsyncSession, token: uuid.UUID, new_password: str) -> Member:

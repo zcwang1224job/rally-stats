@@ -34,6 +34,13 @@ class RegisterRequest(BaseModel):
     password: str
     confirm_password: str
     turnstile_token: str
+    # 024-add-english-language FR-009: the registering browser's current
+    # display language, used to seed `language_preference` instead of
+    # always defaulting to `zh-TW`. Intentionally NOT validated against
+    # `SUPPORTED_LANGUAGES` here — an unsupported/malformed value is
+    # silently ignored by `service.register()` rather than blocking
+    # account creation (research.md #5).
+    language: str | None = None
 
     @field_validator("password")
     @classmethod
@@ -249,7 +256,8 @@ class SearchMemberResponse(BaseModel):
 
 # 022-member-personal-settings research.md #4: allow-list lives in code (not
 # a DB CHECK constraint) so a future language needs no migration (FR-004).
-SUPPORTED_LANGUAGES = ("zh-TW",)
+# 024-add-english-language: added "en" — no migration needed (research.md #1).
+SUPPORTED_LANGUAGES = ("zh-TW", "en")
 
 
 class SupportedLanguagesResponse(BaseModel):

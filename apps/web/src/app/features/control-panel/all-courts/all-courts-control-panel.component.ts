@@ -10,6 +10,7 @@ import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
 import { AllCourtsCourtSummary } from './all-courts-control-panel.models';
 import { AllCourtsCourtBlockComponent } from './all-courts-court-block.component';
+import { LanguageSwitcherComponent } from '../../../core/language/language-switcher.component';
 
 /** 全部場地控制板（007 US5）——同一畫面依序操作團內所有場地，各場地
  * 版面獨立區隔避免誤按（FR-001）；不提供任何 Next Round 操作入口
@@ -17,7 +18,7 @@ import { AllCourtsCourtBlockComponent } from './all-courts-court-block.component
  * 失效提示（T041，FR-035）沿用既有骨架，新增即時比分/斷線重連。 */
 @Component({
   selector: 'app-all-courts-control-panel',
-  imports: [TranslatePipe, AllCourtsCourtBlockComponent],
+  imports: [TranslatePipe, AllCourtsCourtBlockComponent, LanguageSwitcherComponent],
   templateUrl: './all-courts-control-panel.component.html',
   styleUrl: './all-courts-control-panel.component.scss',
 })

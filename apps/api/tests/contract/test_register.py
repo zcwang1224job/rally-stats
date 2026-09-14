@@ -97,3 +97,29 @@ async def test_register_rejects_duplicate_email(
     )
     assert response.status_code == 409
     assert response.json()["error_code"] == "EMAIL_ALREADY_REGISTERED"
+
+
+async def test_register_accepts_optional_language_field(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """024-add-english-language FR-009."""
+    from sqlalchemy import select
+
+    from app.domains.member.models import Member
+
+    response = await client.post(
+        "/auth/register",
+        json={
+            "email": "lang-register@example.com",
+            "password": "abc12345",
+            "confirm_password": "abc12345",
+            "turnstile_token": valid_turnstile_token,
+            "language": "en",
+        },
+    )
+    assert response.status_code == 201
+
+    result = await db_session.execute(
+        select(Member).where(Member.email == "lang-register@example.com")
+    )
+    assert result.scalar_one().language_preference == "en"

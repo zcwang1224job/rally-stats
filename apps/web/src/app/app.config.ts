@@ -6,6 +6,7 @@ import { provideTranslateService } from '@ngx-translate/core';
 
 import { routes } from './app.routes';
 import { errorInterceptor } from './core/api/error-interceptor';
+import { resolveInitialLanguage } from './core/language/language.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -14,7 +15,12 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideHttpClient(withInterceptors([errorInterceptor])),
     provideTranslateService({
-      lang: 'zh-TW',
+      lang: resolveInitialLanguage(),
+      // 024-add-english-language FR-005: the fallback stays hardcoded to
+      // zh-TW regardless of the resolved starting language — a key missing
+      // from a freshly-added translation file degrades to Chinese, not an
+      // empty string, and existing zh-TW users are never affected by this
+      // fallback at all.
       fallbackLang: 'zh-TW',
       // i18n JSON isn't content-hashed like the JS/CSS bundles, so a stale
       // S3/CDN or iOS Safari cache can keep serving an old translation file

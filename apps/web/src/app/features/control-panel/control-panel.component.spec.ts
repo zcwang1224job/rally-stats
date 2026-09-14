@@ -9,6 +9,7 @@ import { CourtControlService } from '../../core/api/court-control.service';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
+import { AuthService } from '../auth/auth.service';
 import { ControlPanelComponent } from './control-panel.component';
 import { AllCourtsControlPanelComponent } from './all-courts/all-courts-control-panel.component';
 import { AllCourtsCourtBlockComponent } from './all-courts/all-courts-court-block.component';
@@ -85,6 +86,13 @@ describe('ControlPanelComponent score-board button placement (US2 FR-005)', () =
           useValue: { getState: () => of(courtStateResponse) },
         },
         { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
       ],
     });
 
@@ -143,6 +151,13 @@ describe('Control panels never expose a Next Round entry point (SC-004)', () => 
           useValue: { getState: () => of(courtStateResponse) },
         },
         { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
       ],
     });
 
@@ -223,6 +238,13 @@ describe('Control panels never expose a Next Round entry point (SC-004)', () => 
               }),
           },
         },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
       ],
     });
 
@@ -270,6 +292,13 @@ describe('ControlPanelComponent buttons carry the shared touch-target class (FR-
           useValue: { getState: () => of(courtStateResponse) },
         },
         { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
       ],
     });
 
@@ -286,5 +315,68 @@ describe('ControlPanelComponent buttons carry the shared touch-target class (FR-
     for (const button of buttons) {
       expect(button.classList.contains('btn')).toBe(true);
     }
+  });
+});
+
+/** 024-add-english-language FR-003a: neither of these two routes has the
+ * shared nav shell, so each MUST carry its own switcher. */
+describe('Nav-shell-less control-panel routes each carry their own language switcher (FR-003a)', () => {
+  it('ControlPanelComponent shows the language switcher even while still loading', () => {
+    TestBed.configureTestingModule({
+      imports: [ControlPanelComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ courtToken: 'tok' }) } },
+        },
+        { provide: LinkHeartbeatService, useValue: { watchCourtLink: () => EMPTY } },
+        { provide: RealtimeService, useFactory: realtimeStub },
+        { provide: ReconnectRefetchService, useFactory: reconnectStub },
+        { provide: CourtControlService, useValue: { getState: () => EMPTY } },
+        { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(ControlPanelComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
+  });
+
+  it('AllCourtsControlPanelComponent shows the language switcher even while still loading', () => {
+    TestBed.configureTestingModule({
+      imports: [AllCourtsControlPanelComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ allCourtsToken: 'tok' }) } },
+        },
+        { provide: LinkHeartbeatService, useValue: { watchAllCourtsLink: () => EMPTY } },
+        { provide: RealtimeService, useFactory: realtimeStub },
+        { provide: ReconnectRefetchService, useFactory: reconnectStub },
+        { provide: CourtControlService, useValue: { getAllCourtsState: () => EMPTY } },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
+      ],
+    });
+
+    const fixture = TestBed.createComponent(AllCourtsControlPanelComponent);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
   });
 });

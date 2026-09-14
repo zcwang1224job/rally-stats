@@ -58,6 +58,7 @@ export class RegisterComponent {
         password: raw.password,
         confirm_password: raw.confirm_password,
         turnstile_token: this.turnstileToken()!,
+        language: this.translate.currentLang() ?? undefined,
       })
       .subscribe({
         next: (response) => {

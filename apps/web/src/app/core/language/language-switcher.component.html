@@ -1,0 +1,11 @@
+<select
+  class="language-switcher"
+  [attr.aria-label]="'languageSwitcher.ariaLabel' | translate"
+  (change)="onChange($any($event.target).value)"
+>
+  @for (language of languages(); track language) {
+    <option [value]="language" [selected]="language === current()">
+      {{ 'languageNames.' + language | translate }}
+    </option>
+  }
+</select>

@@ -11,13 +11,14 @@ import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { getScoreSwapPreference, setScoreSwapPreference } from '../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
+import { LanguageSwitcherComponent } from '../../core/language/language-switcher.component';
 
 /** 單一場地控制板：連結初始化/心跳（T042）+ link.regenerated 專屬失效
  * 提示（T041，FR-035）+ +1/-1／提前結束操作與即時狀態顯示（007
  * US1/US2）。 */
 @Component({
   selector: 'app-control-panel',
-  imports: [TranslatePipe, ConfirmDialogComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, LanguageSwitcherComponent],
   templateUrl: './control-panel.component.html',
   styleUrl: './control-panel.component.scss',
 })

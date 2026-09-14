@@ -5,6 +5,7 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { AuthService } from '../auth.service';
 import { getRememberedLoginEmail, setRememberedLoginEmail } from '../remembered-login-email';
+import { LanguageService } from '../../../core/language/language.service';
 
 /** Not part of any tasks.md-listed frontend task — login/refresh were
  * scoped as Foundational (shared infra with no dedicated FR/story of their
@@ -20,6 +21,7 @@ export class LoginComponent {
   private readonly fb = inject(FormBuilder);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly languageService = inject(LanguageService);
 
   readonly submitting = signal(false);
   readonly errorKey = signal<string | null>(null);
@@ -51,9 +53,13 @@ export class LoginComponent {
     this.errorKey.set(null);
 
     this.auth.login({ email: raw.email, password: raw.password }).subscribe({
-      next: () => {
+      next: (response) => {
         this.submitting.set(false);
         setRememberedLoginEmail(raw.rememberEmail ? raw.email : null);
+        // FR-003b/US2#3: the account's stored preference wins over
+        // whatever anonymous guest choice was active, with no flicker —
+        // applied synchronously before navigating to the member area.
+        this.languageService.onLoginSuccess(response.member.language_preference);
         void this.router.navigate(['/member']);
       },
       error: (error: ApiError) => {

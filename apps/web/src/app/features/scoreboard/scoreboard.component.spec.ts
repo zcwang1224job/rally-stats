@@ -1,12 +1,13 @@
 import { convertToParamMap, ActivatedRoute } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of, EMPTY } from 'rxjs';
+import { of, EMPTY, NEVER } from 'rxjs';
 import { signal } from '@angular/core';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
+import { AuthService } from '../auth/auth.service';
 import { ScoreboardComponent } from './scoreboard.component';
 
 const courtInfo = {
@@ -31,6 +32,7 @@ function setup(
   courtState: unknown,
   connected = true,
   courtControl: Partial<CourtControlService> = {},
+  linkHeartbeat: { watchCourtLink: () => unknown } = { watchCourtLink: () => of(courtInfo) },
 ) {
   TestBed.configureTestingModule({
     imports: [ScoreboardComponent],
@@ -40,12 +42,19 @@ function setup(
         provide: ActivatedRoute,
         useValue: { snapshot: { paramMap: convertToParamMap({ courtToken: 'tok' }) } },
       },
-      { provide: LinkHeartbeatService, useValue: { watchCourtLink: () => of(courtInfo) } },
+      { provide: LinkHeartbeatService, useValue: linkHeartbeat },
       { provide: RealtimeService, useFactory: () => realtimeStub(connected) },
       { provide: ReconnectRefetchService, useFactory: reconnectStub },
       {
         provide: CourtControlService,
         useValue: { getState: () => of(courtState), ...courtControl },
+      },
+      {
+        provide: AuthService,
+        useValue: {
+          isLoggedIn: () => false,
+          getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+        },
       },
     ],
   });
@@ -203,5 +212,20 @@ describe('ScoreboardComponent', () => {
     component.confirmEndMatch();
 
     expect(endMatchSpy).toHaveBeenCalledWith('tok', 'm1');
+  });
+
+  // 024-add-english-language FR-003a: this route has no shared nav shell,
+  // so it MUST carry its own switcher — and it MUST be reachable even
+  // before/without a valid court ever loading (loading/invalidated/error).
+  it('shows the language switcher while still loading (no court response yet)', () => {
+    const fixture = setup(null, true, {}, { watchCourtLink: () => NEVER });
+
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
+  });
+
+  it('shows the language switcher once a court has loaded successfully', () => {
+    const fixture = setup(scoringMatchState);
+
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
   });
 });

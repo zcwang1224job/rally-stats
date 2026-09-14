@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
+import { of } from 'rxjs';
 import { AuthService } from '../../features/auth/auth.service';
 import { NotificationService } from '../../features/notifications/notification.service';
 import { NavShellComponent } from './nav-shell.component';
@@ -20,7 +21,14 @@ describe('NavShellComponent', () => {
       providers: [
         provideRouter([]),
         provideTranslateService({}),
-        { provide: AuthService, useValue: { loggedIn } },
+        {
+          provide: AuthService,
+          useValue: {
+            loggedIn,
+            isLoggedIn: () => loggedIn(),
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
         {
           provide: NotificationService,
           useValue: {
@@ -94,5 +102,12 @@ describe('NavShellComponent', () => {
     loggedIn.set(true);
     fixture.detectChanges();
     expect(initCalls).toBe(2);
+  });
+
+  // 024-add-english-language FR-003
+  it('renders the global language switcher', () => {
+    const fixture = setup();
+
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
   });
 });

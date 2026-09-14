@@ -10,6 +10,7 @@ import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
+import { LanguageSwitcherComponent } from '../../core/language/language-switcher.component';
 
 /** 計分板：連結初始化/心跳（T042）+ link.regenerated 專屬失效提示
  * （T041，FR-035）+ 大字體即時比分/Round/即將登場顯示（007 US3，預設
@@ -25,7 +26,7 @@ import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.com
  * 沒特別設定的團，這個畫面跟以前完全一樣。 */
 @Component({
   selector: 'app-scoreboard',
-  imports: [TranslatePipe, ConfirmDialogComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, LanguageSwitcherComponent],
   templateUrl: './scoreboard.component.html',
   styleUrl: './scoreboard.component.scss',
 })

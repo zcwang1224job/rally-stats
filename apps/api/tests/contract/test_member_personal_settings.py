@@ -63,7 +63,17 @@ async def test_get_supported_languages(client: AsyncClient, db_session: AsyncSes
     response = await client.get("/members/me/supported-languages", headers=_auth(token))
 
     assert response.status_code == 200
-    assert response.json() == {"languages": ["zh-TW"]}
+    assert response.json() == {"languages": ["zh-TW", "en"]}
+
+
+async def test_get_supported_languages_requires_no_auth(client: AsyncClient) -> None:
+    """024-add-english-language FR-003/FR-003a: anonymous visitors and the
+    nav-shell-less court/scoreboard/control-panel routes need this list too
+    — MUST succeed with no `Authorization` header at all (research.md #1)."""
+    response = await client.get("/members/me/supported-languages")
+
+    assert response.status_code == 200
+    assert response.json() == {"languages": ["zh-TW", "en"]}
 
 
 async def test_patch_language_accepts_supported_value(
@@ -78,6 +88,35 @@ async def test_patch_language_accepts_supported_value(
 
     assert response.status_code == 200
     assert response.json()["language_preference"] == "zh-TW"
+
+
+async def test_patch_language_accepts_english(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """024-add-english-language: "en" is now a supported value too."""
+    await _register_and_verify(db_session, "lang-en@example.com")
+    token = await _login(client, "lang-en@example.com")
+
+    response = await client.patch(
+        "/members/me/language", json={"language": "en"}, headers=_auth(token)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["language_preference"] == "en"
+
+
+async def test_patch_language_is_case_insensitive(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _register_and_verify(db_session, "lang-en-case@example.com")
+    token = await _login(client, "lang-en-case@example.com")
+
+    response = await client.patch(
+        "/members/me/language", json={"language": "EN"}, headers=_auth(token)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["language_preference"] == "en"
 
 
 async def test_patch_language_rejects_unsupported_value(

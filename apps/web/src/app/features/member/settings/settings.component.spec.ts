@@ -10,6 +10,7 @@ import {
   PrivacySettingsResponse,
 } from '../../../core/api/member-auth.models';
 import { AuthService } from '../../auth/auth.service';
+import { LanguageService } from '../../../core/language/language.service';
 import { SettingsComponent } from './settings.component';
 
 @Component({ selector: 'app-stub-member', template: '' })
@@ -42,7 +43,7 @@ function setup(
   const calls = { setPrivacySettings: 0 };
   const authServiceStub = {
     getMe: () => of(overrides.member ?? member),
-    getSupportedLanguages: () => of({ languages: ['zh-TW'] }),
+    getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
     setLanguagePreference:
       overrides.setLanguagePreference ??
       (() => of({ ...(overrides.member ?? member), language_preference: 'zh-TW' })),
@@ -156,16 +157,32 @@ describe('SettingsComponent', () => {
   });
 
   // US1: language preference dropdown.
-  it('shows only one language option, pre-selected to the member\'s current preference', () => {
+  it('shows one option per supported language, pre-selected to the member\'s current preference', () => {
     const { fixture } = setup();
 
     const options = Array.from<HTMLOptionElement>(
       fixture.nativeElement.querySelectorAll('select option'),
     );
-    expect(options.length).toBe(1);
+    expect(options.length).toBe(2);
     expect(options[0].value).toBe('zh-TW');
+    expect(options[1].value).toBe('en');
     const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
     expect(select.value).toBe('zh-TW');
+  });
+
+  it('024-add-english-language FR-008: each option shows its own display-name key, not the same one repeated', () => {
+    const { fixture } = setup();
+
+    const options = Array.from<HTMLOptionElement>(
+      fixture.nativeElement.querySelectorAll('select option'),
+    );
+    // No real translations are loaded under provideTranslateService({}), so
+    // `| translate` echoes the raw key — this is how this repo's tests
+    // verify each option is keyed by ITS OWN language code, not a single
+    // hardcoded key repeated for every iteration (the pre-fix bug).
+    expect(options[0].textContent).toContain('languageNames.zh-TW');
+    expect(options[1].textContent).toContain('languageNames.en');
+    expect(options[0].textContent).not.toBe(options[1].textContent);
   });
 
   it('submitting the language form shows the success badge', () => {
@@ -176,6 +193,25 @@ describe('SettingsComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelectorAll('.status-badge--success').length).toBe(1);
+  });
+
+  // 024-add-english-language FR-003c: saving here must take effect
+  // immediately, the same as the global switcher — not just persist
+  // server-side and wait for a reload.
+  it('submitting the language form applies the new language immediately via LanguageService', () => {
+    const { fixture } = setup({
+      setLanguagePreference: () =>
+        of({ ...member, language_preference: 'en' } satisfies MemberPublic),
+    });
+    const languageService = TestBed.inject(LanguageService);
+    const applySpy = vi.spyOn(languageService, 'applyLanguage');
+
+    const languageForm = fixture.nativeElement.querySelectorAll('form')[1] as HTMLFormElement;
+    languageForm.dispatchEvent(new Event('submit'));
+    fixture.detectChanges();
+
+    expect(applySpy).toHaveBeenCalledWith('en');
+    expect(languageService.current()).toBe('en');
   });
 
   it('shows the error i18n key when the language update fails', () => {

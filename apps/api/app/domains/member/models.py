@@ -34,9 +34,9 @@ class Member(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    # 022-member-personal-settings: only "zh-TW" is a valid value today — the
-    # allow-list lives in code (schemas.SUPPORTED_LANGUAGES), not a DB CHECK
-    # constraint, so a future language needs no migration (FR-004).
+    # 022-member-personal-settings / 024-add-english-language: the allow-list
+    # lives in code (schemas.SUPPORTED_LANGUAGES, currently "zh-TW"/"en"),
+    # not a DB CHECK constraint, so a future language needs no migration.
     language_preference: Mapped[str] = mapped_column(
         String(8), nullable=False, default="zh-TW", server_default="zh-TW"
     )

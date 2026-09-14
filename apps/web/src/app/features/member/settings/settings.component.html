@@ -86,7 +86,7 @@
           <select formControlName="language">
             @for (language of languages(); track language) {
               <option [value]="language">
-                {{ 'member.settings.basic.languageZhTW' | translate }}
+                {{ 'languageNames.' + language | translate }}
               </option>
             }
           </select>

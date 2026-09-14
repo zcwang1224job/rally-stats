@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { AuthService } from '../auth.service';
+import { LanguageService } from '../../../core/language/language.service';
 import { LoginComponent } from './login.component';
 
 const REMEMBERED_EMAIL_KEY = 'rally-stats:remembered-login-email';
@@ -11,8 +12,14 @@ const REMEMBERED_EMAIL_KEY = 'rally-stats:remembered-login-email';
 @Component({ selector: 'app-stub-member', template: '' })
 class StubMemberComponent {}
 
+const defaultLoginResponse = {
+  access_token: 'access-1',
+  refresh_token: 'refresh-1',
+  member: { language_preference: 'zh-TW' },
+};
+
 describe('LoginComponent', () => {
-  function setup(auth: Partial<AuthService> = { login: () => of({}) as never }) {
+  function setup(auth: Partial<AuthService> = { login: () => of(defaultLoginResponse) as never }) {
     TestBed.configureTestingModule({
       imports: [LoginComponent],
       providers: [
@@ -73,5 +80,29 @@ describe('LoginComponent', () => {
     fixture.componentInstance.submit();
 
     expect(localStorage.getItem(REMEMBERED_EMAIL_KEY)).toBeNull();
+  });
+
+  // 024-add-english-language FR-003b/US2#3
+  it('applies the account\'s language_preference on successful login, overriding any prior local value', () => {
+    localStorage.setItem('rally-stats:language', 'en');
+    const fixture = setup({
+      login: () =>
+        of({
+          access_token: 'a',
+          refresh_token: 'r',
+          member: { language_preference: 'zh-TW' },
+        }) as never,
+    });
+    fixture.componentInstance.form.setValue({
+      email: 'c@example.com',
+      password: 'abc12345',
+      rememberEmail: false,
+    });
+
+    fixture.componentInstance.submit();
+
+    const languageService = TestBed.inject(LanguageService);
+    expect(languageService.current()).toBe('zh-TW');
+    expect(localStorage.getItem('rally-stats:language')).toBe('zh-TW');
   });
 });
