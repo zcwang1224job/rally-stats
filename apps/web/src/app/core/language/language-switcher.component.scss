@@ -1,10 +1,36 @@
+// Colors are custom properties (not hardcoded) so a dark host chrome
+// (e.g. the nav-shell topbar) can re-theme the closed select box to
+// match its own surface, instead of this always rendering as a
+// light-page control regardless of what it's embedded in.
+:host {
+  --language-switcher-bg: var(--color-surface, #fff);
+  --language-switcher-color: var(--color-text-primary, #111);
+  --language-switcher-border: var(--color-border, #ccc);
+}
+
 .language-switcher {
   min-height: var(--touch-target-min, 44px);
   padding: var(--space-xs, 4px) var(--space-sm, 8px);
-  border: 1px solid var(--color-border, #ccc);
+  border: 1px solid var(--language-switcher-border);
   border-radius: var(--radius-sm, 4px);
-  background: var(--color-surface, #fff);
-  color: var(--color-text-primary, #111);
+  background: var(--language-switcher-bg);
+  color: var(--language-switcher-color);
   font-size: 0.875rem;
   max-width: 8.5rem;
+  transition:
+    color 0.15s ease-out,
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out;
+
+  @media (hover: hover) {
+    &:hover {
+      border-color: var(--color-brand-primary, currentColor);
+    }
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-brand-primary, currentColor);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
+  }
 }

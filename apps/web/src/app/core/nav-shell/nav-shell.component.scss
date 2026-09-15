@@ -44,6 +44,16 @@
   margin-left: auto;
 }
 
+// Re-themes the language switcher's closed select box (a light-surface
+// control by default, for its other, nav-shell-less usages) to sit flush
+// with the dark chrome instead of showing up as a stray white pill —
+// transparent background + ink text, matching the bell/links treatment.
+.nav-shell__language {
+  --language-switcher-bg: transparent;
+  --language-switcher-color: var(--color-ink-text);
+  --language-switcher-border: color-mix(in srgb, var(--color-ink-text) 35%, transparent);
+}
+
 .nav-shell__toggle {
   display: inline-flex;
   align-items: center;
