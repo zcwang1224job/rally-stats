@@ -101,6 +101,44 @@ h1 {
   margin-bottom: var(--space-md);
 }
 
+.btn__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+// Google's official "Sign in with Google" button style (Google Identity
+// branding guidelines): a neutral white surface with a thin border and
+// dark text — deliberately NOT this app's own brand color, since the
+// button needs to read as "hand off to Google", not as an in-app action.
+.btn--google {
+  background: #fff;
+  border-color: #747775;
+  color: #1f1f1f;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: #f8f9fa;
+      box-shadow: var(--shadow-sm);
+    }
+  }
+}
+
+// LINE's official brand green (#06c755) with a white wordmark/icon, per
+// LINE's own "Log in with LINE" button guideline.
+.btn--line {
+  background: #06c755;
+  border-color: #06c755;
+  color: #fff;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: #05b34c;
+      border-color: #05b34c;
+    }
+  }
+}
+
 .auth-links {
   display: flex;
   flex-direction: column;
