@@ -28,9 +28,19 @@
   text-decoration: none;
 }
 
-// Pushes the bell to sit right before the toggle/links (right edge) rather
-// than floating in the middle of the `space-between` row's free space.
-.nav-shell__bell {
+// Anchors the right-hand group (bell + language switcher + toggle/links) to
+// the row's right edge instead of letting `space-between` spread it into the
+// middle. The bell is conditional (@if loggedIn()), so whichever element is
+// the brand link's immediate next sibling varies — bell when logged in,
+// language switcher when logged out. Targeting that sibling directly (rather
+// than putting `margin-left: auto` on both `.nav-shell__bell` and
+// `.nav-shell__language` and relying on only one ever applying) means exactly
+// one element carries the auto margin at a time, with no cross-browser
+// ambiguity: Safari was found to split the free space across both gaps when
+// two adjacent flex items both had `margin-left: auto`, floating the bell in
+// the middle instead of anchoring it — Chrome happened to collapse it to a
+// single gap, masking the bug there.
+.nav-shell__brand + * {
   margin-left: auto;
 }
 
