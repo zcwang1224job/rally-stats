@@ -36,17 +36,23 @@ export class OauthCallbackComponent {
     if (status === 'success') {
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
+      // 028-guest-stats-binding research.md #3: present only when this
+      // OAuth login also completed a guest roster binding — lets the
+      // guest land back on their own live/summary screen instead of the
+      // default post-login destination (FR-007).
+      const boundGroupId = params.get('bound_group_id');
+      const destination = boundGroupId ? ['/groups', boundGroupId, 'member-view'] : ['/member'];
       if (accessToken && refreshToken) {
         this.auth.setTokens(accessToken, refreshToken);
         this.auth.getMe().subscribe({
           next: (member) => {
             this.languageService.onLoginSuccess(member.language_preference);
-            void this.router.navigate(['/member']);
+            void this.router.navigate(destination);
           },
           // Tokens are valid (we just minted them) — a getMe() failure here
           // would be a transient network issue, not an auth problem. Still
           // navigate onward rather than stranding the member on this page.
-          error: () => void this.router.navigate(['/member']),
+          error: () => void this.router.navigate(destination),
         });
         return;
       }

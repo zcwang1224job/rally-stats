@@ -6,10 +6,20 @@ import { GroupMemberViewService } from './group-member-view.service';
 import { GroupMemberViewComponent } from './group-member-view.component';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { GroupJoinService } from '../group-join/group-join.service';
+import { GuestBindingCtaComponent } from '../group-join/guest-binding-cta/guest-binding-cta.component';
 import { GroupPublic } from '../group-admin/group-admin.models';
 import { AuthService } from '../auth/auth.service';
 import { FriendsService } from '../friends/friends.service';
-import { signal } from '@angular/core';
+import { Component, input, signal } from '@angular/core';
+
+/** The real GuestBindingCtaComponent injects AuthService (-> HttpClient,
+ * unprovided here) — 028-guest-stats-binding: only used for the
+ * guestSessionToken !== null test case below, its own behavior is covered
+ * in guest-binding-cta.component.spec.ts. */
+@Component({ selector: 'app-guest-binding-cta', template: '' })
+class StubGuestBindingCtaComponent {
+  readonly guestSessionToken = input.required<string>();
+}
 
 const scheduleResponse = {
   current_round_number: 1,
@@ -39,7 +49,17 @@ function realtimeStub() {
   return { connectionState: signal('connected'), subscribe: () => of() };
 }
 
-function setup(options: { getGroupPublic?: () => Observable<GroupPublic> } = {}) {
+function setup(
+  options: {
+    getGroupPublic?: () => Observable<GroupPublic>;
+    guestSessionToken?: string | null;
+    /** Server-truth response for getGuestBindingStatus() — only consulted
+     * when guestSessionToken is non-null. Defaults to "not yet bound" so
+     * existing "CTA renders" tests keep their prior meaning. */
+    bindingStatus?: () => Observable<{ already_bound: boolean; group_id: string }>;
+  } = {},
+) {
+  const clearGuestSessionTokenCalls: unknown[] = [];
   TestBed.configureTestingModule({
     imports: [GroupMemberViewComponent],
     providers: [
@@ -63,6 +83,15 @@ function setup(options: { getGroupPublic?: () => Observable<GroupPublic> } = {})
           getActiveGuestGroupId: () => null,
           clearActiveGuestGroupId: () => undefined,
           getGroupPublic: options.getGroupPublic ?? (() => of(groupPublic)),
+          // 028-guest-stats-binding: null means "not a Guest in this
+          // group" — the binding CTA stays hidden, same as a logged-in
+          // Member.
+          getGuestSessionToken: () => options.guestSessionToken ?? null,
+          getGuestBindingStatus:
+            options.bindingStatus ?? (() => of({ already_bound: false, group_id: 'g1' })),
+          clearGuestSessionToken: (...args: unknown[]) => {
+            clearGuestSessionTokenCalls.push(args);
+          },
         },
       },
       // 026-match-record-friend-invite: MemberScheduleComponent (this
@@ -71,9 +100,13 @@ function setup(options: { getGroupPublic?: () => Observable<GroupPublic> } = {})
       { provide: FriendsService, useValue: { getInviteCandidatesStatus: () => of({ candidates: [] }) } },
     ],
   });
+  TestBed.overrideComponent(GroupMemberViewComponent, {
+    remove: { imports: [GuestBindingCtaComponent] },
+    add: { imports: [StubGuestBindingCtaComponent] },
+  });
   const fixture = TestBed.createComponent(GroupMemberViewComponent);
   fixture.detectChanges();
-  return fixture;
+  return { fixture, clearGuestSessionTokenCalls };
 }
 
 /** SC-001: a general member's nav MUST show exactly 賽程/戰績/退出組團/
@@ -82,7 +115,7 @@ function setup(options: { getGroupPublic?: () => Observable<GroupPublic> } = {})
  * in-progress match, to make sure no branch is simply un-rendered. */
 describe('GroupMemberViewComponent nav (SC-001)', () => {
   it('shows exactly the four member-view nav items and no admin items', () => {
-    const fixture = setup();
+    const { fixture } = setup();
 
     const translate = TestBed.inject(TranslateService);
     translate.setTranslation('en', {
@@ -112,7 +145,7 @@ describe('GroupMemberViewComponent nav (SC-001)', () => {
   });
 
   it('shows the group name and number in the page header', () => {
-    const fixture = setup();
+    const { fixture } = setup();
 
     expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('週三夜羽球團');
     expect(fixture.nativeElement.textContent).toContain('1001');
@@ -122,7 +155,7 @@ describe('GroupMemberViewComponent nav (SC-001)', () => {
     // 005-member-view: a disbanded group's member view stays fully
     // readable/leavable (edge case) — unlike admin-page's read-only mode,
     // this MUST NOT hide the tabs/leave action.
-    const fixture = setup({ getGroupPublic: () => of({ ...groupPublic, status: 'disbanded' }) });
+    const { fixture } = setup({ getGroupPublic: () => of({ ...groupPublic, status: 'disbanded' }) });
 
     expect(fixture.nativeElement.textContent).toContain('adminPage.disbandedNotice');
     expect(fixture.nativeElement.querySelector('.member-nav')).not.toBeNull();
@@ -130,13 +163,67 @@ describe('GroupMemberViewComponent nav (SC-001)', () => {
   });
 
   it('shows an error instead of the shell when the group lookup fails', () => {
-    const fixture = setup({
+    const { fixture } = setup({
       getGroupPublic: () =>
         throwError(() => ({ i18nKey: 'errors.LINK_NOT_FOUND', errorCode: 'LINK_NOT_FOUND' })),
     });
 
     expect(fixture.nativeElement.textContent).toContain('errors.LINK_NOT_FOUND');
     expect(fixture.nativeElement.querySelector('.member-nav')).toBeNull();
+  });
+});
+
+// --- 028-guest-stats-binding: inline binding CTA for a現役 Guest ---------
+
+describe('GroupMemberViewComponent guest binding CTA', () => {
+  it('renders the CTA when this browser holds a guest_session_token for this group', () => {
+    const { fixture } = setup({ guestSessionToken: 'tok-123' });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).not.toBeNull();
+  });
+
+  it('does not render the CTA for a logged-in Member (no stored guest_session_token)', () => {
+    const { fixture } = setup({ guestSessionToken: null });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).toBeNull();
+  });
+
+  it('hides the CTA once bound() fires, shows the "已完成綁定" badge instead, and clears the now-stale stored guest_session_token', () => {
+    const { fixture, clearGuestSessionTokenCalls } = setup({ guestSessionToken: 'tok-123' });
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('guestBinding.boundBadge');
+
+    fixture.componentInstance.onBound();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('guestBinding.boundBadge');
+    expect(clearGuestSessionTokenCalls).toEqual([['g1']]);
+  });
+
+  // --- Bug fix: a stale token from an already-bound roster entry ----------
+  // (most reliably reproduced by OAuth binding, whose redirect-back always
+  // lands on a *fresh* instance of this component — onBound()'s local
+  // showBindingCta.set(false) from a previous instance never gets a chance
+  // to run, and the stored token alone can't tell "unbound" from "bound".)
+
+  it('a stored token whose roster entry the server reports as already_bound does NOT render the CTA, and shows the "已完成綁定" badge instead', () => {
+    const { fixture } = setup({
+      guestSessionToken: 'tok-123',
+      bindingStatus: () => of({ already_bound: true, group_id: 'g1' }),
+    });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('guestBinding.boundBadge');
+  });
+
+  it('an already-bound stored token gets cleared, so it cannot cause a second, doomed-to-fail bind attempt', () => {
+    const { clearGuestSessionTokenCalls } = setup({
+      guestSessionToken: 'tok-123',
+      bindingStatus: () => of({ already_bound: true, group_id: 'g1' }),
+    });
+
+    expect(clearGuestSessionTokenCalls).toEqual([['g1']]);
   });
 });
 
@@ -148,7 +235,7 @@ describe('GroupMemberViewComponent nav (SC-001)', () => {
  * already does; this only asserts the class contract. */
 describe('GroupMemberViewComponent nav is the shared admin-page-style nav (FR-007)', () => {
   it('nav element carries the member-nav class', () => {
-    const fixture = setup();
+    const { fixture } = setup();
 
     const nav = (fixture.nativeElement as HTMLElement).querySelector('nav');
     expect(nav?.classList.contains('member-nav')).toBe(true);

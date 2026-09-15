@@ -357,6 +357,46 @@ class GuestSessionResponse(BaseModel):
     nickname: str
 
 
+# --- 028-guest-stats-binding: 訪客即時戰況頁面建立帳號並綁定戰績 ---
+
+
+class BindingStatusResponse(BaseModel):
+    """contracts/guest-binding-api.md `GET /groups/guest-token/{token}/
+    binding-status` — deliberately does not require `RosterEntry`/`Group`
+    to be active (research.md #1), unlike `GuestSessionResponse`'s
+    `resolve_guest_session()`."""
+
+    already_bound: bool
+    roster_entry_id: str
+    group_id: str
+    group_name: str
+    nickname: str
+    group_status: Literal["active", "disbanded"]
+    roster_status: Literal["active", "left", "kicked"]
+
+
+class BindRequest(BaseModel):
+    """contracts/guest-binding-api.md `POST /groups/guest-token/{token}/
+    bind`. Deliberately flat rather than a Pydantic discriminated union —
+    the "already logged in" path's body is `{}` (no `mode` field at all),
+    which a strict discriminator can't represent. `mode` is `None` for that
+    path; the router/service validate the mode-specific fields are present
+    when `mode` is `"register"`/`"login"` and raise `INVALID_REQUEST`
+    otherwise (research.md #2)."""
+
+    mode: Literal["register", "login"] | None = None
+    email: str | None = None
+    password: str | None = None
+    turnstile_token: str | None = None
+
+
+class BindResponse(BaseModel):
+    bound: bool
+    group_id: str
+    access_token: str | None = None
+    refresh_token: str | None = None
+
+
 # --- 005-member-view: 團內成員視圖（戰績/對戰紀錄/退出組團）---
 
 

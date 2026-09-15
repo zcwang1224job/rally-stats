@@ -5,4 +5,18 @@
   @case ('error') {
     <p role="alert">{{ (errorKey() ?? 'errors.LINK_NOT_FOUND') | translate }}</p>
   }
+  @case ('summary') {
+    @if (summary(); as s) {
+      <section class="card">
+        <h1>{{ s.group_name }}</h1>
+        <p>{{ s.nickname }}</p>
+
+        @if (s.already_bound) {
+          <p role="status">{{ 'guestBinding.boundSuccessNotice' | translate }}</p>
+        } @else {
+          <app-guest-binding-cta [guestSessionToken]="guestSessionToken" (bound)="onBound()" />
+        }
+      </section>
+    }
+  }
 }

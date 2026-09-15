@@ -103,6 +103,19 @@
     "clearFilters": "Clear Filters",
     "emptyState": "No groups match the current filters"
   },
+  "guestBinding": {
+    "title": "Create an account and save your stats",
+    "bannerText": "Playing as a guest — create an account to keep this match in your record",
+    "bannerAction": "Link now",
+    "alreadyLoggedInPrompt": "Link this match's stats to my account",
+    "bindToMyAccount": "Link",
+    "modeRegister": "Create a new account",
+    "modeLogin": "Log in to an existing account",
+    "registerSubmit": "Create account and save my stats",
+    "loginSubmit": "Log in and save my stats",
+    "boundSuccessNotice": "Linked to your account — log in to see this match in your record",
+    "boundBadge": "✅ Linked"
+  },
   "friends": {
     "listTitle": "Friends",
     "filterNickname": "Nickname",
@@ -645,6 +658,8 @@
     "ROSTER_ENTRY_NOT_FOUND": "Rotation roster entry not found",
     "PARTNERSHIP_NOT_FOUND": "This member has no formal partnership right now",
     "ROSTER_ENTRY_ALREADY_LEFT": "This member has already left or been removed",
+    "ROSTER_ENTRY_ALREADY_BOUND": "This link is already linked to an account — try logging in instead",
+    "INVALID_REQUEST": "The request was incomplete — please try again",
     "CANNOT_KICK_CREATOR": "The group creator can't be removed",
     "NOT_A_GUEST_ENTRY": "This member is a registered member — there's no guest link to regenerate",
     "MEMBERSHIP_REQUIRED": "Please join this group first to view this",

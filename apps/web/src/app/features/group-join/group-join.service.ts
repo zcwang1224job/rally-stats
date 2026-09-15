@@ -2,6 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, of, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
 import {
+  BindingStatusResponse,
+  BindRequest,
+  BindResponse,
   GroupListResponse,
   GuestSessionResponse,
   JoinGroupRequest,
@@ -82,6 +85,30 @@ export class GroupJoinService {
 
   resolveGuestSession(token: string): Observable<GuestSessionResponse> {
     return this.api.get<GuestSessionResponse>(`/groups/by-guest-token/${token}`);
+  }
+
+  /** 028-guest-stats-binding research.md #1: deliberately independent of
+   * resolveGuestSession() above — this works regardless of whether the
+   * roster entry/group are still active. */
+  getGuestBindingStatus(token: string): Observable<BindingStatusResponse> {
+    return this.api.get<BindingStatusResponse>(`/groups/guest-token/${token}/binding-status`);
+  }
+
+  /** contracts/guest-binding-api.md `POST /groups/guest-token/{token}/
+   * bind`. `optionalAuth` MUST be `true` (and the caller already logged
+   * in, per AuthService.loggedIn) for the one-click path
+   * (Clarifications 2026-09-15/FR-012) — the backend ignores `payload`'s
+   * account fields in that case. */
+  bindGuestSession(
+    token: string,
+    payload: BindRequest,
+    optionalAuth = false,
+  ): Observable<BindResponse> {
+    return this.api.post<BindResponse>(
+      `/groups/guest-token/${token}/bind`,
+      payload,
+      optionalAuth ? this.authHeader() : {},
+    );
   }
 
   setGuestSessionToken(groupId: string, token: string): void {

@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import time
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,9 @@ from app.domains.group.schemas import (
     AdminGroupResponse,
     AllCourtsBootstrapResponse,
     AllCourtsCourtSummary,
+    BindingStatusResponse,
+    BindRequest,
+    BindResponse,
     CreateGroupRequest,
     CreateGroupResponse,
     EditGroupRequest,
@@ -50,6 +53,7 @@ from app.domains.group.schemas import (
 )
 from app.domains.group.security import issue_admin_token, require_admin
 from app.domains.group_invite.service import invalidate_pending_invites_for_group
+from app.domains.member import service as member_service
 from app.domains.member.models import Member
 from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
@@ -513,6 +517,65 @@ async def resolve_guest_session(
         roster_entry_id=str(roster_entry.id),
         group_id=str(roster_entry.group_id),
         nickname=roster_entry.nickname,
+    )
+
+
+@router.get("/guest-token/{token}/binding-status", response_model=BindingStatusResponse)
+async def get_guest_binding_status(
+    token: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BindingStatusResponse:
+    """028-guest-stats-binding contracts/guest-binding-api.md. Public —
+    authorization is holding the `token` itself (research.md #1). Errors:
+    `LINK_NOT_FOUND`."""
+    roster_entry = await service.resolve_guest_binding_target(session, token)
+    group = await service.get_group_by_id(session, roster_entry.group_id)
+    return BindingStatusResponse(
+        already_bound=roster_entry.member_id is not None,
+        roster_entry_id=str(roster_entry.id),
+        group_id=str(roster_entry.group_id),
+        group_name=group.name,
+        nickname=roster_entry.nickname,
+        group_status=cast(Literal["active", "disbanded"], group.status),
+        roster_status=cast(Literal["active", "left", "kicked"], roster_entry.status),
+    )
+
+
+@router.post("/guest-token/{token}/bind", response_model=BindResponse)
+@limiter.limit("20/minute")
+async def bind_guest_session(
+    request: Request,  # noqa: ARG001 - required by slowapi
+    token: str,
+    payload: BindRequest,
+    current_member: Annotated[Member | None, Depends(optional_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BindResponse:
+    """028-guest-stats-binding contracts/guest-binding-api.md. Three of the
+    four paths from research.md #2 land here (`current_member` present /
+    `mode="register"` / `mode="login"`); the fourth (OAuth) is
+    `member/router.py`'s existing OAuth endpoints extended with
+    `bind_guest_token` (research.md #3). Thin by design — the actual
+    orchestration is `member_service.complete_guest_bind()`, kept in the
+    `member` domain (which already legitimately imports from
+    `group.service`, e.g. `verify_ever_group_member`) since a
+    `group/service.py -> member/service.py` import would be circular the
+    other way around. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
+    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
+    result = await member_service.complete_guest_bind(
+        session,
+        token,
+        current_member=current_member,
+        mode=payload.mode,
+        email=payload.email,
+        password=payload.password,
+        turnstile_token=payload.turnstile_token,
+    )
+    return BindResponse(
+        bound=True,
+        group_id=str(result.group_id),
+        access_token=result.access_token,
+        refresh_token=result.refresh_token,
     )
 
 

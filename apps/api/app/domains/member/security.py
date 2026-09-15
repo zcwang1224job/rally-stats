@@ -127,6 +127,12 @@ class OAuthState:
     code_verifier: str
     nonce: str
     member_id: str | None
+    bind_guest_token: str | None = None
+    # 028-guest-stats-binding research.md #3: only ever set when
+    # intent == "login" — a guest binding their roster entry via a
+    # newly-created or existing OAuth-authenticated account. Rides the
+    # existing signed `state` JWT rather than a second mechanism, same as
+    # `member_id` already does for intent == "link".
 
 
 def issue_oauth_state(
@@ -136,6 +142,7 @@ def issue_oauth_state(
     code_verifier: str,
     nonce: str,
     member_id: str | None = None,
+    bind_guest_token: str | None = None,
 ) -> str:
     settings = get_settings()
     now = datetime.now(UTC)
@@ -146,6 +153,7 @@ def issue_oauth_state(
         "code_verifier": code_verifier,
         "nonce": nonce,
         "member_id": member_id,
+        "bind_guest_token": bind_guest_token,
         "iat": now,
         "exp": now + timedelta(minutes=settings.oauth_state_ttl_minutes),
     }
@@ -170,6 +178,7 @@ def decode_oauth_state(state: str) -> OAuthState:
         code_verifier=str(payload["code_verifier"]),
         nonce=str(payload["nonce"]),
         member_id=payload.get("member_id"),
+        bind_guest_token=payload.get("bind_guest_token"),
     )
 
 

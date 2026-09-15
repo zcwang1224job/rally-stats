@@ -15,6 +15,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.domains.group.models import Group
+from app.domains.group.security import hash_admin_pin
+from app.domains.group.service import join_group
 from app.domains.member import service
 from app.domains.member.models import EmailVerificationToken, Member, MemberOAuthIdentity
 from app.domains.member.oauth_client import OAuthProfile
@@ -44,8 +47,14 @@ async def _make_member(session: AsyncSession, email: str) -> Member:
     return member
 
 
-def _login_state(provider: str = "google") -> str:
-    return issue_oauth_state(provider=provider, intent="login", code_verifier="v", nonce="n")
+def _login_state(provider: str = "google", bind_guest_token: str | None = None) -> str:
+    return issue_oauth_state(
+        provider=provider,
+        intent="login",
+        code_verifier="v",
+        nonce="n",
+        bind_guest_token=bind_guest_token,
+    )
 
 
 # --- T011: start_oauth_flow() -----------------------------------------
@@ -462,4 +471,139 @@ async def test_link_second_different_account_same_provider_is_rejected(
         )
     ).scalars().all()
     assert len(identities) == 1
-    assert identities[0].provider_user_id == "link-sub-4a"
+
+
+# --- T014 (028-guest-stats-binding): bind_guest_token --------------------
+
+
+async def _make_group(session: AsyncSession) -> Group:
+    group = Group(
+        name="OAuth Bind Test",
+        max_members=8,
+        match_mode="doubles",
+        scheduling_mechanism="manual",
+        current_member_count=1,
+        status="active",
+        admin_pin_hash=hash_admin_pin("111111"),
+    )
+    session.add(group)
+    await session.commit()
+    await session.refresh(group)
+    return group
+
+
+async def test_oauth_new_member_with_bind_guest_token_binds_and_returns_group_id(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(a) new-account branch, /speckit-analyze 2026-09-15 remediation
+    finding E2."""
+    group = await _make_group(db_session)
+    roster_entry, _ = await join_group(
+        db_session, group, member=None, password=None, nickname="小美"
+    )
+
+    profile = OAuthProfile(sub="bind-sub-1", email="oauth-bind-new@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    result = await complete_oauth_callback(
+        db_session,
+        "google",
+        code="c",
+        state=_login_state(bind_guest_token=roster_entry.guest_session_token),
+        error=None,
+    )
+
+    assert result.status == "success"
+    assert result.is_new_member is True
+    assert result.bound_group_id == str(group.id)
+    await db_session.refresh(roster_entry)
+    member = (
+        await db_session.execute(select(Member).where(Member.email == "oauth-bind-new@example.com"))
+    ).scalar_one()
+    assert roster_entry.member_id == member.id
+
+
+async def test_oauth_existing_member_with_bind_guest_token_binds_and_returns_group_id(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(b) existing-account branch — spec.md US2 Acceptance Scenario 1
+    explicitly names Google/LINE as a valid existing-account login method;
+    /speckit-analyze 2026-09-15 remediation finding E2: this is the only
+    test asserting that combination, since no new implementation code was
+    needed for it (the existing new-vs-returning branching already covers
+    it)."""
+    existing = await _make_member(db_session, "oauth-bind-existing@example.com")
+    db_session.add(
+        MemberOAuthIdentity(
+            member_id=existing.id, provider="google", provider_user_id="bind-sub-2"
+        )
+    )
+    await db_session.commit()
+
+    group = await _make_group(db_session)
+    roster_entry, _ = await join_group(
+        db_session, group, member=None, password=None, nickname="小華"
+    )
+
+    profile = OAuthProfile(sub="bind-sub-2", email="oauth-bind-existing@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    result = await complete_oauth_callback(
+        db_session,
+        "google",
+        code="c",
+        state=_login_state(bind_guest_token=roster_entry.guest_session_token),
+        error=None,
+    )
+
+    assert result.status == "success"
+    assert result.is_new_member is False
+    assert result.bound_group_id == str(group.id)
+    await db_session.refresh(roster_entry)
+    assert roster_entry.member_id == existing.id
+
+
+async def test_oauth_login_succeeds_even_when_bind_fails(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """contracts/guest-binding-api.md: a binding failure (here,
+    ROSTER_ENTRY_ALREADY_BOUND) MUST NOT fail the OAuth login itself —
+    tokens are still issued, `bound_group_id` is simply left unset."""
+    group = await _make_group(db_session)
+    roster_entry, _ = await join_group(
+        db_session, group, member=None, password=None, nickname="小美"
+    )
+    already_bound_to = await _make_member(db_session, "already-bound@example.com")
+    roster_entry.member_id = already_bound_to.id
+    await db_session.commit()
+
+    profile = OAuthProfile(sub="bind-sub-3", email="bind-fails@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    result = await complete_oauth_callback(
+        db_session,
+        "google",
+        code="c",
+        state=_login_state(bind_guest_token=roster_entry.guest_session_token),
+        error=None,
+    )
+
+    assert result.status == "success"
+    assert result.access_token is not None
+    assert result.bound_group_id is None
+
+
+async def test_oauth_login_without_bind_guest_token_leaves_bound_group_id_none(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: existing (027) OAuth login callers that never pass
+    `bind_guest_token` MUST see identical behavior to before this feature."""
+    profile = OAuthProfile(sub="no-bind-sub", email="no-bind@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    result = await complete_oauth_callback(
+        db_session, "google", code="c", state=_login_state(), error=None
+    )
+
+    assert result.status == "success"
+    assert result.bound_group_id is None

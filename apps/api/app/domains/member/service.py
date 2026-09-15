@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.email import send_email
 from app.core.errors import ApiError
+from app.core.turnstile import verify_turnstile_token
 from app.domains.friend.service import get_friendship_status
 from app.domains.group.models import Group
 from app.domains.group.schemas import (
@@ -32,11 +33,13 @@ from app.domains.group.service import (
     _compare,
     _completed_matches_query,
     _matches_distinct_terms,
+    bind_roster_entry_to_member,
     build_group_final_standings,
     build_group_match_records,
     build_match_record_detail,
     get_completed_match_or_404,
     get_group_by_id,
+    resolve_guest_binding_target,
     verify_ever_group_member,
 )
 from app.domains.member.models import (
@@ -121,13 +124,18 @@ def _pkce_code_challenge(code_verifier: str) -> str:
 
 
 async def start_oauth_flow(
-    provider: Provider, intent: Literal["login", "link"], member_id: str | None = None
+    provider: Provider,
+    intent: Literal["login", "link"],
+    member_id: str | None = None,
+    bind_guest_token: str | None = None,
 ) -> str:
     """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/start`.
     `member_id` MUST be provided for `intent == "link"` (the caller's own
     id, from an already-authenticated request) and MUST be `None` for
     `intent == "login"` — the router enforces this via which dependency
-    (`optional_member` vs `require_verified_member`) it uses per intent."""
+    (`optional_member` vs `require_verified_member`) it uses per intent.
+    `bind_guest_token` (028-guest-stats-binding research.md #3): only ever
+    passed for `intent == "login"`, validated by the router."""
     config = get_provider_config(provider)
     code_verifier = secrets.token_urlsafe(64)
     nonce = secrets.token_urlsafe(16)
@@ -137,6 +145,7 @@ async def start_oauth_flow(
         code_verifier=code_verifier,
         nonce=nonce,
         member_id=member_id,
+        bind_guest_token=bind_guest_token,
     )
     params = {
         "client_id": config.client_id,
@@ -165,6 +174,11 @@ class OAuthCallbackResult:
     refresh_token: str | None = None
     is_new_member: bool = False
     provider: Provider | None = None
+    bound_group_id: str | None = None
+    # 028-guest-stats-binding research.md #3: set only when this callback
+    # also completed a guest roster binding (intent == "login" with a
+    # `bind_guest_token` in `state`). A failed bind MUST NOT fail the OAuth
+    # login itself — see `complete_oauth_callback()`.
 
 
 async def _find_oauth_identity(
@@ -180,8 +194,14 @@ async def _find_oauth_identity(
 
 
 async def _complete_oauth_login(
-    session: AsyncSession, provider: Provider, profile: OAuthProfile
+    session: AsyncSession,
+    provider: Provider,
+    profile: OAuthProfile,
+    bind_guest_token: str | None = None,
 ) -> OAuthCallbackResult:
+    """028-guest-stats-binding research.md #3: `bind_guest_token`, when
+    given, is attempted after a successful login/registration below — same
+    optional-extra-step pattern in both success branches."""
     existing = await _find_oauth_identity(session, provider, profile.sub)
     if existing is not None:
         member = await session.get(Member, existing.member_id)
@@ -192,12 +212,18 @@ async def _complete_oauth_login(
             return OAuthCallbackResult(
                 intent="login", status="error", error_code="ACCOUNT_DELETED"
             )
+        bound_group_id = (
+            await _attempt_guest_bind(session, bind_guest_token, member.id)
+            if bind_guest_token
+            else None
+        )
         return OAuthCallbackResult(
             intent="login",
             status="success",
             access_token=issue_access_token(str(member.id), member.token_version),
             refresh_token=issue_refresh_token(str(member.id), member.token_version),
             is_new_member=False,
+            bound_group_id=bound_group_id,
         )
 
     normalized_email = profile.email.lower() if profile.email else None
@@ -249,12 +275,18 @@ async def _complete_oauth_login(
         return OAuthCallbackResult(intent="login", status="error", error_code=error_code)
     await session.refresh(member)
 
+    bound_group_id = (
+        await _attempt_guest_bind(session, bind_guest_token, member.id)
+        if bind_guest_token
+        else None
+    )
     return OAuthCallbackResult(
         intent="login",
         status="success",
         access_token=issue_access_token(str(member.id), member.token_version),
         refresh_token=issue_refresh_token(str(member.id), member.token_version),
         is_new_member=True,
+        bound_group_id=bound_group_id,
     )
 
 
@@ -365,7 +397,84 @@ async def complete_oauth_callback(
 
     if intent == "link":
         return await _complete_oauth_link(session, provider, profile, oauth_state.member_id)
-    return await _complete_oauth_login(session, provider, profile)
+    return await _complete_oauth_login(session, provider, profile, oauth_state.bind_guest_token)
+
+
+async def _attempt_guest_bind(
+    session: AsyncSession, bind_guest_token: str, member_id: uuid.UUID
+) -> str | None:
+    """028-guest-stats-binding research.md #3/contracts/guest-binding-api.md:
+    a binding failure (unknown/invalidated token, already bound) MUST NOT
+    fail the OAuth login itself — called only after login/registration
+    already succeeded. Returns the bound `group_id`, or `None` if the bind
+    didn't happen."""
+    try:
+        roster_entry = await resolve_guest_binding_target(session, bind_guest_token)
+        await bind_roster_entry_to_member(session, roster_entry.id, member_id)
+    except ApiError:
+        return None
+    return str(roster_entry.group_id)
+
+
+@dataclass(frozen=True)
+class GuestBindResult:
+    group_id: uuid.UUID
+    access_token: str | None
+    refresh_token: str | None
+
+
+async def complete_guest_bind(
+    session: AsyncSession,
+    guest_session_token: str,
+    *,
+    current_member: Member | None,
+    mode: Literal["register", "login"] | None,
+    email: str | None,
+    password: str | None,
+    turnstile_token: str | None,
+) -> GuestBindResult:
+    """028-guest-stats-binding contracts/guest-binding-api.md `POST
+    /groups/guest-token/{token}/bind` — kept in the `member` domain (which
+    already legitimately imports from `group.service`, e.g.
+    `verify_ever_group_member`) rather than `group/service.py`, since the
+    reverse import would be circular (research.md #2). `group/router.py`'s
+    endpoint is a thin wrapper around this function; unit tests call it
+    directly, same as `complete_oauth_callback()`.
+
+    Three of the four binding paths from research.md #2 are handled here:
+    `current_member` present (Clarifications 2026-09-15/FR-012, one-click,
+    body ignored), `mode="register"` (US1), `mode="login"` (US2). The
+    fourth (OAuth) is `complete_oauth_callback()`'s `bind_guest_token`
+    extension above. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
+    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
+    roster_entry = await resolve_guest_binding_target(session, guest_session_token)
+
+    access_token: str | None = None
+    refresh_token: str | None = None
+
+    if current_member is not None:
+        member_id = current_member.id
+    elif mode == "register":
+        if email is None or password is None or turnstile_token is None:
+            raise ApiError("INVALID_REQUEST", status_code=400)
+        await verify_turnstile_token(turnstile_token)
+        member = await register(session, email, password)
+        member_id = member.id
+        access_token = issue_access_token(str(member.id), member.token_version)
+        refresh_token = issue_refresh_token(str(member.id), member.token_version)
+    elif mode == "login":
+        if email is None or password is None:
+            raise ApiError("INVALID_REQUEST", status_code=400)
+        member, access_token, refresh_token = await login(session, email, password)
+        member_id = member.id
+    else:
+        raise ApiError("INVALID_REQUEST", status_code=400)
+
+    await bind_roster_entry_to_member(session, roster_entry.id, member_id)
+    return GuestBindResult(
+        group_id=roster_entry.group_id, access_token=access_token, refresh_token=refresh_token
+    )
 
 
 async def unlink_oauth_identity(session: AsyncSession, member: Member, provider: Provider) -> None:

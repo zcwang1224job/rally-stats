@@ -13,6 +13,9 @@ class StubMemberComponent {}
 @Component({ selector: 'app-stub-login', template: '' })
 class StubLoginComponent {}
 
+@Component({ selector: 'app-stub-group-member-view', template: '' })
+class StubGroupMemberViewComponent {}
+
 describe('OauthCallbackComponent', () => {
   function setup(hash: string, auth: Partial<AuthService> = {}) {
     window.location.hash = hash;
@@ -22,6 +25,7 @@ describe('OauthCallbackComponent', () => {
         provideRouter([
           { path: 'member', component: StubMemberComponent },
           { path: 'auth/login', component: StubLoginComponent },
+          { path: 'groups/:groupId/member-view', component: StubGroupMemberViewComponent },
         ]),
         provideTranslateService({}),
         {
@@ -63,6 +67,26 @@ describe('OauthCallbackComponent', () => {
 
     const languageService = TestBed.inject(LanguageService);
     expect(languageService.current()).toBe('en');
+  });
+
+  // --- 028-guest-stats-binding T018 -------------------------------------
+
+  it('status=success with bound_group_id navigates to that group\'s member-view instead of /member', async () => {
+    const fixture = setup(
+      '#status=success&access_token=a1&refresh_token=r1&is_new_member=false&bound_group_id=g42',
+    );
+    await fixture.whenStable();
+
+    const router = TestBed.inject(Router);
+    expect(router.url).toBe('/groups/g42/member-view');
+  });
+
+  it('status=success without bound_group_id keeps the existing default /member destination (regression)', async () => {
+    const fixture = setup('#status=success&access_token=a1&refresh_token=r1&is_new_member=false');
+    await fixture.whenStable();
+
+    const router = TestBed.inject(Router);
+    expect(router.url).toBe('/member');
   });
 
   it('status=cancelled navigates back to the login page', async () => {

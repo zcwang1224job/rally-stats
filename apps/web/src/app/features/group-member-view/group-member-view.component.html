@@ -10,6 +10,15 @@
     <p role="status" class="status-badge">{{ 'adminPage.disbandedNotice' | translate }}</p>
   }
 
+  @if (showBindingCta() && guestSessionToken) {
+    <app-guest-binding-cta [guestSessionToken]="guestSessionToken" (bound)="onBound()" />
+  }
+  @if (showBoundNotice()) {
+    <p role="status" class="status-badge status-badge--success">
+      {{ 'guestBinding.boundBadge' | translate }}
+    </p>
+  }
+
   <div class="member-shell">
     <nav class="member-nav">
       <button

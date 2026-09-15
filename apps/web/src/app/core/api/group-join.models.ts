@@ -61,3 +61,29 @@ export interface GuestSessionResponse {
   group_id: string;
   nickname: string;
 }
+
+// --- 028-guest-stats-binding ---
+
+export interface BindingStatusResponse {
+  already_bound: boolean;
+  roster_entry_id: string;
+  group_id: string;
+  group_name: string;
+  nickname: string;
+  group_status: 'active' | 'disbanded';
+  roster_status: 'active' | 'left' | 'kicked';
+}
+
+export interface BindRequest {
+  mode?: 'register' | 'login' | null;
+  email?: string | null;
+  password?: string | null;
+  turnstile_token?: string | null;
+}
+
+export interface BindResponse {
+  bound: boolean;
+  group_id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+}

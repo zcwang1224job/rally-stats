@@ -103,6 +103,19 @@
     "clearFilters": "清除篩選",
     "emptyState": "目前沒有符合條件的揪團"
   },
+  "guestBinding": {
+    "title": "建立帳號並綁定戰績",
+    "bannerText": "以訪客身份參與，建立帳號即可永久保留這場戰績",
+    "bannerAction": "立即綁定",
+    "alreadyLoggedInPrompt": "將本場戰績綁定到我的帳號",
+    "bindToMyAccount": "綁定",
+    "modeRegister": "建立新帳號",
+    "modeLogin": "使用現有帳號登入",
+    "registerSubmit": "建立帳號並綁定戰績",
+    "loginSubmit": "登入並綁定戰績",
+    "boundSuccessNotice": "已綁定至你的帳號，登入後即可在對戰紀錄查看這場戰績",
+    "boundBadge": "✅ 已完成綁定"
+  },
   "friends": {
     "listTitle": "好友列表",
     "filterNickname": "暱稱",
@@ -645,6 +658,8 @@
     "ROSTER_ENTRY_NOT_FOUND": "找不到此輪替名單成員",
     "PARTNERSHIP_NOT_FOUND": "此成員目前沒有正式搭檔",
     "ROSTER_ENTRY_ALREADY_LEFT": "此成員已離開或已被踢除",
+    "ROSTER_ENTRY_ALREADY_BOUND": "這個連結已綁定過帳號，請改用登入",
+    "INVALID_REQUEST": "請求資料不完整，請重新嘗試",
     "CANNOT_KICK_CREATOR": "無法踢除團長本人",
     "NOT_A_GUEST_ENTRY": "此成員為會員身份，沒有訪客連結可以重新產生",
     "MEMBERSHIP_REQUIRED": "請先加入此團才能查看",

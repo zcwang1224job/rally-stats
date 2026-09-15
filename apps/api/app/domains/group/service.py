@@ -854,6 +854,49 @@ async def resolve_guest_session(session: AsyncSession, guest_session_token: str)
     return roster_entry
 
 
+async def resolve_guest_binding_target(
+    session: AsyncSession, guest_session_token: str
+) -> RosterEntry:
+    """028-guest-stats-binding research.md #1: deliberately independent of
+    `resolve_guest_session()` above — that function requires an `active`
+    `RosterEntry` in an `active` `Group` because it backs "redirect the
+    guest into the live view" (015); this one backs "can this token still
+    be bound to an account", which per FR-004/Edge Cases MUST succeed
+    regardless of `RosterEntry.status` (active/left/kicked) or `Group.status`
+    (active/disbanded) — same reasoning as `verify_ever_group_member()`
+    below being deliberately independent of `resolve_active_roster_membership()`.
+    Errors: `LINK_NOT_FOUND` — the token itself doesn't exist (never issued,
+    or invalidated by an admin regenerating it)."""
+    result = await session.execute(
+        select(RosterEntry).where(RosterEntry.guest_session_token == guest_session_token)
+    )
+    roster_entry = result.scalar_one_or_none()
+    if roster_entry is None:
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return roster_entry
+
+
+async def bind_roster_entry_to_member(
+    session: AsyncSession, roster_entry_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """028-guest-stats-binding research.md #4: a single conditional UPDATE
+    is the atomicity guarantee — MUST NOT be preceded by a separate SELECT
+    check (a "look then leap" race). `RosterEntry.member_id` transitions
+    `NULL -> member_id` exactly once and is never reset (data-model.md §1),
+    so `WHERE member_id IS NULL` is both the eligibility check and the
+    write, in one round trip. Errors: `ROSTER_ENTRY_ALREADY_BOUND` — either
+    a genuine double-bind race, or the same request retried after already
+    succeeding once."""
+    result = await session.execute(
+        update(RosterEntry)
+        .where(RosterEntry.id == roster_entry_id, RosterEntry.member_id.is_(None))
+        .values(member_id=member_id)
+    )
+    if result.rowcount == 0:
+        raise ApiError("ROSTER_ENTRY_ALREADY_BOUND", status_code=409)
+    await session.commit()
+
+
 async def active_roster_entry_for_member(
     session: AsyncSession, group_id: uuid.UUID, member_id: uuid.UUID
 ) -> RosterEntry | None:

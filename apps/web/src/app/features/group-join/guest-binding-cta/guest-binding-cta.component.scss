@@ -1,0 +1,136 @@
+:host {
+  display: block;
+  margin-bottom: var(--space-md);
+}
+
+// The default, collapsed state — a friendly, low-weight invitation rather
+// than a form blocking the page a guest actually came to see (schedule/
+// scores). Uses the same accent tint as .status-badge--success so it reads
+// as "good news" rather than a warning, while still leading with an icon
+// (constitution VII: never color alone).
+.cta-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--color-brand-accent) 30%, white);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-brand-accent) 10%, white);
+  flex-wrap: wrap;
+}
+
+.cta-banner__icon {
+  font-size: var(--font-size-heading);
+  line-height: 1;
+}
+
+.cta-banner__text {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.cta-form {
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+
+    h2 {
+      font-size: var(--font-size-heading);
+      font-weight: var(--font-weight-bold);
+      margin: 0;
+    }
+  }
+}
+
+.oauth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.btn__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+// Same official brand styling as the login page's OAuth buttons
+// (Google Identity / LINE button guidelines) — deliberately duplicated
+// rather than shared, since login.component.scss is scoped to that
+// component only.
+.btn--google {
+  background: #fff;
+  border-color: #747775;
+  color: #1f1f1f;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: #f8f9fa;
+      box-shadow: var(--shadow-sm);
+    }
+  }
+}
+
+.btn--line {
+  background: #06c755;
+  border-color: #06c755;
+  color: #fff;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: #05b34c;
+      border-color: #05b34c;
+    }
+  }
+}
+
+.oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+}
+
+.mode-switch {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+
+  button {
+    flex: 1;
+    padding: var(--space-xs) var(--space-sm);
+    border: 1px solid var(--color-border);
+    background: transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-weight: var(--font-weight-bold);
+
+    &.is-active {
+      background: var(--color-brand-primary);
+      border-color: var(--color-brand-primary);
+      color: var(--color-brand-primary-contrast);
+    }
+  }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}

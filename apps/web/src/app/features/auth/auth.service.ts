@@ -60,13 +60,23 @@ export class AuthService {
   /** 027-google-line-oauth-login contracts/oauth-login-api.md
    * `GET /auth/oauth/{provider}/start`. `intent=login` (US1/US2) needs no
    * auth header; `intent=link` (US3, from Settings) does — the backend
-   * rejects an unauthenticated `link` attempt with 401. */
+   * rejects an unauthenticated `link` attempt with 401.
+   *
+   * `bindGuestToken` (028-guest-stats-binding research.md #3): only valid
+   * with `intent=login` — carries a guest's `guest_session_token` through
+   * the OAuth redirect round-trip so the backend can bind it once login/
+   * registration succeeds. */
   startOAuthFlow(
     provider: 'google' | 'line',
     intent: 'login' | 'link' = 'login',
+    bindGuestToken?: string,
   ): Observable<OAuthStartResponse> {
+    const params = new URLSearchParams({ intent });
+    if (bindGuestToken) {
+      params.set('bind_guest_token', bindGuestToken);
+    }
     return this.api.get<OAuthStartResponse>(
-      `/auth/oauth/${provider}/start?intent=${intent}`,
+      `/auth/oauth/${provider}/start?${params.toString()}`,
       intent === 'link' ? this.authHeader() : {},
     );
   }

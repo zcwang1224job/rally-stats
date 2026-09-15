@@ -255,6 +255,11 @@ def _oauth_callback_redirect_url(result: service.OAuthCallbackResult) -> str:
                 "refresh_token": result.refresh_token or "",
                 "is_new_member": "true" if result.is_new_member else "false",
             }
+            if result.bound_group_id:
+                # 028-guest-stats-binding research.md #3: lets the frontend
+                # land back on the guest's live/summary screen instead of
+                # the default post-login destination.
+                params["bound_group_id"] = result.bound_group_id
         elif result.status == "cancelled":
             params = {"status": "cancelled"}
         else:
@@ -276,20 +281,28 @@ async def start_oauth(
     provider: str,
     member: Annotated[Member | None, Depends(security.optional_member)],
     intent: Literal["login", "link"] = "login",
+    bind_guest_token: str | None = None,
 ) -> OAuthStartResponse:
     """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/start`.
     `intent=login` (US1/US2) is public; `intent=link` (US3) requires a
-    verified member session. Errors: `OAUTH_PROVIDER_UNKNOWN`,
-    `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`."""
+    verified member session. `bind_guest_token`
+    (028-guest-stats-binding research.md #3) is only valid with
+    `intent=login` — a guest binding their roster entry via a new/existing
+    OAuth-authenticated account. Errors: `OAUTH_PROVIDER_UNKNOWN`,
+    `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`, `INVALID_REQUEST`."""
     valid_provider = _require_valid_provider(provider)
     member_id: str | None = None
     if intent == "link":
+        if bind_guest_token is not None:
+            raise ApiError("INVALID_REQUEST", status_code=400)
         if member is None:
             raise ApiError("MEMBER_TOKEN_INVALID", status_code=401)
         if member.verification_status != "verified":
             raise ApiError("EMAIL_NOT_VERIFIED", status_code=403)
         member_id = str(member.id)
-    authorize_url = await service.start_oauth_flow(valid_provider, intent, member_id)
+    authorize_url = await service.start_oauth_flow(
+        valid_provider, intent, member_id, bind_guest_token
+    )
     return OAuthStartResponse(authorize_url=authorize_url)
 
 

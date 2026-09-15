@@ -10,6 +10,9 @@ authorize_url`）的網址。
 
 **Query 參數**：`intent`：`"login"`（預設，訪客/既有會員快速登入或
 註冊，US1/US2）或 `"link"`（既有會員在個人設定主動綁定，US3）。
+`bind_guest_token`（**028-guest-stats-binding 新增的向下相容擴充**，
+選填）：僅 `intent=login` 時允許帶入，`intent=link` 帶入視為無效輸入
+（回傳 `INVALID_REQUEST`）——見下方「028-guest-stats-binding 擴充」。
 
 **權限**：`intent=login` 時公開端點（訪客可呼叫）；`intent=link` 時 MUST
 `require_verified_member`（US3 僅限已登入會員主動觸發）。
@@ -68,6 +71,23 @@ MUST 捕捉該寫入交易觸發的 `IntegrityError`，依違反的是哪一條�
 轉譯為上表對應的既有錯誤代碼（`OAUTH_EMAIL_ALREADY_REGISTERED`／
 `OAUTH_IDENTITY_ALREADY_LINKED`／`OAUTH_PROVIDER_ALREADY_LINKED`），
 MUST NOT 讓 `IntegrityError` 以未攔截例外的形式外洩為未預期的 500。
+
+## 028-guest-stats-binding 擴充（向下相容，本 contract 原始範圍不變）
+
+`state` 攜帶了 `bind_guest_token`（`intent=login`）時，`complete_oauth_callback()`
+於上表「成功」的兩列（既有綁定登入 / 新建帳號）之後，額外嘗試把該
+guest_session_token 對應的訪客名冊身份綁定到這次登入/建立的帳號
+（`group.service.bind_roster_entry_to_member()`，見該 feature 的
+research.md #3）：
+
+- 綁定成功 → 導向目標的 fragment 多帶一個 `bound_group_id=<group_id>`
+  參數：`.../auth/oauth-callback#status=success&...&bound_group_id=<id>`。
+- 綁定失敗（名冊身份查無資料、或已被別的帳號綁定過）→ **MUST NOT**
+  讓本來已經成功的 OAuth 登入/註冊跟著失敗，`bound_group_id` 單純不出現
+  在 fragment 中，其餘行為與上表原始定義完全相同。
+- 僅 `intent=login` 支援；`intent=link` 的既有列不受影響。
+
+詳見 `specs/028-guest-stats-binding/contracts/guest-binding-api.md`。
 
 ## 前端行為對照（非本 contract 強制，供 tasks.md 參考）
 
