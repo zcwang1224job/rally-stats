@@ -1,16 +1,20 @@
 @use '../../../styles/breakpoints';
 
-// Scoreboard-only dark theme + team colors (010-app-wide-ui-redesign
-// research.md Decision 1). Deliberately NOT added to the global
-// _tokens.scss :root — every other screen keeps 008's light theme
-// unchanged; this component is the one screen the source mockup
+// Scoreboard-only dark theme (010-app-wide-ui-redesign research.md
+// Decision 1) — every other screen keeps 008's light theme unchanged;
+// this component is the one screen the source mockup
 // (ui/ScoreBoardUI.drawio, "計分板" page) draws with a dark background.
+// The surface reuses --color-ink (the same navy the nav-shell chrome sits
+// on) instead of pure black, and --color-ink-text/-muted (already defined
+// for text on that surface) instead of ad-hoc grays, so this is a shade
+// of the app's one dark surface rather than a second, unrelated palette.
+// Team colors alias the shared --color-team-* tokens (_tokens.scss).
 :host {
-  --scoreboard-bg: #000000;
-  --scoreboard-team-a-bg: #d80073;
-  --scoreboard-team-a-border: #a50040;
-  --scoreboard-team-b-bg: #0050ef;
-  --scoreboard-team-b-border: #001dbc;
+  --scoreboard-bg: var(--color-ink);
+  --scoreboard-team-a-bg: var(--color-team-a-bg);
+  --scoreboard-team-a-border: var(--color-team-a-border);
+  --scoreboard-team-b-bg: var(--color-team-b-bg);
+  --scoreboard-team-b-border: var(--color-team-b-border);
 
   display: block;
   position: relative;
@@ -18,7 +22,7 @@
   padding: var(--space-lg);
   text-align: center;
   background: var(--scoreboard-bg);
-  color: #ffffff;
+  color: var(--color-ink-text);
 }
 
 h1 {
@@ -27,7 +31,7 @@ h1 {
 }
 
 .round-label {
-  color: #cccccc;
+  color: var(--color-ink-text-muted);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-heading);
 }
@@ -61,22 +65,24 @@ h1 {
   border: 4px solid transparent;
 }
 
+// A lighter tint of the brand orange (not a separate off-brand color) so
+// the names still stand out against either saturated team block, while
+// staying inside the same warm hue as the rest of the app's one accent.
+.team--a,
+.team--b {
+  .names div {
+    color: color-mix(in srgb, var(--color-brand-primary) 55%, white);
+  }
+}
+
 .team--a {
   background: var(--scoreboard-team-a-bg);
   border-color: var(--scoreboard-team-a-border);
-
-  .names div {
-    color: #ff8000;
-  }
 }
 
 .team--b {
   background: var(--scoreboard-team-b-bg);
   border-color: var(--scoreboard-team-b-border);
-
-  .names div {
-    color: #ff8000;
-  }
 }
 
 .names {
@@ -97,7 +103,7 @@ h1 {
   font-size: 6rem;
   font-weight: var(--font-weight-black);
   line-height: 1;
-  color: #ffffff;
+  color: var(--color-ink-text);
 
   @media (min-width: breakpoints.$breakpoint-tablet) {
     font-size: 10rem;
@@ -113,12 +119,12 @@ h1 {
   top: var(--space-md);
   right: var(--space-md);
   z-index: 2;
-  color: #999999;
+  color: var(--color-ink-text-muted);
   background: rgba(255, 255, 255, 0.08);
 }
 
 .waiting-message {
-  color: #cccccc;
+  color: var(--color-ink-text-muted);
   margin-top: var(--space-lg);
 }
 

@@ -30,6 +30,19 @@
   --color-danger: #dc2626;
   --color-danger-contrast: #ffffff;
 
+  // Match-team colors — the one red/blue pair used to tell "team A" from
+  // "team B" on the scoreboard, control-panel, all-courts, and
+  // court-control screens. Single source of truth so the four components
+  // that render live scores can never drift apart (a courtside scorer and
+  // the on-court display MUST show the same color for the same team).
+  // Deliberately muted (a wine red / a denim blue, not neon) to match the
+  // rest of the palette's "considered, not loud" register rather than
+  // standing out as a different visual language.
+  --color-team-a-bg: #b3335f;
+  --color-team-a-border: #7a1f42;
+  --color-team-b-bg: #35519e;
+  --color-team-b-border: #22346b;
+
   --color-surface: #ffffff;
   --color-surface-alt: #f2f3f7;
   --color-text-primary: #161c2c;

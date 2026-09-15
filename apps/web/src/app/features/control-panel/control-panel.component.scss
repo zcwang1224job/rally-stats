@@ -1,15 +1,14 @@
 @use '../../../styles/breakpoints';
 
 :host {
-  // Same hex values as scoreboard.component.scss's --scoreboard-team-*-bg/
-  // border — deliberately identical, not just "similarly pink/blue", so
-  // whoever's scoring from courtside sees the same color here as on the
-  // scoreboard the players are looking at, instead of two different
-  // palettes for the same team.
-  --team-a-bg: #d80073;
-  --team-a-border: #a50040;
-  --team-b-bg: #0050ef;
-  --team-b-border: #001dbc;
+  // Aliases the shared --color-team-* tokens (_tokens.scss) — same values
+  // scoreboard.component.scss uses, so whoever's scoring from courtside
+  // sees the same color here as on the scoreboard the players are looking
+  // at, instead of two different palettes for the same team.
+  --team-a-bg: var(--color-team-a-bg);
+  --team-a-border: var(--color-team-a-border);
+  --team-b-bg: var(--color-team-b-bg);
+  --team-b-border: var(--color-team-b-border);
 
   display: block;
   padding: var(--space-md);
@@ -85,7 +84,7 @@ h1 {
 .names {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
-  color: #ffffff;
+  color: var(--color-brand-primary-contrast);
   max-width: 100%;
 
   div {
@@ -104,7 +103,7 @@ h1 {
   text-align: center;
   // Always rendered inside .team--a/.team--b, both the same dark, saturated
   // colors as the scoreboard — white keeps the score readable there too.
-  color: #ffffff;
+  color: var(--color-brand-primary-contrast);
 }
 
 // Bigger than the shared .btn touch-target minimum (44px) — this is a
