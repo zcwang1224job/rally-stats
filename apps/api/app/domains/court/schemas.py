@@ -77,3 +77,8 @@ class CourtByTokenResponse(BaseModel):
     link_version: int
     deleted: bool
     group_disbanded: bool
+    # The group creator's `language_preference` (member/schemas.SUPPORTED_LANGUAGES),
+    # or "zh-TW" if the group has no creator on record. Scoreboard/control-panel
+    # have no login and so no language switcher of their own — the frontend
+    # applies this as the page's display language instead.
+    owner_language: str

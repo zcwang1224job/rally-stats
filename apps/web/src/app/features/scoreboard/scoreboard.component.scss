@@ -159,14 +159,3 @@ h1 {
   left: var(--space-md);
   z-index: 2;
 }
-
-// 024-add-english-language FR-003a/Edge Case (spec.md:62): bottom-left,
-// away from both the top corners (.fullscreen-toggle, .next-up) and the
-// centered score display, so it never crowds or shrinks the
-// distance-readable score area.
-.scoreboard-language-switcher {
-  position: fixed;
-  bottom: var(--space-md);
-  left: var(--space-md);
-  z-index: 2;
-}

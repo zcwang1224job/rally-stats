@@ -1,7 +1,7 @@
 import { Component, DestroyRef, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
-import { TranslatePipe } from '@ngx-translate/core';
+import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
@@ -10,7 +10,6 @@ import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
-import { LanguageSwitcherComponent } from '../../core/language/language-switcher.component';
 
 /** 計分板：連結初始化/心跳（T042）+ link.regenerated 專屬失效提示
  * （T041，FR-035）+ 大字體即時比分/Round/即將登場顯示（007 US3，預設
@@ -26,7 +25,7 @@ import { LanguageSwitcherComponent } from '../../core/language/language-switcher
  * 沒特別設定的團，這個畫面跟以前完全一樣。 */
 @Component({
   selector: 'app-scoreboard',
-  imports: [TranslatePipe, ConfirmDialogComponent, LanguageSwitcherComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent],
   templateUrl: './scoreboard.component.html',
   styleUrl: './scoreboard.component.scss',
 })
@@ -36,6 +35,7 @@ export class ScoreboardComponent {
   private readonly realtime = inject(RealtimeService);
   private readonly courtControl = inject(CourtControlService);
   private readonly reconnectRefetch = inject(ReconnectRefetchService);
+  private readonly translate = inject(TranslateService);
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly token = this.route.snapshot.paramMap.get('courtToken')!;
@@ -94,6 +94,11 @@ export class ScoreboardComponent {
           this.courtInfo.set(info);
           this.loading.set(false);
           if (!this.subscribedChannel) {
+            // No login and so no language switcher of its own (unlike the
+            // rest of the app) — display in whichever language the group's
+            // creator/團長 last set for themselves, applied once up front
+            // rather than on every heartbeat poll.
+            this.translate.use(info.owner_language);
             this.subscribeToLiveEvents(info);
             this.loadState();
           }

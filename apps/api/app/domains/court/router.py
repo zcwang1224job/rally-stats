@@ -164,7 +164,7 @@ async def get_court_by_token(
     """Public, unauthenticated. Doubles as both scoreboard/control-panel page
     bootstrap and the 5-minute heartbeat poll (research.md #4). Errors:
     `LINK_NOT_FOUND`."""
-    court, group, link_type = await service.get_court_by_token(session, token)
+    court, group, link_type, owner_language = await service.get_court_by_token(session, token)
     link_version = (
         court.scoreboard_link_version
         if link_type == "scoreboard"
@@ -178,4 +178,5 @@ async def get_court_by_token(
         link_version=link_version,
         deleted=court.deleted_at is not None,
         group_disbanded=group.status == "disbanded",
+        owner_language=owner_language,
     )

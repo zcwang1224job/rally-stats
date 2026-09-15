@@ -436,7 +436,9 @@ async def get_court_state(
     """公開，無需登入（FR-020）——`token` 接受 `scoreboard_token` 或
     `control_panel_token`（唯讀，research.md #3 之權限邊界不適用於此端點）。
     Errors: `LINK_NOT_FOUND`."""
-    court, group, link_type = await court_service.get_court_by_token(session, token)
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
     state = await service.court_live_state(session, court)
     return _court_state_response(court, group, link_type, state)
 
@@ -453,7 +455,9 @@ async def score_by_token(
     """接受 `control_panel_token`，或該團已開啟 `scoreboard_scoring_enabled`
     時的 `scoreboard_token`（research.md #3 + 018-plan-then-start
     follow-up）。Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`。"""
-    court, group, link_type = await court_service.get_court_by_token(session, token)
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
     if not _can_score_by_token(link_type, group):
         raise ApiError("LINK_NOT_FOUND", status_code=404)
     return await service.apply_score_delta(
@@ -470,7 +474,9 @@ async def end_match_by_token(
     """接受 `control_panel_token`，或該團已開啟 `scoreboard_scoring_enabled`
     時的 `scoreboard_token`（research.md #3 + 018-plan-then-start
     follow-up）。Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`。"""
-    court, group, link_type = await court_service.get_court_by_token(session, token)
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
     if not _can_score_by_token(link_type, group):
         raise ApiError("LINK_NOT_FOUND", status_code=404)
     return await service.end_match_early(session, court, match_id)

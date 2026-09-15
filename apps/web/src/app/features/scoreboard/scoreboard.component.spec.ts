@@ -1,6 +1,6 @@
 import { convertToParamMap, ActivatedRoute } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { provideTranslateService } from '@ngx-translate/core';
+import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { of, EMPTY, NEVER } from 'rxjs';
 import { signal } from '@angular/core';
 import { CourtControlService } from '../../core/api/court-control.service';
@@ -18,6 +18,7 @@ const courtInfo = {
   link_version: 0,
   deleted: false,
   group_disbanded: false,
+  owner_language: 'en',
 };
 
 function realtimeStub(connected = true) {
@@ -214,18 +215,25 @@ describe('ScoreboardComponent', () => {
     expect(endMatchSpy).toHaveBeenCalledWith('tok', 'm1');
   });
 
-  // 024-add-english-language FR-003a: this route has no shared nav shell,
-  // so it MUST carry its own switcher — and it MUST be reachable even
-  // before/without a valid court ever loading (loading/invalidated/error).
-  it('shows the language switcher while still loading (no court response yet)', () => {
+  // 024-add-english-language FR-003d (2026-09-15 修正): the scoreboard has
+  // no login and so no language switcher of its own — unlike the
+  // control-panel routes, it MUST NOT render one, and MUST instead apply
+  // whichever language the court response's `owner_language` carries.
+  it('does not show a language switcher, even before a court ever loads', () => {
     const fixture = setup(null, true, {}, { watchCourtLink: () => NEVER });
 
-    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).toBeNull();
   });
 
-  it('shows the language switcher once a court has loaded successfully', () => {
-    const fixture = setup(scoringMatchState);
+  it('applies owner_language once the court loads successfully', () => {
+    setup(scoringMatchState);
 
-    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
+    expect(TestBed.inject(TranslateService).currentLang()).toBe('en');
+  });
+
+  it('does not apply a language while still loading (no court response yet)', () => {
+    setup(null, true, {}, { watchCourtLink: () => NEVER });
+
+    expect(TestBed.inject(TranslateService).currentLang()).not.toBe('en');
   });
 });

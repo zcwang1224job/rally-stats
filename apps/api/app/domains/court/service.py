@@ -15,6 +15,13 @@ from app.core.realtime import court_channel, group_notifications_channel, publis
 from app.domains.court.models import Court
 from app.domains.court.schemas import CreateCourtRequest, RenameCourtRequest
 from app.domains.group.models import Group
+from app.domains.member.models import Member
+
+# Mirrors Member.language_preference's own column default — used when a
+# group has no creator on record (created before `created_by_member_id`
+# existed, or the creating member's row is otherwise gone), so the
+# scoreboard/control-panel still resolve to a language instead of erroring.
+_DEFAULT_LANGUAGE = "zh-TW"
 
 AbandonCourtMatchesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[bool]]
 
@@ -152,8 +159,11 @@ async def regenerate_control_panel_link(
 
 async def get_court_by_token(
     session: AsyncSession, token: uuid.UUID
-) -> tuple[Court, Group, Literal["scoreboard", "control_panel"]]:
-    """Resolves a scoreboard OR control_panel token to its court + owning group."""
+) -> tuple[Court, Group, Literal["scoreboard", "control_panel"], str]:
+    """Resolves a scoreboard OR control_panel token to its court + owning group
+    + the group creator's display language (scoreboard/control-panel have no
+    login and so no language switcher of their own — they default to
+    whichever language the group's creator/團長 last set for themselves)."""
     result = await session.execute(select(Court).where(Court.scoreboard_token == token))
     court = result.scalar_one_or_none()
     link_type: Literal["scoreboard", "control_panel"] = "scoreboard"
@@ -169,4 +179,11 @@ async def get_court_by_token(
     if group is None:
         raise ApiError("LINK_NOT_FOUND", status_code=404)
 
-    return court, group, link_type
+    owner_language = _DEFAULT_LANGUAGE
+    if group.created_by_member_id is not None:
+        owner_result = await session.execute(
+            select(Member.language_preference).where(Member.id == group.created_by_member_id)
+        )
+        owner_language = owner_result.scalar_one_or_none() or _DEFAULT_LANGUAGE
+
+    return court, group, link_type, owner_language

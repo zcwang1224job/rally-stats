@@ -10,4 +10,8 @@ export interface CourtByTokenResponse {
   link_version: number;
   deleted: boolean;
   group_disbanded: boolean;
+  // The group creator's display language ("zh-TW" if the group has no
+  // creator on record) — scoreboard/control-panel have no login and so no
+  // language switcher of their own; they apply this instead.
+  owner_language: string;
 }
