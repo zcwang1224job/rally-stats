@@ -35,41 +35,74 @@
         </p>
       }
 
+      <!-- Teams face each other across the net, so their right/left service
+           courts are mirrored on screen: team A's right court sits at the
+           bottom-left corner, but team B's right court sits at the top-right
+           corner. Binding _right to top for A and to bottom for B (and vice
+           versa) keeps left/right consistent with the real court from either
+           side, which is what players standing on court read off this
+           screen. -->
       <div class="score-board">
         <div class="team team--a">
           @if (state.current_match; as match) {
-            <div class="names">
-              @for (p of match.participants; track p.roster_entry_id) {
-                @if (p.team === 'A') {
-                  <div>{{ p.nickname }}</div>
+            @if (station(match, match.serve?.team_a_left_roster_entry_id ?? null); as topStation) {
+              <div class="station station--top" [class.station--server]="topStation.isServer">
+                {{ topStation.nickname }}
+                @if (topStation.isServer) {
+                  <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                 }
-              }
-            </div>
+              </div>
+            }
           }
-          <span class="score">{{ state.current_match?.score_a ?? 0 }}</span>
-          @if (canScore() && state.current_match) {
-            <div class="buttons">
-              <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">+1</button>
-              <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('A', -1)">-1</button>
-            </div>
+          <div class="team-center">
+            <span class="score">{{ state.current_match?.score_a ?? 0 }}</span>
+            @if (canScore() && state.current_match) {
+              <div class="buttons">
+                <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">+1</button>
+                <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('A', -1)">-1</button>
+              </div>
+            }
+          </div>
+          @if (state.current_match; as match) {
+            @if (station(match, match.serve?.team_a_right_roster_entry_id ?? null); as bottomStation) {
+              <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
+                {{ bottomStation.nickname }}
+                @if (bottomStation.isServer) {
+                  <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
+                }
+              </div>
+            }
           }
         </div>
         <div class="team team--b">
           @if (state.current_match; as match) {
-            <div class="names">
-              @for (p of match.participants; track p.roster_entry_id) {
-                @if (p.team === 'B') {
-                  <div>{{ p.nickname }}</div>
+            @if (station(match, match.serve?.team_b_right_roster_entry_id ?? null); as topStation) {
+              <div class="station station--top" [class.station--server]="topStation.isServer">
+                {{ topStation.nickname }}
+                @if (topStation.isServer) {
+                  <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                 }
-              }
-            </div>
+              </div>
+            }
           }
-          <span class="score">{{ state.current_match?.score_b ?? 0 }}</span>
-          @if (canScore() && state.current_match) {
-            <div class="buttons">
-              <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">+1</button>
-              <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('B', -1)">-1</button>
-            </div>
+          <div class="team-center">
+            <span class="score">{{ state.current_match?.score_b ?? 0 }}</span>
+            @if (canScore() && state.current_match) {
+              <div class="buttons">
+                <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">+1</button>
+                <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('B', -1)">-1</button>
+              </div>
+            }
+          </div>
+          @if (state.current_match; as match) {
+            @if (station(match, match.serve?.team_b_left_roster_entry_id ?? null); as bottomStation) {
+              <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
+                {{ bottomStation.nickname }}
+                @if (bottomStation.isServer) {
+                  <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
+                }
+              </div>
+            }
           }
         </div>
       </div>

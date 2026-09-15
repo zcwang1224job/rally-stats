@@ -495,6 +495,9 @@
     "allCourtsTitle": "All Courts Control Panel",
     "noCourtsYet": "No courts yet"
   },
+  "scoreboard": {
+    "serving": "Serving"
+  },
   "scheduleManagement": {
     "sectionTitle": "Court Control",
     "roundLabel": "Round {{round}}",

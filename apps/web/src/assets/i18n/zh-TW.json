@@ -495,6 +495,9 @@
     "allCourtsTitle": "全部場地控制板",
     "noCourtsYet": "目前尚無場地"
   },
+  "scoreboard": {
+    "serving": "發球中"
+  },
   "scheduleManagement": {
     "sectionTitle": "場地控制",
     "roundLabel": "第 {{round}} 輪",

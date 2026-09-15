@@ -5,7 +5,7 @@ import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
-import { CourtStateResponse, Team } from '../../core/api/court-live-state.models';
+import { CourtStateResponse, MatchLiveDetail, Team } from '../../core/api/court-live-state.models';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
@@ -137,12 +137,22 @@ export class ScoreboardComponent {
       .subscribe(this.subscribedChannel, 'match.scoreUpdated')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((message) => {
-        const data = message.data as { match_id: string; score_a: number; score_b: number };
+        const data = message.data as {
+          match_id: string;
+          score_a: number;
+          score_b: number;
+          serve: MatchLiveDetail['serve'];
+        };
         const state = this.liveState();
         if (state?.current_match?.match_id === data.match_id) {
           this.liveState.set({
             ...state,
-            current_match: { ...state.current_match, score_a: data.score_a, score_b: data.score_b },
+            current_match: {
+              ...state.current_match,
+              score_a: data.score_a,
+              score_b: data.score_b,
+              serve: data.serve,
+            },
           });
         }
       });
@@ -161,6 +171,24 @@ export class ScoreboardComponent {
       .subscribe(this.subscribedChannel, 'match.nextRound')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.loadState());
+  }
+
+  /** 029-serve-rotation-display FR-004/FR-006: resolves one of the four
+   * station slots (`match.serve`'s `team_{a,b}_{right,left}_roster_entry_id`)
+   * to the participant standing there — `null` for an empty slot (singles;
+   * data-model.md's station fields are `null` there by design) or when
+   * `serve` itself hasn't been computed yet (legacy match, research.md
+   * Decision 4). `isServer` drives the non-purely-color marker (FR-005,
+   * Constitution VII) — never the station's own presence/absence. */
+  station(match: MatchLiveDetail, rosterEntryId: string | null): { nickname: string; isServer: boolean } | null {
+    if (!rosterEntryId) {
+      return null;
+    }
+    const participant = match.participants.find((p) => p.roster_entry_id === rosterEntryId);
+    if (!participant) {
+      return null;
+    }
+    return { nickname: participant.nickname, isServer: match.serve?.server_roster_entry_id === rosterEntryId };
   }
 
   /** 同 ControlPanelComponent.score()——`canScore()` 已經在模板端決定按鈕

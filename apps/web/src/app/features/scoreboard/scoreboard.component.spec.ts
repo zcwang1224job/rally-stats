@@ -1,8 +1,8 @@
 import { convertToParamMap, ActivatedRoute } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
-import { of, EMPTY, NEVER } from 'rxjs';
-import { signal } from '@angular/core';
+import { of, EMPTY, NEVER, Observable, Subject } from 'rxjs';
+import { signal, WritableSignal } from '@angular/core';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
@@ -21,12 +21,39 @@ const courtInfo = {
   owner_language: 'en',
 };
 
-function realtimeStub(connected = true) {
+interface RealtimeStub {
+  connectionState: WritableSignal<string>;
+  subscribe: (channel: string, event: string) => Observable<{ data: unknown }>;
+}
+
+interface ReconnectStub {
+  onReconnect: () => Observable<void>;
+}
+
+function realtimeStub(connected = true): RealtimeStub {
   return { connectionState: signal(connected ? 'connected' : 'disconnected'), subscribe: () => EMPTY };
 }
 
-function reconnectStub() {
+// 029-serve-rotation-display: lets a test push a message onto exactly one
+// named Ably event (e.g. 'match.scoreUpdated') while every other
+// subscription still behaves like the plain `realtimeStub` (EMPTY).
+function realtimeStubWithEvent(
+  event: string,
+  subject: Subject<{ data: unknown }>,
+  connected = true,
+): RealtimeStub {
+  return {
+    connectionState: signal(connected ? 'connected' : 'disconnected'),
+    subscribe: (_channel: string, e: string) => (e === event ? subject : EMPTY),
+  };
+}
+
+function reconnectStub(): ReconnectStub {
   return { onReconnect: () => EMPTY };
+}
+
+function reconnectStubWithTrigger(trigger$: Subject<void>): ReconnectStub {
+  return { onReconnect: () => trigger$ };
 }
 
 function setup(
@@ -34,6 +61,8 @@ function setup(
   connected = true,
   courtControl: Partial<CourtControlService> = {},
   linkHeartbeat: { watchCourtLink: () => unknown } = { watchCourtLink: () => of(courtInfo) },
+  realtime: RealtimeStub = realtimeStub(connected),
+  reconnect: ReconnectStub = reconnectStub(),
 ) {
   TestBed.configureTestingModule({
     imports: [ScoreboardComponent],
@@ -44,8 +73,8 @@ function setup(
         useValue: { snapshot: { paramMap: convertToParamMap({ courtToken: 'tok' }) } },
       },
       { provide: LinkHeartbeatService, useValue: linkHeartbeat },
-      { provide: RealtimeService, useFactory: () => realtimeStub(connected) },
-      { provide: ReconnectRefetchService, useFactory: reconnectStub },
+      { provide: RealtimeService, useValue: realtime },
+      { provide: ReconnectRefetchService, useValue: reconnect },
       {
         provide: CourtControlService,
         useValue: { getState: () => of(courtState), ...courtControl },
@@ -64,8 +93,17 @@ function setup(
   return fixture;
 }
 
+const doublesServe = {
+  server_roster_entry_id: 'p1',
+  server_team: 'A' as const,
+  team_a_right_roster_entry_id: 'p1',
+  team_a_left_roster_entry_id: 'p2',
+  team_b_right_roster_entry_id: 'p3',
+  team_b_left_roster_entry_id: 'p4',
+};
+
 describe('ScoreboardComponent', () => {
-  it('doubles match: each team panel shows both participants stacked', () => {
+  it('doubles match: each team panel shows both participants, each in their own station', () => {
     const fixture = setup({
       court_id: 'c1',
       round_number: 1,
@@ -80,6 +118,7 @@ describe('ScoreboardComponent', () => {
           { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
           { roster_entry_id: 'p4', nickname: '李丁', team: 'B' },
         ],
+        serve: doublesServe,
       },
       waiting_reason: null,
       next_up: null,
@@ -87,6 +126,8 @@ describe('ScoreboardComponent', () => {
 
     const teamA = fixture.nativeElement.querySelector('.team--a');
     const teamB = fixture.nativeElement.querySelector('.team--b');
+    expect(teamA.querySelectorAll('.station').length).toBe(2);
+    expect(teamB.querySelectorAll('.station').length).toBe(2);
     expect(teamA.textContent).toContain('陳甲');
     expect(teamA.textContent).toContain('劉乙');
     expect(teamB.textContent).toContain('徐丙');
@@ -95,7 +136,7 @@ describe('ScoreboardComponent', () => {
     expect(teamB.querySelector('.score').textContent).toContain('7');
   });
 
-  it('singles match: each team panel shows exactly one participant', () => {
+  it('singles match: each team panel shows exactly one station, the other stays blank', () => {
     const fixture = setup({
       court_id: 'c1',
       round_number: 1,
@@ -108,13 +149,66 @@ describe('ScoreboardComponent', () => {
           { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
           { roster_entry_id: 'p2', nickname: '徐丙', team: 'B' },
         ],
+        serve: {
+          server_roster_entry_id: 'p1',
+          server_team: 'A',
+          team_a_right_roster_entry_id: 'p1',
+          team_a_left_roster_entry_id: null,
+          team_b_right_roster_entry_id: null,
+          team_b_left_roster_entry_id: 'p2',
+        },
       },
       waiting_reason: null,
       next_up: null,
     });
 
     const teamA = fixture.nativeElement.querySelector('.team--a');
-    expect(teamA.querySelectorAll('.names div').length).toBe(1);
+    const teamB = fixture.nativeElement.querySelector('.team--b');
+    expect(teamA.querySelectorAll('.station').length).toBe(1);
+    expect(teamB.querySelectorAll('.station').length).toBe(1);
+    expect(teamA.textContent).toContain('陳甲');
+    expect(teamB.textContent).toContain('徐丙');
+  });
+
+  it('shows a non-color server marker only on the serving station (US1 FR-005)', () => {
+    const fixture = setup({
+      court_id: 'c1',
+      round_number: 1,
+      current_match: {
+        match_id: 'm1',
+        status: 'in_progress',
+        score_a: 5,
+        score_b: 7,
+        participants: [
+          { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+          { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+          { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+          { roster_entry_id: 'p4', nickname: '李丁', team: 'B' },
+        ],
+        serve: doublesServe,
+      },
+      waiting_reason: null,
+      next_up: null,
+    });
+
+    const badges = fixture.nativeElement.querySelectorAll('.server-badge');
+    expect(badges.length).toBe(1);
+    expect(badges[0].textContent.trim().length).toBeGreaterThan(0);
+    const serverStation = fixture.nativeElement.querySelector('.station--server');
+    expect(serverStation.textContent).toContain('陳甲');
+  });
+
+  it('does not render any station when there is no current match (FR-007)', () => {
+    const fixture = setup({
+      court_id: 'c1',
+      round_number: 1,
+      current_match: null,
+      waiting_reason: 'no_queued_match',
+      next_up: null,
+    });
+
+    expect(fixture.nativeElement.querySelectorAll('.station').length).toBe(0);
+    expect(fixture.nativeElement.querySelector('.server-badge')).toBeNull();
   });
 
   it('shows the next-up badge when next_up is present', () => {
@@ -235,5 +329,106 @@ describe('ScoreboardComponent', () => {
     setup(null, true, {}, { watchCourtLink: () => NEVER });
 
     expect(TestBed.inject(TranslateService).currentLang()).not.toBe('en');
+  });
+
+  // 029-serve-rotation-display
+
+  it('merges serve from a match.scoreUpdated event without refetching (US1 FR-009)', () => {
+    const scoreUpdated$ = new Subject<{ data: unknown }>();
+    const fixture = setup(
+      {
+        court_id: 'c1',
+        round_number: 1,
+        current_match: {
+          match_id: 'm1',
+          status: 'in_progress',
+          score_a: 0,
+          score_b: 0,
+          participants: [
+            { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+            { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+            { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+            { roster_entry_id: 'p4', nickname: '李丁', team: 'B' },
+          ],
+          serve: doublesServe,
+        },
+        waiting_reason: null,
+        next_up: null,
+      },
+      true,
+      {},
+      undefined,
+      realtimeStubWithEvent('match.scoreUpdated', scoreUpdated$),
+    );
+
+    // Side-out: B (徐丙) takes over serve.
+    scoreUpdated$.next({
+      data: {
+        match_id: 'm1',
+        score_a: 5,
+        score_b: 8,
+        serve: {
+          server_roster_entry_id: 'p3',
+          server_team: 'B',
+          team_a_right_roster_entry_id: 'p1',
+          team_a_left_roster_entry_id: 'p2',
+          team_b_right_roster_entry_id: 'p3',
+          team_b_left_roster_entry_id: 'p4',
+        },
+      },
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('5');
+    expect(fixture.nativeElement.querySelector('.station--server').textContent).toContain('徐丙');
+  });
+
+  it('reflects a reconnect-triggered full state refetch (US3 FR-011, spec Edge Case)', () => {
+    const reconnect$ = new Subject<void>();
+    const buildState = (servingNickname: 'A' | 'B') => ({
+      court_id: 'c1',
+      round_number: 1,
+      current_match: {
+        match_id: 'm1',
+        status: 'in_progress',
+        score_a: 5,
+        score_b: 8,
+        participants: [
+          { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+          { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+          { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+          { roster_entry_id: 'p4', nickname: '李丁', team: 'B' },
+        ],
+        serve: {
+          server_roster_entry_id: servingNickname === 'A' ? 'p1' : 'p3',
+          server_team: servingNickname,
+          team_a_right_roster_entry_id: 'p1',
+          team_a_left_roster_entry_id: 'p2',
+          team_b_right_roster_entry_id: 'p3',
+          team_b_left_roster_entry_id: 'p4',
+        },
+      },
+      waiting_reason: null,
+      next_up: null,
+    });
+    const getStateSpy = vi
+      .fn()
+      .mockReturnValueOnce(of(buildState('A')))
+      .mockReturnValueOnce(of(buildState('B')));
+
+    const fixture = setup(
+      null,
+      true,
+      { getState: getStateSpy },
+      undefined,
+      undefined,
+      reconnectStubWithTrigger(reconnect$),
+    );
+    expect(fixture.nativeElement.querySelector('.station--server').textContent).toContain('陳甲');
+
+    reconnect$.next();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.station--server').textContent).toContain('徐丙');
   });
 });

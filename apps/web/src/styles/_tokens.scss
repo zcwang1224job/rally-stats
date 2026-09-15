@@ -71,6 +71,14 @@
   --font-family-base:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
     sans-serif;
+  // Digits only (the scoreboard's score) — a monospaced/tabular numeral
+  // stack so every digit occupies the same width (no reflow as the score
+  // changes) and reads with the blockier, more "digital scoreboard"
+  // character than the UI sans above. Still system fonts, same
+  // "no new dependency" reasoning as --font-family-base.
+  --font-family-score:
+    ui-monospace, 'SF Mono', 'Segoe UI Mono', Consolas, 'Roboto Mono',
+    monospace;
   --font-size-display: 3rem; // scoreboard score (FR-004: readable at a distance)
   --font-size-heading: 1.5rem;
   --font-size-body: 1rem;

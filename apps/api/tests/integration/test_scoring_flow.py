@@ -9,13 +9,63 @@ Note (011-round-robin-scheduling): 單打 fair_rotation 一個 round 產生的�
 該場地就會立刻領到下一場，而不是等到下一輪。本測試以此真實行為為準。"""
 
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.schedule.models import ScoreServeRecord
+
 pytestmark = pytest.mark.asyncio
+
+
+async def _create_doubles_match_via_manual_assign(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str, group_name: str
+) -> tuple[dict, dict, str]:
+    """Manual-scheduling doubles group, one court, 4 roster entries manually
+    assigned 2v2 onto that court — puts the match straight to `in_progress`
+    (same pattern as 030-score-serve-record's own integration tests)."""
+    created = (
+        await client.post(
+            "/groups",
+            json={
+                "name": group_name,
+                "max_members": 4,
+                "match_mode": "doubles",
+                "scheduling_mechanism": "manual",
+                "creator_nickname": "P0",
+                "turnstile_token": valid_turnstile_token,
+            },
+        )
+    ).json()
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    group_id = created["group_id"]
+
+    court = (
+        await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"})
+    ).json()
+
+    roster_ids = [str(uuid.uuid4()) for _ in range(4)]
+    for i, rid in enumerate(roster_ids):
+        await db_session.execute(
+            text(
+                "INSERT INTO roster_entries (id, group_id, nickname, status, is_creator) "
+                "VALUES (:id, :group_id, :nickname, 'active', false)"
+            ),
+            {"id": rid, "group_id": group_id, "nickname": f"P{i + 1}"},
+        )
+    await db_session.commit()
+
+    teams = {pid: "A" for pid in roster_ids[:2]} | {pid: "B" for pid in roster_ids[2:]}
+    assign_response = await client.post(
+        f"/courts/{court['court_id']}/manual-assign",
+        headers=headers,
+        json={"participant_ids": roster_ids, "teams": teams},
+    )
+    assert assign_response.status_code == 201, assign_response.text
+    return created, court, assign_response.json()["match_id"]
 
 
 async def test_score_to_natural_completion_then_picks_up_next_queued_match(
@@ -117,3 +167,104 @@ async def test_score_to_natural_completion_then_picks_up_next_queued_match(
     assert round2["round_number"] == 2
     assert round2["current_match"] is not None
     assert round2["current_match"]["score_a"] == 0
+
+
+# --- 029-serve-rotation-display: `serve` rides match.scoreUpdated -------------
+
+
+async def test_score_updated_event_carries_serve_for_plus_one_and_minus_one(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    valid_turnstile_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publish_mock = AsyncMock()
+    monkeypatch.setattr("app.domains.schedule.service.publish", publish_mock)
+
+    _created, court, match_id = await _create_doubles_match_via_manual_assign(
+        client, db_session, valid_turnstile_token, "Score Updated Serve"
+    )
+    control_url = f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}"
+
+    def score_updated_calls() -> list:
+        return [c for c in publish_mock.await_args_list if c.args[1] == "match.scoreUpdated"]
+
+    # (a) +1: `serve` in the published event matches the ScoreServeRecord
+    # this same call persisted.
+    plus_one = await client.post(f"{control_url}/score", json={"side": "A", "delta": 1})
+    assert plus_one.status_code == 200
+    record = (
+        await db_session.execute(
+            select(ScoreServeRecord).where(ScoreServeRecord.match_id == uuid.UUID(match_id))
+        )
+    ).scalar_one()
+    plus_one_serve = score_updated_calls()[-1].args[2]["serve"]
+    assert plus_one_serve == {
+        "server_roster_entry_id": str(record.server_roster_entry_id),
+        "server_team": record.server_team,
+        "team_a_right_roster_entry_id": (
+            str(record.team_a_right_roster_entry_id)
+            if record.team_a_right_roster_entry_id
+            else None
+        ),
+        "team_a_left_roster_entry_id": (
+            str(record.team_a_left_roster_entry_id) if record.team_a_left_roster_entry_id else None
+        ),
+        "team_b_right_roster_entry_id": (
+            str(record.team_b_right_roster_entry_id)
+            if record.team_b_right_roster_entry_id
+            else None
+        ),
+        "team_b_left_roster_entry_id": (
+            str(record.team_b_left_roster_entry_id) if record.team_b_left_roster_entry_id else None
+        ),
+    }
+
+    # (b) -1 (FR-010): MUST NOT raise (regression guard for the `serve_record`
+    # NameError this task's design explicitly avoids), MUST still publish
+    # match.scoreUpdated with a `serve`, with the SAME server as before (a
+    # correction is not a side-out, 030 Decision 5) but station slots
+    # recomputed for the corrected (now even) score.
+    minus_one = await client.post(f"{control_url}/score", json={"side": "A", "delta": -1})
+    assert minus_one.status_code == 200
+    assert minus_one.json()["applied"] is True
+    minus_one_serve = score_updated_calls()[-1].args[2]["serve"]
+    assert minus_one_serve is not None
+    assert minus_one_serve["server_team"] == plus_one_serve["server_team"]
+    assert minus_one_serve["server_roster_entry_id"] == plus_one_serve["server_roster_entry_id"]
+    # Score is back to 0-0 (even) — station slots should match the
+    # match's original (pre-scoring) station, i.e. the mirror image of
+    # the +1 event's slots is not asserted here since the actual left/
+    # right assignment depends on parity, which flipped back to even.
+    assert minus_one_serve["team_a_right_roster_entry_id"] is not None
+    assert minus_one_serve["team_a_left_roster_entry_id"] is not None
+    assert minus_one_serve["team_b_right_roster_entry_id"] is not None
+    assert minus_one_serve["team_b_left_roster_entry_id"] is not None
+
+    # The `-1` MUST NOT have created a second ScoreServeRecord.
+    records = (
+        await db_session.execute(
+            select(ScoreServeRecord).where(ScoreServeRecord.match_id == uuid.UUID(match_id))
+        )
+    ).scalars().all()
+    assert len(records) == 1
+
+
+# --- User Story 3: multiple simultaneous viewers see the same serve -----------
+
+
+async def test_two_state_reads_after_scoring_return_identical_serve(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, match_id = await _create_doubles_match_via_manual_assign(
+        client, db_session, valid_turnstile_token, "Serve Multi Viewer"
+    )
+    control_url = f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}"
+    await client.post(f"{control_url}/score", json={"side": "A", "delta": 1})
+
+    # Two independent "devices" both loading the scoreboard link.
+    device1 = (await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")).json()
+    device2 = (await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")).json()
+
+    assert device1["current_match"]["serve"] == device2["current_match"]["serve"]
+    assert device1["current_match"]["serve"] is not None

@@ -1,5 +1,8 @@
 """Contract test for GET /courts/by-token/{token}/state per
-contracts/scoring-api.md."""
+contracts/scoring-api.md.
+
+029-serve-rotation-display: also covers `current_match.serve` — see
+contracts/court-state-serve-fields.md (specs/029-serve-rotation-display/)."""
 
 import uuid
 
@@ -9,6 +12,55 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
+
+
+async def _create_doubles_match_via_manual_assign(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str, group_name: str
+) -> tuple[dict, dict, str, list[str], list[str]]:
+    """Manual-scheduling doubles group, one court, 4 roster entries manually
+    assigned 2v2 onto that court — puts the match straight to `in_progress`
+    (same pattern as 030-score-serve-record's own integration tests)."""
+    created = (
+        await client.post(
+            "/groups",
+            json={
+                "name": group_name,
+                "max_members": 4,
+                "match_mode": "doubles",
+                "scheduling_mechanism": "manual",
+                "creator_nickname": "P0",
+                "turnstile_token": valid_turnstile_token,
+            },
+        )
+    ).json()
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    group_id = created["group_id"]
+
+    court = (
+        await client.post(f"/groups/{group_id}/courts", headers=headers, json={"name": "1號場"})
+    ).json()
+
+    roster_ids = [str(uuid.uuid4()) for _ in range(4)]
+    for i, rid in enumerate(roster_ids):
+        await db_session.execute(
+            text(
+                "INSERT INTO roster_entries (id, group_id, nickname, status, is_creator) "
+                "VALUES (:id, :group_id, :nickname, 'active', false)"
+            ),
+            {"id": rid, "group_id": group_id, "nickname": f"P{i + 1}"},
+        )
+    await db_session.commit()
+
+    team_a_ids, team_b_ids = roster_ids[:2], roster_ids[2:]
+    teams = {pid: "A" for pid in team_a_ids} | {pid: "B" for pid in team_b_ids}
+    assign_response = await client.post(
+        f"/courts/{court['court_id']}/manual-assign",
+        headers=headers,
+        json={"participant_ids": roster_ids, "teams": teams},
+    )
+    assert assign_response.status_code == 201, assign_response.text
+    match_id = assign_response.json()["match_id"]
+    return created, court, match_id, team_a_ids, team_b_ids
 
 
 async def _create_group_with_active_match(
@@ -177,3 +229,84 @@ async def test_get_state_algorithmic_mode_picks_up_manually_queued_match(
     assert body["current_match"]["match_id"] == queued_match_id
     assert body["waiting_reason"] is None
     assert body["next_up"] is None
+
+
+# --- 029-serve-rotation-display: current_match.serve --------------------------
+
+
+async def test_get_state_serve_field_doubles(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, _match_id, team_a_ids, team_b_ids = (
+        await _create_doubles_match_via_manual_assign(
+            client, db_session, valid_turnstile_token, "Court State Serve Doubles"
+        )
+    )
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    serve = response.json()["current_match"]["serve"]
+    assert serve is not None
+    assert serve["server_team"] in ("A", "B")
+    assert serve["server_roster_entry_id"] in team_a_ids + team_b_ids
+    assert serve["team_a_right_roster_entry_id"] is not None
+    assert serve["team_a_left_roster_entry_id"] is not None
+    assert serve["team_b_right_roster_entry_id"] is not None
+    assert serve["team_b_left_roster_entry_id"] is not None
+    assert {serve["team_a_right_roster_entry_id"], serve["team_a_left_roster_entry_id"]} == set(
+        team_a_ids
+    )
+    assert {serve["team_b_right_roster_entry_id"], serve["team_b_left_roster_entry_id"]} == set(
+        team_b_ids
+    )
+    # server_roster_entry_id must be whichever of that team's two station
+    # slots corresponds to serve["server_team"].
+    server_team_slots = (
+        {serve["team_a_right_roster_entry_id"], serve["team_a_left_roster_entry_id"]}
+        if serve["server_team"] == "A"
+        else {serve["team_b_right_roster_entry_id"], serve["team_b_left_roster_entry_id"]}
+    )
+    assert serve["server_roster_entry_id"] in server_team_slots
+
+
+async def test_get_state_serve_field_singles(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    serve = response.json()["current_match"]["serve"]
+    assert serve is not None
+    team_a_slots = [serve["team_a_right_roster_entry_id"], serve["team_a_left_roster_entry_id"]]
+    team_b_slots = [serve["team_b_right_roster_entry_id"], serve["team_b_left_roster_entry_id"]]
+    assert sum(slot is not None for slot in team_a_slots) == 1
+    assert sum(slot is not None for slot in team_b_slots) == 1
+
+
+# --- User Story 2: serve populated immediately at match start -----------------
+
+
+async def test_get_state_serve_populated_immediately_at_match_start(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """No scoring call anywhere in this test — `serve` MUST already be
+    non-null the moment a match becomes in_progress (FR-001/FR-002,
+    already implemented and unit-tested by 030-score-serve-record; this
+    confirms the API surface this feature adds correctly reflects it)."""
+    _created, court, _match_id, team_a_ids, team_b_ids = (
+        await _create_doubles_match_via_manual_assign(
+            client, db_session, valid_turnstile_token, "Court State Serve US2"
+        )
+    )
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    serve = response.json()["current_match"]["serve"]
+    assert serve is not None
+    assert serve["server_roster_entry_id"] in team_a_ids + team_b_ids

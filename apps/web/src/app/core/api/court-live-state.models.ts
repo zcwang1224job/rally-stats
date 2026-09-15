@@ -12,12 +12,26 @@ export interface ParticipantSummary {
   team: Team;
 }
 
+// 029-serve-rotation-display: who's serving and where everyone stands right
+// now — mirrors 030-score-serve-record's ScoreServeRecord column shape 1:1.
+export interface ServeStationInfo {
+  server_roster_entry_id: string;
+  server_team: Team;
+  team_a_right_roster_entry_id: string | null;
+  team_a_left_roster_entry_id: string | null;
+  team_b_right_roster_entry_id: string | null;
+  team_b_left_roster_entry_id: string | null;
+}
+
 export interface MatchLiveDetail {
   match_id: string;
   status: 'in_progress';
   score_a: number;
   score_b: number;
   participants: ParticipantSummary[];
+  // null when the match has no serve state yet (a match created before
+  // 030-score-serve-record's migration).
+  serve: ServeStationInfo | null;
 }
 
 export interface NextUpPreview {

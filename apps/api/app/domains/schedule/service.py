@@ -6,6 +6,7 @@ import random
 import secrets
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -33,6 +34,7 @@ from app.domains.schedule.models import (
     PairHistory,
     Partnership,
     ScoreEvent,
+    ScoreServeRecord,
 )
 from app.domains.schedule.schemas import (
     CourtLiveState,
@@ -51,6 +53,7 @@ from app.domains.schedule.schemas import (
     RoundPhase,
     ScheduleResponse,
     ScoreMutationResult,
+    ServeStationInfo,
     Team,
     TemporaryPairing,
     TemporaryPairingsResponse,
@@ -150,6 +153,137 @@ async def get_pair_count(
     return result.scalar_one_or_none() or 0
 
 
+@dataclass(frozen=True)
+class StationResult:
+    """Output of `_compute_station()` — one snapshot of "who's serving and
+    where everyone stands", per specs/030-score-serve-record/data-model.md
+    站位計算公式. Field names mirror `ScoreServeRecord`'s columns 1:1."""
+
+    server_roster_entry_id: uuid.UUID
+    server_team: Team
+    team_a_right_roster_entry_id: uuid.UUID | None
+    team_a_left_roster_entry_id: uuid.UUID | None
+    team_b_right_roster_entry_id: uuid.UUID | None
+    team_b_left_roster_entry_id: uuid.UUID | None
+
+
+def _team_station(
+    reference_server_id: uuid.UUID, participants: Sequence[uuid.UUID], score: int
+) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+    """One team's (right, left) station occupants — research.md Decision 3:
+    the reference server stands right when their team's score is even, left
+    when odd; the other participant (doubles only — `None` for singles)
+    always takes the opposite box. For singles (`other` is `None`), this
+    correctly leaves the box the reference server isn't in as `None` in
+    either parity, rather than swapping which box is empty."""
+    other = next((p for p in participants if p != reference_server_id), None)
+    if score % 2 == 0:
+        return reference_server_id, other
+    return other, reference_server_id
+
+
+def _compute_station(
+    serving_team: Team,
+    team_a_participants: Sequence[uuid.UUID],
+    team_b_participants: Sequence[uuid.UUID],
+    team_a_reference_server_id: uuid.UUID,
+    team_b_reference_server_id: uuid.UUID,
+    score_a: int,
+    score_b: int,
+) -> StationResult:
+    """Pure function — 030-score-serve-record research.md Decision 3. Given
+    which team currently serves, each team's reference server, and the
+    current score, derives all four station slots (singles: one slot per
+    team stays `None`) and who's currently serving."""
+    team_a_right, team_a_left = _team_station(
+        team_a_reference_server_id, team_a_participants, score_a
+    )
+    team_b_right, team_b_left = _team_station(
+        team_b_reference_server_id, team_b_participants, score_b
+    )
+    server_roster_entry_id = (
+        team_a_reference_server_id if serving_team == "A" else team_b_reference_server_id
+    )
+    return StationResult(
+        server_roster_entry_id=server_roster_entry_id,
+        server_team=serving_team,
+        team_a_right_roster_entry_id=team_a_right,
+        team_a_left_roster_entry_id=team_a_left,
+        team_b_right_roster_entry_id=team_b_right,
+        team_b_left_roster_entry_id=team_b_left,
+    )
+
+
+async def _match_participants_by_team(
+    session: AsyncSession, match_id: uuid.UUID
+) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    """Returns (team_a_roster_entry_ids, team_b_roster_entry_ids) for a
+    match — shared by `_initialize_serve_state()`,
+    `_advance_serve_state_and_snapshot()`, and `_build_serve_station()`."""
+    result = await session.execute(
+        select(MatchParticipant.roster_entry_id, MatchParticipant.team).where(
+            MatchParticipant.match_id == match_id
+        )
+    )
+    team_a: list[uuid.UUID] = []
+    team_b: list[uuid.UUID] = []
+    for roster_entry_id, team in result.all():
+        (team_a if team == "A" else team_b).append(roster_entry_id)
+    return team_a, team_b
+
+
+async def _build_serve_station(session: AsyncSession, match: Match) -> ServeStationInfo | None:
+    """029-serve-rotation-display: the *live* equivalent of a
+    `ScoreServeRecord` snapshot — computed fresh from `match`'s currently
+    persisted serve state + score, not stored anywhere itself. `None` when
+    the match has no serve state yet (research.md Decision 4 — a match
+    created before 030-score-serve-record's migration).
+
+    Shared by `court_live_state()` (every read) and `apply_score_delta()`'s
+    `delta < 0` branch (`-1` doesn't advance the serve state, so there's no
+    fresh `ScoreServeRecord` to reuse there like the `delta > 0` branch
+    does — this recomputes from the unchanged serve state + corrected
+    score instead, per FR-010)."""
+    if match.serving_team is None:
+        return None
+    team_a, team_b = await _match_participants_by_team(session, match.id)
+    station = _compute_station(
+        cast(Team, match.serving_team),
+        team_a,
+        team_b,
+        cast(uuid.UUID, match.team_a_reference_server_id),
+        cast(uuid.UUID, match.team_b_reference_server_id),
+        match.score_a,
+        match.score_b,
+    )
+    return ServeStationInfo(
+        server_roster_entry_id=str(station.server_roster_entry_id),
+        server_team=station.server_team,
+        team_a_right_roster_entry_id=_opt_str(station.team_a_right_roster_entry_id),
+        team_a_left_roster_entry_id=_opt_str(station.team_a_left_roster_entry_id),
+        team_b_right_roster_entry_id=_opt_str(station.team_b_right_roster_entry_id),
+        team_b_left_roster_entry_id=_opt_str(station.team_b_left_roster_entry_id),
+    )
+
+
+def _opt_str(value: uuid.UUID | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+async def _initialize_serve_state(session: AsyncSession, match: Match) -> None:
+    """030-score-serve-record FR-001/FR-002 (research.md Decision 4/5):
+    called once, exactly when a match becomes `in_progress` (the only two
+    call sites are `create_match_with_participants()` and
+    `pull_queued_match_for_court()`) — randomly assigns the serving team
+    and, for doubles, each team's own reference server (both the serving
+    and the receiving side, so `_compute_station()` has a starting point
+    for all four slots). Mutates `match` in place; caller flushes/commits."""
+    team_a, team_b = await _match_participants_by_team(session, match.id)
+    match.serving_team = random.choice(("A", "B"))
+    match.team_a_reference_server_id = random.choice(team_a)
+    match.team_b_reference_server_id = random.choice(team_b)
+
+
 async def create_match_with_participants(
     session: AsyncSession,
     group: Group,
@@ -186,6 +320,9 @@ async def create_match_with_participants(
 
     await _increment_pair_history(session, group.id, list(team_a) + list(team_b))
     await session.flush()
+    if status == "in_progress":
+        await _initialize_serve_state(session, match)
+        await session.flush()
     return match
 
 
@@ -282,6 +419,7 @@ async def pull_queued_match_for_court(
     match.court_id = court_id
     match.status = "in_progress"
     match.started_at = datetime.now(UTC)
+    await _initialize_serve_state(session, match)
     await session.flush()
     return match
 
@@ -2014,6 +2152,58 @@ async def _advance_after_terminal(session: AsyncSession, match: Match) -> Match 
     return pulled
 
 
+async def _advance_serve_state_and_snapshot(
+    session: AsyncSession, match: Match, side: Team, score_a: int, score_b: int
+) -> ScoreServeRecord:
+    """030-score-serve-record FR-001~003 (research.md Decision 2). Called
+    ONLY from `apply_score_delta()`'s `delta > 0` branch — `-1` MUST NOT
+    call this (Decision 5). `score_a`/`score_b` are the POST-increment
+    totals from that branch's `UPDATE ... RETURNING` — NOT `match.score_a`/
+    `score_b`, which the ORM instance doesn't reflect until refreshed.
+
+    Advances `match.serving_team`/`team_a_reference_server_id`/
+    `team_b_reference_server_id` in place (side-out swap when `side` isn't
+    the team that was already serving) and returns the immutable
+    `ScoreServeRecord` snapshot to insert — caller still needs to set
+    `score_event_id` and add it to the session."""
+    team_a, team_b = await _match_participants_by_team(session, match.id)
+
+    if side != match.serving_team:
+        # Side-out: serve passes to `side`. That team's reference server
+        # alternates to whichever of its (up to 2) participants doesn't
+        # currently hold it (singles: the same lone participant, a no-op).
+        participants = team_a if side == "A" else team_b
+        current = (
+            match.team_a_reference_server_id if side == "A" else match.team_b_reference_server_id
+        )
+        new_server = next((p for p in participants if p != current), current)
+        match.serving_team = side
+        if side == "A":
+            match.team_a_reference_server_id = new_server
+        else:
+            match.team_b_reference_server_id = new_server
+
+    station = _compute_station(
+        cast(Team, match.serving_team),
+        team_a,
+        team_b,
+        cast(uuid.UUID, match.team_a_reference_server_id),
+        cast(uuid.UUID, match.team_b_reference_server_id),
+        score_a,
+        score_b,
+    )
+    return ScoreServeRecord(
+        match_id=match.id,
+        group_id=match.group_id,
+        server_roster_entry_id=station.server_roster_entry_id,
+        server_team=station.server_team,
+        team_a_right_roster_entry_id=station.team_a_right_roster_entry_id,
+        team_a_left_roster_entry_id=station.team_a_left_roster_entry_id,
+        team_b_right_roster_entry_id=station.team_b_right_roster_entry_id,
+        team_b_left_roster_entry_id=station.team_b_left_roster_entry_id,
+    )
+
+
 async def apply_score_delta(
     session: AsyncSession,
     court: Court,
@@ -2051,8 +2241,10 @@ async def apply_score_delta(
     await session.execute(
         update(Group).where(Group.id == match.group_id).values(last_activity_at=datetime.now(UTC))
     )
+    score_event_id = uuid.uuid4()
     session.add(
         ScoreEvent(
+            id=score_event_id,
             match_id=match_id,
             group_id=match.group_id,
             side=side,
@@ -2062,6 +2254,15 @@ async def apply_score_delta(
             source=source,
         )
     )
+
+    if delta > 0:
+        # 030-score-serve-record FR-001/FR-004: only a genuine point (+1)
+        # advances the serve state and leaves a snapshot — `-1` MUST NOT.
+        serve_record = await _advance_serve_state_and_snapshot(
+            session, match, side, row.score_a, row.score_b
+        )
+        serve_record.score_event_id = score_event_id
+        session.add(serve_record)
 
     await session.commit()
     await session.refresh(match)
@@ -2080,10 +2281,48 @@ async def apply_score_delta(
         pulled = await _advance_after_terminal(session, match)
         await _publish_match_ended(session, match, court, pulled)
     else:
+        # 029-serve-rotation-display FR-009/FR-010: `serve` rides the same
+        # event as the score itself. `delta > 0` already has a freshly
+        # computed station from `serve_record` above — reuse its fields
+        # rather than calling `_compute_station()` a second time. `delta <
+        # 0` never advances the serve state (research.md Decision 5), so
+        # there's no `serve_record` in scope here; recompute fresh from the
+        # unchanged serve state + corrected score instead (same helper
+        # `court_live_state()` uses).
+        serve_payload: dict[str, str | None] | None
+        if delta > 0:
+            serve_payload = {
+                "server_roster_entry_id": str(serve_record.server_roster_entry_id),
+                "server_team": serve_record.server_team,
+                "team_a_right_roster_entry_id": _opt_str(serve_record.team_a_right_roster_entry_id),
+                "team_a_left_roster_entry_id": _opt_str(serve_record.team_a_left_roster_entry_id),
+                "team_b_right_roster_entry_id": _opt_str(serve_record.team_b_right_roster_entry_id),
+                "team_b_left_roster_entry_id": _opt_str(serve_record.team_b_left_roster_entry_id),
+            }
+        else:
+            station = await _build_serve_station(session, match)
+            serve_payload = (
+                {
+                    "server_roster_entry_id": station.server_roster_entry_id,
+                    "server_team": station.server_team,
+                    "team_a_right_roster_entry_id": station.team_a_right_roster_entry_id,
+                    "team_a_left_roster_entry_id": station.team_a_left_roster_entry_id,
+                    "team_b_right_roster_entry_id": station.team_b_right_roster_entry_id,
+                    "team_b_left_roster_entry_id": station.team_b_left_roster_entry_id,
+                }
+                if station is not None
+                else None
+            )
+
         await publish(
             court_channel(str(match.group_id), str(court.id)),
             "match.scoreUpdated",
-            {"match_id": str(match.id), "score_a": match.score_a, "score_b": match.score_b},
+            {
+                "match_id": str(match.id),
+                "score_a": match.score_a,
+                "score_b": match.score_b,
+                "serve": serve_payload,
+            },
         )
 
     return _score_mutation_result(applied=True, match=match)
@@ -2167,6 +2406,7 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
             score_a=match.score_a,
             score_b=match.score_b,
             participants=[ParticipantSummary(**p) for p in participants],
+            serve=await _build_serve_station(session, match),
         )
     else:
         waiting_reason = "manual_assignment" if mechanism == "manual" else "no_queued_match"
