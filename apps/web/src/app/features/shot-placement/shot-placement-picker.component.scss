@@ -1,0 +1,246 @@
+.shot-placement-dialog {
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  max-width: 640px;
+  width: calc(100% - var(--space-lg) * 2);
+
+  &::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+  }
+}
+
+h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-heading);
+}
+
+.hint {
+  color: var(--color-text-muted);
+  margin: var(--space-md) 0 var(--space-sm);
+}
+
+.hint--warning {
+  color: var(--color-danger);
+}
+
+.losing-player-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+// 032: shown only once component.ts's recomputeLayoutMode() determines the
+// court + both player sections no longer fit together on this screen.
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-sm);
+}
+
+.tab {
+  flex: 1 1 auto;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+
+  &.tab--active {
+    color: var(--color-brand-primary);
+    border-bottom-color: var(--color-brand-primary);
+  }
+}
+
+// Holds the two content sections (landing / players). Its own scrollHeight
+// (ignoring any max-height cap below) is what recomputeLayoutMode() reads to
+// decide whether tabs are needed; overflow-y here is the fallback for the
+// rare case where even a single tab's own content still doesn't fit the
+// space actually available (component.ts caps max-height to exactly that
+// budget rather than letting content push the always-visible Cancel/Confirm
+// actions off-screen).
+.content {
+  overflow-y: auto;
+}
+
+// While tab mode is on, `[hidden]` (native attribute, set via the template's
+// `[hidden]` binding) keeps the inactive section out of layout entirely —
+// this override is applied only transiently, during recomputeLayoutMode()'s
+// measurement, so a window enlarge can also be detected (an already-hidden
+// section otherwise contributes nothing to `.content`'s scrollHeight).
+.content.measuring-full > [hidden] {
+  display: block !important;
+}
+
+// FR-010: a landing MUST be markable outside the court too (an out shot) —
+// this is the actual click/keyboard target (see the component's doc
+// comment), padded well beyond the drawn `.court` rectangle so there's
+// somewhere to tap for that. The dashed border + faint fill visually reads
+// as "out of bounds", distinct from `.court`'s solid surface.
+.court-area {
+  padding: 6%;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--color-surface-alt) 40%, transparent);
+  cursor: crosshair;
+  touch-action: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}
+
+// The actual court — the coordinate system a click relative to THIS
+// rectangle produces is defined in data-model.md Decision 1: x 0=A
+// baseline, 1=B baseline, net at 0.5; y 0/1 the two sidelines. Pure CSS
+// lines, same lines-only technique as the scoreboard's own court markings —
+// no image asset or drawing library. No `overflow: hidden` here (or on
+// `.court-area` above) — `.landing-marker` below needs to be able to render
+// outside this box when the picked point is out of bounds.
+// Regulation BWF court proportions (13.4m x 6.1m doubles), all expressed as
+// a % of this box so they scale with it — .court's own border already IS
+// the doubles sideline/back-boundary outer edge, so those aren't repeated
+// as separate layers below:
+//   - net: exact mid-length (x = 50%).
+//   - short service line: 1.98m from the net -> 4.72m from each back
+//     boundary -> 4.72/13.4 = 35.224% from each end (x).
+//   - long service line (doubles): 0.76m in from each back boundary ->
+//     0.76/13.4 = 5.672% from each end (x).
+//   - singles sideline: inset 0.46m from each doubles sideline ->
+//     0.46/6.1 = 7.541% from each edge (y).
+//   - center line: divides left/right service courts — runs from the short
+//     service line to the back boundary only (not across the net-side "no
+//     man's land"), at the width midpoint (y = 50%), hence two separate
+//     partial-width layers below rather than one full-width line.
+.court {
+  position: relative;
+  aspect-ratio: 2 / 1;
+  width: 100%;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-alt);
+
+  background-image:
+    // net
+    linear-gradient(var(--color-text-muted), var(--color-text-muted)),
+    // short service lines
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border)),
+    // long service lines (doubles)
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border)),
+    // singles sidelines
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border)),
+    // center line — back-portion-only, A side then B side
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border));
+  background-repeat: no-repeat;
+  background-size:
+    2px 100%,
+    2px 100%,
+    2px 100%,
+    2px 100%,
+    2px 100%,
+    100% 2px,
+    100% 2px,
+    35.224% 2px,
+    35.224% 2px;
+  background-position:
+    center center,
+    35.224% center,
+    64.776% center,
+    5.672% center,
+    94.328% center,
+    center 7.541%,
+    center 92.459%,
+    left center,
+    right center;
+}
+
+// 032-out-of-bounds-by-match-mode: shades the strip between the singles
+// sideline and the full doubles width for a singles match — that strip is
+// out of play in a real singles rally, matching landingSide()'s (component.ts)
+// narrower in-bounds check for that case. Height matches the singles
+// sideline inset already drawn on `.court` (7.541% = 0.46/6.1).
+.out-of-play-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 7.541%;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--color-text-muted) 18%, transparent),
+    color-mix(in srgb, var(--color-text-muted) 18%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  pointer-events: none;
+}
+
+.out-of-play-band--top {
+  top: 0;
+}
+
+.out-of-play-band--bottom {
+  bottom: 0;
+}
+
+.landing-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  border: 2px solid var(--color-surface);
+  pointer-events: none;
+}
+
+// A held-and-dragged tap raises this fixed circular lens above the finger
+// (component.ts MAGNIFIER_VERTICAL_OFFSET_PX) so the fingertip never covers
+// the very spot it's magnifying. `overflow: hidden` + `border-radius: 50%`
+// clip .magnifier-content (a full-size, scaled-up copy of .court, see the
+// component's magnifierContentStyle()) into a circular loupe.
+.magnifier {
+  position: fixed;
+  width: 110px;
+  height: 110px;
+  margin-left: -55px;
+  margin-top: -55px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--color-surface);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.magnifier-content {
+  transform-origin: 0 0;
+}
+
+.players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.player--selected {
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  border-color: var(--color-brand-primary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}

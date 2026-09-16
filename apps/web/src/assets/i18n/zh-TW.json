@@ -452,6 +452,9 @@
     "scoreboardScoringSectionTitle": "計分板權限",
     "scoreboardScoringHint": "開啟後，計分板連結（通常分享給觀眾/球員看比分用）也能直接計分，不需要另外用控制板連結",
     "scoreboardScoringToggle": "允許計分板連結計分",
+    "detailedScoringSectionTitle": "詳細計分模式",
+    "detailedScoringHint": "開啟後，之後建立的新比賽計分時會改成在球場示意圖上點落點、選球員，同時記錄落點座標與得分球員；已在進行中的比賽不受影響",
+    "detailedScoringToggle": "新比賽使用詳細計分模式",
     "regeneratePin": "重新產生 PIN 碼",
     "regeneratePinConfirmTitle": "確認重新產生管理 PIN 碼？",
     "regeneratePinConfirmBody": "舊 PIN 碼將立即失效，此操作無法復原。",
@@ -497,6 +500,19 @@
   },
   "scoreboard": {
     "serving": "發球中"
+  },
+  "shotPlacement": {
+    "title": "記錄這一分的細節",
+    "selectLanding": "點選羽球落地的位置",
+    "selectScoringPlayer": "選擇得分球員",
+    "selectLosingPlayer": "選擇失分球員",
+    "landingConflict": "此落點與已得分的隊伍矛盾，請重新標示落點",
+    "serveFault": "⚠ 發球失誤",
+    "tabLanding": "落點設定",
+    "tabPlayers": "得失分選手",
+    "skip": "跳過",
+    "cancelScore": "取消得分",
+    "confirm": "確認記錄"
   },
   "scheduleManagement": {
     "sectionTitle": "場地控制",
@@ -649,6 +665,10 @@
     "ROUND_NOT_PLANNED": "本輪賽程尚未規劃，或已經開始比賽",
     "ROUND_NOT_IN_PROGRESS": "本輪比賽已經結束，請直接規劃下一輪",
     "MATCH_ALREADY_ENDED": "這場比賽已經結束，無法調整參賽選手",
+    "MATCH_NOT_COMPLETED": "這場比賽尚未結束，無法取消勝分",
+    "SIDE_DID_NOT_WIN_THIS_MATCH": "這一隊並非此場比賽的勝方，無法取消勝分",
+    "ROUND_ALREADY_ADVANCED": "賽程已經進入下一輪，無法取消此得分",
+    "NEXT_MATCH_ALREADY_STARTED": "此場地的下一場比賽已經開始計分，無法取消此得分",
     "FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT": "固定搭檔循環賽需要偶數人數才能配對，請先調整在場人數",
     "SCHEDULING_MECHANISM_MATCH_MODE_CONFLICT": "固定搭檔循環賽/個人全混搭循環賽僅適用於雙打",
     "SCHEDULING_MECHANISM_MISMATCH": "目前排程機制不支援此操作",

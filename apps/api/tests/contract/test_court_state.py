@@ -310,3 +310,89 @@ async def test_get_state_serve_populated_immediately_at_match_start(
     serve = response.json()["current_match"]["serve"]
     assert serve is not None
     assert serve["server_roster_entry_id"] in team_a_ids + team_b_ids
+
+
+# --- 031-shot-placement-scoring: detailed_scoring_enabled reflects the ------
+# --- match's own snapshot, not a live read of the group's current setting --
+
+
+async def test_get_state_detailed_scoring_enabled_defaults_false(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    assert response.json()["current_match"]["detailed_scoring_enabled"] is False
+
+
+async def test_get_state_detailed_scoring_enabled_true_when_set_before_match_created(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    group_response = await client.post(
+        "/groups",
+        json={
+            "name": "Court State Detailed Scoring",
+            "max_members": 4,
+            "match_mode": "singles",
+            "scheduling_mechanism": "fair_rotation",
+            "creator_nickname": "阿正",
+            "turnstile_token": valid_turnstile_token,
+        },
+    )
+    created = group_response.json()
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    courts_response = await client.get(f"/groups/{created['group_id']}/courts", headers=headers)
+    court = courts_response.json()["courts"][0]
+
+    await db_session.execute(
+        text(
+            "INSERT INTO roster_entries (id, group_id, nickname, status, is_creator) "
+            "VALUES (:id, :group_id, 'P0', 'active', false)"
+        ),
+        {"id": str(uuid.uuid4()), "group_id": created["group_id"]},
+    )
+    await db_session.execute(
+        text("UPDATE groups SET detailed_scoring_enabled = true WHERE id = :id"),
+        {"id": created["group_id"]},
+    )
+    await db_session.commit()
+    # expire_on_commit=False (conftest.py) means the Group object loaded
+    # earlier in this request cycle (group creation) keeps its stale
+    # in-memory detailed_scoring_enabled unless explicitly expired — the
+    # raw UPDATE above bypasses the ORM and doesn't invalidate it on its own
+    # (same pattern as tests/unit/scheduler/test_auto_disband.py).
+    db_session.expire_all()
+    await client.post(f"/groups/{created['group_id']}/next-round", headers=headers)
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    assert response.json()["current_match"]["detailed_scoring_enabled"] is True
+
+
+async def test_get_state_detailed_scoring_enabled_reflects_snapshot_at_creation(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """The match's detailed_scoring_enabled MUST come from its own snapshot
+    (taken when it was created), not a live read of the group's current
+    setting — flip the group's setting on AFTER the match already exists and
+    confirm the already-created match still reports False (FR-006)."""
+    _created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+    group_id = _created["group_id"]
+
+    await db_session.execute(
+        text("UPDATE groups SET detailed_scoring_enabled = true WHERE id = :id"),
+        {"id": group_id},
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    assert response.json()["current_match"]["detailed_scoring_enabled"] is False

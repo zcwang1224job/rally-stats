@@ -82,6 +82,7 @@ async def test_full_scoring_lifecycle(
         "score_a": 0,
         "score_b": 0,
         "winner_team": None,
+        "score_event_id": None,
     }
     await client.post(f"{control1}/score", json={"side": "A", "delta": 1})
     await client.post(f"{control1}/score", json={"side": "A", "delta": 1})

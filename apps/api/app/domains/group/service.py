@@ -430,6 +430,31 @@ async def set_scoreboard_scoring(session: AsyncSession, group: Group, enabled: b
     return group
 
 
+async def set_detailed_scoring(session: AsyncSession, group: Group, enabled: bool) -> Group:
+    """031-shot-placement-scoring research.md Decision 5: complete mirror of
+    `set_scoreboard_scoring()` above — a plain immediate toggle (no
+    `base_settings_version` bump), broadcasting the same per-court
+    `match.nextRound` refetch trigger. Only affects `matches.detailed_scoring_enabled`
+    for matches created AFTER this call (that field is a snapshot taken in
+    `create_match_with_participants()`, FR-006) — this function itself has
+    no notion of "existing matches" at all."""
+    group.detailed_scoring_enabled = enabled
+    await session.commit()
+    await session.refresh(group)
+
+    result = await session.execute(
+        select(Court.id).where(Court.group_id == group.id, Court.deleted_at.is_(None))
+    )
+    for (court_id,) in result.all():
+        await publish(
+            court_channel(str(group.id), str(court_id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
+
+    return group
+
+
 async def disband_group(
     session: AsyncSession,
     group: Group,

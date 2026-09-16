@@ -221,6 +221,9 @@ class AdminGroupResponse(BaseModel):
     # `GroupPublicResponse` (that schema also backs the public join-flow
     # lookup — this setting has no reason to be visible there).
     scoreboard_scoring_enabled: bool
+    # 031-shot-placement-scoring: same admin-only rationale as
+    # scoreboard_scoring_enabled above.
+    detailed_scoring_enabled: bool
 
 
 class ScoreboardScoringRequest(BaseModel):
@@ -229,6 +232,14 @@ class ScoreboardScoringRequest(BaseModel):
 
 class ScoreboardScoringResponse(BaseModel):
     scoreboard_scoring_enabled: bool
+
+
+class DetailedScoringRequest(BaseModel):
+    enabled: bool
+
+
+class DetailedScoringResponse(BaseModel):
+    detailed_scoring_enabled: bool
 
 
 class RegenerateLinkRequest(BaseModel):

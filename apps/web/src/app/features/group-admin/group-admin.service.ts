@@ -9,6 +9,7 @@ import {
   AdminGroupResponse,
   CreateGroupRequest,
   CreateGroupResponse,
+  DetailedScoringResponse,
   EditGroupRequest,
   EditScoringSettingsRequest,
   GroupPublic,
@@ -72,6 +73,16 @@ export class GroupAdminService {
   setScoreboardScoring(groupId: string, enabled: boolean): Observable<ScoreboardScoringResponse> {
     return this.api.patch<ScoreboardScoringResponse>(
       `/groups/${groupId}/scoreboard-scoring`,
+      { enabled },
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 031-shot-placement-scoring: same immediate-toggle shape as
+   * setScoreboardScoring() above. */
+  setDetailedScoring(groupId: string, enabled: boolean): Observable<DetailedScoringResponse> {
+    return this.api.patch<DetailedScoringResponse>(
+      `/groups/${groupId}/detailed-scoring`,
       { enabled },
       this.authHeader(groupId),
     );

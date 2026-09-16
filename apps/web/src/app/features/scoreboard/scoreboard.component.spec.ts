@@ -1,7 +1,7 @@
 import { convertToParamMap, ActivatedRoute } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService, TranslateService } from '@ngx-translate/core';
-import { of, EMPTY, NEVER, Observable, Subject } from 'rxjs';
+import { of, EMPTY, NEVER, Observable, Subject, throwError } from 'rxjs';
 import { signal, WritableSignal } from '@angular/core';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
@@ -324,6 +324,249 @@ describe('ScoreboardComponent', () => {
     component.confirmEndMatch();
 
     expect(endMatchSpy).toHaveBeenCalledWith('tok', 'm1');
+  });
+
+  // 032-freeze-while-picker-open: a match-deciding point's `+` press
+  // triggers a `match.ended` realtime push almost immediately (often
+  // carrying current_match all the way to null — "waiting for next round"
+  // — if the court has nothing queued yet). Without freezing the display,
+  // that push's loadState() refetch would flip the @if's condition
+  // false, destroying the still-open shot-placement picker's DOM out from
+  // under the scorer before they can record anything.
+  const detailedMatchState = {
+    court_id: 'c1',
+    round_number: 1,
+    scoreboard_scoring_enabled: true,
+    current_match: {
+      match_id: 'm1',
+      status: 'in_progress',
+      score_a: 20,
+      score_b: 10,
+      detailed_scoring_enabled: true,
+      participants: [
+        { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+        { roster_entry_id: 'p2', nickname: '徐丙', team: 'B' },
+      ],
+    },
+    waiting_reason: null,
+    next_up: null,
+  };
+
+  it('detailed mode: clicking +1 opens the shot-placement picker for the credited side', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'in_progress', score_a: 21, score_b: 10,
+        winner_team: null, score_event_id: 'ev1',
+      }),
+    );
+    const fixture = setup(detailedMatchState, true, { score: scoreSpy });
+    const openSpy = vi.spyOn(fixture.componentInstance.shotPlacementPicker()!, 'open');
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+
+    expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.pendingScoringSide()).toBe('A');
+  });
+
+  it('keeps the shot-placement picker mounted through a match.ended refresh that clears current_match (regression)', () => {
+    const matchEndedSubject = new Subject<{ data: unknown }>();
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'completed', score_a: 21, score_b: 10,
+        winner_team: 'A', score_event_id: 'ev1',
+      }),
+    );
+    // First call is the initial load; every subsequent call (triggered by
+    // the match.ended push below) mimics the court having nothing queued
+    // yet — exactly the "waiting for next round" transition being reported.
+    const getStateSpy = vi.fn()
+      .mockReturnValueOnce(of(detailedMatchState))
+      .mockReturnValue(
+        of({ ...detailedMatchState, current_match: null, waiting_reason: null, next_up: null }),
+      );
+    const fixture = setup(
+      detailedMatchState,
+      true,
+      { score: scoreSpy, getState: getStateSpy },
+      undefined,
+      realtimeStubWithEvent('match.ended', matchEndedSubject),
+    );
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
+
+    // The realtime push that, pre-fix, replaced liveState() and tore the
+    // still-open picker's DOM out via the @if's now-false condition.
+    matchEndedSubject.next({ data: {} });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.waiting-message')).toBeNull();
+    // The score visible behind the still-open picker reflects the final
+    // point, not the pre-point score.
+    expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('21');
+  });
+
+  it('opens the picker even when match.ended arrives before this point\'s own HTTP response (regression: realtime race)', () => {
+    // The backend publishes match.ended synchronously, from inside the
+    // request that's about to answer this same "+1" — so the realtime push
+    // can genuinely win the race and reach this client first. A synchronous
+    // of(...) for score() (as other tests use) can never reproduce that
+    // ordering, since its subscribe callback always runs before any code
+    // after .click() — a deferred Subject is what actually lets the
+    // realtime push fire first, exactly like a slow HTTP response would.
+    const matchEndedSubject = new Subject<{ data: unknown }>();
+    const scoreResponseSubject = new Subject<unknown>();
+    const scoreSpy = vi.fn().mockReturnValue(scoreResponseSubject);
+    const getStateSpy = vi.fn()
+      .mockReturnValueOnce(of(detailedMatchState))
+      .mockReturnValue(
+        of({ ...detailedMatchState, current_match: null, waiting_reason: null, next_up: null }),
+      );
+    const fixture = setup(
+      detailedMatchState,
+      true,
+      { score: scoreSpy, getState: getStateSpy },
+      undefined,
+      realtimeStubWithEvent('match.ended', matchEndedSubject),
+    );
+    const openSpy = vi.spyOn(fixture.componentInstance.shotPlacementPicker()!, 'open');
+
+    fixture.nativeElement.querySelector('.buttons--a button').click(); // score() call now pending
+    fixture.detectChanges();
+
+    // The realtime push wins the race, arriving before the HTTP response.
+    matchEndedSubject.next({ data: {} });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
+
+    // The HTTP response for the point that started all this finally lands.
+    scoreResponseSubject.next({
+      applied: true, match_id: 'm1', status: 'completed', score_a: 21, score_b: 10,
+      winner_team: 'A', score_event_id: 'ev1',
+    });
+    fixture.detectChanges();
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.waiting-message')).toBeNull();
+  });
+
+  it('reveals the post-match state once the picker actually closes', () => {
+    const matchEndedSubject = new Subject<{ data: unknown }>();
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'completed', score_a: 21, score_b: 10,
+        winner_team: 'A', score_event_id: 'ev1',
+      }),
+    );
+    const getStateSpy = vi.fn()
+      .mockReturnValueOnce(of(detailedMatchState))
+      .mockReturnValue(
+        of({ ...detailedMatchState, current_match: null, waiting_reason: null, next_up: null }),
+      );
+    const fixture = setup(
+      detailedMatchState,
+      true,
+      { score: scoreSpy, getState: getStateSpy },
+      undefined,
+      realtimeStubWithEvent('match.ended', matchEndedSubject),
+    );
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    matchEndedSubject.next({ data: {} });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
+
+    fixture.componentInstance.onShotPlacementClosed();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.waiting-message')).not.toBeNull();
+  });
+
+  // 032-cancel-score: a point that completed the match can't be undone with
+  // the plain -1 the scoreboard's own "-" button uses (the backend's
+  // apply_score_delta requires status='in_progress') — cancelling the
+  // detail dialog for THAT specific point must instead go through
+  // undoMatchCompletion().
+  it('cancelling the match-deciding point calls undoMatchCompletion (not the plain -1) and refreshes on success', () => {
+    const matchEndedSubject = new Subject<{ data: unknown }>();
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'completed', score_a: 21, score_b: 10,
+        winner_team: 'A', score_event_id: 'ev1',
+      }),
+    );
+    const undoSpy = vi.fn().mockReturnValue(
+      of({ applied: true, match_id: 'm1', status: 'in_progress', score_a: 20, score_b: 10, winner_team: null }),
+    );
+    const getStateSpy = vi.fn()
+      .mockReturnValueOnce(of(detailedMatchState))
+      .mockReturnValueOnce(
+        of({ ...detailedMatchState, current_match: null, waiting_reason: null, next_up: null }),
+      )
+      .mockReturnValue(of(detailedMatchState)); // the post-undo refresh
+    const fixture = setup(
+      detailedMatchState,
+      true,
+      { score: scoreSpy, getState: getStateSpy, undoMatchCompletion: undoSpy },
+      undefined,
+      realtimeStubWithEvent('match.ended', matchEndedSubject),
+    );
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    matchEndedSubject.next({ data: {} });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
+
+    fixture.componentInstance.shotPlacementPicker()!.cancelScore();
+    fixture.detectChanges();
+
+    expect(undoSpy).toHaveBeenCalledWith('tok', 'm1', 'A');
+    expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('20');
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('surfaces an inline error, without silently swallowing it, when undoMatchCompletion refuses', () => {
+    const matchEndedSubject = new Subject<{ data: unknown }>();
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'completed', score_a: 21, score_b: 10,
+        winner_team: 'A', score_event_id: 'ev1',
+      }),
+    );
+    const undoSpy = vi.fn().mockReturnValue(
+      throwError(() => ({
+        errorCode: 'ROUND_ALREADY_ADVANCED',
+        i18nKey: 'errors.ROUND_ALREADY_ADVANCED',
+        detail: null,
+        status: 422,
+      })),
+    );
+    const getStateSpy = vi.fn()
+      .mockReturnValueOnce(of(detailedMatchState))
+      .mockReturnValue(
+        of({ ...detailedMatchState, current_match: null, waiting_reason: null, next_up: null }),
+      );
+    const fixture = setup(
+      detailedMatchState,
+      true,
+      { score: scoreSpy, getState: getStateSpy, undoMatchCompletion: undoSpy },
+      undefined,
+      realtimeStubWithEvent('match.ended', matchEndedSubject),
+    );
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    matchEndedSubject.next({ data: {} });
+    fixture.detectChanges();
+
+    fixture.componentInstance.shotPlacementPicker()!.cancelScore();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('errors.ROUND_ALREADY_ADVANCED');
   });
 
   // 024-add-english-language FR-003d (2026-09-15 修正): the scoreboard has

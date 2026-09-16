@@ -80,6 +80,8 @@ export interface AdminGroupResponse {
   // 018-plan-then-start follow-up: admin-only, deliberately not part of
   // GroupPublic (that also backs the public join-flow lookup).
   scoreboard_scoring_enabled: boolean;
+  // 031-shot-placement-scoring: same admin-only rationale as above.
+  detailed_scoring_enabled: boolean;
 }
 
 export interface EditGroupRequest {
@@ -119,4 +121,8 @@ export interface RegenerateAllCourtsLinkResponse {
 
 export interface ScoreboardScoringResponse {
   scoreboard_scoring_enabled: boolean;
+}
+
+export interface DetailedScoringResponse {
+  detailed_scoring_enabled: boolean;
 }

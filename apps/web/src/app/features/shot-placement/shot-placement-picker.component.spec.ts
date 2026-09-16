@@ -1,0 +1,607 @@
+import { TestBed } from '@angular/core/testing';
+import { provideTranslateService } from '@ngx-translate/core';
+import { ParticipantSummary, Team } from '../../core/api/court-live-state.models';
+import { ShotPlacementPickerComponent } from './shot-placement-picker.component';
+
+const participants: ParticipantSummary[] = [
+  { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+  { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+  { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+  { roster_entry_id: 'p4', nickname: '李丁', team: 'B' },
+];
+
+const singlesParticipants: ParticipantSummary[] = [
+  { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+  { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+];
+
+const POINTER_ID = 1;
+
+function pointerEvent(type: string, clientX: number, clientY: number): PointerEvent {
+  // bubbles: true — the handlers live on .court-area, and .court (what
+  // tests measure the mocked rect against) is nested inside it, same as a
+  // real tap anywhere in that area would bubble up.
+  return new PointerEvent(type, { bubbles: true, clientX, clientY, pointerId: POINTER_ID });
+}
+
+function pointerDown(target: Element, clientX: number, clientY: number): void {
+  target.dispatchEvent(pointerEvent('pointerdown', clientX, clientY));
+}
+
+function pointerMove(target: Element, clientX: number, clientY: number): void {
+  target.dispatchEvent(pointerEvent('pointermove', clientX, clientY));
+}
+
+function pointerUp(target: Element, clientX: number, clientY: number): void {
+  target.dispatchEvent(pointerEvent('pointerup', clientX, clientY));
+}
+
+/** A quick tap: down then immediately up, never reaching the long-press
+ * threshold — this is the "plain click" replacement used by most tests
+ * below, since the interaction is pointer-based now (needed to raise the
+ * magnifier on a hold, see component.ts). */
+function tap(target: Element, clientX: number, clientY: number): void {
+  pointerDown(target, clientX, clientY);
+  pointerUp(target, clientX, clientY);
+}
+
+/** 032-score-then-record: `scoringTeam` defaults to 'A' — the caller (a
+ * wiring component) always sets it before open() to whichever side's "+"
+ * was just pressed and already scored. */
+function setup(participantsList: ParticipantSummary[] = participants, scoringTeam: Team = 'A') {
+  TestBed.configureTestingModule({
+    imports: [ShotPlacementPickerComponent],
+    providers: [provideTranslateService({})],
+  });
+  const fixture = TestBed.createComponent(ShotPlacementPickerComponent);
+  fixture.componentRef.setInput('participants', participantsList);
+  fixture.componentRef.setInput('scoringTeam', scoringTeam);
+  fixture.detectChanges();
+  const courtAreaEl: HTMLDivElement = fixture.nativeElement.querySelector('.court-area');
+  const courtEl: HTMLDivElement = fixture.nativeElement.querySelector('.court');
+  // jsdom doesn't implement pointer capture — no-op it rather than throw,
+  // same spirit as the <dialog> guards in the component itself.
+  courtAreaEl.setPointerCapture = vi.fn();
+  // jsdom always reports a zero-size rect — stub .court's (not .court-area's
+  // — the pointer handlers measure against the inner rectangle, see the
+  // component's doc comment) to a known 200x100 box so a synthetic
+  // pointer event's clientX/clientY maps to a predictable fraction,
+  // including outside [0, 1] for a tap in .court-area's margin around this
+  // box. Center x (clientX=150) sits exactly on the net (x=0.5): below it
+  // is team A's half, above it team B's (data-model.md Decision 1).
+  vi.spyOn(courtEl, 'getBoundingClientRect').mockReturnValue({
+    left: 50,
+    top: 25,
+    width: 200,
+    height: 100,
+    right: 250,
+    bottom: 125,
+    x: 50,
+    y: 25,
+    toJSON: () => '',
+  });
+  return { fixture, courtAreaEl, courtEl };
+}
+
+/** .players-section renders the scoring pool then the losing pool as two
+ * separate `.players` button groups, in that order (component.html). */
+function scoringButtons(fixture: { nativeElement: HTMLElement }): NodeListOf<HTMLButtonElement> {
+  return fixture.nativeElement.querySelectorAll<HTMLButtonElement>('.players')[0].querySelectorAll('.player');
+}
+function losingButtons(fixture: { nativeElement: HTMLElement }): NodeListOf<HTMLButtonElement> {
+  return fixture.nativeElement.querySelectorAll<HTMLButtonElement>('.players')[1].querySelectorAll('.player');
+}
+function nicknames(buttons: NodeListOf<HTMLButtonElement>): string[] {
+  return Array.from(buttons).map((b) => b.textContent?.trim() ?? '');
+}
+
+describe('ShotPlacementPickerComponent', () => {
+  it('renders only the credited team in the scoring section and the other team in the losing section', () => {
+    const { fixture } = setup(participants, 'A');
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']); // team A (credited)
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙', '李丁']); // team B
+  });
+
+  it('swaps which team is offered in each section when the other team was credited', () => {
+    const { fixture } = setup(participants, 'B');
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['徐丙', '李丁']); // team B (credited)
+    expect(nicknames(losingButtons(fixture))).toEqual(['陳甲', '劉乙']); // team A
+  });
+
+  it('allows confirming with nothing selected at all (032-optional-shot-placement-detail)', () => {
+    const { fixture } = setup(participants, 'A');
+    const confirmButton = (): HTMLButtonElement =>
+      fixture.nativeElement.querySelector('.actions button:last-of-type');
+
+    expect(confirmButton().disabled).toBe(false);
+  });
+
+  it('allows confirming with only some fields chosen', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+    const confirmButton = (): HTMLButtonElement =>
+      fixture.nativeElement.querySelector('.actions button:last-of-type');
+
+    // .court's mocked rect is left:50/top:25/width:200/height:100 -> (200, 75)
+    // is x=0.75 (B's half) -> consistent with team A already credited.
+    tap(courtAreaEl, 200, 75);
+    fixture.detectChanges();
+    expect(confirmButton().disabled).toBe(false);
+
+    scoringButtons(fixture)[0].click(); // p1
+    fixture.detectChanges();
+    expect(confirmButton().disabled).toBe(false);
+  });
+
+  it('disables confirm once the landing contradicts the credited side', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+    const confirmButton = (): HTMLButtonElement =>
+      fixture.nativeElement.querySelector('.actions button:last-of-type');
+
+    // (100, 75) -> x=0.25 (A's own half) — contradicts A already scoring.
+    tap(courtAreaEl, 100, 75);
+    fixture.detectChanges();
+
+    expect(confirmButton().disabled).toBe(true);
+  });
+
+  it('re-tapping the court area before confirming replaces the pending point, not adds to it', () => {
+    const { fixture, courtAreaEl } = setup();
+
+    tap(courtAreaEl, 150, 75);
+    fixture.detectChanges();
+    tap(courtAreaEl, 90, 105);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.landing-marker').length).toBe(1);
+  });
+
+  it('marks a landing outside the drawn court as an out-of-bounds point (FR-010)', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+    const confirmedSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+    // .court's mocked rect is left:50/top:25/width:200/height:100 (setup())
+    // — tapping at (20, 10) lands well outside that box on both axes, which
+    // never conflicts with whichever side was already credited.
+    tap(courtAreaEl, 20, 10);
+    fixture.detectChanges();
+    scoringButtons(fixture)[0].click(); // p1
+    fixture.detectChanges();
+    losingButtons(fixture)[0].click(); // p3
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('.actions button:last-of-type').click();
+
+    expect(confirmedSpy).toHaveBeenCalledTimes(1);
+    const { landingX, landingY, rosterEntryId, losingRosterEntryId } = confirmedSpy.mock.calls[0][0];
+    expect(landingX).toBeLessThan(0);
+    expect(landingY).toBeLessThan(0);
+    // Still within the server's accepted range (data-model.md), not an
+    // arbitrarily large value from an even farther-out tap.
+    expect(landingX).toBeGreaterThanOrEqual(-0.3);
+    expect(landingY).toBeGreaterThanOrEqual(-0.3);
+    expect(rosterEntryId).toBe('p1');
+    expect(losingRosterEntryId).toBe('p3');
+  });
+
+  it('re-selecting a player before confirming replaces the pending choice', () => {
+    const { fixture } = setup(participants, 'A');
+
+    scoringButtons(fixture)[0].click(); // p1
+    fixture.detectChanges();
+    scoringButtons(fixture)[1].click(); // p2
+    fixture.detectChanges();
+
+    const selected = fixture.nativeElement.querySelectorAll('.player--selected');
+    expect(selected.length).toBe(1);
+    expect(selected[0].textContent?.trim()).toBe('劉乙');
+  });
+
+  it('emits the final point/scoring player/losing player only once, on confirm', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+    const confirmedSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+    // .court's mocked rect is left:50/top:25/width:200/height:100 — (200, 75)
+    // is x=0.75 (B's half), consistent with team A already credited.
+    tap(courtAreaEl, 200, 75);
+    fixture.detectChanges();
+    scoringButtons(fixture)[0].click(); // p1
+    fixture.detectChanges();
+    losingButtons(fixture)[0].click(); // p3
+    fixture.detectChanges();
+    expect(confirmedSpy).not.toHaveBeenCalled();
+
+    fixture.nativeElement.querySelector('.actions button:last-of-type').click();
+
+    expect(confirmedSpy).toHaveBeenCalledTimes(1);
+    expect(confirmedSpy).toHaveBeenCalledWith({
+      rosterEntryId: 'p1',
+      losingRosterEntryId: 'p3',
+      landingX: 0.75,
+      landingY: 0.5,
+    });
+  });
+
+  // --- 032-skip-and-cancel-score: the three distinct actions ---------------
+
+  it('confirm() sends null for any field the scorer never picked', () => {
+    const { fixture } = setup(participants, 'A');
+    const confirmedSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+    fixture.nativeElement.querySelector('.actions button:last-of-type').click();
+
+    expect(confirmedSpy).toHaveBeenCalledTimes(1);
+    expect(confirmedSpy).toHaveBeenCalledWith({
+      rosterEntryId: null,
+      losingRosterEntryId: null,
+      landingX: null,
+      landingY: null,
+    });
+  });
+
+  it('skip() closes without recording anything, even if fields were selected', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+    const confirmedSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+    tap(courtAreaEl, 200, 75);
+    fixture.detectChanges();
+    scoringButtons(fixture)[0].click();
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('.actions button:first-of-type').click();
+
+    expect(confirmedSpy).not.toHaveBeenCalled();
+  });
+
+  it('cancelScore() emits scoreCancelled and never emits confirmed', () => {
+    const { fixture } = setup(participants, 'A');
+    const confirmedSpy = vi.fn();
+    const cancelledSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+    fixture.componentInstance.scoreCancelled.subscribe(cancelledSpy);
+
+    const buttons = fixture.nativeElement.querySelectorAll('.actions button');
+    (buttons[1] as HTMLButtonElement).click(); // Cancel Score is the 2nd action button
+
+    expect(cancelledSpy).toHaveBeenCalledTimes(1);
+    expect(confirmedSpy).not.toHaveBeenCalled();
+  });
+
+  it('cancelScore() is still available even when the landing conflicts', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+    const cancelledSpy = vi.fn();
+    fixture.componentInstance.scoreCancelled.subscribe(cancelledSpy);
+
+    tap(courtAreaEl, 100, 75); // A's own half -> conflict, confirm disabled
+    fixture.detectChanges();
+
+    const buttons = fixture.nativeElement.querySelectorAll('.actions button');
+    (buttons[1] as HTMLButtonElement).click();
+
+    expect(cancelledSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits closed when skip() is clicked (032-freeze-while-picker-open)', () => {
+    const { fixture } = setup(participants, 'A');
+    const closedSpy = vi.fn();
+    fixture.componentInstance.closed.subscribe(closedSpy);
+
+    fixture.nativeElement.querySelectorAll('.actions button')[0].click();
+
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits closed when cancelScore() is clicked', () => {
+    const { fixture } = setup(participants, 'A');
+    const closedSpy = vi.fn();
+    fixture.componentInstance.closed.subscribe(closedSpy);
+
+    fixture.nativeElement.querySelectorAll('.actions button')[1].click();
+
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits closed when confirm() is clicked', () => {
+    const { fixture } = setup(participants, 'A');
+    const closedSpy = vi.fn();
+    fixture.componentInstance.closed.subscribe(closedSpy);
+
+    fixture.nativeElement.querySelectorAll('.actions button')[2].click();
+
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // --- 032-score-then-record: landing consistency with the credited side --
+
+  it('empties both pools when an in-bounds landing falls on the credited side\'s own half', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+
+    // (100, 75) -> x=0.25 (A's own half) — contradicts A already scoring.
+    tap(courtAreaEl, 100, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual([]);
+    expect(nicknames(losingButtons(fixture))).toEqual([]);
+    expect(fixture.nativeElement.querySelector('.hint--warning')).not.toBeNull();
+  });
+
+  // --- 032-serve-fault-landing: a serve fault favors the credited side too
+
+  it('does not conflict for a short-serve-fault landing on the credited side\'s own half', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+
+    // (140, 75) -> x=0.45: between the net (0.5) and A's short service line
+    // (~0.3522) — the serve never crossed it, so A (the receiver) wins the
+    // point on a service fault, not because A itself failed to return it.
+    tap(courtAreaEl, 140, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙', '李丁']);
+    expect(fixture.nativeElement.querySelector('.hint--warning')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
+  });
+
+  it('does not conflict for a long-serve-fault landing on the credited side\'s own half in doubles', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A'); // doubles fixture
+
+    // (56, 75) -> x=0.03: past A's long service line (~0.0567, doubles
+    // only) but short of A's own baseline — a doubles serve there never
+    // reached the legal box, a service fault favoring A.
+    tap(courtAreaEl, 56, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙', '李丁']);
+    expect(fixture.nativeElement.querySelector('.hint--warning')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
+  });
+
+  it('still conflicts for the identical deep landing in a singles match (no long-fault zone)', () => {
+    const { fixture, courtAreaEl } = setup(singlesParticipants, 'A');
+
+    // Singles serves are legal all the way to the baseline, so x=0.03 on
+    // A's own half is just a normal deep landing spot, not a fault
+    // exemption — still contradicts A having been credited the point.
+    tap(courtAreaEl, 56, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual([]);
+    expect(nicknames(losingButtons(fixture))).toEqual([]);
+    expect(fixture.nativeElement.querySelector('.hint--warning')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.status-badge')).toBeNull();
+  });
+
+  it('keeps the fixed pools when an in-bounds landing falls on the opposing half', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+
+    // (200, 75) -> x=0.75 (B's half) — consistent with A already scoring.
+    tap(courtAreaEl, 200, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙', '李丁']);
+    expect(fixture.nativeElement.querySelector('.hint--warning')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.status-badge')).toBeNull();
+  });
+
+  it('an out-of-bounds landing never conflicts, regardless of the credited side', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'B');
+
+    tap(courtAreaEl, 20, 10); // well outside the court on both axes
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['徐丙', '李丁']);
+    expect(nicknames(losingButtons(fixture))).toEqual(['陳甲', '劉乙']);
+    expect(fixture.nativeElement.querySelector('.hint--warning')).toBeNull();
+  });
+
+  it('clears a scoring/losing pick that becomes inconsistent after the landing changes', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A');
+
+    tap(courtAreaEl, 200, 75); // B's half -> consistent with A credited
+    fixture.detectChanges();
+    scoringButtons(fixture)[0].click(); // p1
+    fixture.detectChanges();
+    losingButtons(fixture)[0].click(); // p3
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedRosterEntryId()).toBe('p1');
+    expect(fixture.componentInstance.selectedLosingRosterEntryId()).toBe('p3');
+
+    // Now land on A's own half instead -> contradicts A already crediting,
+    // so both prior picks (now outside their emptied pools) are cleared.
+    tap(courtAreaEl, 100, 75);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedRosterEntryId()).toBeNull();
+    expect(fixture.componentInstance.selectedLosingRosterEntryId()).toBeNull();
+  });
+
+  // --- Long-press magnifier -------------------------------------------
+
+  it('does not raise the magnifier for a quick tap', () => {
+    const { fixture, courtAreaEl } = setup();
+
+    tap(courtAreaEl, 150, 75);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.magnifier')).toBeNull();
+  });
+
+  it('raises the magnifier once the press is held past the long-press threshold', () => {
+    vi.useFakeTimers();
+    try {
+      const { fixture, courtAreaEl } = setup();
+
+      pointerDown(courtAreaEl, 150, 75);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.magnifier')).toBeNull();
+
+      vi.advanceTimersByTime(400);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.magnifier')).not.toBeNull();
+
+      pointerUp(courtAreaEl, 150, 75);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.magnifier')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the point (and magnifier) following the finger while dragging during a long press', () => {
+    vi.useFakeTimers();
+    try {
+      // Team B credited -> landing on A's half (x<0.5) is consistent.
+      const { fixture, courtAreaEl } = setup(participants, 'B');
+      const confirmedSpy = vi.fn();
+      fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+      pointerDown(courtAreaEl, 150, 75);
+      vi.advanceTimersByTime(400);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.magnifier')).not.toBeNull();
+
+      // Drag from mid-court (150, 75 -> x/y 0.5/0.5) towards a corner.
+      pointerMove(courtAreaEl, 60, 35);
+      fixture.detectChanges();
+      pointerUp(courtAreaEl, 60, 35);
+      fixture.detectChanges();
+
+      // (60,35) against rect left:50/top:25/width:200/height:100 -> x=0.05
+      // (A's half) — consistent with B already credited.
+      scoringButtons(fixture)[0].click(); // p3, team B
+      fixture.detectChanges();
+      losingButtons(fixture)[0].click(); // p1, team A
+      fixture.detectChanges();
+      fixture.nativeElement.querySelector('.actions button:last-of-type').click();
+
+      expect(confirmedSpy).toHaveBeenCalledTimes(1);
+      const { landingX, landingY } = confirmedSpy.mock.calls[0][0];
+      expect(landingX).toBeCloseTo(0.05, 5);
+      expect(landingY).toBeCloseTo(0.1, 5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // --- 032-out-of-bounds-by-match-mode: singles uses the narrower sideline -
+
+  it('never conflicts for a singles match when the landing is beyond the singles sideline', () => {
+    const { fixture, courtAreaEl } = setup(singlesParticipants, 'A');
+
+    // .court's mocked rect is left:50/top:25/width:200/height:100 —
+    // (100, 28) -> x=0.25 (A's own half), y=0.03: inside the doubles width
+    // but outside the singles sideline (~0.0754), so for a 2-player match
+    // this counts as out-of-bounds and never conflicts with A being credited.
+    tap(courtAreaEl, 100, 28);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲']);
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙']);
+  });
+
+  it('the identical landing is in-bounds for a doubles match and can conflict there', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A'); // doubles fixture, A credited
+
+    tap(courtAreaEl, 100, 28); // same x=0.25, y=0.03 as above, but in-bounds for doubles
+
+    fixture.detectChanges();
+
+    // x=0.25 is A's own half -> contradicts A already being credited.
+    expect(nicknames(scoringButtons(fixture))).toEqual([]);
+    expect(nicknames(losingButtons(fixture))).toEqual([]);
+  });
+
+  it('shades the out-of-play strip for a singles match', () => {
+    const { fixture } = setup(singlesParticipants);
+    expect(fixture.nativeElement.querySelectorAll('.out-of-play-band').length).toBe(2);
+  });
+
+  it('does not shade an out-of-play strip for a doubles match', () => {
+    const { fixture } = setup();
+    expect(fixture.nativeElement.querySelectorAll('.out-of-play-band').length).toBe(0);
+  });
+
+  // --- 032: responsive tab layout on a screen too short for everything ----
+
+  describe('tab layout', () => {
+    function mockLayout(
+      fixture: { nativeElement: HTMLElement },
+      { innerHeight, dialogHeight, contentClientHeight, contentScrollHeight }: {
+        innerHeight: number;
+        dialogHeight: number;
+        contentClientHeight: number;
+        contentScrollHeight: number;
+      },
+    ): void {
+      vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(innerHeight);
+      const dialogEl = fixture.nativeElement.querySelector('.shot-placement-dialog') as HTMLElement;
+      vi.spyOn(dialogEl, 'getBoundingClientRect').mockReturnValue({
+        height: dialogHeight,
+        width: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => '',
+      });
+      const contentEl = fixture.nativeElement.querySelector('.content') as HTMLElement;
+      Object.defineProperty(contentEl, 'clientHeight', {
+        value: contentClientHeight, configurable: true,
+      });
+      Object.defineProperty(contentEl, 'scrollHeight', {
+        value: contentScrollHeight, configurable: true,
+      });
+    }
+
+    it('switches to a two-tab layout when the full content would not fit the screen', async () => {
+      const { fixture } = setup();
+      mockLayout(fixture, {
+        innerHeight: 400,
+        dialogHeight: 900,
+        contentClientHeight: 700,
+        contentScrollHeight: 900,
+      });
+
+      fixture.componentInstance.open();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.useTabs()).toBe(true);
+      expect(fixture.componentInstance.activeTab()).toBe('landing');
+      const tabs = fixture.nativeElement.querySelectorAll('.tab');
+      expect(tabs.length).toBe(2);
+      expect((fixture.nativeElement.querySelector('.players-section') as HTMLElement).hidden).toBe(
+        true,
+      );
+      expect((fixture.nativeElement.querySelector('.landing-section') as HTMLElement).hidden).toBe(
+        false,
+      );
+
+      (tabs[1] as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect((fixture.nativeElement.querySelector('.players-section') as HTMLElement).hidden).toBe(
+        false,
+      );
+      expect((fixture.nativeElement.querySelector('.landing-section') as HTMLElement).hidden).toBe(
+        true,
+      );
+    });
+
+    it('keeps the single-column layout when everything fits the screen', async () => {
+      const { fixture } = setup();
+      mockLayout(fixture, {
+        innerHeight: 1000,
+        dialogHeight: 500,
+        contentClientHeight: 400,
+        contentScrollHeight: 400,
+      });
+
+      fixture.componentInstance.open();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.useTabs()).toBe(false);
+      expect(fixture.nativeElement.querySelector('.tabs')).toBeNull();
+    });
+  });
+});

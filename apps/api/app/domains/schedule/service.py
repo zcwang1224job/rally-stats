@@ -35,6 +35,7 @@ from app.domains.schedule.models import (
     Partnership,
     ScoreEvent,
     ScoreServeRecord,
+    ShotPlacementRecord,
 )
 from app.domains.schedule.schemas import (
     CourtLiveState,
@@ -308,6 +309,10 @@ async def create_match_with_participants(
         target_score=group.target_score,
         deuce_threshold=group.deuce_threshold,
         cap_score=group.cap_score,
+        # 031-shot-placement-scoring research.md Decision 6: snapshotted here
+        # only — pull_queued_match_for_court() merely transitions an
+        # already-created row to in_progress, this value is already fixed.
+        detailed_scoring_enabled=group.detailed_scoring_enabled,
         started_at=datetime.now(UTC) if status == "in_progress" else None,
     )
     session.add(match)
@@ -2054,7 +2059,9 @@ async def _fetch_match_for_court(
     return match
 
 
-def _score_mutation_result(applied: bool, match: Match) -> ScoreMutationResult:
+def _score_mutation_result(
+    applied: bool, match: Match, score_event_id: uuid.UUID | None = None
+) -> ScoreMutationResult:
     return ScoreMutationResult(
         applied=applied,
         match_id=str(match.id),
@@ -2062,6 +2069,7 @@ def _score_mutation_result(applied: bool, match: Match) -> ScoreMutationResult:
         score_a=match.score_a,
         score_b=match.score_b,
         winner_team=cast("Team | None", match.winner_team),
+        score_event_id=str(score_event_id) if score_event_id is not None else None,
     )
 
 
@@ -2204,6 +2212,23 @@ async def _advance_serve_state_and_snapshot(
     )
 
 
+async def _remove_last_shot_placement_record(
+    session: AsyncSession, match_id: uuid.UUID, side: Team
+) -> None:
+    """031-shot-placement-scoring FR-007: deletes the newest ShotPlacementRecord
+    for this match+team, if any — a plain no-op when none exists (every
+    simple-mode match, and a detailed-mode match with no prior point for
+    this side). data-model.md: "刪除（單筆）"."""
+    subquery = (
+        select(ShotPlacementRecord.id)
+        .where(ShotPlacementRecord.match_id == match_id, ShotPlacementRecord.team == side)
+        .order_by(ShotPlacementRecord.created_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    await session.execute(delete(ShotPlacementRecord).where(ShotPlacementRecord.id == subquery))
+
+
 async def apply_score_delta(
     session: AsyncSession,
     court: Court,
@@ -2215,7 +2240,13 @@ async def apply_score_delta(
     """+1/-1（FR-003~007）。原子防呆（research.md #5）: 一句 `UPDATE ...
     WHERE status='in_progress' [AND score>0]` 同時達成 FR-005/006/006a；
     命中後才在同一函式內套用達標判定（FR-003），達標則另一句 `UPDATE`
-    轉為 `completed` 並依序呼叫 003 既有 hook。"""
+    轉為 `completed` 並依序呼叫 003 既有 hook。
+
+    032-score-then-record: a `+1` in detailed-scoring mode is applied here
+    exactly like a plain one — score-then-record (see attach_shot_placement()
+    below) never blocks the score itself on the scorer filling in landing
+    detail. The returned ScoreMutationResult.score_event_id is what a caller
+    then hands to attach_shot_placement()."""
     match = await _fetch_match_for_court(session, court, match_id)
 
     column = Match.score_a if side == "A" else Match.score_b
@@ -2263,6 +2294,13 @@ async def apply_score_delta(
         )
         serve_record.score_event_id = score_event_id
         session.add(serve_record)
+    else:
+        # 031-shot-placement-scoring FR-007/research.md Decision 3: a
+        # correction (-1) collapses the last point for this side — unconditional
+        # (no `match.detailed_scoring_enabled` check needed): a simple-mode
+        # match never has any ShotPlacementRecord to begin with, so this is a
+        # harmless no-op there.
+        await _remove_last_shot_placement_record(session, match_id, side)
 
     await session.commit()
     await session.refresh(match)
@@ -2325,7 +2363,260 @@ async def apply_score_delta(
             },
         )
 
-    return _score_mutation_result(applied=True, match=match)
+    return _score_mutation_result(applied=True, match=match, score_event_id=score_event_id)
+
+
+async def undo_match_completion(
+    session: AsyncSession, court: Court, match_id: uuid.UUID, side: Team
+) -> ScoreMutationResult:
+    """032-cancel-score: reverts a match that this exact winning point just
+    completed, back to in_progress with that point removed — the "Cancel
+    Score" action's counterpart to apply_score_delta(-1) specifically for
+    the match-DECIDING point. A plain -1 can't do this: its UPDATE requires
+    status='in_progress' (research.md #5), which this match no longer is
+    the instant it wins — that's exactly the gap this closes.
+
+    Completing a match can cascade well beyond this one row (pulling a new
+    match onto this same court, other idle courts, even a whole new round
+    auto-generating — see service.py's `_advance_after_terminal`), and most
+    of that cascade is NOT safely reversible in general: round generation's
+    PairHistory/wait_count bulk writes and its randomized pairing/serve
+    state have no stored inverse, and another court's newly-pulled match
+    may already have real gameplay on it by the time anyone tries to undo.
+    So this only proceeds while the cascade "stayed local":
+      - the group's round hasn't already advanced past this match's own
+        round (ROUND_ALREADY_ADVANCED otherwise — reversing round
+        generation isn't attempted at all), and
+      - if a replacement match was pulled onto THIS SAME court afterward,
+        it hasn't been touched yet (no points, no ShotPlacementRecord) —
+        untouched, it's put back to queued so this match can retake the
+        court; already started, this refuses too
+        (NEXT_MATCH_ALREADY_STARTED), rather than risk discarding real
+        data on that other match.
+    Once safely back to in_progress, delegates the actual point removal to
+    apply_score_delta(-1) unchanged — same floor guard, ScoreEvent,
+    ShotPlacementRecord cleanup, and serve/score realtime publish as any
+    other correction."""
+    match = await _fetch_match_for_court(session, court, match_id)
+
+    if match.status != "completed":
+        raise ApiError("MATCH_NOT_COMPLETED", status_code=422)
+    if match.winner_team != side:
+        raise ApiError("SIDE_DID_NOT_WIN_THIS_MATCH", status_code=422)
+
+    group_result = await session.execute(select(Group).where(Group.id == match.group_id))
+    group = group_result.scalar_one()
+    if group.current_round_number != match.round_number:
+        raise ApiError("ROUND_ALREADY_ADVANCED", status_code=422)
+
+    replacement_result = await session.execute(
+        select(Match).where(
+            Match.court_id == court.id,
+            Match.status == "in_progress",
+            Match.id != match.id,
+        )
+    )
+    replacement = replacement_result.scalar_one_or_none()
+    if replacement is not None:
+        touched = replacement.score_a > 0 or replacement.score_b > 0
+        if not touched:
+            existing_event = await session.execute(
+                select(ScoreEvent.id).where(ScoreEvent.match_id == replacement.id).limit(1)
+            )
+            touched = existing_event.scalar_one_or_none() is not None
+        if touched:
+            raise ApiError("NEXT_MATCH_ALREADY_STARTED", status_code=422)
+
+        # Reverses pull_queued_match_for_court()'s own writes exactly —
+        # nothing else (PairHistory, wait_count) is touched by a plain
+        # pull, so there's nothing else to unwind here.
+        await session.execute(
+            update(Match)
+            .where(Match.id == replacement.id)
+            .values(
+                court_id=None,
+                status="queued",
+                started_at=None,
+                serving_team=None,
+                team_a_reference_server_id=None,
+                team_b_reference_server_id=None,
+            )
+        )
+
+    await session.execute(
+        update(Match)
+        .where(Match.id == match_id)
+        .values(status="in_progress", winner_team=None, ended_at=None)
+    )
+    await session.commit()
+    await session.refresh(match)
+
+    if replacement is not None:
+        # Tells any other viewer of this court "the match here changed
+        # back" — the same event a fresh pull onto this court always fires.
+        await _publish_rotation_updated(session, match.group_id, court.id, match)
+
+    return await apply_score_delta(session, court, match_id, side, -1, source="cancel_score")
+
+
+# 032-out-of-bounds-by-match-mode: a singles rally is only "in" within the
+# narrower singles sidelines, not the full doubles width — inset 0.46m from
+# each doubles sideline (the court's own drawn border, data-model.md
+# Decision 1's y=0/1) out of the 6.1m doubles width, same proportion as the
+# singles sideline drawn on the court diagram itself.
+_SINGLES_SIDELINE_INSET = 0.46 / 6.1
+
+# 032-serve-fault-landing: a serve that lands on the CREDITED side's own
+# half isn't necessarily a contradiction — it's exactly what a service
+# fault looks like (the serve never legally reached the receiver's box), and
+# the receiver (the credited side) wins the point immediately regardless of
+# where the shuttle actually came down. These two bands, measured from each
+# baseline, mark landings that could be such a fault rather than a genuine
+# rally return-failure:
+#   - short (never crossed the short service line): 1.98m from the net ->
+#     4.72/13.4 from each baseline.
+#   - long, DOUBLES ONLY (past the doubles long service line): 0.76/13.4
+#     from each baseline. Singles serves are legal all the way to the
+#     baseline, so there is no long-fault band for singles.
+_SHORT_SERVICE_LINE_INSET = 4.72 / 13.4
+_LONG_SERVICE_LINE_INSET = 0.76 / 13.4
+
+
+def _is_serve_fault_zone(landing_x: float, side: str, is_doubles: bool) -> bool:
+    if side == "A":
+        if _SHORT_SERVICE_LINE_INSET < landing_x < 0.5:
+            return True
+        return is_doubles and landing_x < _LONG_SERVICE_LINE_INSET
+    if 0.5 < landing_x < 1 - _SHORT_SERVICE_LINE_INSET:
+        return True
+    return is_doubles and landing_x > 1 - _LONG_SERVICE_LINE_INSET
+
+
+async def attach_shot_placement(
+    session: AsyncSession,
+    court: Court,
+    match_id: uuid.UUID,
+    score_event_id: uuid.UUID,
+    roster_entry_id: uuid.UUID | None,
+    losing_roster_entry_id: uuid.UUID | None,
+    landing_x: float | None,
+    landing_y: float | None,
+) -> None:
+    """032-score-then-record: records landing/player detail for a `+1`
+    that's already been applied via a plain apply_score_delta() call —
+    pressing "+" in detailed mode bumps the score immediately (same as
+    simple mode) so match pace is never held up on this dialog; this
+    function is what the picker's confirm() then calls, pinned to the exact
+    ScoreEvent that "+" created (`score_event_id`) rather than "the most
+    recent point", so a rapid string of points can never mismatch which
+    point a given picker's answer lands on.
+
+    032-optional-shot-placement-detail: every one of `roster_entry_id`,
+    `losing_roster_entry_id`, and the `landing_x`/`landing_y` pair is
+    independently optional — the scorer can confirm with only whatever they
+    actually picked, rather than being forced to fill in all three before
+    submitting anything at all. Whichever ARE supplied are still validated
+    the same as before.
+
+    Which side scored is no longer inferred from `roster_entry_id` (031's
+    approach) — it's already fixed by the ScoreEvent itself (`.side`), so a
+    supplied `roster_entry_id` is validated AGAINST that side rather than
+    used to derive it, and the record's own `team` always comes from the
+    ScoreEvent regardless of whether a player was specified.
+    `losing_roster_entry_id`, if supplied, still must be on the other team —
+    and, per official badminton rules, a supplied in-bounds landing must be
+    on the side that actually failed to return the shuttle (i.e. NOT the
+    credited side's own half), UNLESS that landing falls in a serve-fault
+    band (_is_serve_fault_zone()) where the credited side could have won
+    the point on a service fault instead, without ever having to return
+    anything. Landing out of bounds leaves the return-failure question
+    ambiguous too, so only the opposing-team constraint applies there. This
+    landing-vs-credited-side check runs whenever a landing IS supplied,
+    independent of whether a specific player was too.
+
+    032-out-of-bounds-by-match-mode: "in bounds" itself depends on whether
+    this match is singles or doubles (official rules use a narrower court
+    width for singles) — derived from how many roster entries are actually
+    on this match (2 -> singles, 4 -> doubles) rather than trusting the
+    group's current match_mode, since that could have changed since this
+    specific match was created."""
+    match = await _fetch_match_for_court(session, court, match_id)
+
+    if not match.detailed_scoring_enabled:
+        raise ApiError("DETAILED_SCORING_NOT_ENABLED", status_code=422)
+
+    if (landing_x is None) != (landing_y is None):
+        raise ApiError("INVALID_LANDING_COORDINATES", status_code=422)
+    if landing_x is not None and landing_y is not None:
+        if not (-0.3 <= landing_x <= 1.3) or not (-0.3 <= landing_y <= 1.3):
+            raise ApiError("INVALID_LANDING_COORDINATES", status_code=422)
+
+    score_event_result = await session.execute(
+        select(ScoreEvent).where(ScoreEvent.id == score_event_id, ScoreEvent.match_id == match_id)
+    )
+    score_event = score_event_result.scalar_one_or_none()
+    if score_event is None:
+        raise ApiError("SCORE_EVENT_NOT_FOUND", status_code=404)
+    if score_event.delta <= 0:
+        raise ApiError("SCORE_EVENT_NOT_A_POINT", status_code=422)
+
+    existing_result = await session.execute(
+        select(ShotPlacementRecord.id).where(ShotPlacementRecord.score_event_id == score_event_id)
+    )
+    if existing_result.scalar_one_or_none() is not None:
+        raise ApiError("SHOT_PLACEMENT_ALREADY_RECORDED", status_code=422)
+
+    participants_result = await session.execute(
+        select(MatchParticipant.roster_entry_id, MatchParticipant.team).where(
+            MatchParticipant.match_id == match_id,
+        )
+    )
+    participant_rows = participants_result.all()
+    team_by_entry: dict[uuid.UUID, str] = {entry_id: team for entry_id, team in participant_rows}
+    is_singles = len(participant_rows) <= 2
+
+    team: str | None = None
+    if roster_entry_id is not None:
+        team = team_by_entry.get(roster_entry_id)
+        if team is None:
+            raise ApiError("PARTICIPANT_NOT_IN_MATCH", status_code=422)
+        if team != score_event.side:
+            raise ApiError("SCORING_PLAYER_NOT_ON_CREDITED_SIDE", status_code=422)
+
+    losing_team: str | None = None
+    if losing_roster_entry_id is not None:
+        losing_team = team_by_entry.get(losing_roster_entry_id)
+        if losing_team is None:
+            raise ApiError("PARTICIPANT_NOT_IN_MATCH", status_code=422)
+
+    if team is not None and losing_team is not None and team == losing_team:
+        raise ApiError("SCORING_AND_LOSING_PLAYER_SAME_TEAM", status_code=422)
+
+    if landing_x is not None and landing_y is not None:
+        y_min, y_max = (
+            (_SINGLES_SIDELINE_INSET, 1 - _SINGLES_SIDELINE_INSET) if is_singles else (0.0, 1.0)
+        )
+        in_bounds = 0 <= landing_x <= 1 and y_min <= landing_y <= y_max
+        if in_bounds:
+            landing_side = "A" if landing_x < 0.5 else "B"
+            if score_event.side == landing_side and not _is_serve_fault_zone(
+                landing_x, landing_side, not is_singles
+            ):
+                raise ApiError("SCORING_PLAYER_WRONG_TEAM_FOR_LANDING", status_code=422)
+
+    session.add(
+        ShotPlacementRecord(
+            score_event_id=score_event_id,
+            match_id=match_id,
+            group_id=match.group_id,
+            roster_entry_id=roster_entry_id,
+            losing_roster_entry_id=losing_roster_entry_id,
+            team=cast(Team, score_event.side),
+            landing_x=landing_x,
+            landing_y=landing_y,
+        )
+    )
+    await session.commit()
 
 
 async def end_match_early(
@@ -2407,6 +2698,7 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
             score_b=match.score_b,
             participants=[ParticipantSummary(**p) for p in participants],
             serve=await _build_serve_station(session, match),
+            detailed_scoring_enabled=match.detailed_scoring_enabled,
         )
     else:
         waiting_reason = "manual_assignment" if mechanism == "manual" else "no_queued_match"

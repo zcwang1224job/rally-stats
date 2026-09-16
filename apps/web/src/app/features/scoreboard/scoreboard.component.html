@@ -20,7 +20,7 @@
         {{ (isFullscreen() ? 'controlPanel.exitFullscreen' : 'controlPanel.enterFullscreen') | translate }}
       </button>
     }
-    @let state = liveState();
+    @let state = displayState();
     <div class="board-header">
       <h1>{{ info.name }}</h1>
       @if (state) {
@@ -30,6 +30,9 @@
       }
     </div>
     @if (state) {
+      @if (cancelScoreErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
       <div class="board-main">
         @if (state.next_up; as next) {
           <p class="next-up status-badge">
@@ -101,20 +104,38 @@
         </div>
       </div>
 
-      @if (canScore() && state.current_match) {
+      @if (canScore() && state.current_match; as match) {
         <!-- Deliberately below .board-main (not inside the court itself,
              see .score-board's comment) so the +/- controls never sit on
              top of the court markings. -->
         <div class="scoring-controls">
           <div class="buttons buttons--a">
-            <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">+</button>
+            <button
+              type="button"
+              class="btn"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="match.detailed_scoring_enabled ? scoreThenOpenPicker('A') : score('A', 1)"
+            >+</button>
             <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('A', -1)">-</button>
           </div>
           <div class="buttons buttons--b">
-            <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">+</button>
+            <button
+              type="button"
+              class="btn"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="match.detailed_scoring_enabled ? scoreThenOpenPicker('B') : score('B', 1)"
+            >+</button>
             <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('B', -1)">-</button>
           </div>
         </div>
+        <app-shot-placement-picker
+          #shotPlacementPicker
+          [participants]="match.participants"
+          [scoringTeam]="pendingScoringSide()"
+          (confirmed)="onShotPlacementConfirmed($event)"
+          (scoreCancelled)="onShotPlacementCancelled()"
+          (closed)="onShotPlacementClosed()"
+        />
       }
 
       @if (canScore() && state.current_match) {

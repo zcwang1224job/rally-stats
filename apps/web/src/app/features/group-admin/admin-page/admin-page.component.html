@@ -508,6 +508,26 @@
               }
             </section>
 
+            <section class="card">
+              <h2>{{ 'adminPage.detailedScoringSectionTitle' | translate }}</h2>
+              <p class="section-hint">{{ 'adminPage.detailedScoringHint' | translate }}</p>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="view.detailed_scoring_enabled"
+                  [disabled]="detailedScoringPending()"
+                  (change)="toggleDetailedScoring($any($event.target).checked)"
+                />
+                {{ 'adminPage.detailedScoringToggle' | translate }}
+              </label>
+              @if (detailedScoringSaved()) {
+                <span class="status-badge status-badge--success">{{ 'adminPage.saveSuccess' | translate }}</span>
+              }
+              @if (detailedScoringErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+            </section>
+
             <section class="card card--danger-zone">
               <h2>{{ 'adminPage.dangerZoneSectionTitle' | translate }}</h2>
               <button type="button" class="btn btn--danger" (click)="openDisbandDialog()">{{ 'adminPage.disband' | translate }}</button>

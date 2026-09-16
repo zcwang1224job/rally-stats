@@ -25,6 +25,8 @@ from app.domains.group.schemas import (
     BindResponse,
     CreateGroupRequest,
     CreateGroupResponse,
+    DetailedScoringRequest,
+    DetailedScoringResponse,
     EditGroupRequest,
     EditScoringSettingsRequest,
     GroupListItem,
@@ -58,20 +60,25 @@ from app.domains.member.models import Member
 from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
     AllCourtsLiveState,
+    RecordShotPlacementRequest,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
+    ShotPlacementAttachResponse,
+    UndoMatchCompletionRequest,
 )
 from app.domains.schedule.service import (
     abandon_group_matches,
     apply_score_delta,
+    attach_shot_placement,
     auto_pair_on_enter_fixed_partner,
     build_round_matches_list,
     build_schedule_snapshot,
     clear_partnerships_on_exit,
     court_live_state,
     end_match_early,
+    undo_match_completion,
 )
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -111,6 +118,7 @@ def _to_admin_view(group: Group) -> AdminGroupResponse:
         all_courts_control_panel_token=str(group.all_courts_control_panel_token),
         all_courts_link_version=group.all_courts_link_version,
         scoreboard_scoring_enabled=group.scoreboard_scoring_enabled,
+        detailed_scoring_enabled=group.detailed_scoring_enabled,
     )
 
 
@@ -397,6 +405,24 @@ async def set_scoreboard_scoring(
     )
 
 
+@router.patch("/{group_id}/detailed-scoring", response_model=DetailedScoringResponse)
+async def set_detailed_scoring(
+    group_id: uuid.UUID,
+    payload: DetailedScoringRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DetailedScoringResponse:
+    """031-shot-placement-scoring: lets the admin opt the group into the
+    "tap the court, pick the scoring player" interaction for matches
+    created from now on (research.md Decision 5 — same lightweight
+    dedicated-toggle shape as `set_scoreboard_scoring` above). Errors:
+    `ADMIN_TOKEN_INVALID`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.set_detailed_scoring(session, group, payload.enabled)
+    return DetailedScoringResponse(detailed_scoring_enabled=updated.detailed_scoring_enabled)
+
+
 @router.post("/{group_id}/disband", response_model=GroupPublicResponse)
 async def disband(
     group_id: uuid.UUID,
@@ -644,6 +670,60 @@ async def score_by_all_courts_token(
     return await apply_score_delta(
         session, court, match_id, payload.side, payload.delta, source="all_courts"
     )
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/shot-placement",
+    response_model=ShotPlacementAttachResponse,
+)
+async def record_shot_placement_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: RecordShotPlacementRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShotPlacementAttachResponse:
+    """032-score-then-record: attaches landing/player detail to a `+1`
+    that's already been applied via `score_by_all_courts_token` above.
+    Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`、
+    `DETAILED_SCORING_NOT_ENABLED`、`INVALID_LANDING_COORDINATES`、
+    `SCORE_EVENT_NOT_FOUND`、`SCORE_EVENT_NOT_A_POINT`、
+    `SHOT_PLACEMENT_ALREADY_RECORDED`、`PARTICIPANT_NOT_IN_MATCH`、
+    `SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、`SCORING_AND_LOSING_PLAYER_SAME_TEAM`、
+    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`。"""
+    _group, court = await _all_courts_court(token, court_id, session)
+    await attach_shot_placement(
+        session,
+        court,
+        match_id,
+        uuid.UUID(payload.score_event_id),
+        uuid.UUID(payload.roster_entry_id) if payload.roster_entry_id is not None else None,
+        uuid.UUID(payload.losing_roster_entry_id)
+        if payload.losing_roster_entry_id is not None
+        else None,
+        payload.landing_x,
+        payload.landing_y,
+    )
+    return ShotPlacementAttachResponse()
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/undo-completion",
+    response_model=ScoreMutationResult,
+)
+async def undo_match_completion_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: UndoMatchCompletionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """032-cancel-score: all-courts counterpart to
+    `undo_match_completion_by_token`. Errors: `LINK_NOT_FOUND`、
+    `MATCH_NOT_FOUND`、`MATCH_NOT_COMPLETED`、`SIDE_DID_NOT_WIN_THIS_MATCH`、
+    `ROUND_ALREADY_ADVANCED`、`NEXT_MATCH_ALREADY_STARTED`。"""
+    _group, court = await _all_courts_court(token, court_id, session)
+    return await undo_match_completion(session, court, match_id, payload.side)
 
 
 @router.post(

@@ -103,6 +103,9 @@ export class AdminPageComponent {
   readonly scoreboardScoringPending = signal(false);
   readonly scoreboardScoringErrorKey = signal<string | null>(null);
   readonly scoreboardScoringSaved = signal(false);
+  readonly detailedScoringPending = signal(false);
+  readonly detailedScoringErrorKey = signal<string | null>(null);
+  readonly detailedScoringSaved = signal(false);
   readonly newPin = signal<string | null>(null);
   readonly copiedPin = signal(false);
   readonly copyPinErrorKey = signal<string | null>(null);
@@ -566,6 +569,35 @@ export class AdminPageComponent {
           return;
         }
         this.scoreboardScoringErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  /** 031-shot-placement-scoring: same immediate-toggle pattern as
+   * toggleScoreboardScoring() above. */
+  toggleDetailedScoring(enabled: boolean): void {
+    this.detailedScoringErrorKey.set(null);
+    this.detailedScoringPending.set(true);
+    this.groupAdmin.setDetailedScoring(this.groupId, enabled).subscribe({
+      next: (response) => {
+        this.detailedScoringPending.set(false);
+        const view = this.adminView();
+        if (view) {
+          this.adminView.set({
+            ...view,
+            detailed_scoring_enabled: response.detailed_scoring_enabled,
+          });
+        }
+        this.detailedScoringSaved.set(true);
+        setTimeout(() => this.detailedScoringSaved.set(false), 3000);
+      },
+      error: (error: ApiError) => {
+        this.detailedScoringPending.set(false);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.detailedScoringErrorKey.set(error.i18nKey);
       },
     });
   }

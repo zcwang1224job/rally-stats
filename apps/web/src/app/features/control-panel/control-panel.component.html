@@ -18,10 +18,13 @@
       </p>
     }
     <h1>{{ info.name }}</h1>
-    @if (liveState(); as state) {
+    @if (displayState(); as state) {
       <p class="round-label">
         {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
       </p>
+      @if (cancelScoreErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
       @if (state.current_match; as match) {
         <div class="score-controls-toolbar">
           <button type="button" class="btn btn--secondary" (click)="toggleSwap()">
@@ -35,7 +38,7 @@
                 type="button"
                 class="btn"
                 [disabled]="connectionState() !== 'connected'"
-                (click)="score(leftTeam(), 1)"
+                (click)="match.detailed_scoring_enabled ? scoreThenOpenPicker(leftTeam()) : score(leftTeam(), 1)"
               >
                 +1
               </button>
@@ -75,7 +78,7 @@
                 type="button"
                 class="btn"
                 [disabled]="connectionState() !== 'connected'"
-                (click)="score(rightTeam(), 1)"
+                (click)="match.detailed_scoring_enabled ? scoreThenOpenPicker(rightTeam()) : score(rightTeam(), 1)"
               >
                 +1
               </button>
@@ -90,6 +93,14 @@
             </div>
           </div>
         </div>
+        <app-shot-placement-picker
+          #shotPlacementPicker
+          [participants]="match.participants"
+          [scoringTeam]="pendingScoringSide()"
+          (confirmed)="onShotPlacementConfirmed($event)"
+          (scoreCancelled)="onShotPlacementCancelled()"
+          (closed)="onShotPlacementClosed()"
+        />
         <button
           type="button"
           class="btn btn--danger"

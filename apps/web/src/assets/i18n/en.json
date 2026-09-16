@@ -452,6 +452,9 @@
     "scoreboardScoringSectionTitle": "Scoreboard Link Permissions",
     "scoreboardScoringHint": "When enabled, the scoreboard link (usually shared with spectators/players just to view the score) can also be used to score the match, without needing a separate control panel link",
     "scoreboardScoringToggle": "Allow scoreboard link to score",
+    "detailedScoringSectionTitle": "Detailed Scoring Mode",
+    "detailedScoringHint": "When enabled, scoring a new match will tap the court diagram and pick the scoring player instead of a plain +1, recording the landing spot and player together. Matches already in progress are unaffected",
+    "detailedScoringToggle": "Use detailed scoring mode for new matches",
     "regeneratePin": "Regenerate PIN",
     "regeneratePinConfirmTitle": "Regenerate the admin PIN?",
     "regeneratePinConfirmBody": "The old PIN will be invalidated immediately. This cannot be undone.",
@@ -497,6 +500,19 @@
   },
   "scoreboard": {
     "serving": "Serving"
+  },
+  "shotPlacement": {
+    "title": "Record point detail",
+    "selectLanding": "Tap where the shuttle landed",
+    "selectScoringPlayer": "Select the scoring player",
+    "selectLosingPlayer": "Select the player at fault",
+    "landingConflict": "This landing conflicts with the side that scored — please re-tap the spot",
+    "serveFault": "⚠ Service fault",
+    "tabLanding": "Landing point",
+    "tabPlayers": "Scoring / fault players",
+    "skip": "Skip",
+    "cancelScore": "Cancel score",
+    "confirm": "Save detail"
   },
   "scheduleManagement": {
     "sectionTitle": "Court Control",
@@ -649,6 +665,10 @@
     "ROUND_NOT_PLANNED": "This round hasn't been planned yet, or matches have already started",
     "ROUND_NOT_IN_PROGRESS": "This round has already ended — please plan the next round directly",
     "MATCH_ALREADY_ENDED": "This match has already ended — participants can no longer be adjusted",
+    "MATCH_NOT_COMPLETED": "This match hasn't ended yet, so the winning point can't be cancelled",
+    "SIDE_DID_NOT_WIN_THIS_MATCH": "This side didn't win the match, so the winning point can't be cancelled",
+    "ROUND_ALREADY_ADVANCED": "The schedule has already moved to the next round, so this point can't be cancelled",
+    "NEXT_MATCH_ALREADY_STARTED": "The next match on this court has already been scored, so this point can't be cancelled",
     "FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT": "Fixed-partner round robin requires an even number of players to pair up — please adjust who's currently present",
     "SCHEDULING_MECHANISM_MATCH_MODE_CONFLICT": "Fixed-partner / individual mixed round robin only applies to doubles",
     "SCHEDULING_MECHANISM_MISMATCH": "This action isn't supported by the current scheduling mechanism",

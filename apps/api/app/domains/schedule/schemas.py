@@ -212,6 +212,48 @@ class ScoreRequest(BaseModel):
     delta: Literal[1, -1]
 
 
+# 032-cancel-score: `side` MUST be the team `undo_match_completion()`
+# (service.py) finds as `match.winner_team` — a plain `-1` (ScoreRequest
+# above) can't target an already-`completed` match at all.
+class UndoMatchCompletionRequest(BaseModel):
+    side: Team
+
+
+# 032-score-then-record: attaches shot-placement detail to a `+1` point
+# that's already been applied via a plain ScoreRequest above — the score
+# itself is never blocked on the scorer filling this in (see
+# attach_shot_placement() in service.py). `score_event_id` pins this to the
+# exact point being annotated; `roster_entry_id`'s team is server-validated
+# against that ScoreEvent's own `side` (it's no longer inferred from the
+# player, since which side scored was already decided).
+class RecordShotPlacementRequest(BaseModel):
+    score_event_id: str
+    # 032-optional-shot-placement-detail: every field below is independently
+    # optional — the scorer can confirm with only whatever they actually
+    # picked (see attach_shot_placement()) rather than being forced to fill
+    # in all of them before submitting anything.
+    roster_entry_id: str | None = None
+    # The opposing-team player at fault for the rally ending —
+    # attach_shot_placement() enforces it's on the other team from
+    # roster_entry_id (and, for an in-bounds landing, that the credited side
+    # matches which half of the court it landed in).
+    losing_roster_entry_id: str | None = None
+    # data-model.md: [-0.3, 1.3] is wider than the [0, 1] court itself (FR-010
+    # allows a genuinely out-of-bounds landing) but still rejects nonsense
+    # input. Pydantic enforces this at the request boundary;
+    # attach_shot_placement() re-checks it too so the same
+    # INVALID_LANDING_COORDINATES error_code is reachable when that function
+    # is called directly (unit tests, defense in depth per Constitution X).
+    # Both null or both set — attach_shot_placement() rejects one without
+    # the other.
+    landing_x: float | None = Field(default=None, ge=-0.3, le=1.3)
+    landing_y: float | None = Field(default=None, ge=-0.3, le=1.3)
+
+
+class ShotPlacementAttachResponse(BaseModel):
+    recorded: bool = True
+
+
 class ScoreMutationResult(BaseModel):
     applied: bool
     match_id: str
@@ -219,6 +261,12 @@ class ScoreMutationResult(BaseModel):
     score_a: int
     score_b: int
     winner_team: Team | None
+    # 032-score-then-record: the ScoreEvent this mutation created — `None`
+    # when `applied` is false, or for a mutation that isn't a score change
+    # (e.g. end_match_early()). A `+1`'s caller uses this to attach a
+    # ShotPlacementRecord afterward (POST .../shot-placement) without
+    # blocking the score itself on that follow-up UI.
+    score_event_id: str | None = None
 
 
 class ServeStationInfo(BaseModel):
@@ -244,6 +292,11 @@ class MatchLiveDetail(BaseModel):
     # None when the match has no serve state yet (research.md Decision 4 —
     # a match created before 030-score-serve-record's migration).
     serve: ServeStationInfo | None = None
+    # 031-shot-placement-scoring: the match's OWN snapshot (matches.detailed_
+    # scoring_enabled), not a live read of the group's current setting — see
+    # contracts/score-detailed-api.md. Tells the frontend which scoring UI
+    # (plain +1/-1 vs. tap-the-court) to render for this specific match.
+    detailed_scoring_enabled: bool = False
 
 
 class CourtLiveState(BaseModel):

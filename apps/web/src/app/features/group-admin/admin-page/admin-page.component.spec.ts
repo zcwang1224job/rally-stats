@@ -38,6 +38,7 @@ const adminGroupResponse: AdminGroupResponse = {
   all_courts_control_panel_token: 'all-courts-tok',
   all_courts_link_version: 1,
   scoreboard_scoring_enabled: false,
+  detailed_scoring_enabled: false,
 };
 
 const scheduleResponse: ScheduleResponse = {

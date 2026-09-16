@@ -1,0 +1,169 @@
+<dialog #dialog class="shot-placement-dialog">
+  <h2>{{ 'shotPlacement.title' | translate }}</h2>
+
+  <!-- 032: only shown once recomputeLayoutMode() (component.ts) has
+       determined the full content doesn't fit the dialog on this screen. -->
+  @if (useTabs()) {
+    <div class="tabs" role="tablist">
+      <button
+        type="button"
+        class="tab"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'landing'"
+        [class.tab--active]="activeTab() === 'landing'"
+        (click)="activeTab.set('landing')"
+      >
+        {{ 'shotPlacement.tabLanding' | translate }}
+      </button>
+      <button
+        type="button"
+        class="tab"
+        role="tab"
+        [attr.aria-selected]="activeTab() === 'players'"
+        [class.tab--active]="activeTab() === 'players'"
+        (click)="activeTab.set('players')"
+      >
+        {{ 'shotPlacement.tabPlayers' | translate }}
+      </button>
+    </div>
+  }
+
+  <div #content class="content" [style.max-height.px]="contentMaxHeightPx()">
+    <section class="landing-section" [hidden]="useTabs() && activeTab() !== 'landing'">
+      <p class="hint">{{ 'shotPlacement.selectLanding' | translate }}</p>
+      <!-- FR-010: a landing MUST be markable outside the court boundary too
+           (e.g. an out shot) — .court-area is the actual pointer/keyboard
+           target and includes a margin around the drawn court for exactly
+           that; .court itself (nested inside) stays the reference rectangle
+           that the pointer handlers' coordinate math and the drawn lines
+           are relative to, so a tap in the margin naturally yields x/y
+           outside [0, 1]. Pointer (not click) events: a quick tap places
+           the point immediately (unchanged from before); holding past the
+           long-press threshold also raises the magnifier lens below for
+           fine-aiming while still held. -->
+      <div
+        #courtArea
+        class="court-area"
+        role="button"
+        tabindex="0"
+        [attr.aria-label]="'shotPlacement.selectLanding' | translate"
+        (pointerdown)="onCourtPointerDown($event)"
+        (pointermove)="onCourtPointerMove($event)"
+        (pointerup)="onCourtPointerUp($event)"
+        (pointercancel)="onCourtPointerUp($event)"
+        (keydown.enter)="pickCenterPoint()"
+        (keydown.space)="pickCenterPoint()"
+      >
+        <div #court class="court">
+          @if (isSinglesMatch()) {
+            <!-- 032-out-of-bounds-by-match-mode: for a singles match, the
+                 strip between the singles sideline and the full doubles
+                 width is out of play — shaded here so it visually matches
+                 landingSide()'s (component.ts) narrower bounds, same as a
+                 real singles court. -->
+            <div class="out-of-play-band out-of-play-band--top"></div>
+            <div class="out-of-play-band out-of-play-band--bottom"></div>
+          }
+          @if (selectedPoint(); as point) {
+            <span
+              class="landing-marker"
+              [style.left.%]="point.x * 100"
+              [style.top.%]="point.y * 100"
+            ></span>
+          }
+        </div>
+      </div>
+
+      <!-- The magnifier lens: `position: fixed` (viewport coordinates from
+           the pointer event map directly), floats above the finger so it
+           isn't covered by it. `pointer-events: none` — purely a visual
+           aid, never an interaction target itself. -->
+      @if (magnifierVisible() && magnifierContentStyle(); as content) {
+        <div
+          class="magnifier"
+          [style.left.px]="magnifierLensPosition().x"
+          [style.top.px]="magnifierLensPosition().y"
+        >
+          <div class="magnifier-content court" [style.width]="content.width" [style.height]="content.height" [style.transform]="content.transform">
+            @if (isSinglesMatch()) {
+              <div class="out-of-play-band out-of-play-band--top"></div>
+              <div class="out-of-play-band out-of-play-band--bottom"></div>
+            }
+            @if (selectedPoint(); as point) {
+              <span
+                class="landing-marker"
+                [style.left.%]="point.x * 100"
+                [style.top.%]="point.y * 100"
+              ></span>
+            }
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- 032-score-then-record: the scoring team is already fixed
+         (scoringTeam input) — scoringPlayers()/losingPlayers() (component.ts)
+         just narrow each list to that team and its opponent, one player
+         picker per side. An in-bounds landing on the credited side's own
+         half would contradict it having scored (official badminton rules),
+         so landingConflict() empties both lists in that case — the hint
+         below explains why nothing is selectable rather than leaving it a
+         silent dead end. -->
+    <section class="players-section" [hidden]="useTabs() && activeTab() !== 'players'">
+      @if (landingConflict()) {
+        <p class="hint hint--warning">{{ 'shotPlacement.landingConflict' | translate }}</p>
+      }
+      <p class="hint">{{ 'shotPlacement.selectScoringPlayer' | translate }}</p>
+      <div class="players">
+        @for (participant of scoringPlayers(); track participant.roster_entry_id) {
+          <button
+            type="button"
+            class="btn btn--secondary player"
+            [class.player--selected]="selectedRosterEntryId() === participant.roster_entry_id"
+            (click)="pickScoringPlayer(participant.roster_entry_id)"
+          >
+            {{ participant.nickname }}
+          </button>
+        }
+      </div>
+
+      <p class="hint losing-player-hint">
+        {{ 'shotPlacement.selectLosingPlayer' | translate }}
+        @if (isServeFault()) {
+          <span class="status-badge status-badge--muted">{{ 'shotPlacement.serveFault' | translate }}</span>
+        }
+      </p>
+      <div class="players">
+        @for (participant of losingPlayers(); track participant.roster_entry_id) {
+          <button
+            type="button"
+            class="btn btn--secondary player"
+            [class.player--selected]="selectedLosingRosterEntryId() === participant.roster_entry_id"
+            (click)="pickLosingPlayer(participant.roster_entry_id)"
+          >
+            {{ participant.nickname }}
+          </button>
+        }
+      </div>
+    </section>
+  </div>
+
+  <!-- 032-optional-shot-placement-detail / 032-cancel-score: three distinct
+       actions now that the score itself is already applied by the time this
+       dialog is open (see the class doc comment) — skip() leaves the score
+       standing and discards any picked detail; cancelScore() undoes the
+       point itself (the caller applies the matching -1); confirm() records
+       whatever's been picked, disabled only by an actual data conflict
+       (canConfirm() = !landingConflict()), never by incomplete selection. -->
+  <div class="actions">
+    <button type="button" class="btn btn--secondary" (click)="skip()">
+      {{ 'shotPlacement.skip' | translate }}
+    </button>
+    <button type="button" class="btn btn--danger" (click)="cancelScore()">
+      {{ 'shotPlacement.cancelScore' | translate }}
+    </button>
+    <button type="button" class="btn" [disabled]="!canConfirm()" (click)="confirm()">
+      {{ 'shotPlacement.confirm' | translate }}
+    </button>
+  </div>
+</dialog>

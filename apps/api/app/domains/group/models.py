@@ -99,6 +99,12 @@ class Group(Base):
     # control-panel link, so letting it also score is an admin-opt-in widening
     # of who can mutate scores, not a client-side/per-device preference.
     scoreboard_scoring_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # 031-shot-placement-scoring: group-level opt-in for the "tap the court,
+    # pick the scoring player" interaction in place of the plain +1 button.
+    # Same "plain immediate toggle" shape as scoreboard_scoring_enabled above
+    # (research.md Decision 5) — not part of the optimistic-locked Match
+    # Scoring Settings form, since it's a single independent boolean.
+    detailed_scoring_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     # 011-round-robin-scheduling: only meaningful when scheduling_mechanism ==
     # "fixed_partner" — "manual" reads the partnerships table (existing

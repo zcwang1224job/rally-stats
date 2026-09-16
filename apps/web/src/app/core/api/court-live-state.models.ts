@@ -32,6 +32,10 @@ export interface MatchLiveDetail {
   // null when the match has no serve state yet (a match created before
   // 030-score-serve-record's migration).
   serve: ServeStationInfo | null;
+  // 031-shot-placement-scoring: this match's OWN snapshot, not a live read
+  // of the group's current setting — decides whether to render the plain
+  // +1/-1 buttons or the tap-the-court picker for this specific match.
+  detailed_scoring_enabled: boolean;
 }
 
 export interface NextUpPreview {
@@ -78,4 +82,13 @@ export interface ScoreMutationResult {
   score_a: number;
   score_b: number;
   winner_team: Team | null;
+  // 032-score-then-record: the ScoreEvent this mutation created — null when
+  // `applied` is false, or for a mutation that isn't a score change (e.g.
+  // ending a match). A `+1`'s caller uses this to attach a
+  // ShotPlacementRecord afterward without blocking the score itself on it.
+  score_event_id: string | null;
+}
+
+export interface ShotPlacementAttachResponse {
+  recorded: boolean;
 }

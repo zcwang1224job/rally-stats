@@ -29,14 +29,17 @@ from app.domains.schedule.schemas import (
     NextRoundRequest,
     PartnershipReassignRequest,
     PartnershipsResponse,
+    RecordShotPlacementRequest,
     RegenerateGuestLinkResponse,
     ReorderPlannedMatchesRequest,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
+    ShotPlacementAttachResponse,
     SwapPlannedMatchPlayersRequest,
     TemporaryPairingsResponse,
+    UndoMatchCompletionRequest,
 )
 
 router = APIRouter(tags=["schedule"])
@@ -465,6 +468,69 @@ async def score_by_token(
     )
 
 
+@router.post(
+    "/courts/by-token/{token}/matches/{match_id}/shot-placement",
+    response_model=ShotPlacementAttachResponse,
+)
+async def record_shot_placement_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: RecordShotPlacementRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShotPlacementAttachResponse:
+    """032-score-then-record: attaches landing/player detail to a `+1`
+    that's already been applied via `score_by_token` above — same
+    permission boundary. Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`、
+    `DETAILED_SCORING_NOT_ENABLED`、`INVALID_LANDING_COORDINATES`、
+    `SCORE_EVENT_NOT_FOUND`、`SCORE_EVENT_NOT_A_POINT`、
+    `SHOT_PLACEMENT_ALREADY_RECORDED`、`PARTICIPANT_NOT_IN_MATCH`、
+    `SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、`SCORING_AND_LOSING_PLAYER_SAME_TEAM`、
+    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`。"""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    await service.attach_shot_placement(
+        session,
+        court,
+        match_id,
+        uuid.UUID(payload.score_event_id),
+        uuid.UUID(payload.roster_entry_id) if payload.roster_entry_id is not None else None,
+        uuid.UUID(payload.losing_roster_entry_id)
+        if payload.losing_roster_entry_id is not None
+        else None,
+        payload.landing_x,
+        payload.landing_y,
+    )
+    return ShotPlacementAttachResponse()
+
+
+@router.post(
+    "/courts/by-token/{token}/matches/{match_id}/undo-completion",
+    response_model=ScoreMutationResult,
+)
+async def undo_match_completion_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: UndoMatchCompletionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """032-cancel-score: reverts the match-deciding point via
+    `score_by_token`'s same permission boundary — see
+    `service.undo_match_completion()`'s docstring for exactly which
+    cascade shapes this can and can't safely reverse. Errors:
+    `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`、`MATCH_NOT_COMPLETED`、
+    `SIDE_DID_NOT_WIN_THIS_MATCH`、`ROUND_ALREADY_ADVANCED`、
+    `NEXT_MATCH_ALREADY_STARTED`。"""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return await service.undo_match_completion(session, court, match_id, payload.side)
+
+
 @router.post("/courts/by-token/{token}/matches/{match_id}/end", response_model=ScoreMutationResult)
 async def end_match_by_token(
     token: uuid.UUID,
@@ -501,6 +567,63 @@ async def score_by_admin(
     return await service.apply_score_delta(
         session, court, match_id, payload.side, payload.delta, source="admin"
     )
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/shot-placement",
+    response_model=ShotPlacementAttachResponse,
+)
+async def record_shot_placement_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: RecordShotPlacementRequest,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShotPlacementAttachResponse:
+    """032-score-then-record: attaches landing/player detail to a `+1`
+    that's already been applied via `score_by_admin` above. Errors:
+    `ADMIN_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`DETAILED_SCORING_NOT_ENABLED`、
+    `INVALID_LANDING_COORDINATES`、`SCORE_EVENT_NOT_FOUND`、
+    `SCORE_EVENT_NOT_A_POINT`、`SHOT_PLACEMENT_ALREADY_RECORDED`、
+    `PARTICIPANT_NOT_IN_MATCH`、`SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、
+    `SCORING_AND_LOSING_PLAYER_SAME_TEAM`、`SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`。"""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    await service.attach_shot_placement(
+        session,
+        court,
+        match_id,
+        uuid.UUID(payload.score_event_id),
+        uuid.UUID(payload.roster_entry_id) if payload.roster_entry_id is not None else None,
+        uuid.UUID(payload.losing_roster_entry_id)
+        if payload.losing_roster_entry_id is not None
+        else None,
+        payload.landing_x,
+        payload.landing_y,
+    )
+    return ShotPlacementAttachResponse()
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/undo-completion",
+    response_model=ScoreMutationResult,
+)
+async def undo_match_completion_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: UndoMatchCompletionRequest,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """032-cancel-score: admin-panel counterpart to
+    `undo_match_completion_by_token` above. Errors: `ADMIN_TOKEN_INVALID`、
+    `MATCH_NOT_FOUND`、`MATCH_NOT_COMPLETED`、`SIDE_DID_NOT_WIN_THIS_MATCH`、
+    `ROUND_ALREADY_ADVANCED`、`NEXT_MATCH_ALREADY_STARTED`。"""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    return await service.undo_match_completion(session, court, match_id, payload.side)
 
 
 @router.post(

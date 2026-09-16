@@ -4,7 +4,7 @@ specs/003-schedule-rotation/data-model.md §1-4."""
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -35,6 +35,18 @@ class Match(Base):
     target_score: Mapped[int] = mapped_column(Integer, nullable=False)
     deuce_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
     cap_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 031-shot-placement-scoring: snapshot of group.detailed_scoring_enabled
+    # at creation time (research.md Decision 6). Unlike the three scoring-
+    # settings fields above, this DOES carry a Python-level default (False,
+    # mirroring Group.detailed_scoring_enabled's own default) — it's a mode
+    # switch where "simple mode" is a universally safe fallback for the many
+    # unrelated call sites/tests that construct Match() directly and don't
+    # care about this feature, not a scoring rule that must be explicit.
+    # create_match_with_participants() still always sets it explicitly from
+    # the group's actual setting. A later change to the group's setting MUST
+    # NOT retroactively change which scoring interface an already-created
+    # match uses.
+    detailed_scoring_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
@@ -133,6 +145,63 @@ class ScoreServeRecord(Base):
     team_b_left_roster_entry_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roster_entries.id"), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ShotPlacementRecord(Base):
+    """031-shot-placement-scoring: a snapshot of "where the shuttle landed
+    and who scored", written once per +1 ScoreEvent on a match with
+    detailed_scoring_enabled=true (never for -1, and never for a simple-mode
+    match) in the same transaction as that ScoreEvent. Immutable except for
+    deletion by _remove_last_shot_placement_record() (the -1 counterpart,
+    research.md Decision 3/4) — no code path ever UPDATEs an existing row.
+    Independent of, and parallel to, ScoreServeRecord (030) — both key off
+    the same score_event_id but neither depends on the other."""
+
+    __tablename__ = "shot_placement_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    score_event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("score_events.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    match_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Denormalized from match.group_id, same rationale as ScoreServeRecord.group_id.
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
+    )
+    # 032-optional-shot-placement-detail: nullable — the scorer can confirm
+    # with only whatever they actually picked (see attach_shot_placement()),
+    # so any of roster_entry_id/losing_roster_entry_id/landing_x+landing_y
+    # may be absent on a given row.
+    roster_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roster_entries.id"), nullable=True
+    )
+    # 032-shot-placement-fault-player: the player on the OPPOSING side who
+    # was at fault for the rally ending here (failed to return an in-bounds
+    # landing, or hit an out-of-bounds shot) — always the other team from
+    # `roster_entry_id` (service.py's attach_shot_placement() enforces this).
+    losing_roster_entry_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roster_entries.id"), nullable=True
+    )
+    # Always the credited side (ScoreEvent.side), regardless of whether
+    # roster_entry_id itself was specified — never null.
+    team: Mapped[str] = mapped_column(String(1), nullable=False)  # 'A' | 'B'
+    # data-model.md Decision 1: 0=A's baseline, 1=B's baseline, 0.5=net (x);
+    # 0/1=the two sidelines (y). Valid range [-0.3, 1.3] — wider than [0, 1]
+    # to allow a genuinely out-of-bounds landing (spec FR-010), narrower than
+    # unbounded to reject nonsense input. Both null or both set — never one
+    # without the other (service.py enforces this).
+    landing_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    landing_y: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
