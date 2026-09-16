@@ -16,7 +16,12 @@
   --scoreboard-team-b-bg: var(--color-team-b-bg);
   --scoreboard-team-b-border: var(--color-team-b-border);
 
-  display: block;
+  // A flex column so .board-main (the court) can claim the leftover
+  // vertical space between the header above and the scoring controls/
+  // end-match button below, and center the court within just that space —
+  // see .board-main's comment below.
+  display: flex;
+  flex-direction: column;
   position: relative;
   min-height: 100vh;
   padding: var(--space-lg);
@@ -61,12 +66,26 @@ h1 {
   z-index: 1;
 }
 
+// Fills the vertical space :host's flex column leaves between the header
+// above and the scoring controls/end-match button below, then centers
+// .score-board within just that space — so the court sits in the middle
+// of the screen rather than wherever it happens to fall after a variable
+// amount of header/footer content, and the +/- controls (rendered as
+// .scoring-controls, a sibling after this element) never need to draw on
+// top of it to be "attached" to the score.
+.board-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+}
+
 .score-board {
   display: flex;
   justify-content: center;
   align-items: stretch;
   gap: var(--space-md);
-  margin: var(--space-xl) 0;
   // Treats the scoreboard itself as the court, viewed from above: team A's
   // block is the left half, team B's the right half, and each team's two
   // players sit at the top/bottom edge of their half — together the four
@@ -120,10 +139,17 @@ h1 {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  // Pushes .station--top to the block's top edge and .station--bottom to
-  // its bottom edge, with .team-center (score + buttons) landing in the
-  // middle — see .score-board's comment above.
-  justify-content: space-between;
+  // .team-center is taken out of this flex flow entirely (position:
+  // absolute below) and centered against .team's own box instead, so this
+  // anchors that. The remaining flex children are just the (0-2) station
+  // pills — .station--bottom's own margin-top: auto pushes it to the
+  // block's bottom edge (see below); .station--top needs no rule since a
+  // flex item with no auto margin already sits at the block's top edge by
+  // default. Doing this per-station, instead of a shared
+  // justify-content: space-between, keeps each station pinned to its
+  // correct edge regardless of whether the other one renders (singles,
+  // FR-006, renders only one of the two).
+  position: relative;
   gap: var(--space-md);
   padding: var(--space-lg);
   border-radius: var(--radius-md);
@@ -160,7 +186,7 @@ h1 {
 
 // Each team's stations hug the outer edge of the whole score-board (away
 // from the shared center divide) rather than sitting centered above the
-// score — together with .team's justify-content: space-between above, this
+// score — together with .station--bottom's margin-top: auto below, this
 // lands all four station pills in the score-board's outermost four corners,
 // matching where the four players actually stand on a real court.
 .team--a {
@@ -171,18 +197,25 @@ h1 {
   align-items: flex-end;
 }
 
+// Centered against .team's own box (position: absolute + inset: 0) rather
+// than being a flex sibling of the stations — a flex "auto margin" centering
+// trick only balances around whatever station siblings happen to be
+// present, so singles (only one of .station--top/--bottom renders,
+// FR-006) or two differently-sized stations (e.g. one has the server
+// border) would pull the score off true-center. Sizing centering to .team
+// itself keeps the score dead-center regardless of the stations around it.
 .team-center {
+  position: absolute;
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-md);
-  // Stations now align to the team block's outer edge (flex-start/flex-end
-  // above), so this needs its own centering rather than inheriting it —
-  // auto margins also keep it vertically centered regardless of how many
-  // station siblings are present (singles: only one of .station--top/--bottom
-  // renders, FR-006).
-  align-self: center;
-  margin: auto 0;
+  justify-content: center;
+  // The box spans the whole team block (including the corners where the
+  // station pills sit), so it must not steal taps meant for them — nothing
+  // inside it is interactive any more (.buttons lives in .scoring-controls,
+  // below the court, since FR requires the +/- controls never draw on top
+  // of the court itself).
+  pointer-events: none;
 }
 
 // The pill's own background/border below already separates it from either
@@ -217,12 +250,12 @@ h1 {
 // 029-serve-rotation-display: each team's up-to-two station slots (right/left
 // service court) — replaces the old single stacked-names list so each
 // participant occupies their own, independently addressable slot (FR-004),
-// pinned to the top/bottom of their team's block (.team's
-// justify-content: space-between above) so the four stations land in the
-// scoreboard's four corners. Singles renders only one of the two (the
-// other's @if simply doesn't render, FR-006) — no empty placeholder box is
-// left behind, and .team-center's margin: auto 0 below re-centers vertically
-// when only one station is present.
+// pinned to the top/bottom of their team's block (.station--bottom's
+// margin-top: auto above) so the four stations land in the scoreboard's
+// four corners. Singles renders only one of the two (the other's @if
+// simply doesn't render, FR-006) — no empty placeholder box is left
+// behind, and .team-center's absolute centering above keeps the score
+// dead-center regardless of which station(s) are present.
 // Oval "pill" so each nickname reads as its own chip against the team
 // block rather than floating text — background is a dark ink tint (not a
 // third off-palette color) so it sits happily on top of either saturated
@@ -250,6 +283,13 @@ h1 {
     font-size: 2.25rem;
     padding: var(--space-md) var(--space-xl);
   }
+}
+
+// Pushes this station to .team's bottom edge by consuming all remaining
+// flex space above it — see .team's comment above for why this is done
+// per-station rather than via justify-content: space-between on .team.
+.station--bottom {
+  margin-top: auto;
 }
 
 // FR-005/Constitution VII: the server marker MUST NOT rely on color alone —
@@ -311,6 +351,16 @@ h1 {
   margin-top: var(--space-lg);
 }
 
+// Sits below .board-main (the court) as its own section, never on top of
+// the court markings — one .buttons group per team, laid out side by side
+// so each stays roughly under its own team's score column.
+.scoring-controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xl);
+  margin-top: var(--space-lg);
+}
+
 // 018-plan-then-start follow-up: 只在該團開啟 scoreboard_scoring_enabled
 // 時才會畫出來（見 canScore()）——沿用 control-panel.component.scss 同款
 // 「比一般 .btn 更大」的計分按鈕比例，因為這也是站在場邊、快速連按的操作，
@@ -318,7 +368,6 @@ h1 {
 .buttons {
   display: flex;
   gap: var(--space-sm);
-  margin-top: var(--space-sm);
 
   .btn {
     min-width: 64px;
@@ -381,17 +430,12 @@ h1 {
   }
 
   .score-board {
-    margin: var(--space-sm) 0;
     min-height: 0;
   }
 
   .team {
     padding: var(--space-sm);
     gap: var(--space-sm);
-  }
-
-  .team-center {
-    gap: var(--space-xs);
   }
 
   .station {
@@ -407,9 +451,12 @@ h1 {
     font-size: 3rem;
   }
 
-  .buttons {
+  .scoring-controls {
     margin-top: var(--space-xs);
+    gap: var(--space-lg);
+  }
 
+  .buttons {
     .btn {
       min-width: var(--touch-target-min);
       min-height: var(--touch-target-min);

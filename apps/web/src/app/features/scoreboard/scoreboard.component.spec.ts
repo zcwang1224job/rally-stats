@@ -288,7 +288,7 @@ describe('ScoreboardComponent', () => {
     );
     const fixture = setup(scoringMatchState, true, { score: scoreSpy });
 
-    const teamAButtons = fixture.nativeElement.querySelector('.team--a .buttons');
+    const teamAButtons = fixture.nativeElement.querySelector('.buttons--a');
     const plusOne: HTMLButtonElement = teamAButtons.querySelector('button');
     plusOne.click();
 
