@@ -80,6 +80,20 @@ export interface MemberMatchRecordSummary extends MatchRecordSummary {
   won: boolean;
 }
 
+// 032-match-record-scoring-stats: a per-point snapshot of "who scored, who
+// was at fault, where it landed" — read-only projection of an existing
+// ShotPlacementRecord row (031/032-shot-placement-scoring). Every field
+// independently optional (research.md data-model.md); `null` sub-fields are
+// simply not shown, never inferred.
+export interface ShotPlacementDetail {
+  scoring_roster_entry_id: string | null;
+  scoring_nickname: string | null;
+  losing_roster_entry_id: string | null;
+  losing_nickname: string | null;
+  landing_x: number | null;
+  landing_y: number | null;
+}
+
 // 016-match-score-timeline: one +1/-1 scoring action, with its time
 // expressed as seconds elapsed since the match started (research.md #3 —
 // deliberately not a wall-clock timestamp).
@@ -89,6 +103,19 @@ export interface ScoreEventSummary {
   score_a: number;
   score_b: number;
   elapsed_seconds: number;
+  // research.md (032) Decision 2: null for a -1 event, a +1 event with no
+  // ShotPlacementRecord at all, or one whose four fields are all null.
+  detail: ShotPlacementDetail | null;
+}
+
+// 032-match-record-scoring-stats: one match participant's aggregate across
+// every ShotPlacementRecord row in this match.
+export interface PlayerScoringStat {
+  roster_entry_id: string;
+  nickname: string;
+  team: Team;
+  scored_count: number;
+  fault_count: number;
 }
 
 // `record_completeness` distinguishes three states purely derived from
@@ -99,6 +126,10 @@ export interface ScoreEventSummary {
 export interface MatchRecordDetailResponse extends MatchRecordSummary {
   record_completeness: 'complete' | 'partial' | 'none';
   events: ScoreEventSummary[];
+  // research.md (032) Decision 4: `[]` is the single signal for "no player
+  // was ever recorded in this match"; non-empty always lists EVERY
+  // participant in team_a + team_b, zero counts included.
+  player_stats: PlayerScoringStat[];
 }
 
 export interface RoundWinRatePoint {

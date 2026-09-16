@@ -33,8 +33,10 @@ from app.domains.group.schemas import (
     MatchRecordSummary,
     MemberStandingRow,
     OpponentRecord,
+    PlayerScoringStat,
     RoundRecord,
     ScoreEventSummary,
+    ShotPlacementSummary,
 )
 from app.domains.group.security import (
     decrypt_group_password,
@@ -46,7 +48,7 @@ from app.domains.group.security import (
 )
 from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
-from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent
+from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent, ShotPlacementRecord
 from app.domains.schedule.schemas import ParticipantSummary
 from app.domains.schedule.service import handle_member_joined, handle_member_left
 from app.system_config.service import (
@@ -1495,6 +1497,65 @@ async def build_match_record_detail(
 
     started_at = match.started_at
     assert started_at is not None  # always set for completed matches (see MatchRecordSummary)
+
+    # 032-match-record-scoring-stats: one query for every ShotPlacementRecord
+    # this match ever wrote (031/032-shot-placement-scoring), reused below
+    # both to attach each event's own `detail` and to aggregate `player_stats`.
+    placements_result = await session.execute(
+        select(ShotPlacementRecord).where(ShotPlacementRecord.match_id == match.id)
+    )
+    placements = list(placements_result.scalars())
+    placement_by_event_id = {placement.score_event_id: placement for placement in placements}
+
+    nickname_ids = {
+        entry_id
+        for placement in placements
+        for entry_id in (placement.roster_entry_id, placement.losing_roster_entry_id)
+        if entry_id is not None
+    }
+    nickname_by_id: dict[uuid.UUID, str] = {}
+    if nickname_ids:
+        nickname_result = await session.execute(
+            select(RosterEntry.id, RosterEntry.nickname).where(RosterEntry.id.in_(nickname_ids))
+        )
+        nickname_by_id = {row.id: row.nickname for row in nickname_result.all()}
+
+    def _detail_for(event: ScoreEvent) -> ShotPlacementSummary | None:
+        placement = placement_by_event_id.get(event.id)
+        if placement is None:
+            return None
+        # research.md Decision 2: a row with all four fields NULL (confirmed
+        # with nothing picked) renders identically to no row at all.
+        if (
+            placement.roster_entry_id is None
+            and placement.losing_roster_entry_id is None
+            and placement.landing_x is None
+            and placement.landing_y is None
+        ):
+            return None
+        return ShotPlacementSummary(
+            scoring_roster_entry_id=(
+                str(placement.roster_entry_id) if placement.roster_entry_id else None
+            ),
+            scoring_nickname=(
+                nickname_by_id.get(placement.roster_entry_id)
+                if placement.roster_entry_id
+                else None
+            ),
+            losing_roster_entry_id=(
+                str(placement.losing_roster_entry_id)
+                if placement.losing_roster_entry_id
+                else None
+            ),
+            losing_nickname=(
+                nickname_by_id.get(placement.losing_roster_entry_id)
+                if placement.losing_roster_entry_id
+                else None
+            ),
+            landing_x=placement.landing_x,
+            landing_y=placement.landing_y,
+        )
+
     event_summaries = [
         ScoreEventSummary(
             side=event.side,
@@ -1502,12 +1563,44 @@ async def build_match_record_detail(
             score_a=event.score_a,
             score_b=event.score_b,
             elapsed_seconds=int((event.created_at - started_at).total_seconds()),
+            detail=_detail_for(event),
         )
         for event in score_events
     ]
 
+    # research.md Decision 3/4: two independent per-field aggregations —
+    # scored_count from roster_entry_id, fault_count from
+    # losing_roster_entry_id — over the SAME placements queried above; an
+    # empty combined result means "no data at all" (player_stats stays []),
+    # otherwise every one of this match's actual participants is listed,
+    # zero counts included (FR-009).
+    scored_counts: dict[uuid.UUID, int] = defaultdict(int)
+    fault_counts: dict[uuid.UUID, int] = defaultdict(int)
+    for placement in placements:
+        if placement.roster_entry_id is not None:
+            scored_counts[placement.roster_entry_id] += 1
+        if placement.losing_roster_entry_id is not None:
+            fault_counts[placement.losing_roster_entry_id] += 1
+
+    player_stats: list[PlayerScoringStat] = []
+    if scored_counts or fault_counts:
+        for participant in summary.team_a + summary.team_b:
+            entry_id = uuid.UUID(participant.roster_entry_id)
+            player_stats.append(
+                PlayerScoringStat(
+                    roster_entry_id=participant.roster_entry_id,
+                    nickname=participant.nickname,
+                    team=participant.team,
+                    scored_count=scored_counts.get(entry_id, 0),
+                    fault_count=fault_counts.get(entry_id, 0),
+                )
+            )
+
     return MatchRecordDetailResponse(
-        **summary.model_dump(), record_completeness=completeness, events=event_summaries
+        **summary.model_dump(),
+        record_completeness=completeness,
+        events=event_summaries,
+        player_stats=player_stats,
     )
 
 

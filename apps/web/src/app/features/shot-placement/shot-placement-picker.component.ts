@@ -12,6 +12,7 @@ import {
 } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ParticipantSummary, Team } from '../../core/api/court-live-state.models';
+import { CourtDiagramComponent } from '../../core/court-diagram/court-diagram.component';
 
 /** 032-optional-shot-placement-detail: every field is independently
  * optional — confirm() sends whatever the scorer actually picked, never
@@ -83,7 +84,7 @@ const MAGNIFIER_VERTICAL_OFFSET_PX = 90;
 
 @Component({
   selector: 'app-shot-placement-picker',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, CourtDiagramComponent],
   templateUrl: './shot-placement-picker.component.html',
   styleUrl: './shot-placement-picker.component.scss',
 })
@@ -105,7 +106,14 @@ export class ShotPlacementPickerComponent {
   readonly closed = output<void>();
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
-  private readonly court = viewChild.required<ElementRef<HTMLDivElement>>('court');
+  // 032-match-record-scoring-stats: `#court` is now the <app-court-diagram>
+  // host element itself (research.md Decision 5) — `{ read: ElementRef }`
+  // resolves it to the native element (its bounding box, unchanged) rather
+  // than the component instance, which is what viewChild would give by
+  // default for a component-tagged template reference.
+  private readonly court = viewChild.required<string, ElementRef<HTMLElement>>('court', {
+    read: ElementRef,
+  });
   private readonly content = viewChild.required<ElementRef<HTMLDivElement>>('content');
 
   readonly selectedPoint = signal<{ x: number; y: number } | null>(null);

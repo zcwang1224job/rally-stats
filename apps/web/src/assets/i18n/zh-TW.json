@@ -627,7 +627,17 @@
         "plus": "➕ 加分",
         "minus": "➖ 扣分"
       },
-      "elapsed": "開賽後 {{minutes}} 分 {{seconds}} 秒"
+      "elapsed": "開賽後 {{minutes}} 分 {{seconds}} 秒",
+      "scoringPlayerPrefix": "得分：",
+      "losingPlayerPrefix": "失分：",
+      "viewLanding": "查看落點",
+      "landingNotRecorded": "未記錄落點"
+    },
+    "playerStats": {
+      "title": "球員得失分統計",
+      "scoredCount": "得分次數",
+      "faultCount": "造成失分次數",
+      "empty": "此比賽沒有球員得失分紀錄"
     }
   },
   "errors": {

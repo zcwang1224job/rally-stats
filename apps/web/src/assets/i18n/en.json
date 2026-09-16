@@ -627,7 +627,17 @@
         "plus": "➕ Point",
         "minus": "➖ Deduction"
       },
-      "elapsed": "{{minutes}}m {{seconds}}s into the match"
+      "elapsed": "{{minutes}}m {{seconds}}s into the match",
+      "scoringPlayerPrefix": "Scored by:",
+      "losingPlayerPrefix": "Lost to:",
+      "viewLanding": "View landing spot",
+      "landingNotRecorded": "No landing spot recorded"
+    },
+    "playerStats": {
+      "title": "Player Scoring Stats",
+      "scoredCount": "Points scored",
+      "faultCount": "Points lost to",
+      "empty": "No player scoring data for this match"
     }
   },
   "errors": {

@@ -22,7 +22,11 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _create_group_with_active_match(
-    client: AsyncClient, session: AsyncSession, token: str
+    client: AsyncClient,
+    session: AsyncSession,
+    token: str,
+    *,
+    detailed_scoring_enabled: bool = False,
 ) -> tuple[dict, dict]:
     group_response = await client.post(
         "/groups",
@@ -53,7 +57,16 @@ async def _create_group_with_active_match(
         ),
         {"id": str(uuid.uuid4()), "group_id": created["group_id"]},
     )
+    if detailed_scoring_enabled:
+        # 032-match-record-scoring-stats: MUST be set BEFORE next-round pulls
+        # a match onto the court — matches.detailed_scoring_enabled is a
+        # snapshot taken at creation time (031-shot-placement-scoring).
+        await session.execute(
+            text("UPDATE groups SET detailed_scoring_enabled = true WHERE id = :id"),
+            {"id": created["group_id"]},
+        )
     await session.commit()
+    session.expire_all()
     await client.post(f"/groups/{created['group_id']}/next-round", headers=headers)
 
     return created, court
@@ -166,6 +179,125 @@ async def test_no_score_events_yields_none_completeness(
     assert body["events"] == []
     assert body["score_a"] == 21
     assert body["score_b"] == 18
+
+
+async def test_shot_placement_detail_and_player_stats_agree_across_entry_points(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """032-match-record-scoring-stats (quickstart.md scenarios 6/9): the
+    group-scoped entry point and the member entry point both funnel through
+    the same `build_match_record_detail()` — this confirms they report
+    identical `events[].detail`/`player_stats` for the same match, without
+    either endpoint needing its own special-cased logic."""
+    created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token, detailed_scoring_enabled=True
+    )
+    match_id = await _get_match_id(client, court)
+    state = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+    team_a_id = next(
+        p["roster_entry_id"]
+        for p in state.json()["current_match"]["participants"]
+        if p["team"] == "A"
+    )
+    team_b_id = next(
+        p["roster_entry_id"]
+        for p in state.json()["current_match"]["participants"]
+        if p["team"] == "B"
+    )
+
+    # Point 1: full detail. Point 2: skipped. Point 3: only scoring player.
+    score_1 = await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement",
+        json={
+            "score_event_id": score_1.json()["score_event_id"],
+            "roster_entry_id": team_a_id,
+            "losing_roster_entry_id": team_b_id,
+            "landing_x": 0.62,
+            "landing_y": 0.18,
+        },
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    score_3 = await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement",
+        json={"score_event_id": score_3.json()["score_event_id"], "roster_entry_id": team_a_id},
+    )
+
+    # Group-scoped entry point (Guest viewer).
+    guest_join = await client.post(
+        f"/groups/{created['group_id']}/join", json={"nickname": "旁觀者"}
+    )
+    guest_token = guest_join.json()["guest_session_token"]
+    group_scoped = await client.get(
+        f"/groups/{created['group_id']}/match-records/{match_id}",
+        params={"guest_session_token": guest_token},
+    )
+    assert group_scoped.status_code == 200
+    group_body = group_scoped.json()
+
+    # Member entry point — a logged-in member who joined the SAME group
+    # (but wasn't a participant in this specific match; the member endpoint
+    # only requires ever having been a roster entry in the group, not in
+    # this match) hitting the /members/me/... variant instead.
+    await client.post(
+        "/auth/register",
+        json={
+            "email": "timeline-shotplacement@example.com",
+            "password": "abc12345",
+            "confirm_password": "abc12345",
+            "turnstile_token": "unused",
+        },
+    )
+    await db_session.execute(
+        text(
+            "UPDATE members SET verification_status = 'verified' "
+            "WHERE email = 'timeline-shotplacement@example.com'"
+        ),
+    )
+    await db_session.commit()
+    db_session.expire_all()
+    login = await client.post(
+        "/auth/login",
+        json={"email": "timeline-shotplacement@example.com", "password": "abc12345"},
+    )
+    access_token = login.json()["access_token"]
+    member_headers = {"Authorization": f"Bearer {access_token}"}
+    await client.patch(
+        "/members/me/nickname", headers=member_headers, json={"nickname": "旁觀會員"}
+    )
+    join_resp = await client.post(
+        f"/groups/{created['group_id']}/join", headers=member_headers, json={}
+    )
+    assert join_resp.status_code == 201, join_resp.text
+
+    member_scoped = await client.get(
+        f"/members/me/match-records/{match_id}", headers=member_headers
+    )
+    assert member_scoped.status_code == 200
+    member_body = member_scoped.json()
+
+    assert member_body["events"] == group_body["events"]
+    assert member_body["player_stats"] == group_body["player_stats"]
+    # Sanity-check the actual content, not just that the two agree with
+    # each other (they could both agree on the WRONG thing).
+    assert group_body["events"][0]["detail"]["scoring_roster_entry_id"] == team_a_id
+    assert group_body["events"][0]["detail"]["losing_roster_entry_id"] == team_b_id
+    assert group_body["events"][1]["detail"] is None
+    assert group_body["events"][2]["detail"]["scoring_roster_entry_id"] == team_a_id
+    assert group_body["events"][2]["detail"]["losing_roster_entry_id"] is None
+    stats_by_id = {s["roster_entry_id"]: s for s in group_body["player_stats"]}
+    assert stats_by_id[team_a_id]["scored_count"] == 2
+    assert stats_by_id[team_b_id]["fault_count"] == 1
 
 
 async def test_only_trailing_score_events_yields_partial_completeness(

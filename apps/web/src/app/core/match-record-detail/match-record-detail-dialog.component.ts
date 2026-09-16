@@ -1,6 +1,7 @@
-import { Component, ElementRef, computed, input, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, effect, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { MatchRecordDetailResponse, ScoreEventSummary } from '../api/group-member-view.models';
+import { CourtDiagramComponent } from '../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../nickname/nickname.component';
 
 interface ChartPoint {
@@ -17,7 +18,7 @@ interface ChartPoint {
  * groupId 參數決定端點」導致的 I1 那類錯誤。 */
 @Component({
   selector: 'app-match-record-detail-dialog',
-  imports: [TranslatePipe, NicknameComponent],
+  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent],
   templateUrl: './match-record-detail-dialog.component.html',
   styleUrl: './match-record-detail-dialog.component.scss',
 })
@@ -35,6 +36,13 @@ export class MatchRecordDetailDialogComponent {
     (this.detail()?.team_b ?? []).map((p) => p.nickname).join('、'),
   );
 
+  /** 032-match-record-scoring-stats research.md Decision 6: singles/doubles
+   * derived from the existing participant counts, no separate field. */
+  readonly isSinglesMatch = computed(() => {
+    const d = this.detail();
+    return !d || d.team_a.length + d.team_b.length <= 2;
+  });
+
   /** research.md #3: chart x-axis is elapsed seconds since match start.
    * For a `"complete"` record, a synthetic (0, 0:0) origin point is
    * prepended — the match really did start there. For `"partial"`, that
@@ -47,7 +55,10 @@ export class MatchRecordDetailDialogComponent {
     }
     const events: ScoreEventSummary[] =
       d.record_completeness === 'complete'
-        ? [{ side: 'A', delta: 1, score_a: 0, score_b: 0, elapsed_seconds: 0 }, ...d.events]
+        ? [
+            { side: 'A', delta: 1, score_a: 0, score_b: 0, elapsed_seconds: 0, detail: null },
+            ...d.events,
+          ]
         : d.events;
     const maxElapsed = Math.max(events[events.length - 1].elapsed_seconds, 1);
     const maxScore = Math.max(d.score_a, d.score_b, 1);
@@ -64,6 +75,22 @@ export class MatchRecordDetailDialogComponent {
   readonly polylineB = computed(
     () => this.chartPoints()?.map((p) => `${p.x},${p.yB}`).join(' ') ?? '',
   );
+
+  /** 032-match-record-scoring-stats (US2, Clarifications 2026-09-16): the
+   * index within `detail().events` currently expanded to show its landing
+   * info — `null` means none expanded. At most one at a time: toggleExpand()
+   * collapses the clicked row if it's already the one open, otherwise
+   * switches to it (collapsing whichever was open before). */
+  readonly expandedEventIndex = signal<number | null>(null);
+
+  private readonly resetExpandedOnDetailChange = effect(() => {
+    this.detail();
+    this.expandedEventIndex.set(null);
+  });
+
+  toggleExpand(index: number): void {
+    this.expandedEventIndex.set(this.expandedEventIndex() === index ? null : index);
+  }
 
   open(): void {
     const nativeDialog = this.dialog().nativeElement;

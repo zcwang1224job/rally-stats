@@ -1,0 +1,111 @@
+// 032-match-record-scoring-stats (research.md Decision 5): copied verbatim
+// from shot-placement-picker.component.scss's `.court`/`.out-of-play-band`/
+// `.landing-marker` rules — `.court`'s box styling now targets `:host`
+// directly (this component's own root element IS the court box; there is
+// no separate wrapper div to hold a `.court` class).
+//
+// The coordinate system a point relative to THIS box represents is defined
+// in data-model.md Decision 1: x 0=A baseline, 1=B baseline, net at 0.5;
+// y 0/1 the two sidelines. Pure CSS lines, no image asset or drawing
+// library. No `overflow: hidden` — `.landing-marker` needs to be able to
+// render outside this box when the picked point is out of bounds.
+// Regulation BWF court proportions (13.4m x 6.1m doubles), all expressed as
+// a % of this box so they scale with it — the host's own border already IS
+// the doubles sideline/back-boundary outer edge, so those aren't repeated
+// as separate layers below:
+//   - net: exact mid-length (x = 50%).
+//   - short service line: 1.98m from the net -> 4.72m from each back
+//     boundary -> 4.72/13.4 = 35.224% from each end (x).
+//   - long service line (doubles): 0.76m in from each back boundary ->
+//     0.76/13.4 = 5.672% from each end (x).
+//   - singles sideline: inset 0.46m from each doubles sideline ->
+//     0.46/6.1 = 7.541% from each edge (y).
+//   - center line: divides left/right service courts — runs from the short
+//     service line to the back boundary only (not across the net-side "no
+//     man's land"), at the width midpoint (y = 50%), hence two separate
+//     partial-width layers below rather than one full-width line.
+:host {
+  display: block;
+  position: relative;
+  aspect-ratio: 2 / 1;
+  width: 100%;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-alt);
+
+  background-image:
+    // net
+    linear-gradient(var(--color-text-muted), var(--color-text-muted)),
+    // short service lines
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border)),
+    // long service lines (doubles)
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border)),
+    // singles sidelines
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border)),
+    // center line — back-portion-only, A side then B side
+    linear-gradient(var(--color-border), var(--color-border)),
+    linear-gradient(var(--color-border), var(--color-border));
+  background-repeat: no-repeat;
+  background-size:
+    2px 100%,
+    2px 100%,
+    2px 100%,
+    2px 100%,
+    2px 100%,
+    100% 2px,
+    100% 2px,
+    35.224% 2px,
+    35.224% 2px;
+  background-position:
+    center center,
+    35.224% center,
+    64.776% center,
+    5.672% center,
+    94.328% center,
+    center 7.541%,
+    center 92.459%,
+    left center,
+    right center;
+}
+
+// 032-out-of-bounds-by-match-mode: shades the strip between the singles
+// sideline and the full doubles width for a singles match — that strip is
+// out of play in a real singles rally. Height matches the singles
+// sideline inset already drawn on `:host` (7.541% = 0.46/6.1).
+.out-of-play-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 7.541%;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--color-text-muted) 18%, transparent),
+    color-mix(in srgb, var(--color-text-muted) 18%, transparent) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+  pointer-events: none;
+}
+
+.out-of-play-band--top {
+  top: 0;
+}
+
+.out-of-play-band--bottom {
+  bottom: 0;
+}
+
+.landing-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  border: 2px solid var(--color-surface);
+  pointer-events: none;
+}
