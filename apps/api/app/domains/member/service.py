@@ -198,10 +198,20 @@ async def _complete_oauth_login(
     provider: Provider,
     profile: OAuthProfile,
     bind_guest_token: str | None = None,
+    *,
+    user_agent: str | None = None,
 ) -> OAuthCallbackResult:
     """028-guest-stats-binding research.md #3: `bind_guest_token`, when
     given, is attempted after a successful login/registration below — same
-    optional-extra-step pattern in both success branches."""
+    optional-extra-step pattern in both success branches.
+
+    bugfix/oauth-login-record: every successful branch below is a genuine
+    login (returning member, or a brand-new member's first-ever session —
+    OAuth has no separate register-then-verify-then-login sequence the way
+    Email/password does) and MUST record one login record, same as
+    Email/password's `login()` — this was missing entirely before, so an
+    OAuth-only member's "最近登入" list stayed empty no matter how many times
+    they signed in."""
     existing = await _find_oauth_identity(session, provider, profile.sub)
     if existing is not None:
         member = await session.get(Member, existing.member_id)
@@ -217,6 +227,7 @@ async def _complete_oauth_login(
             if bind_guest_token
             else None
         )
+        await record_login(session, member.id, classify_device(user_agent))
         return OAuthCallbackResult(
             intent="login",
             status="success",
@@ -280,6 +291,7 @@ async def _complete_oauth_login(
         if bind_guest_token
         else None
     )
+    await record_login(session, member.id, classify_device(user_agent))
     return OAuthCallbackResult(
         intent="login",
         status="success",
@@ -357,6 +369,7 @@ async def complete_oauth_callback(
     code: str | None,
     state: str | None,
     error: str | None,
+    user_agent: str | None = None,
 ) -> OAuthCallbackResult:
     """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/callback`.
     Every branch below matches one row of that contract's table."""
@@ -397,7 +410,9 @@ async def complete_oauth_callback(
 
     if intent == "link":
         return await _complete_oauth_link(session, provider, profile, oauth_state.member_id)
-    return await _complete_oauth_login(session, provider, profile, oauth_state.bind_guest_token)
+    return await _complete_oauth_login(
+        session, provider, profile, oauth_state.bind_guest_token, user_agent=user_agent
+    )
 
 
 async def _attempt_guest_bind(

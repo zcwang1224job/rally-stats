@@ -309,7 +309,7 @@ async def start_oauth(
 @router.get("/auth/oauth/{provider}/callback")
 @limiter.limit("20/minute")
 async def oauth_callback(
-    request: Request,  # noqa: ARG001 - required by slowapi
+    request: Request,
     provider: str,
     session: Annotated[AsyncSession, Depends(get_session)],
     code: str | None = None,
@@ -319,10 +319,18 @@ async def oauth_callback(
     """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/callback`.
     Public — the browser lands here fresh from Google/LINE's own redirect,
     with no `Authorization` header. Always a 302, never a JSON body (the
-    browser is mid-navigation, not an API caller)."""
+    browser is mid-navigation, not an API caller). bugfix/oauth-login-record:
+    `request`'s User-Agent header backs the new login record's device
+    category, same as `/auth/login` — no longer unused, so its
+    `noqa: ARG001` is dropped."""
     valid_provider = _require_valid_provider(provider)
     result = await service.complete_oauth_callback(
-        session, valid_provider, code=code, state=state, error=error
+        session,
+        valid_provider,
+        code=code,
+        state=state,
+        error=error,
+        user_agent=request.headers.get("user-agent"),
     )
     return RedirectResponse(_oauth_callback_redirect_url(result), status_code=302)
 
