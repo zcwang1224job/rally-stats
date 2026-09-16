@@ -20,12 +20,16 @@
         {{ (isFullscreen() ? 'controlPanel.exitFullscreen' : 'controlPanel.enterFullscreen') | translate }}
       </button>
     }
-    <h1>{{ info.name }}</h1>
-    @if (liveState(); as state) {
-      <p class="round-label">
-        {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
-      </p>
-
+    @let state = liveState();
+    <div class="board-header">
+      <h1>{{ info.name }}</h1>
+      @if (state) {
+        <p class="round-label">
+          {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
+        </p>
+      }
+    </div>
+    @if (state) {
       @if (state.next_up; as next) {
         <p class="next-up status-badge">
           {{

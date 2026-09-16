@@ -25,12 +25,29 @@
   color: var(--color-ink-text);
 }
 
+// Court name + round on one line (rather than two stacked headings) so
+// they cost a single line of vertical space — the main saving that lets a
+// phone in landscape fit the whole board without scrolling (see the
+// landscape media query on :host below).
+.board-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 h1 {
+  // Browser default <h1>/<p> margins would otherwise reintroduce the
+  // vertical gap .board-header's single-line layout above is meant to
+  // remove.
+  margin: 0;
   font-size: var(--font-size-heading);
   font-weight: var(--font-weight-bold);
 }
 
 .round-label {
+  margin: 0;
   color: var(--color-ink-text-muted);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-heading);
@@ -56,6 +73,46 @@ h1 {
   // station elements land in the four corners (top-left/bottom-left for A,
   // top-right/bottom-right for B), matching real match court positions.
   min-height: 60vh;
+  // Anchors the net (::before below), which sits over the gap between the
+  // two team blocks.
+  position: relative;
+}
+
+// The net dividing the court's two halves — sits exactly over the flex
+// gap between .team--a/.team--b (absolutely positioned, so it never
+// participates in the flex layout itself). A solid top tape plus a
+// crosshatched mesh pattern reads as netting at a glance without an image
+// asset, same lines-only technique as .team's court markings above.
+.score-board::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--space-md);
+  transform: translateX(-50%);
+  pointer-events: none;
+  background-repeat: no-repeat, repeat, repeat;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 70%), rgba(255, 255, 255, 70%)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 35%) 0 1px,
+      transparent 1px 8px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 35%) 0 1px,
+      transparent 1px 8px
+    );
+  background-size:
+    100% 6px,
+    auto,
+    auto;
+  background-position:
+    top,
+    0 0,
+    0 0;
 }
 
 .team {
@@ -71,6 +128,34 @@ h1 {
   padding: var(--space-lg);
   border-radius: var(--radius-md);
   border: 4px solid transparent;
+
+  // Faint white badminton court markings drawn on top of the team's own
+  // color (set separately via background-color below, so it layers under
+  // these rather than replacing them). Solid-color gradients are a
+  // deliberate lines-only technique — no SVG/image asset needed. Reads as a
+  // stylized half-court: a center line splitting the block's top/bottom
+  // station slots (matching where the two players actually stand, see
+  // .team--a/.team--b's align-items above), a short/long service line pair,
+  // and two singles sidelines.
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%));
+  background-size:
+    70% 5px,
+    100% 5px,
+    100% 5px,
+    5px 100%,
+    5px 100%;
+  background-position:
+    center 50%,
+    center 20%,
+    center 80%,
+    15% center,
+    85% center;
 }
 
 // Each team's stations hug the outer edge of the whole score-board (away
@@ -111,13 +196,22 @@ h1 {
 }
 
 .team--a {
-  background: var(--scoreboard-team-a-bg);
+  // background-color (not the background shorthand) so it layers under
+  // .team's court-line gradients above instead of overwriting them.
+  background-color: var(--scoreboard-team-a-bg);
   border-color: var(--scoreboard-team-a-border);
+  // Squares off the net-facing (right) corners — a real court is one sharp
+  // rectangle split by the net, not two independently rounded boxes; the
+  // outer (left) corners keep the rounding for a friendlier overall shape.
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
 .team--b {
-  background: var(--scoreboard-team-b-bg);
+  background-color: var(--scoreboard-team-b-bg);
   border-color: var(--scoreboard-team-b-border);
+  // Mirrors .team--a above: squares off the net-facing (left) corners,
+  // keeps the outer (right) corners rounded.
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
 }
 
 // 029-serve-rotation-display: each team's up-to-two station slots (right/left
@@ -247,4 +341,68 @@ h1 {
   top: var(--space-md);
   left: var(--space-md);
   z-index: 2;
+}
+
+// A phone rotated to landscape is wide enough to cross $breakpoint-tablet
+// (so the larger tablet sizes above would normally apply) but has very
+// little height to work with — without this, the tablet-size score/station
+// text alone would be taller than the viewport and force the browser to
+// scroll, which is exactly what a courtside scorer flips to landscape to
+// avoid. Keyed on height, not width, so it overrides the tablet breakpoint
+// specifically in this short-viewport case and leaves real tablets/desktops
+// (which have height to spare) on the normal sizing above.
+@media (orientation: landscape) and (max-height: 500px) {
+  :host {
+    padding: var(--space-sm);
+  }
+
+  h1,
+  .round-label {
+    font-size: var(--font-size-body);
+  }
+
+  .score-board {
+    margin: var(--space-sm) 0;
+    min-height: 0;
+  }
+
+  .team {
+    padding: var(--space-sm);
+    gap: var(--space-sm);
+  }
+
+  .team-center {
+    gap: var(--space-xs);
+  }
+
+  .station {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--font-size-body);
+  }
+
+  .server-badge {
+    font-size: var(--font-size-heading);
+  }
+
+  .score {
+    font-size: 3rem;
+  }
+
+  .buttons {
+    margin-top: var(--space-xs);
+
+    .btn {
+      min-width: var(--touch-target-min);
+      min-height: var(--touch-target-min);
+      font-size: var(--font-size-body);
+    }
+  }
+
+  .end-match-button {
+    margin-top: var(--space-sm);
+  }
+
+  .waiting-message {
+    margin-top: var(--space-sm);
+  }
 }
