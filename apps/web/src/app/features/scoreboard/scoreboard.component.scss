@@ -373,11 +373,50 @@ h1 {
     min-width: 64px;
     min-height: 64px;
     font-size: var(--font-size-heading);
+    // Same camouflage as .fullscreen-toggle below: the default .btn (solid
+    // brand orange) and .btn--secondary (light-theme white pill) both read
+    // as bright, attention-grabbing shapes on this dark scoreboard — but
+    // this control is for whoever is scoring, not something the players
+    // and audience watching the board should be drawn to. Blends into the
+    // background at rest; the hover state (or a closer look) is what
+    // reveals it's there.
+    background: var(--scoreboard-bg);
+    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
+    color: color-mix(in srgb, var(--color-ink) 55%, white);
+    box-shadow: none;
+
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+        border-color: var(--color-ink-text);
+        color: var(--color-ink-text);
+        box-shadow: none;
+      }
+    }
   }
 }
 
 .end-match-button {
   margin-top: var(--space-lg);
+  // Same reasoning as .buttons .btn above — .btn--danger's solid red is the
+  // most attention-grabbing element on the whole board, which is the
+  // opposite of what a rarely-used "end early" control should be. A faint
+  // red-tinted border (rather than no color hint at all) keeps a trace of
+  // "this one is destructive" for whoever looks closely, without shouting
+  // for attention from a distance the way the filled danger button did.
+  background: var(--scoreboard-bg);
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
+  color: color-mix(in srgb, var(--color-ink) 55%, white);
+  box-shadow: none;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+      border-color: var(--color-danger);
+      color: var(--color-ink-text);
+      box-shadow: none;
+    }
+  }
 }
 
 // Mirrors .next-up's fixed corner placement (opposite corner, so the two
