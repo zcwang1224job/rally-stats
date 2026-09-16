@@ -75,6 +75,7 @@ function setup(options: {
           ended_at: '2026-09-14T10:20:00Z',
           record_completeness: 'complete',
           events: [],
+          player_stats: [],
         } satisfies MatchRecordDetailResponse)),
   };
 

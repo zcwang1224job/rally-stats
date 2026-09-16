@@ -54,24 +54,21 @@
         (keydown.enter)="pickCenterPoint()"
         (keydown.space)="pickCenterPoint()"
       >
-        <div #court class="court">
-          @if (isSinglesMatch()) {
-            <!-- 032-out-of-bounds-by-match-mode: for a singles match, the
-                 strip between the singles sideline and the full doubles
-                 width is out of play — shaded here so it visually matches
-                 landingSide()'s (component.ts) narrower bounds, same as a
-                 real singles court. -->
-            <div class="out-of-play-band out-of-play-band--top"></div>
-            <div class="out-of-play-band out-of-play-band--bottom"></div>
-          }
-          @if (selectedPoint(); as point) {
-            <span
-              class="landing-marker"
-              [style.left.%]="point.x * 100"
-              [style.top.%]="point.y * 100"
-            ></span>
-          }
-        </div>
+        <!-- 032-match-record-scoring-stats (research.md Decision 5): the
+             pure court drawing lives in the shared CourtDiagramComponent —
+             `#court` now resolves to ITS host element (see component.ts's
+             `{ read: ElementRef }`), so the pointer math above is unchanged. -->
+        <!-- class="court" kept for existing tests/selectors that look up
+             this element by that class — the actual box styling now comes
+             from CourtDiagramComponent's own :host rule (this class no
+             longer carries CSS meaning of its own here). -->
+        <app-court-diagram
+          #court
+          class="court"
+          [isSinglesMatch]="isSinglesMatch()"
+          [landingX]="selectedPoint()?.x ?? null"
+          [landingY]="selectedPoint()?.y ?? null"
+        />
       </div>
 
       <!-- The magnifier lens: `position: fixed` (viewport coordinates from

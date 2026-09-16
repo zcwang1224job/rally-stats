@@ -1,0 +1,17 @@
+@if (isSinglesMatch()) {
+  <!-- 032-out-of-bounds-by-match-mode: for a singles match, the strip
+       between the singles sideline and the full doubles width is out of
+       play — shaded here so it visually matches the narrower singles
+       in-bounds check, same as a real singles court. -->
+  <div class="out-of-play-band out-of-play-band--top"></div>
+  <div class="out-of-play-band out-of-play-band--bottom"></div>
+}
+@if (landingX() !== null && landingY() !== null) {
+  <!-- 0 is a legitimate coordinate (A's baseline) — MUST NOT use a
+       truthy @if here, only an explicit null check. -->
+  <span
+    class="landing-marker"
+    [style.left.%]="landingX()! * 100"
+    [style.top.%]="landingY()! * 100"
+  ></span>
+}

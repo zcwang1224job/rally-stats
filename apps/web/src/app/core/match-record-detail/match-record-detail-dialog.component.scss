@@ -172,3 +172,61 @@ h2 {
   font-size: var(--font-size-caption);
   margin-left: auto;
 }
+
+// 032-match-record-scoring-stats
+.event-row--clickable {
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+  }
+}
+
+.event-row__player {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs, 2px);
+}
+
+// forces the expanded panel onto its own line within the wrapping flex row
+// above, rather than squeezing in beside the other badges.
+.event-row__landing {
+  flex-basis: 100%;
+  margin-top: var(--space-sm);
+}
+
+.landing-not-recorded {
+  color: var(--color-text-muted);
+  font-style: italic;
+  margin: 0;
+}
+
+.player-stats-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.player-stat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  padding: var(--space-sm);
+}
+
+.player-stat-row__nickname {
+  font-weight: var(--font-weight-bold);
+}
+
+.player-stat-row__count {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.player-stats-empty {
+  color: var(--color-text-muted);
+}

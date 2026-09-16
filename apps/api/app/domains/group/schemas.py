@@ -520,17 +520,58 @@ class MemberMatchRecordSummary(MatchRecordSummary):
     won: bool
 
 
+# 032-match-record-scoring-stats: a per-point snapshot of "who scored, who
+# was at fault, where it landed" for a single +1 ScoreEvent — read-only
+# projection of an existing ShotPlacementRecord row (031/032-shot-placement-
+# scoring), never written by this feature. Every field independently
+# optional since a ShotPlacementRecord's own fields are each independently
+# optional (the scorer may confirm with only some of them picked).
+class ShotPlacementSummary(BaseModel):
+    scoring_roster_entry_id: str | None = None
+    scoring_nickname: str | None = None
+    losing_roster_entry_id: str | None = None
+    losing_nickname: str | None = None
+    landing_x: float | None = None
+    landing_y: float | None = None
+
+
 class ScoreEventSummary(BaseModel):
     side: Literal["A", "B"]
     delta: Literal[1, -1]
     score_a: int
     score_b: int
     elapsed_seconds: int
+    # research.md Decision 2: None for a -1 event, a +1 event with no
+    # ShotPlacementRecord at all, or one whose four fields are all NULL
+    # (confirmed with nothing picked) — those three cases must render
+    # identically (no badge, not expandable), so build_match_record_detail()
+    # collapses them to the same None here rather than letting the frontend
+    # tell them apart.
+    detail: ShotPlacementSummary | None = None
+
+
+# 032-match-record-scoring-stats: one match participant's aggregate across
+# every ShotPlacementRecord row in this match — independently counts
+# `roster_entry_id` occurrences (scored_count) and `losing_roster_entry_id`
+# occurrences (fault_count), per research.md Decision 3 (a row may set only
+# one of the two fields).
+class PlayerScoringStat(BaseModel):
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+    scored_count: int
+    fault_count: int
 
 
 class MatchRecordDetailResponse(MatchRecordSummary):
     record_completeness: Literal["complete", "partial", "none"]
     events: list[ScoreEventSummary]
+    # research.md Decision 4: `[]` is the single signal for "no player was
+    # ever recorded in this match" (FR-008's empty-state prompt); whenever
+    # non-empty, it always lists EVERY participant in team_a + team_b, zero
+    # counts included (FR-009) — there is no third state, so no separate
+    # boolean flag is needed alongside this list.
+    player_stats: list[PlayerScoringStat] = []
 
 
 class RoundWinRatePoint(BaseModel):

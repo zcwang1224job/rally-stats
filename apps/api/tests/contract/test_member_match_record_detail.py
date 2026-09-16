@@ -5,7 +5,7 @@ both of which use the "ever a member" access boundary (research.md #1)."""
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.member.models import Member
@@ -51,7 +51,12 @@ async def _register_verified_and_login(
 
 
 async def _create_group_with_member_in_active_match(
-    client: AsyncClient, db_session: AsyncSession, turnstile_token: str, member_email: str
+    client: AsyncClient,
+    db_session: AsyncSession,
+    turnstile_token: str,
+    member_email: str,
+    *,
+    detailed_scoring_enabled: bool = False,
 ) -> tuple[dict, dict, str, str]:
     """Creates a group (guest creator), joins `member_email` as a logged-in
     Member, generates a singles match between the two via fair_rotation,
@@ -92,6 +97,17 @@ async def _create_group_with_member_in_active_match(
         f"/groups/{created['group_id']}/join", headers=member_headers, json={}
     )
     roster_entry_id = join_response.json()["roster_entry_id"]
+
+    if detailed_scoring_enabled:
+        # 032-match-record-scoring-stats: MUST be set BEFORE next-round pulls
+        # a match onto the court — matches.detailed_scoring_enabled is a
+        # snapshot taken at creation time (031-shot-placement-scoring).
+        await db_session.execute(
+            text("UPDATE groups SET detailed_scoring_enabled = true WHERE id = :id"),
+            {"id": created["group_id"]},
+        )
+        await db_session.commit()
+        db_session.expire_all()
 
     await client.post(f"/groups/{created['group_id']}/next-round", headers=admin_headers)
 
@@ -191,3 +207,50 @@ async def test_never_a_member_returns_group_membership_never_held(
 
     assert response.status_code == 403
     assert response.json()["error_code"] == "GROUP_MEMBERSHIP_NEVER_HELD"
+
+
+async def test_shot_placement_detail_is_included_via_member_endpoint(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """032-match-record-scoring-stats: confirms build_match_record_detail()'s
+    extension applies automatically to this endpoint too — no per-endpoint
+    changes were made (plan.md's whole point)."""
+    created, court, access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token,
+            "matchdetail-shotplacement@example.com", detailed_scoring_enabled=True,
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    state = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+    team_a_id = next(
+        p["roster_entry_id"]
+        for p in state.json()["current_match"]["participants"]
+        if p["team"] == "A"
+    )
+
+    score_1 = await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement",
+        json={"score_event_id": score_1.json()["score_event_id"], "roster_entry_id": team_a_id},
+    )
+    for _ in range(2):
+        await client.post(
+            f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+            json={"side": "A", "delta": 1},
+        )
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["events"][0]["detail"]["scoring_roster_entry_id"] == team_a_id
+    assert body["events"][1]["detail"] is None
+    stats_by_id = {s["roster_entry_id"]: s for s in body["player_stats"]}
+    assert stats_by_id[team_a_id]["scored_count"] == 1

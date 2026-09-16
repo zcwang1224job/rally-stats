@@ -12,7 +12,12 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _create_group_with_active_match(
-    client: AsyncClient, session: AsyncSession, token: str, *, name: str = "Match Detail Contract"
+    client: AsyncClient,
+    session: AsyncSession,
+    token: str,
+    *,
+    name: str = "Match Detail Contract",
+    detailed_scoring_enabled: bool = False,
 ) -> tuple[dict, dict]:
     group_response = await client.post(
         "/groups",
@@ -43,7 +48,16 @@ async def _create_group_with_active_match(
         ),
         {"id": str(uuid.uuid4()), "group_id": created["group_id"]},
     )
+    if detailed_scoring_enabled:
+        # 032-match-record-scoring-stats: MUST be set BEFORE next-round pulls
+        # a match onto the court — matches.detailed_scoring_enabled is a
+        # snapshot taken at creation time (031-shot-placement-scoring).
+        await session.execute(
+            text("UPDATE groups SET detailed_scoring_enabled = true WHERE id = :id"),
+            {"id": created["group_id"]},
+        )
     await session.commit()
+    session.expire_all()
     await client.post(f"/groups/{created['group_id']}/next-round", headers=headers)
 
     return created, court
@@ -131,6 +145,75 @@ async def test_incomplete_match_returns_match_not_found(
 
     assert response.status_code == 404
     assert response.json()["error_code"] == "MATCH_NOT_FOUND"
+
+
+async def test_detailed_match_returns_shot_placement_detail_and_player_stats(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """032-match-record-scoring-stats: end-to-end through the real scoring +
+    shot-placement write endpoints (same paths production traffic uses),
+    then asserts the extended GET .../match-records/{match_id} response."""
+    created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token, detailed_scoring_enabled=True
+    )
+    match_id = await _get_match_id(client, court)
+    state = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+    participants = state.json()["current_match"]["participants"]
+    team_a_id = next(p["roster_entry_id"] for p in participants if p["team"] == "A")
+    team_b_id = next(p["roster_entry_id"] for p in participants if p["team"] == "B")
+
+    # Point 1: full detail (scoring + losing player + landing).
+    score_1 = await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement",
+        json={
+            "score_event_id": score_1.json()["score_event_id"],
+            "roster_entry_id": team_a_id,
+            "losing_roster_entry_id": team_b_id,
+            "landing_x": 0.62,
+            "landing_y": 0.18,
+        },
+    )
+    # Point 2: skipped — no shot-placement call at all.
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    # Point 3: only the scoring player recorded, no landing/losing player.
+    score_3 = await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement",
+        json={"score_event_id": score_3.json()["score_event_id"], "roster_entry_id": team_a_id},
+    )
+
+    guest_join = await client.post(f"/groups/{created['group_id']}/join", json={"nickname": "小美"})
+    guest_token = guest_join.json()["guest_session_token"]
+    response = await client.get(
+        f"/groups/{created['group_id']}/match-records/{match_id}",
+        params={"guest_session_token": guest_token},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    events = body["events"]
+    assert events[0]["detail"]["scoring_roster_entry_id"] == team_a_id
+    assert events[0]["detail"]["losing_roster_entry_id"] == team_b_id
+    assert events[0]["detail"]["landing_x"] == 0.62
+    assert events[1]["detail"] is None
+    assert events[2]["detail"]["scoring_roster_entry_id"] == team_a_id
+    assert events[2]["detail"]["losing_roster_entry_id"] is None
+
+    stats_by_id = {s["roster_entry_id"]: s for s in body["player_stats"]}
+    assert stats_by_id[team_a_id]["scored_count"] == 2
+    assert stats_by_id[team_a_id]["fault_count"] == 0
+    assert stats_by_id[team_b_id]["scored_count"] == 0
+    assert stats_by_id[team_b_id]["fault_count"] == 1
 
 
 async def test_match_from_different_group_returns_match_not_found(
