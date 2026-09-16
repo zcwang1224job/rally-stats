@@ -297,6 +297,23 @@ describe('ScoreboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('2');
   });
 
+  it('pulses team A\'s score after a successful local +1, not team B\'s', async () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({ applied: true, match_id: 'm1', status: 'in_progress', score_a: 2, score_b: 1, winner_team: null }),
+    );
+    const fixture = setup(scoringMatchState, true, { score: scoreSpy });
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    // triggerScorePulse defers setting the pulse signal to the next
+    // animation frame (see ScoreboardComponent) so the CSS animation
+    // actually restarts — give that a real tick before asserting.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.team--a .score').classList).toContain('score--pulse');
+    expect(fixture.nativeElement.querySelector('.team--b .score').classList).not.toContain('score--pulse');
+  });
+
   it('confirming the end-match dialog calls CourtControlService.endMatch', () => {
     const endMatchSpy = vi.fn().mockReturnValue(
       of({ applied: true, match_id: 'm1', status: 'abandoned', score_a: 1, score_b: 2, winner_team: null }),
@@ -381,6 +398,42 @@ describe('ScoreboardComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('5');
     expect(fixture.nativeElement.querySelector('.station--server').textContent).toContain('徐丙');
+  });
+
+  it('pulses only the side whose score actually changed in a match.scoreUpdated event', async () => {
+    const scoreUpdated$ = new Subject<{ data: unknown }>();
+    const fixture = setup(
+      {
+        court_id: 'c1',
+        round_number: 1,
+        current_match: {
+          match_id: 'm1',
+          status: 'in_progress',
+          score_a: 5,
+          score_b: 8,
+          participants: [
+            { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+            { roster_entry_id: 'p2', nickname: '徐丙', team: 'B' },
+          ],
+        },
+        waiting_reason: null,
+        next_up: null,
+      },
+      true,
+      {},
+      undefined,
+      realtimeStubWithEvent('match.scoreUpdated', scoreUpdated$),
+    );
+
+    // Only B's score actually changes (8 -> 9); A stays at 5.
+    scoreUpdated$.next({
+      data: { match_id: 'm1', score_a: 5, score_b: 9, serve: null },
+    });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.team--b .score').classList).toContain('score--pulse');
+    expect(fixture.nativeElement.querySelector('.team--a .score').classList).not.toContain('score--pulse');
   });
 
   it('reflects a reconnect-triggered full state refetch (US3 FR-011, spec Edge Case)', () => {

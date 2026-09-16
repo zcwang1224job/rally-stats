@@ -60,7 +60,7 @@
               }
             }
             <div class="team-center">
-              <span class="score">{{ state.current_match?.score_a ?? 0 }}</span>
+              <span class="score" [class.score--pulse]="scorePulseA()">{{ state.current_match?.score_a ?? 0 }}</span>
             </div>
             @if (state.current_match; as match) {
               @if (station(match, match.serve?.team_a_right_roster_entry_id ?? null); as bottomStation) {
@@ -85,7 +85,7 @@
               }
             }
             <div class="team-center">
-              <span class="score">{{ state.current_match?.score_b ?? 0 }}</span>
+              <span class="score" [class.score--pulse]="scorePulseB()">{{ state.current_match?.score_b ?? 0 }}</span>
             </div>
             @if (state.current_match; as match) {
               @if (station(match, match.serve?.team_b_left_roster_entry_id ?? null); as bottomStation) {

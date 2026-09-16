@@ -52,6 +52,17 @@ export class ScoreboardComponent {
   readonly canScore = computed(() => this.liveState()?.scoreboard_scoring_enabled === true);
   readonly endMatchDialog = viewChild<ConfirmDialogComponent>('endMatchDialog');
 
+  // Brief "pop" animation on a team's score number so a change is visible
+  // at a glance (a spectator watching the board, not just the person
+  // tapping +/-) rather than the digit silently jumping to a new value —
+  // triggered only from the two spots below that represent a genuine score
+  // change, never from a general loadState() refresh (initial load,
+  // reconnect, rotation/round change), which would pulse on data that
+  // hasn't actually changed.
+  readonly scorePulseA = signal(false);
+  readonly scorePulseB = signal(false);
+  private readonly pulseTimeouts: Partial<Record<Team, ReturnType<typeof setTimeout>>> = {};
+
   // Already launched from a home-screen icon (manifest.json's "fullscreen"
   // display mode, or iOS's own standalone mode) — no browser chrome to hide,
   // so the Fullscreen API button isn't needed.
@@ -113,6 +124,21 @@ export class ScoreboardComponent {
       });
   }
 
+  /** Restarts the CSS pulse animation on `side`'s score even if it's still
+   * mid-animation from a previous change — clearing the class first and
+   * re-applying it on the next frame is what actually restarts a CSS
+   * animation (setting the same "true" value twice in a row wouldn't). */
+  private triggerScorePulse(side: Team): void {
+    const pulseSignal = side === 'A' ? this.scorePulseA : this.scorePulseB;
+    clearTimeout(this.pulseTimeouts[side]);
+    pulseSignal.set(false);
+    requestAnimationFrame(() => {
+      pulseSignal.set(true);
+      // Matches .score--pulse's animation-duration (scoreboard.component.scss).
+      this.pulseTimeouts[side] = setTimeout(() => pulseSignal.set(false), 1200);
+    });
+  }
+
   private loadState(): void {
     this.courtControl
       .getState(this.token)
@@ -145,6 +171,12 @@ export class ScoreboardComponent {
         };
         const state = this.liveState();
         if (state?.current_match?.match_id === data.match_id) {
+          if (data.score_a !== state.current_match.score_a) {
+            this.triggerScorePulse('A');
+          }
+          if (data.score_b !== state.current_match.score_b) {
+            this.triggerScorePulse('B');
+          }
           this.liveState.set({
             ...state,
             current_match: {
@@ -208,6 +240,7 @@ export class ScoreboardComponent {
       .subscribe((result) => {
         const state = this.liveState();
         if (state?.current_match?.match_id === result.match_id && result.status === 'in_progress') {
+          this.triggerScorePulse(side);
           this.liveState.set({
             ...state,
             current_match: { ...state.current_match, score_a: result.score_a, score_b: result.score_b },

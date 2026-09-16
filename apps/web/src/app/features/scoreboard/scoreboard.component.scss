@@ -321,6 +321,7 @@ h1 {
 // width means the score doesn't shift width as it changes, and the blockier
 // numeral shapes read more like a dedicated scoreboard display.
 .score {
+  display: inline-block;
   font-family: var(--font-family-score);
   font-variant-numeric: tabular-nums;
   font-size: 7rem;
@@ -330,6 +331,31 @@ h1 {
 
   @media (min-width: breakpoints.$breakpoint-tablet) {
     font-size: 12rem;
+  }
+}
+
+// A brief pop + color flash when a point lands, so the change is visible to
+// anyone watching the board (not just whoever tapped +/-) instead of the
+// digit silently jumping to a new value. Retriggered from TS (see
+// ScoreboardComponent.triggerScorePulse) rather than a plain persistent
+// class, since a CSS animation only plays once per class application.
+@keyframes score-pulse {
+  0% {
+    transform: scale(1.2);
+    color: var(--color-brand-primary);
+  }
+
+  100% {
+    transform: scale(1);
+    color: var(--color-ink-text);
+  }
+}
+
+.score--pulse {
+  animation: score-pulse 1.2s ease-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
   }
 }
 
