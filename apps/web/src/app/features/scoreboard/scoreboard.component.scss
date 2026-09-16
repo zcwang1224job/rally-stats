@@ -341,6 +341,25 @@ h1 {
   top: var(--space-md);
   left: var(--space-md);
   z-index: 2;
+  // .btn--secondary's light-theme surface/border/text (white pill, dark
+  // text) reads as a stark, out-of-place box on the scoreboard's dark
+  // background. Matching the button's fill to the page background and
+  // keeping border/text just barely lighter than that background (not the
+  // fully-legible --color-ink-text-muted/-text tokens) means a player
+  // standing at the edge of the court can't spot it from a distance — it
+  // only becomes readable up close, or once the brighter hover state below
+  // confirms it's interactive.
+  background: var(--scoreboard-bg);
+  border-color: color-mix(in srgb, var(--color-ink) 75%, white);
+  color: color-mix(in srgb, var(--color-ink) 55%, white);
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+      border-color: var(--color-ink-text);
+      color: var(--color-ink-text);
+    }
+  }
 }
 
 // A phone rotated to landscape is wide enough to cross $breakpoint-tablet
