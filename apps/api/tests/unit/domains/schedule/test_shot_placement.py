@@ -613,3 +613,160 @@ async def test_landing_conflict_check_still_applies_without_any_player_chosen(
         await attach_shot_placement(db_session, court, match.id, event_id, None, None, 0.2, 0.5)
 
     assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"
+
+
+# ---------------------------------------------------------------- 035 ending_type (T005)
+
+_INSET = 0.46 / 6.1
+
+# specs/035-point-ending-type/data-model.md「界內／界外的邊界測試向量」— copied
+# verbatim. The picker's spec (shot-placement-picker.component.spec.ts) runs
+# the SAME table: in/out is judged once on each side, and a request this
+# function rejects silently loses the whole detail row (the callers have no
+# error handler), so the two judgements must never disagree.
+BOUNDS_VECTORS: list[tuple[str, float, float, bool]] = [
+    ("doubles", 0.0, 0.5, True),
+    ("doubles", 1.0, 0.5, True),
+    ("doubles", 0.5, 0.0, True),
+    ("doubles", 0.5, 1.0, True),
+    ("doubles", -0.0001, 0.5, False),
+    ("doubles", 1.0001, 0.5, False),
+    ("doubles", 0.5, -0.0001, False),
+    ("doubles", 0.5, 1.0001, False),
+    ("singles", 0.5, _INSET, True),
+    ("singles", 0.5, 1 - _INSET, True),
+    ("singles", 0.5, _INSET - 0.0001, False),
+    ("singles", 0.5, 1 - _INSET + 0.0001, False),
+    ("singles", 0.5, 0.03, False),
+]
+
+
+async def _new_point(
+    session: AsyncSession, *, mode: str = "singles", side: Team = "A", **group: object
+) -> tuple[Court, uuid.UUID, uuid.UUID]:
+    """A fresh in-progress match with one point already scored by `side`."""
+    made = await _make_group(session, match_mode=mode, **group)
+    court = await _make_court(session, made)
+    per_team = 1 if mode == "singles" else 2
+    players = [await _make_roster_entry(session, made) for _ in range(per_team * 2)]
+    match = await create_match_with_participants(
+        session, made, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p.id for p in players[:per_team]], team_b=[p.id for p in players[per_team:]],
+    )
+    await session.commit()
+    return court, match.id, await _score_and_get_event_id(session, court, match.id, side)
+
+
+async def _stored_ending(session: AsyncSession, event_id: uuid.UUID) -> str | None:
+    record = (
+        await session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.score_event_id == event_id)
+        )
+    ).scalar_one()
+    return record.ending_type
+
+
+@pytest.mark.parametrize("ending", ["winner", "out", "net", "serve_fault", "other_error"])
+async def test_each_ending_type_is_stored_on_its_own(db_session: AsyncSession, ending: str) -> None:
+    """FR-010: no landing, no players — the ending alone is a valid record."""
+    court, match_id, event_id = await _new_point(db_session)
+
+    await attach_shot_placement(
+        db_session, court, match_id, event_id, None, None, None, None, ending_type=ending
+    )
+
+    assert await _stored_ending(db_session, event_id) == ending
+
+
+async def test_ending_type_defaults_to_not_recorded(db_session: AsyncSession) -> None:
+    court, match_id, event_id = await _new_point(db_session)
+
+    await attach_shot_placement(db_session, court, match_id, event_id, None, None, 0.8, 0.5)
+
+    assert await _stored_ending(db_session, event_id) is None
+
+
+async def test_rejects_an_unknown_ending_type(db_session: AsyncSession) -> None:
+    court, match_id, event_id = await _new_point(db_session)
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, None, None, ending_type="smash"
+        )
+
+    assert excinfo.value.error_code == "INVALID_ENDING_TYPE"
+
+
+@pytest.mark.parametrize(("mode", "x", "y", "in_bounds"), BOUNDS_VECTORS)
+async def test_winner_needs_an_in_bounds_landing_and_out_an_out_of_bounds_one(
+    db_session: AsyncSession, mode: str, x: float, y: float, in_bounds: bool
+) -> None:
+    # The credited side is whichever makes an in-bounds point land on the
+    # LOSER's half, so the older landing-vs-credited-side check stays quiet.
+    side: Team = "B" if x < 0.5 else "A"
+    court, match_id, event_id = await _new_point(db_session, mode=mode, side=side)
+    fits, contradicts = ("winner", "out") if in_bounds else ("out", "winner")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, x, y, ending_type=contradicts
+        )
+    assert excinfo.value.error_code == "ENDING_TYPE_CONTRADICTS_LANDING"
+
+    # Nothing was written by the rejected call, so the same point still takes one.
+    await attach_shot_placement(
+        db_session, court, match_id, event_id, None, None, x, y, ending_type=fits
+    )
+    assert await _stored_ending(db_session, event_id) == fits
+
+
+@pytest.mark.parametrize("ending", ["net", "serve_fault", "other_error"])
+@pytest.mark.parametrize(("x", "y"), [(0.8, 0.5), (1.2, 0.5)])
+async def test_other_errors_are_never_tied_to_the_landing(
+    db_session: AsyncSession, ending: str, x: float, y: float
+) -> None:
+    """A netted shuttle or a fault can come down anywhere."""
+    court, match_id, event_id = await _new_point(db_session)
+
+    await attach_shot_placement(
+        db_session, court, match_id, event_id, None, None, x, y, ending_type=ending
+    )
+
+    assert await _stored_ending(db_session, event_id) == ending
+
+
+@pytest.mark.parametrize("ending", ["winner", "out"])
+async def test_without_a_landing_nothing_can_contradict(
+    db_session: AsyncSession, ending: str
+) -> None:
+    court, match_id, event_id = await _new_point(db_session)
+
+    await attach_shot_placement(
+        db_session, court, match_id, event_id, None, None, None, None, ending_type=ending
+    )
+
+    assert await _stored_ending(db_session, event_id) == ending
+
+
+async def test_simple_scoring_match_still_refuses_an_ending_type(db_session: AsyncSession) -> None:
+    court, match_id, event_id = await _new_point(db_session, detailed_scoring_enabled=False)
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, None, None, ending_type="winner"
+        )
+
+    assert excinfo.value.error_code == "DETAILED_SCORING_NOT_ENABLED"
+
+
+async def test_older_landing_check_still_answers_first(db_session: AsyncSession) -> None:
+    """In-bounds on the CREDITED side's own half (and not a serve-fault band)
+    is the existing contradiction; it must not turn into the new error."""
+    court, match_id, event_id = await _new_point(db_session, side="A")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, 0.2, 0.5, ending_type="out"
+        )
+
+    assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"

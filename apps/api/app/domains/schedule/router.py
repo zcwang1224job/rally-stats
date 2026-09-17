@@ -485,7 +485,8 @@ async def record_shot_placement_by_token(
     `SCORE_EVENT_NOT_FOUND`、`SCORE_EVENT_NOT_A_POINT`、
     `SHOT_PLACEMENT_ALREADY_RECORDED`、`PARTICIPANT_NOT_IN_MATCH`、
     `SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、`SCORING_AND_LOSING_PLAYER_SAME_TEAM`、
-    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`。"""
+    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`、
+    `ENDING_TYPE_CONTRADICTS_LANDING`（035）。"""
     court, group, link_type, _owner_language = await court_service.get_court_by_token(
         session, token
     )
@@ -502,6 +503,7 @@ async def record_shot_placement_by_token(
         else None,
         payload.landing_x,
         payload.landing_y,
+        ending_type=payload.ending_type,
     )
     return ShotPlacementAttachResponse()
 
@@ -587,7 +589,8 @@ async def record_shot_placement_by_admin(
     `INVALID_LANDING_COORDINATES`、`SCORE_EVENT_NOT_FOUND`、
     `SCORE_EVENT_NOT_A_POINT`、`SHOT_PLACEMENT_ALREADY_RECORDED`、
     `PARTICIPANT_NOT_IN_MATCH`、`SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、
-    `SCORING_AND_LOSING_PLAYER_SAME_TEAM`、`SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`。"""
+    `SCORING_AND_LOSING_PLAYER_SAME_TEAM`、`SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`、
+    `ENDING_TYPE_CONTRADICTS_LANDING`（035）。"""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     await service.attach_shot_placement(
@@ -601,6 +604,7 @@ async def record_shot_placement_by_admin(
         else None,
         payload.landing_x,
         payload.landing_y,
+        ending_type=payload.ending_type,
     )
     return ShotPlacementAttachResponse()
 

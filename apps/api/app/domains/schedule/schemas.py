@@ -275,6 +275,10 @@ class RecordShotPlacementRequest(BaseModel):
     # the other.
     landing_x: float | None = Field(default=None, ge=-0.3, le=1.3)
     landing_y: float | None = Field(default=None, ge=-0.3, le=1.3)
+    # 035-point-ending-type: how the rally ended; omitted/null = not recorded.
+    # Valid on its own, with none of the fields above. The picker pre-selects
+    # it from the landing, but the server stores exactly what arrives here.
+    ending_type: EndingType | None = None
 
 
 class ShotPlacementAttachResponse(BaseModel):

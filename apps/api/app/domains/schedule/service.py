@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import cast, get_args
 
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -40,6 +40,7 @@ from app.domains.schedule.models import (
 from app.domains.schedule.schemas import (
     CourtLiveState,
     CourtScheduleStatus,
+    EndingType,
     MatchDetailResponse,
     MatchLiveDetail,
     MatchSummary,
@@ -2562,6 +2563,8 @@ async def attach_shot_placement(
     losing_roster_entry_id: uuid.UUID | None,
     landing_x: float | None,
     landing_y: float | None,
+    *,
+    ending_type: str | None = None,
 ) -> None:
     """032-score-then-record: records landing/player detail for a `+1`
     that's already been applied via a plain apply_score_delta() call —
@@ -2600,11 +2603,30 @@ async def attach_shot_placement(
     width for singles) — derived from how many roster entries are actually
     on this match (2 -> singles, 4 -> doubles) rather than trusting the
     group's current match_mode, since that could have changed since this
-    specific match was created."""
+    specific match was created.
+
+    035-point-ending-type: `ending_type` is a fourth independently optional
+    detail — how the rally ended. The picker pre-selects it from the landing
+    where the landing leaves no doubt, but nothing is inferred HERE: what the
+    request says is what gets stored, so a scorer who deliberately cleared
+    the selection really does store "not recorded". Only two combinations
+    are refused, the same spirit as the landing-vs-credited-side check —
+    data that contradicts itself, never the scorer's judgement: a winner
+    lands IN the court, a shot hit out lands OUT of it. 'net',
+    'serve_fault' and 'other_error' say nothing about where the shuttle came
+    down, and without a landing there is nothing to contradict. The check
+    runs after the older landing check so that one keeps answering first.
+    Being refused is costlier than it looks — the callers drop a failed
+    request silently, losing the whole row — which is why the picker's own
+    in/out judgement is pinned to this one by a shared vector table
+    (035 data-model.md)."""
     match = await _fetch_match_for_court(session, court, match_id)
 
     if not match.detailed_scoring_enabled:
         raise ApiError("DETAILED_SCORING_NOT_ENABLED", status_code=422)
+
+    if ending_type is not None and ending_type not in get_args(EndingType):
+        raise ApiError("INVALID_ENDING_TYPE", status_code=422)
 
     if (landing_x is None) != (landing_y is None):
         raise ApiError("INVALID_LANDING_COORDINATES", status_code=422)
@@ -2664,6 +2686,10 @@ async def attach_shot_placement(
                 landing_x, landing_side, not is_singles
             ):
                 raise ApiError("SCORING_PLAYER_WRONG_TEAM_FOR_LANDING", status_code=422)
+        if (ending_type == "winner" and not in_bounds) or (
+            ending_type == "out" and in_bounds
+        ):
+            raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
 
     session.add(
         ShotPlacementRecord(
@@ -2675,6 +2701,7 @@ async def attach_shot_placement(
             team=cast(Team, score_event.side),
             landing_x=landing_x,
             landing_y=landing_y,
+            ending_type=ending_type,
         )
     )
     await session.commit()

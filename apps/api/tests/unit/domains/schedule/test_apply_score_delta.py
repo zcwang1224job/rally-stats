@@ -440,3 +440,45 @@ async def test_minus_one_on_simple_mode_match_is_a_no_op_for_shot_placement(
 
     assert result.applied is True
     assert result.score_a == 0
+
+
+# ---------------------------------------------------------------- 035 ending_type (T008)
+
+
+async def test_minus_one_takes_the_ending_type_away_with_the_rest_of_the_row(
+    db_session: AsyncSession,
+) -> None:
+    """035-point-ending-type FR-012. Expected to pass with NO change to the
+    withdrawal logic: the ending type lives on the same row as the landing
+    and players, so `_remove_last_shot_placement_record()` already takes it.
+    If this ever fails, that premise (035 research.md Decision 1) is wrong —
+    fix the design, don't special-case the withdrawal."""
+    group = await _make_group(db_session, detailed_scoring_enabled=True)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    kept = await apply_score_delta(db_session, court, match.id, "B", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(kept.score_event_id), None, None, None, None,
+        ending_type="net",
+    )
+    withdrawn = await apply_score_delta(db_session, court, match.id, "A", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(withdrawn.score_event_id), None, None, None, None,
+        ending_type="winner",
+    )
+
+    await apply_score_delta(db_session, court, match.id, "A", -1)
+
+    remaining = (
+        await db_session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id == match.id)
+        )
+    ).scalars().all()
+    # Team A's row is gone whole; the other team's is untouched.
+    assert [(row.team, row.ending_type) for row in remaining] == [("B", "net")]
