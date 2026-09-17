@@ -40,8 +40,8 @@
 2026-09-07b：`matches` 是該團全部比賽、`nickname` 搜尋全部參與者——修正
 Revision 2026-09-07a 誤將整個端點窄化為「僅自己的比賽」的方向）
 
-**Auth**：`require_member`（比照既有 `/members/me/match-records`，不要求
-信箱已驗證——見 research.md #5）。
+**Auth**：`require_verified_member`，與 `/members/me/match-records` 相同。
+（Revision 2026-09-18：原為 `require_member`。憲章原則 IV 明文將「對戰紀錄」列為信箱驗證前 MUST 鎖定的功能，原先的寬鬆設定與之不符，已更正。Google／LINE 登入的帳號建立時即為 verified，即使沒有信箱也不受影響；受影響的只有以信箱註冊、尚未點擊驗證連結的會員，他們會得到 `EMAIL_NOT_VERIFIED`（403）。）
 
 **Path params**：`group_id` (UUID)。
 

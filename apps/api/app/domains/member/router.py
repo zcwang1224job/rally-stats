@@ -392,7 +392,7 @@ async def get_my_groups(
 )
 async def get_member_group_history(
     group_id: uuid.UUID,
-    member: Annotated[Member, Depends(security.require_member)],
+    member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
     nickname: Annotated[str | None, Query(max_length=20)] = None,
@@ -430,10 +430,10 @@ async def get_member_group_history(
     "opponent" concept for a plain numeric score comparison.
 
     `my_stats` is this member's own performance in the group, always
-    unfiltered by any of the above. `require_member` (not
-    `require_verified_member`) matches the sibling
-    `/members/me/match-records` endpoint's existing looser tier, since
-    email-verification status is unrelated to viewing match history.
+    unfiltered by any of the above. `require_verified_member`, like the
+    sibling `/members/me/match-records` endpoint: constitution IV locks
+    match records until the e-mail is verified. (Both used the looser
+    `require_member` until this was corrected — see that endpoint.)
 
     019-group-final-standings (FR-001~FR-012) adds `final_standings`: the
     group's whole final team ranking, covering every ever-participant
@@ -464,7 +464,7 @@ async def get_member_group_history(
 
 @router.get("/members/me/match-records", response_model=MemberMatchRecordsResponse)
 async def get_member_match_records(
-    member: Annotated[Member, Depends(security.require_member)],
+    member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
     opponent1: Annotated[str | None, Query(max_length=20)] = None,
@@ -481,8 +481,12 @@ async def get_member_match_records(
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
 ) -> MemberMatchRecordsResponse:
-    """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計；未鎖定
-    於信箱驗證（比照 `GET /members/me` 之既有寬鬆基準）。`opponent1`/
+    """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計。
+    `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
+    鎖定。（005 原本比照 `GET /members/me` 用了較寬鬆的 `require_member`，
+    那是與憲章不符的偏離，已更正；`GET /members/me`、重寄驗證信與刪除帳號
+    仍維持寬鬆——未驗證的會員必須能用到它們。Google／LINE 登入的帳號建立時
+    即為 verified，即使沒有信箱也不受影響。）`opponent1`/
     `opponent2` 分開篩選兩位對手暱稱（子字串、不分大小寫）——雙打時兩個
     欄位須各自對應到不同的對手，不能同一人滿足兩欄。`partner` 篩選隊友
     暱稱，僅一個欄位——雙打隊伍除自己外只有一位隊友，不像對手一次面對兩
@@ -491,7 +495,8 @@ async def get_member_match_records(
     比）。`result`/`date_from`/`date_to`/`round_from`/`round_to` 篩選勝負、
     日期、輪次區間；`match_mode` 篩選單打/雙打（比賽所屬團的賽制）——
     所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
-    皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`。
+    皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`、
+    `EMAIL_NOT_VERIFIED`。
     """
     return await service.build_member_match_records(
         session,
@@ -515,14 +520,15 @@ async def get_member_match_records(
 @router.get("/members/me/match-records/{match_id}", response_model=MatchRecordDetailResponse)
 async def get_member_match_record_detail(
     match_id: uuid.UUID,
-    member: Annotated[Member, Depends(security.require_member)],
+    member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MatchRecordDetailResponse:
     """016-match-score-timeline US1/US2/US3 (FR-001~008): 會員跨團對戰紀錄、
     以及「我的團→歷史」這兩個清單點進單場比賽的詳情——兩者皆已登入會員
-    視角，共用同一支端點（research.md #1）。`require_member`（不要求信箱
-    已驗證，比照既有 `/members/me/match-records`）。Errors:
-    `MEMBER_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`GROUP_MEMBERSHIP_NEVER_HELD`。"""
+    視角，共用同一支端點（research.md #1）。`require_verified_member`，
+    與 `/members/me/match-records` 相同（憲章原則 IV）。Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、`MATCH_NOT_FOUND`、
+    `GROUP_MEMBERSHIP_NEVER_HELD`。"""
     return await service.get_member_match_record_detail(session, member.id, match_id)
 
 
@@ -571,9 +577,8 @@ async def get_member_match_dashboard(
     """034-clutch-points-player-dashboard US2-US4: 會員跨場個人技術儀表板，
     對「整個篩選結果」計算（沒有 `page`）——與同一組篩選條件下
     `/members/me/match-records` 的 `total_matches` 恆相同。
-    `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
-    鎖定；**刻意不比照** `/members/me/match-records` 的 `require_member`
-    （那是既有偏離，見 034 research.md Decision 14）。Errors:
+    `require_verified_member`，與 `/members/me/match-records` 相同（憲章
+    原則 IV：對戰紀錄在信箱驗證前 MUST 鎖定）。Errors:
     `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`。"""
     return await service.build_member_match_dashboard(session, member.id, filters)
 

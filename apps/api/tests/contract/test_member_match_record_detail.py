@@ -15,9 +15,8 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _register_unverified(session: AsyncSession, email: str) -> Member:
-    """For test cases that never need to join/act as this member — just
-    authenticate — `require_member` (unlike `require_verified_member`)
-    doesn't care about verification status, per existing convention."""
+    """An e-mail/password registrant who has not clicked the verification
+    link — locked out of match records (constitution IV)."""
     return await register(session, email, "abc12345")
 
 
@@ -209,8 +208,9 @@ async def test_never_a_member_returns_group_membership_never_held(
     match_id = await _get_match_id(client, court)
     await _complete_match(client, court, match_id)
 
-    await _register_unverified(db_session, "matchdetail-outsider@example.com")
-    outsider_token = await _login(client, "matchdetail-outsider@example.com")
+    outsider_token = await _register_verified_and_login(
+        client, db_session, "matchdetail-outsider@example.com"
+    )
 
     response = await client.get(
         f"/members/me/match-records/{match_id}",
@@ -266,3 +266,28 @@ async def test_shot_placement_detail_is_included_via_member_endpoint(
     assert body["events"][1]["detail"] is None
     stats_by_id = {s["roster_entry_id"]: s for s in body["player_stats"]}
     assert stats_by_id[team_a_id]["scored_count"] == 1
+
+
+async def test_locked_until_email_verified(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """The verification check comes before the membership check, so an
+    unverified member learns nothing about whether the match exists."""
+    _created, court, _access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token, "matchdetail-verified@example.com"
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    await _complete_match(client, court, match_id)
+
+    await _register_unverified(db_session, "matchdetail-unverified@example.com")
+    unverified_token = await _login(client, "matchdetail-unverified@example.com")
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {unverified_token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"

@@ -57,8 +57,8 @@
 詳情（FR-001/002/003/007）——這兩個清單皆已登入會員視角，且皆已採
 「曾經」而非「現役」的較寬鬆授權基準，故共用同一支端點。
 
-**Auth**：`require_member`（比照既有 `GET /members/me/match-records`，
-不要求信箱已驗證），之後沿用既有 `verify_ever_group_member(session,
+**Auth**：`require_verified_member`（與 `GET /members/me/match-records`
+相同）（Revision 2026-09-18：原為 `require_member`。憲章原則 IV 明文將「對戰紀錄」列為信箱驗證前 MUST 鎖定的功能，原先的寬鬆設定與之不符，已更正。Google／LINE 登入的帳號建立時即為 verified，即使沒有信箱也不受影響；受影響的只有以信箱註冊、尚未點擊驗證連結的會員，他們會得到 `EMAIL_NOT_VERIFIED`（403）。）驗證檢查先於成員資格檢查。之後沿用既有 `verify_ever_group_member(session,
 match.group_id, member.id)`——只要此會員「曾經」是這場比賽所屬團的正式
 成員（不論現役／已離開／已被踢除）即可，與既有 `GET
 /members/me/groups/{group_id}/history` 完全相同的授權語意。

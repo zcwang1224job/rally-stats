@@ -189,6 +189,23 @@ async def test_group_history_returns_group_not_found_for_unknown_group(
     assert response.json()["error_code"] == "GROUP_NOT_FOUND"
 
 
+async def test_group_history_locked_until_email_verified(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Constitution IV: match records stay locked until the e-mail is
+    verified. Checked before the group is even looked up, so an unverified
+    member can't probe which group ids exist (404 vs 403)."""
+    await register(db_session, "history-c-unverified@example.com", "abc12345")
+    token = await _login(client, "history-c-unverified@example.com")
+
+    response = await client.get(
+        "/members/me/groups/00000000-0000-0000-0000-000000000000/history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
+
+
 async def test_group_history_requires_login(client: AsyncClient) -> None:
     response = await client.get(
         "/members/me/groups/00000000-0000-0000-0000-000000000000/history"

@@ -10,6 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.member.models import Member
 from app.domains.schedule.models import Match
 
 pytestmark = pytest.mark.asyncio
@@ -71,6 +72,12 @@ async def test_guest_era_matches_excluded_after_later_registration(
         },
     )
     assert register_response.status_code == 201
+    # ...and verifies their e-mail: match records stay locked until then.
+    member = (
+        await db_session.execute(select(Member).where(Member.email == "was-a-guest@example.com"))
+    ).scalar_one()
+    member.verification_status = "verified"
+    await db_session.commit()
     login_response = await client.post(
         "/auth/login", json={"email": "was-a-guest@example.com", "password": "abc12345"}
     )
