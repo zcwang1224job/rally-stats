@@ -743,6 +743,22 @@ async def view_member_match_records(
     )
 
 
+async def view_member_match_dashboard(
+    session: AsyncSession,
+    viewer_id: uuid.UUID,
+    member_id: uuid.UUID,
+    filters: "MemberMatchFilters",
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US5: a friend's dashboard, behind
+    the SAME gate as their match records — 023 settled that the record list
+    and the aggregate stats share one privacy switch, and the dashboard is
+    aggregate stats. Eligibility is re-checked on every call, never cached,
+    and the viewed member is not notified (023 FR-008/FR-011). See
+    `view_member_match_records()`."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    return await build_member_match_dashboard(session, member_id, filters)
+
+
 async def view_member_match_record_detail(
     session: AsyncSession, viewer_id: uuid.UUID, member_id: uuid.UUID, match_id: uuid.UUID
 ) -> MatchRecordDetailResponse:

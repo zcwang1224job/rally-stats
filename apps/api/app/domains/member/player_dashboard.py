@@ -259,8 +259,17 @@ _METRICS: tuple[_MetricSpec, ...] = (
 
 
 def normalize_landing(x: float, y: float, my_team: Team) -> Landing:
-    """research.md Decision 10."""
-    raise NotImplementedError
+    """research.md Decision 10. Stored coordinates are absolute — x runs
+    from team A's baseline (0) to team B's (1) — so the same player's
+    landings point opposite ways depending on which team they were on.
+    Turning team B's court 180 degrees puts "my side" on the left for every
+    match. It has to be a ROTATION: flipping x alone would mirror the court
+    and swap my forehand side with my backhand side. Out-of-bounds values
+    (the stored range is [-0.3, 1.3]) stay out of bounds, on the other
+    side."""
+    if my_team == "A":
+        return (x, y)
+    return (round(1 - x, 6), round(1 - y, 6))
 
 
 def _ratio(counts: PhaseCounts | None) -> Ratio | None:
@@ -301,22 +310,32 @@ def build_sample(
     serve_sample: ServeSample | None = None
     if serve is not None:
         team = serve.teams[my_team]
-        own = serve.players.get(my_entry_id) if is_doubles else None
+        own_serve = serve.players.get(my_entry_id) if is_doubles else None
         serve_sample = ServeSample(
             team_serve=Ratio(team.serve_points_won, team.serve_points_total),
             team_receive=Ratio(team.receive_points_won, team.receive_points_total),
-            own_serve=Ratio(own.serve_points_won, own.serve_points_total) if own else None,
-            own_receive=Ratio(own.receive_points_won, own.receive_points_total) if own else None,
+            own_serve=(
+                Ratio(own_serve.serve_points_won, own_serve.serve_points_total)
+                if own_serve
+                else None
+            ),
+            own_receive=(
+                Ratio(own_serve.receive_points_won, own_serve.receive_points_total)
+                if own_serve
+                else None
+            ),
         )
 
     # "Players were recorded in this match" is a property of the match, not
     # of me: a match where only my partner got credited still counts, as 0.
     player: PlayerSample | None = None
     if landings is not None and any(r.scored_total + r.lost_total for r in landings.values()):
-        my_landings = landings.get(my_entry_id)
+        own = landings.get(my_entry_id) or PlayerLandingResult(my_entry_id, my_team)
         player = PlayerSample(
-            scored=my_landings.scored_total if my_landings else 0,
-            lost=my_landings.lost_total if my_landings else 0,
+            scored=own.scored_total,
+            lost=own.lost_total,
+            scored_landings=[normalize_landing(x, y, my_team) for x, y in own.scored],
+            lost_landings=[normalize_landing(x, y, my_team) for x, y in own.lost],
         )
 
     return MatchSample(
@@ -344,6 +363,105 @@ def _metric_value(spec: _MetricSpec, samples: Sequence[MatchSample]) -> MetricVa
     )
 
 
+# Differences smaller than this are reported as "unchanged" rather than as
+# progress or decline (research.md Decision 9): one percentage point for a
+# rate, a tenth for anything counted per match.
+_UNCHANGED_BELOW: dict[MetricKind, float] = {"rate": 0.01, "average": 0.1, "ratio": 0.1}
+
+
+def _verdict(
+    spec: _MetricSpec, overall: MetricValue | None, recent: MetricValue | None, min_recent: int
+) -> Verdict | None:
+    """Whether a bigger number is good news is a rule, not presentation
+    (FR-026), so it is decided here once rather than in two page templates."""
+    if overall is None or spec.better_when is None:
+        return None
+    if (
+        recent is None
+        or recent.matches_used < min_recent
+        or recent.value is None
+        or overall.value is None
+    ):
+        return "insufficient"
+    difference = recent.value - overall.value
+    if abs(difference) < _UNCHANGED_BELOW[spec.kind]:
+        return "unchanged"
+    return "improved" if (difference > 0) == (spec.better_when == "higher") else "declined"
+
+
+def _trend(
+    spec: _MetricSpec, samples_oldest_first: Sequence[MatchSample], window: int, cap: int
+) -> TrendSeries | None:
+    """research.md Decision 12: a moving window over the matches that HAVE
+    this metric's data, summed the same way as the headline number. A single
+    match's serve rate is ~20 points of noise; five matches' is a trend.
+    None below two points — one dot is not a trend."""
+    eligible = [
+        (sample.ended_at, contribution)
+        for sample in samples_oldest_first
+        if (contribution := spec.contribution(sample)) is not None
+    ]
+    if len(eligible) <= window:
+        return None
+    points: list[TrendPoint] = []
+    for end in range(window, len(eligible) + 1):
+        chunk = eligible[end - window : end]
+        numerator = sum(n for _, (n, _) in chunk)
+        denominator = sum(d for _, (_, d) in chunk)
+        points.append(
+            TrendPoint(
+                from_ended_at=chunk[0][0],
+                to_ended_at=chunk[-1][0],
+                value=round(numerator / denominator, 4) if denominator else None,
+                numerator=numerator,
+                denominator=denominator,
+            )
+        )
+    return TrendSeries(spec.key, points[-cap:])
+
+
+def _landing(
+    samples_newest_first: Sequence[MatchSample], recent_window: int
+) -> LandingResult | None:
+    """research.md Decision 11. One newest-first array per kind plus the
+    length of its recent prefix, instead of a second copy of the recent
+    points. None when nothing was ever plotted, even if players were
+    recorded — an empty court is not a picture."""
+    scored: list[Landing] = []
+    lost: list[Landing] = []
+    totals = {"scored": 0, "lost": 0, "matches": 0}
+    recent = {"scored_count": 0, "lost_count": 0, "scored": 0, "lost": 0, "matches": 0}
+    for index, sample in enumerate(samples_newest_first):
+        player = sample.player
+        if player is None:
+            continue
+        scored.extend((round(x, 3), round(y, 3)) for x, y in player.scored_landings)
+        lost.extend((round(x, 3), round(y, 3)) for x, y in player.lost_landings)
+        totals["scored"] += player.scored
+        totals["lost"] += player.lost
+        totals["matches"] += 1
+        if index < recent_window:
+            recent["scored_count"] = len(scored)
+            recent["lost_count"] = len(lost)
+            recent["scored"] = totals["scored"]
+            recent["lost"] = totals["lost"]
+            recent["matches"] = totals["matches"]
+    if not scored and not lost:
+        return None
+    return LandingResult(
+        scored=scored,
+        lost=lost,
+        scored_total=totals["scored"],
+        lost_total=totals["lost"],
+        matches_used=totals["matches"],
+        recent_scored_count=recent["scored_count"],
+        recent_lost_count=recent["lost_count"],
+        recent_scored_total=recent["scored"],
+        recent_lost_total=recent["lost"],
+        recent_matches_used=recent["matches"],
+    )
+
+
 def aggregate(
     samples_newest_first: Sequence[MatchSample],
     *,
@@ -352,27 +470,42 @@ def aggregate(
     trend_window: int = 5,
     trend_cap: int = 60,
 ) -> DashboardResult:
+    """`recent` is the newest `recent_window` matches of the whole (already
+    filtered) set, each metric then taking whichever of those have its data
+    (FR-025). With `recent_window` matches or fewer the two ranges are the
+    same matches, so nothing is compared at all (FR-027)."""
     samples = samples_newest_first
-    has_comparison = len(samples) > recent_window
     if not samples:
         return DashboardResult(0, recent_window, False, [], [], None)
 
-    metrics = [
-        MetricResult(
-            key=spec.key,
-            kind=spec.kind,
-            better_when=spec.better_when,
-            all=_metric_value(spec, samples),
-            recent=None,
-            verdict=None,
+    has_comparison = len(samples) > recent_window
+    recent_samples = samples[:recent_window]
+    oldest_first = list(reversed(samples))
+
+    metrics: list[MetricResult] = []
+    trends: list[TrendSeries] = []
+    for spec in _METRICS:
+        overall = _metric_value(spec, samples)
+        recent = _metric_value(spec, recent_samples) if has_comparison else None
+        metrics.append(
+            MetricResult(
+                key=spec.key,
+                kind=spec.kind,
+                better_when=spec.better_when,
+                all=overall,
+                recent=recent,
+                verdict=_verdict(spec, overall, recent, min_recent) if has_comparison else None,
+            )
         )
-        for spec in _METRICS
-    ]
+        series = _trend(spec, oldest_first, trend_window, trend_cap)
+        if series is not None:
+            trends.append(series)
+
     return DashboardResult(
         total_matches=len(samples),
         recent_window=recent_window,
         has_comparison=has_comparison,
         metrics=metrics,
-        trends=[],
-        landing=None,
+        trends=trends,
+        landing=_landing(samples, recent_window),
     )

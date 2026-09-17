@@ -262,3 +262,82 @@ async def test_query_count_does_not_grow_with_the_number_of_matches(
 
     assert dashboard.total_matches == 9
     assert len(few) == len(many)
+
+
+# ---------------------------------------------------------------- US3 (T027)
+
+
+async def test_more_than_ten_matches_get_a_comparison_and_trends(db_session: AsyncSession) -> None:
+    setup = await _Doubles.create(db_session)
+    common = {"team_a": setup.mine, "team_b": setup.theirs}
+    # Oldest first: six heavy losses, then six narrow ones.
+    for index in range(12):
+        sides = "A" * 9 + "B" * 21 if index < 6 else "AB" * 19 + "BB"
+        await make_played_match(
+            db_session, setup.group, sides=sides,
+            ended_at=NOW - timedelta(days=12 - index), **common,
+        )
+
+    dashboard = await build_member_match_dashboard(
+        db_session, setup.member.id, MemberMatchFilters()
+    )
+
+    assert dashboard.total_matches == 12 and dashboard.has_comparison is True
+    loss_margin = _metric(dashboard, "avg_loss_margin")
+    assert loss_margin.all is not None and loss_margin.recent is not None
+    assert loss_margin.recent.matches_used == 10
+    assert loss_margin.recent.value is not None and loss_margin.all.value is not None
+    assert loss_margin.recent.value < loss_margin.all.value
+    assert loss_margin.verdict == "improved"  # lower is better
+    series = next(trend for trend in dashboard.trends if trend.key == "avg_loss_margin")
+    assert len(series.points) == 12 - 4
+    assert series.points[0].to_ended_at < series.points[-1].to_ended_at
+    assert series.points[-1].to_ended_at == NOW - timedelta(days=1)
+    assert series.points[0].value == 12.0 and series.points[-1].value == 2.0
+
+
+# ---------------------------------------------------------------- US4 (T032)
+
+
+async def test_landings_are_turned_so_my_side_is_always_the_left(
+    db_session: AsyncSession,
+) -> None:
+    """SC-006. The same physical spot — the opponents' back corner on my
+    right — recorded once as team A and once as team B."""
+    setup = await _Doubles.create(db_session)
+    as_team_a = await make_played_match(
+        db_session, setup.group, team_a=setup.mine, team_b=setup.theirs, sides="A" * 21,
+        ended_at=NOW - timedelta(days=2),
+        shots={
+            0: Shot(scorer=setup.me.id, loser=setup.opp1.id, landing=(0.95, 0.9)),
+            1: Shot(scorer=setup.me.id, loser=None, landing=None),  # credited, not plotted
+        },
+    )
+    as_team_b = await make_played_match(
+        db_session, setup.group, team_a=setup.theirs, team_b=setup.mine, sides="B" * 21,
+        ended_at=NOW - timedelta(days=1),
+        shots={
+            0: Shot(scorer=setup.me.id, loser=setup.opp1.id, landing=(0.05, 0.1)),
+            1: Shot(scorer=setup.partner.id, loser=setup.opp2.id, landing=(0.2, 0.2)),  # not mine
+        },
+    )
+
+    dashboard = await build_member_match_dashboard(
+        db_session, setup.member.id, MemberMatchFilters()
+    )
+
+    landing = dashboard.landing
+    assert landing is not None
+    assert landing.scored == [(0.95, 0.9), (0.95, 0.9)]
+    assert all(x > 0.5 for x, _ in landing.scored)  # I score into the right half
+    assert landing.lost == []
+    assert (landing.scored_total, landing.matches_used) == (3, 2)
+
+    plotted = 0
+    for match in (as_team_a, as_team_b):
+        detail = await build_match_record_detail(db_session, match)
+        mine = next(
+            p for p in detail.landing_distribution if p.roster_entry_id == str(setup.me.id)
+        )
+        plotted += len(mine.scored)
+    assert len(landing.scored) == plotted == 2

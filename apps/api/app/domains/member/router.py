@@ -634,6 +634,25 @@ async def get_login_records(
     return await service.list_login_records(session, member.id, page)
 
 
+# MUST stay below `/members/me/match-dashboard`: routes match in declaration
+# order, and "me" is not a UUID — declared first, this one would answer that
+# request with a 422.
+@router.get("/members/{member_id}/match-dashboard", response_model=MemberMatchDashboardResponse)
+async def get_viewed_member_match_dashboard(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    filters: Annotated[service.MemberMatchFilters, Depends(match_filters_query)],
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US5 (好友檢視技術儀表板): 授權與
+    `GET /members/{member_id}/match-records` 完全相同——同一個
+    `_resolve_viewable_member()`、同樣的檢查順序
+    `SELF_VIEW_NOT_SUPPORTED` → `MEMBER_NOT_FOUND` → `FRIENDSHIP_REQUIRED`
+    → `MATCH_RECORDS_PRIVATE`，每次請求重新檢查、不通知被檢視方。Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、上述四者。"""
+    return await service.view_member_match_dashboard(session, member.id, member_id, filters)
+
+
 @router.get(
     "/members/{member_id}/match-records", response_model=MemberMatchRecordsResponse
 )

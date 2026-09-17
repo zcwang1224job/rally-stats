@@ -27,6 +27,7 @@ from app.domains.member.player_dashboard import (
     ServeSample,
     aggregate,
     build_sample,
+    normalize_landing,
 )
 
 ME, PARTNER, OPP1, OPP2 = (uuid.uuid4() for _ in range(4))
@@ -312,3 +313,242 @@ def test_ten_matches_or_fewer_have_nothing_to_compare() -> None:
     assert result.has_comparison is False
     assert all(metric.recent is None and metric.verdict is None for metric in result.metrics)
     assert aggregate([_sample(day) for day in range(11)]).has_comparison is True
+
+
+# ---------------------------------------------------------------- recent / verdict (T025 a-f)
+
+
+def _serve_sample(won: int, total: int) -> ServeSample:
+    return ServeSample(Ratio(won, total), Ratio(0, 0), None, None)
+
+
+def test_recent_is_the_newest_ten_then_filtered_per_metric() -> None:
+    # 12 matches, newest first; only the even days have serve data.
+    samples = [
+        _sample(day, serve=_serve_sample(6, 10) if day % 2 == 0 else None) for day in range(12)
+    ]
+    result = aggregate(samples)
+    assert result.has_comparison is True
+
+    serve = _metric(result, "team_serve")
+    assert serve.all is not None and serve.recent is not None
+    assert serve.all.matches_used == 6  # days 0,2,4,6,8,10
+    assert serve.recent.matches_used == 5  # days 0..9 -> 0,2,4,6,8
+    points = _metric(result, "avg_points_for")
+    assert points.recent is not None and points.recent.matches_used == 10
+
+
+def test_fewer_than_three_recent_matches_with_data_is_insufficient() -> None:
+    samples = [_sample(day, serve=_serve_sample(6, 10) if day in (0, 1, 11) else None)
+               for day in range(12)]
+    serve = _metric(aggregate(samples), "team_serve")
+    assert serve.recent is not None and serve.recent.matches_used == 2
+    assert serve.verdict == "insufficient"
+
+
+def test_no_recent_data_at_all_is_insufficient_too() -> None:
+    samples = [_sample(day, serve=_serve_sample(6, 10) if day >= 10 else None)
+               for day in range(12)]
+    serve = _metric(aggregate(samples), "team_serve")
+    assert serve.all is not None and serve.recent is None
+    assert serve.verdict == "insufficient"
+
+
+def test_value_of_none_on_either_side_is_insufficient() -> None:
+    never = _log(trailing=NEVER, leading=Ratio(5, 10))
+    samples = [_sample(day, point_log=never) for day in range(12)]
+    assert _metric(aggregate(samples), "when_trailing").verdict == "insufficient"
+
+
+def test_higher_is_better_for_rates() -> None:
+    recent_good = [_sample(day, serve=_serve_sample(8, 10)) for day in range(10)]
+    older_bad = [_sample(day, serve=_serve_sample(3, 10)) for day in range(10, 20)]
+    assert _metric(aggregate(recent_good + older_bad), "team_serve").verdict == "improved"
+
+    recent_bad = [_sample(day, serve=_serve_sample(3, 10)) for day in range(10)]
+    older_good = [_sample(day, serve=_serve_sample(8, 10)) for day in range(10, 20)]
+    assert _metric(aggregate(recent_bad + older_good), "team_serve").verdict == "declined"
+
+
+def test_lower_is_better_for_loss_margin_points_lost_and_points_against() -> None:
+    """The user's own example: still losing, but by less — that is progress."""
+    close_losses = [
+        _sample(day, won=False, points_for=19, points_against=21,
+                player=PlayerSample(scored=6, lost=3))
+        for day in range(10)
+    ]
+    heavy_losses = [
+        _sample(day, won=False, points_for=9, points_against=21,
+                player=PlayerSample(scored=6, lost=9))
+        for day in range(10, 20)
+    ]
+    result = aggregate(close_losses + heavy_losses)
+    loss_margin = _metric(result, "avg_loss_margin")
+    assert loss_margin.all is not None and loss_margin.recent is not None
+    assert loss_margin.recent.value == 2.0 and loss_margin.all.value == 7.0
+    assert loss_margin.verdict == "improved"
+    assert _metric(result, "points_lost").verdict == "improved"
+    assert _metric(result, "avg_points_for").verdict == "improved"
+    # Opponents scored 21 either way.
+    assert _metric(result, "avg_points_against").verdict == "unchanged"
+
+
+def test_small_differences_are_unchanged() -> None:
+    # rate: 0.505 recent vs 0.5025 overall -> under one percentage point
+    recent = [_sample(day, serve=_serve_sample(101, 200)) for day in range(10)]
+    older = [_sample(day, serve=_serve_sample(100, 200)) for day in range(10, 20)]
+    assert _metric(aggregate(recent + older), "team_serve").verdict == "unchanged"
+
+    # average: 21.0 recent vs 20.95 overall -> under 0.1
+    recent_points = [_sample(day, points_for=21) for day in range(10)]
+    older_points = [_sample(day, points_for=21 if day % 10 else 20) for day in range(10, 20)]
+    assert _metric(aggregate(recent_points + older_points), "avg_points_for").verdict == "unchanged"
+
+
+def test_metric_without_a_direction_is_compared_but_never_judged() -> None:
+    samples = [_sample(day, point_log=_log(saved=3 if day < 10 else 0)) for day in range(20)]
+    saves = _metric(aggregate(samples), "match_points_saved")
+    assert saves.all is not None and saves.recent is not None
+    assert (saves.recent.value, saves.all.value) == (3.0, 1.5)  # per match, so comparable
+    assert saves.recent.numerator == 30
+    assert saves.verdict is None
+
+
+# ---------------------------------------------------------------- trends (T025 g)
+
+
+def _trend(result: DashboardResult, key: str) -> list[float | None] | None:
+    series = next((trend for trend in result.trends if trend.key == key), None)
+    return [point.value for point in series.points] if series is not None else None
+
+
+def test_trend_is_a_five_match_moving_window_oldest_first() -> None:
+    # days_ago 7 (oldest) .. 0 (newest); serve won = 8 - days_ago out of 10
+    samples = [_sample(day, serve=_serve_sample(8 - day, 10)) for day in range(8)]
+    result = aggregate(samples)
+
+    values = _trend(result, "team_serve")
+    assert values is not None and len(values) == 8 - 4
+    # oldest window: days 7..3 -> won 1+2+3+4+5 = 15 of 50
+    assert values[0] == 0.3 and values[-1] == 0.6  # newest: 4+5+6+7+8 = 30 of 50
+    series = next(trend for trend in result.trends if trend.key == "team_serve")
+    first = series.points[0]
+    assert (first.numerator, first.denominator) == (15, 50)
+    assert first.from_ended_at == T0 - timedelta(days=7)
+    assert first.to_ended_at == T0 - timedelta(days=3)
+    assert [p.to_ended_at for p in series.points] == sorted(p.to_ended_at for p in series.points)
+
+
+def test_trend_windows_only_count_matches_that_have_the_metrics_data() -> None:
+    # 12 matches, serve data on every other one -> 6 eligible -> 2 points
+    samples = [
+        _sample(day, serve=_serve_sample(5, 10) if day % 2 == 0 else None) for day in range(12)
+    ]
+    result = aggregate(samples)
+    assert _trend(result, "team_serve") == [0.5, 0.5]
+    assert len(_trend(result, "avg_points_for") or []) == 12 - 4
+
+
+def test_fewer_than_six_eligible_matches_has_no_trend() -> None:
+    result = aggregate([_sample(day, serve=_serve_sample(5, 10)) for day in range(5)])
+    assert _trend(result, "team_serve") is None
+    assert _trend(result, "own_serve") is None  # never any data
+    assert _trend(aggregate([_sample(day) for day in range(6)]), "avg_points_for") is not None
+
+
+def test_trend_keeps_only_the_newest_sixty_points() -> None:
+    samples = [_sample(day, points_for=day % 21) for day in range(70)]
+    series = next(t for t in aggregate(samples).trends if t.key == "avg_points_for")
+    assert len(series.points) == 60
+    assert series.points[-1].to_ended_at == T0  # the newest window survives the cap
+
+
+def test_every_metric_kind_can_have_a_trend() -> None:
+    samples = [
+        _sample(day, point_log=_log(saved=1), player=PlayerSample(scored=4, lost=2))
+        for day in range(6)
+    ]
+    result = aggregate(samples)
+    assert _trend(result, "match_points_saved") == [1.0, 1.0]
+    assert _trend(result, "scored_lost_ratio") == [2.0, 2.0]
+
+
+# ---------------------------------------------------------------- landings (T030)
+
+
+def test_team_a_landings_are_left_alone() -> None:
+    assert normalize_landing(0.82, 0.31, "A") == (0.82, 0.31)
+
+
+def test_team_b_landings_are_rotated_not_mirrored() -> None:
+    """Flipping x alone would swap my forehand and backhand sides — the
+    court has to turn 180 degrees, so y flips too."""
+    assert normalize_landing(0.82, 0.31, "B") == (0.18, 0.69)
+    assert normalize_landing(0.5, 0.5, "B") == (0.5, 0.5)
+
+
+def test_out_of_bounds_stays_out_of_bounds_on_the_other_side() -> None:
+    assert normalize_landing(-0.3, 1.3, "B") == (1.3, -0.3)
+    assert normalize_landing(1.04, -0.12, "B") == (-0.04, 1.12)
+
+
+def test_same_physical_spot_is_the_same_point_whichever_team_i_was_on() -> None:
+    # "The opponents' back corner on MY right": as team A (left half, facing
+    # right) that is x=0.95, y=0.9; as team B (right half, facing left) the
+    # raw coordinates of that same spot are x=0.05, y=0.1.
+    as_a = normalize_landing(0.95, 0.9, "A")
+    as_b = normalize_landing(0.05, 0.1, "B")
+    assert as_a == as_b
+    assert as_a[0] > 0.5  # my side is always the left half
+
+
+def test_build_sample_normalizes_my_own_landings_only() -> None:
+    landings = {
+        ME: PlayerLandingResult(
+            ME, "B", scored=[(0.1, 0.2)], scored_total=2, lost=[(0.9, 0.6)], lost_total=1
+        ),
+        PARTNER: PlayerLandingResult(PARTNER, "B", scored=[(0.3, 0.3)], scored_total=1),
+    }
+    player = _build(landings=landings).player
+    assert player is not None
+    assert (player.scored, player.lost) == (2, 1)
+    assert player.scored_landings == [(0.9, 0.8)]
+    assert player.lost_landings == [(0.1, 0.4)]
+
+
+def _landed(days_ago: int, scored: list[tuple[float, float]], scored_total: int) -> MatchSample:
+    return _sample(
+        days_ago,
+        player=PlayerSample(scored=scored_total, lost=1, scored_landings=scored, lost_landings=[]),
+    )
+
+
+def test_landing_is_newest_first_so_the_recent_range_is_a_prefix() -> None:
+    samples = [_landed(day, [(0.6 + day / 100, 0.5)], scored_total=2) for day in range(12)]
+    samples.append(_sample(12))  # no player data: not part of the landing picture
+    landing = aggregate(samples).landing
+
+    assert landing is not None
+    assert [x for x, _ in landing.scored] == [round(0.6 + day / 100, 3) for day in range(12)]
+    assert (landing.scored_total, landing.lost_total, landing.matches_used) == (24, 12, 12)
+    assert landing.recent_scored_count == 10 and landing.recent_lost_count == 0
+    assert (landing.recent_scored_total, landing.recent_lost_total) == (20, 10)
+    assert landing.recent_matches_used == 10
+    assert landing.scored[: landing.recent_scored_count] == landing.scored[:10]
+
+
+def test_landing_coordinates_are_rounded_to_three_places() -> None:
+    landing = aggregate([_landed(0, [(0.123456, 0.987654)], scored_total=1)]).landing
+    assert landing is not None and landing.scored == [(0.123, 0.988)]
+
+
+def test_ten_matches_or_fewer_report_the_recent_range_as_the_whole() -> None:
+    landing = aggregate([_landed(day, [(0.7, 0.5)], scored_total=1) for day in range(4)]).landing
+    assert landing is not None
+    assert (landing.recent_scored_count, landing.recent_scored_total) == (4, 4)
+    assert landing.recent_matches_used == landing.matches_used == 4
+
+
+def test_no_plotted_point_anywhere_means_no_landing_block() -> None:
+    assert aggregate([_landed(0, [], scored_total=5)]).landing is None  # players, no coordinates
+    assert aggregate([_sample()]).landing is None

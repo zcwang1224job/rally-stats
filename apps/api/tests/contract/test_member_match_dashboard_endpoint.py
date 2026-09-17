@@ -4,10 +4,13 @@ specs/034-clutch-points-player-dashboard/contracts/member-match-dashboard-api.md
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.friend.models import FriendRequest
 from app.domains.member.models import Member
 from app.domains.member.service import register
+from app.domains.notification.models import Notification
 from tests.unit.domains._match_history import make_entry, make_group, make_played_match
 
 pytestmark = pytest.mark.asyncio
@@ -169,3 +172,150 @@ async def test_invalid_filter_values_are_rejected(
     response = await client.get(f"/members/me/match-dashboard?{query}", headers=headers)
 
     assert response.status_code == 422
+
+
+async def test_comparison_and_trends_appear_past_ten_matches(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    member = await _register(db_session, "dash-trend@example.com")
+    await _play(db_session, member, singles=12, doubles=0)
+    headers = await _login(client, "dash-trend@example.com")
+
+    body = (await client.get("/members/me/match-dashboard", headers=headers)).json()
+
+    assert body["total_matches"] == 12 and body["has_comparison"] is True
+    by_key = {metric["key"]: metric for metric in body["metrics"]}
+    points_for = by_key["avg_points_for"]
+    assert points_for["recent"]["matches_used"] == 10
+    assert points_for["verdict"] in ("improved", "declined", "unchanged")
+    assert by_key["match_points_saved"]["verdict"] is None  # no direction
+    assert by_key["own_serve"]["all"] is None and by_key["own_serve"]["verdict"] is None
+
+    trend_keys = {trend["key"] for trend in body["trends"]}
+    assert "avg_points_for" in trend_keys and "own_serve" not in trend_keys
+    series = next(trend for trend in body["trends"] if trend["key"] == "avg_points_for")
+    assert len(series["points"]) == 12 - 4
+    for point in series["points"]:
+        assert set(point) == {"from_ended_at", "to_ended_at", "value", "numerator", "denominator"}
+        # ISO 8601 with an explicit offset (Constitution VIII).
+        assert point["to_ended_at"].endswith("Z") or "+" in point["to_ended_at"]
+
+
+# ---------------------------------------------------------------- GET /members/{id}/match-dashboard
+
+
+async def _befriend(session: AsyncSession, one: Member, other: Member) -> None:
+    session.add(FriendRequest(requester_id=one.id, addressee_id=other.id, status="accepted"))
+    await session.commit()
+
+
+async def _rejections_match_the_match_records_endpoint(
+    client: AsyncClient, headers: dict[str, str], member_id: object, status: int, code: str
+) -> None:
+    dashboard = await client.get(f"/members/{member_id}/match-dashboard", headers=headers)
+    records = await client.get(f"/members/{member_id}/match-records", headers=headers)
+    assert dashboard.status_code == records.status_code == status
+    assert dashboard.json()["error_code"] == records.json()["error_code"] == code
+    assert "metrics" not in dashboard.json() and "total_matches" not in dashboard.json()
+
+
+async def test_friend_sees_exactly_what_the_owner_sees_unfiltered(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    viewer = await _register(db_session, "dash-viewer1@example.com")
+    owner = await _register(db_session, "dash-owner1@example.com")
+    await _befriend(db_session, viewer, owner)
+    await _play(db_session, owner, singles=2, doubles=1)
+    notifications_before = await db_session.scalar(select(func.count()).select_from(Notification))
+
+    as_friend = await client.get(
+        f"/members/{owner.id}/match-dashboard",
+        headers=await _login(client, "dash-viewer1@example.com"),
+    )
+    as_owner = await client.get(
+        "/members/me/match-dashboard", headers=await _login(client, "dash-owner1@example.com")
+    )
+
+    assert as_friend.status_code == 200
+    assert as_friend.json() == as_owner.json()
+    assert as_friend.json()["total_matches"] == 3
+    # FR-036: looking is silent.
+    notifications_after = await db_session.scalar(select(func.count()).select_from(Notification))
+    assert notifications_after == notifications_before
+
+
+async def test_self_view_is_rejected(client: AsyncClient, db_session: AsyncSession) -> None:
+    member = await _register(db_session, "dash-self@example.com")
+    headers = await _login(client, "dash-self@example.com")
+
+    await _rejections_match_the_match_records_endpoint(
+        client, headers, member.id, 400, "SELF_VIEW_NOT_SUPPORTED"
+    )
+
+
+async def test_unknown_member_is_rejected(client: AsyncClient, db_session: AsyncSession) -> None:
+    await _register(db_session, "dash-unknown@example.com")
+    headers = await _login(client, "dash-unknown@example.com")
+
+    await _rejections_match_the_match_records_endpoint(
+        client, headers, "00000000-0000-4000-8000-000000000000", 404, "MEMBER_NOT_FOUND"
+    )
+
+
+async def test_non_friend_is_rejected(client: AsyncClient, db_session: AsyncSession) -> None:
+    await _register(db_session, "dash-stranger@example.com")
+    owner = await _register(db_session, "dash-owner2@example.com")
+    await _play(db_session, owner, singles=1, doubles=0)
+    headers = await _login(client, "dash-stranger@example.com")
+
+    await _rejections_match_the_match_records_endpoint(
+        client, headers, owner.id, 403, "FRIENDSHIP_REQUIRED"
+    )
+
+
+async def test_turning_sharing_off_takes_effect_on_the_next_request(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """SC-010 + 023 FR-008: eligibility is never cached."""
+    viewer = await _register(db_session, "dash-viewer3@example.com")
+    owner = await _register(db_session, "dash-owner3@example.com")
+    await _befriend(db_session, viewer, owner)
+    await _play(db_session, owner, singles=1, doubles=0)
+    headers = await _login(client, "dash-viewer3@example.com")
+
+    allowed = await client.get(f"/members/{owner.id}/match-dashboard", headers=headers)
+    assert allowed.status_code == 200 and allowed.json()["total_matches"] == 1
+
+    await client.patch(
+        "/members/me/privacy",
+        json={"share_match_records_with_friends": False},
+        headers=await _login(client, "dash-owner3@example.com"),
+    )
+
+    await _rejections_match_the_match_records_endpoint(
+        client, headers, owner.id, 403, "MATCH_RECORDS_PRIVATE"
+    )
+
+
+async def test_unverified_viewer_is_locked_out(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    owner = await _register(db_session, "dash-owner4@example.com")
+    await _register(db_session, "dash-viewer4@example.com", verified=False)
+    headers = await _login(client, "dash-viewer4@example.com")
+
+    response = await client.get(f"/members/{owner.id}/match-dashboard", headers=headers)
+
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
+
+
+async def test_me_is_not_swallowed_by_the_member_id_route(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _register(db_session, "dash-route@example.com")
+    headers = await _login(client, "dash-route@example.com")
+
+    response = await client.get("/members/me/match-dashboard", headers=headers)
+
+    assert response.status_code == 200  # a 422 here would mean the routes are in the wrong order
