@@ -8,6 +8,14 @@ import { Component, input } from '@angular/core';
  * and this feature's read-only landing display can share one drawing
  * without duplicating the CSS. Purely presentational: no pointer events of
  * its own, no internal state. */
+/** 033-match-record-derived-stats: one point of a player's landing
+ * distribution, in the same coordinate system as `landingX`/`landingY`. */
+export interface CourtMarker {
+  x: number;
+  y: number;
+  kind: 'scored' | 'lost';
+}
+
 @Component({
   selector: 'app-court-diagram',
   imports: [],
@@ -18,4 +26,7 @@ export class CourtDiagramComponent {
   readonly isSinglesMatch = input.required<boolean>();
   readonly landingX = input<number | null>(null);
   readonly landingY = input<number | null>(null);
+  /** 033: many points at once, alongside (never instead of) the single
+   * landing marker above — existing callers pass nothing and see no change. */
+  readonly markers = input<CourtMarker[]>([]);
 }

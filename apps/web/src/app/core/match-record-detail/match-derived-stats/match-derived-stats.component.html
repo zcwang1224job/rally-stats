@@ -1,0 +1,243 @@
+@let d = detail();
+
+<details class="derived-section" data-section="serve" open>
+  <summary>{{ 'matchRecordDetail.derived.serve.title' | translate }}</summary>
+  @if (d.serve_stats; as serve) {
+    <table class="derived-table" data-table="teams">
+      <caption class="visually-hidden">
+        {{ 'matchRecordDetail.derived.serve.teamsCaption' | translate }}
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">{{ 'matchRecordDetail.derived.serve.teamColumn' | translate }}</th>
+          <th scope="col">{{ 'matchRecordDetail.derived.serve.serveColumn' | translate }}</th>
+          <th scope="col">{{ 'matchRecordDetail.derived.serve.receiveColumn' | translate }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of serve.teams; track row.team) {
+          <tr>
+            <th scope="row">
+              {{ teamLabelKey(row.team) | translate }}
+              <span class="derived-table__names">
+                @for (p of row.team === 'A' ? d.team_a : d.team_b; track p.roster_entry_id; let last = $last) {
+                  <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+                }
+              </span>
+            </th>
+            <td>
+              {{ row.serve_points_won }}/{{ row.serve_points_total }}
+              <span class="derived-table__rate">{{ percent(row.serve_points_won, row.serve_points_total) }}</span>
+            </td>
+            <td>
+              {{ row.receive_points_won }}/{{ row.receive_points_total }}
+              <span class="derived-table__rate">{{ percent(row.receive_points_won, row.receive_points_total) }}</span>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+
+    @if (serve.players.length > 0) {
+      <table class="derived-table" data-table="players">
+        <caption class="visually-hidden">
+          {{ 'matchRecordDetail.derived.serve.playersCaption' | translate }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">{{ 'matchRecordDetail.derived.serve.playerColumn' | translate }}</th>
+            <th scope="col">{{ 'matchRecordDetail.derived.serve.serveColumn' | translate }}</th>
+            <th scope="col">{{ 'matchRecordDetail.derived.serve.receiveColumn' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of serve.players; track row.roster_entry_id) {
+            <tr>
+              <th scope="row">
+                <app-nickname [value]="row.nickname" />
+                <span class="derived-table__names">{{ teamLabelKey(row.team) | translate }}</span>
+              </th>
+              <td>
+                {{ row.serve_points_won }}/{{ row.serve_points_total }}
+                <span class="derived-table__rate">{{ percent(row.serve_points_won, row.serve_points_total) }}</span>
+              </td>
+              <td>
+                {{ row.receive_points_won }}/{{ row.receive_points_total }}
+                <span class="derived-table__rate">{{ percent(row.receive_points_won, row.receive_points_total) }}</span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+
+    <p class="derived-note">
+      {{ 'matchRecordDetail.derived.serve.excludedNote' | translate: { count: serve.excluded_points } }}
+    </p>
+  } @else {
+    <p class="derived-empty">{{ 'matchRecordDetail.derived.serve.empty' | translate }}</p>
+  }
+</details>
+
+<details class="derived-section" data-section="momentum">
+  <summary>{{ 'matchRecordDetail.derived.momentum.title' | translate }}</summary>
+  @if (d.momentum_stats; as momentum) {
+    <dl class="derived-facts">
+      <dt>{{ 'matchRecordDetail.derived.momentum.longestRun' | translate }}</dt>
+      @for (run of momentum.longest_runs; track run.team) {
+        <dd>
+          <span class="derived-facts__team">{{ teamLabelKey(run.team) | translate }}</span>
+          @if (run.length > 0) {
+            {{
+              'matchRecordDetail.derived.momentum.runValue'
+                | translate
+                  : {
+                      length: run.length,
+                      startA: run.start_score_a,
+                      startB: run.start_score_b,
+                      endA: run.end_score_a,
+                      endB: run.end_score_b,
+                    }
+            }}
+          } @else {
+            {{ 'matchRecordDetail.derived.momentum.runNone' | translate }}
+          }
+        </dd>
+      }
+
+      <dt>{{ 'matchRecordDetail.derived.momentum.maxLead' | translate }}</dt>
+      @for (lead of momentum.max_leads; track lead.team) {
+        <dd>
+          <span class="derived-facts__team">{{ teamLabelKey(lead.team) | translate }}</span>
+          @if (lead.margin > 0) {
+            {{
+              'matchRecordDetail.derived.momentum.leadValue'
+                | translate: { margin: lead.margin, scoreA: lead.score_a, scoreB: lead.score_b }
+            }}
+          } @else {
+            {{ 'matchRecordDetail.derived.momentum.leadNone' | translate }}
+          }
+        </dd>
+      }
+
+      <dt>{{ 'matchRecordDetail.derived.momentum.leadChanges' | translate }}</dt>
+      <dd>
+        {{
+          'matchRecordDetail.derived.momentum.leadChangesCount'
+            | translate: { count: momentum.lead_changes.length }
+        }}
+      </dd>
+    </dl>
+    @if (momentum.lead_changes.length > 0) {
+      <ol class="lead-change-list">
+        @for (change of momentum.lead_changes; track $index) {
+          <li>
+            {{
+              (change.new_leader === 'A'
+                ? 'matchRecordDetail.derived.momentum.leadChangeToA'
+                : 'matchRecordDetail.derived.momentum.leadChangeToB'
+              ) | translate: { scoreA: change.score_a, scoreB: change.score_b }
+            }}
+          </li>
+        }
+      </ol>
+    }
+  } @else {
+    <p class="derived-empty">{{ 'matchRecordDetail.derived.momentum.empty' | translate }}</p>
+  }
+</details>
+
+<details class="derived-section" data-section="tempo">
+  <summary>{{ 'matchRecordDetail.derived.tempo.title' | translate }}</summary>
+  @if (d.tempo_stats; as tempo) {
+    @let average = duration(tempo.average_seconds);
+    @let longest = duration(tempo.longest.seconds);
+    <dl class="derived-facts">
+      <dt>{{ 'matchRecordDetail.derived.tempo.average' | translate }}</dt>
+      <dd>{{ average.key | translate: average.params }}</dd>
+      <dt>{{ 'matchRecordDetail.derived.tempo.longest' | translate }}</dt>
+      <dd>
+        {{ longest.key | translate: longest.params }}
+        {{
+          'matchRecordDetail.derived.tempo.longestAt'
+            | translate: { scoreA: tempo.longest.score_a, scoreB: tempo.longest.score_b }
+        }}
+      </dd>
+    </dl>
+    <p class="derived-note">
+      {{ 'matchRecordDetail.derived.tempo.estimateNote' | translate: { count: tempo.counted_points } }}
+    </p>
+  } @else {
+    <p class="derived-empty">{{ 'matchRecordDetail.derived.tempo.empty' | translate }}</p>
+  }
+</details>
+
+<details class="derived-section" data-section="landing">
+  <summary>{{ 'matchRecordDetail.derived.landing.title' | translate }}</summary>
+  @if (selectedPlayer(); as player) {
+    <div
+      class="landing-players"
+      role="group"
+      [attr.aria-label]="'matchRecordDetail.derived.landing.selectPlayer' | translate"
+    >
+      @for (p of players(); track p.roster_entry_id) {
+        <button
+          type="button"
+          class="landing-players__button"
+          [class.landing-players__button--active]="p.roster_entry_id === player.roster_entry_id"
+          [attr.aria-pressed]="p.roster_entry_id === player.roster_entry_id"
+          (click)="selectPlayer(p.roster_entry_id)"
+        >
+          <app-nickname [value]="p.nickname" />
+        </button>
+      }
+    </div>
+
+    @if (player.scored.length + player.lost.length > 0) {
+      <div class="landing-toggles">
+        <label>
+          <input #scoredToggle type="checkbox" [checked]="showScored()" (change)="showScored.set(scoredToggle.checked)" />
+          <span class="landing-legend__shape landing-legend__shape--scored" aria-hidden="true"></span>
+          {{ 'matchRecordDetail.derived.landing.legendScored' | translate }}
+        </label>
+        <label>
+          <input #lostToggle type="checkbox" [checked]="showLost()" (change)="showLost.set(lostToggle.checked)" />
+          <span class="landing-legend__shape landing-legend__shape--lost" aria-hidden="true"></span>
+          {{ 'matchRecordDetail.derived.landing.legendLost' | translate }}
+        </label>
+      </div>
+
+      <div class="landing-court">
+        <app-court-diagram
+          role="img"
+          [attr.aria-label]="
+            'matchRecordDetail.derived.landing.courtLabel'
+              | translate: { scored: player.scored.length, lost: player.lost.length }
+          "
+          [isSinglesMatch]="isSinglesMatch()"
+          [markers]="markers()"
+        />
+      </div>
+      <p class="derived-note">{{ 'matchRecordDetail.derived.landing.orientation' | translate }}</p>
+    } @else {
+      <p class="derived-empty">{{ 'matchRecordDetail.derived.landing.playerEmpty' | translate }}</p>
+    }
+
+    <ul class="landing-coverage">
+      <li>
+        {{
+          'matchRecordDetail.derived.landing.coverageScored'
+            | translate: { plotted: player.scored.length, total: player.scored_total }
+        }}
+      </li>
+      <li>
+        {{
+          'matchRecordDetail.derived.landing.coverageLost'
+            | translate: { plotted: player.lost.length, total: player.lost_total }
+        }}
+      </li>
+    </ul>
+  } @else {
+    <p class="derived-empty">{{ 'matchRecordDetail.derived.landing.empty' | translate }}</p>
+  }
+</details>

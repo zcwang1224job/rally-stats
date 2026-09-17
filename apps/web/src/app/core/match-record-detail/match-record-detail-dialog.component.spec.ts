@@ -24,6 +24,10 @@ const completeDetail: MatchRecordDetailResponse = {
     { side: 'A', delta: 1, score_a: 2, score_b: 1, elapsed_seconds: 30, detail: null },
   ],
   player_stats: [],
+  serve_stats: null,
+  momentum_stats: null,
+  tempo_stats: null,
+  landing_distribution: [],
 };
 
 function setup(detail: MatchRecordDetailResponse | null, loading = false, loadError = false) {
@@ -369,5 +373,28 @@ describe('MatchRecordDetailDialogComponent — player scoring stats (US3)', () =
 
     expect(fixture.nativeElement.querySelectorAll('.player-stat-row').length).toBe(0);
     expect(fixture.nativeElement.textContent).toContain('matchRecordDetail.playerStats.empty');
+  });
+});
+
+describe('MatchRecordDetailDialogComponent — derived stats (033)', () => {
+  it('mounts the derived-stats blocks after the existing content', () => {
+    const root: HTMLElement = setup(completeDetail).nativeElement;
+
+    const derived = root.querySelector('app-match-derived-stats');
+    expect(derived).not.toBeNull();
+    const playerStats = root.querySelector('.player-stats-card')!;
+    expect(
+      playerStats.compareDocumentPosition(derived!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('does not mount them when the match has no point-by-point record at all', () => {
+    const root: HTMLElement = setup({
+      ...completeDetail,
+      record_completeness: 'none',
+      events: [],
+    }).nativeElement;
+
+    expect(root.querySelector('app-match-derived-stats')).toBeNull();
   });
 });

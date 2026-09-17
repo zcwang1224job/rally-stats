@@ -118,6 +118,89 @@ export interface PlayerScoringStat {
   fault_count: number;
 }
 
+// 033-match-record-derived-stats: counts only — the percentage is derived
+// here on the frontend, and a zero total renders as "—" rather than 0%.
+export interface ServeCounts {
+  serve_points_won: number;
+  serve_points_total: number;
+  receive_points_won: number;
+  receive_points_total: number;
+}
+
+export interface TeamServeStat extends ServeCounts {
+  team: Team;
+}
+
+export interface PlayerServeStat extends ServeCounts {
+  roster_entry_id: string;
+  nickname: string;
+  team: Team;
+}
+
+export interface ServeStats {
+  teams: TeamServeStat[]; // always [A, B]
+  // Doubles: every participant, all-zero ones included. Singles: [] — the
+  // player level would only repeat the team level.
+  players: PlayerServeStat[];
+  // Points whose server couldn't be determined; always >= 1 because the
+  // pre-match serve draw is never persisted (so the first point is unknown).
+  excluded_points: number;
+}
+
+export interface ScoringRun {
+  team: Team;
+  length: number;
+  // Score right BEFORE the run's first point / right AFTER its last; all
+  // four null when length is 0.
+  start_score_a: number | null;
+  start_score_b: number | null;
+  end_score_a: number | null;
+  end_score_b: number | null;
+}
+
+export interface MaxLead {
+  team: Team;
+  margin: number;
+  // Score the first time this margin was reached; null when margin is 0.
+  score_a: number | null;
+  score_b: number | null;
+}
+
+export interface LeadChange {
+  new_leader: Team;
+  score_a: number;
+  score_b: number;
+}
+
+export interface MomentumStats {
+  longest_runs: ScoringRun[]; // always [A, B]
+  max_leads: MaxLead[]; // always [A, B]
+  lead_changes: LeadChange[];
+}
+
+export interface TempoStats {
+  average_seconds: number;
+  counted_points: number;
+  longest: { seconds: number; score_a: number; score_b: number };
+}
+
+export interface LandingPoint {
+  x: number;
+  y: number;
+}
+
+export interface PlayerLandingDistribution {
+  roster_entry_id: string;
+  nickname: string;
+  team: Team;
+  scored: LandingPoint[];
+  // Every point credited to this player, plotted or not — the denominator
+  // shown next to `scored`. Same meaning for lost/lost_total.
+  scored_total: number;
+  lost: LandingPoint[];
+  lost_total: number;
+}
+
 // `record_completeness` distinguishes three states purely derived from
 // the events themselves (research.md #3, no deploy-timestamp dependency):
 // "complete" (first event is the match's real first point), "partial"
@@ -130,6 +213,13 @@ export interface MatchRecordDetailResponse extends MatchRecordSummary {
   // was ever recorded in this match"; non-empty always lists EVERY
   // participant in team_a + team_b, zero counts included.
   player_stats: PlayerScoringStat[];
+  // 033-match-record-derived-stats: four independent derivations. null / []
+  // IS the "no data" signal (shown as a notice) — never an all-zero
+  // structure. All four are empty unless record_completeness is "complete".
+  serve_stats: ServeStats | null;
+  momentum_stats: MomentumStats | null;
+  tempo_stats: TempoStats | null;
+  landing_distribution: PlayerLandingDistribution[];
 }
 
 export interface RoundWinRatePoint {

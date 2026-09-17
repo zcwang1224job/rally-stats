@@ -638,6 +638,57 @@
       "scoredCount": "Points scored",
       "faultCount": "Points lost to",
       "empty": "No player scoring data for this match"
+    },
+    "derived": {
+      "teamA": "Team A",
+      "teamB": "Team B",
+      "serve": {
+        "title": "Serve / Receive Win Rate",
+        "empty": "No serve record for this match",
+        "teamsCaption": "Points won on serve and on receive, by team",
+        "playersCaption": "Points won on serve and on receive, by player",
+        "teamColumn": "Team",
+        "playerColumn": "Player",
+        "serveColumn": "Won on serve",
+        "receiveColumn": "Won on receive",
+        "excludedNote": "{{count}} point(s) are left out because the server couldn't be determined — including the opening point, since who served first isn't recorded."
+      },
+      "momentum": {
+        "title": "Momentum Summary",
+        "empty": "No complete point-by-point record to derive momentum from",
+        "longestRun": "Longest scoring run",
+        "runValue": "{{length}} in a row ({{startA}}:{{startB}} → {{endA}}:{{endB}})",
+        "runNone": "No points scored",
+        "maxLead": "Biggest lead",
+        "leadValue": "Led by {{margin}} (at {{scoreA}}:{{scoreB}})",
+        "leadNone": "Never led",
+        "leadChanges": "Lead changes",
+        "leadChangesCount": "{{count}}",
+        "leadChangeToA": "Team A took the lead at {{scoreA}}:{{scoreB}}",
+        "leadChangeToB": "Team B took the lead at {{scoreA}}:{{scoreB}}"
+      },
+      "tempo": {
+        "title": "Time per Point",
+        "empty": "No record to estimate time per point from",
+        "average": "Average time per point",
+        "longest": "Longest point",
+        "longestAt": "(score after it: {{scoreA}}:{{scoreB}})",
+        "seconds": "{{seconds}}s",
+        "minutesSeconds": "{{minutes}}m {{seconds}}s",
+        "estimateNote": "An estimate that includes the breaks between rallies. Based on when each point was entered, over {{count}} point(s); gaps containing a score correction are left out."
+      },
+      "landing": {
+        "title": "Landing Spots by Player",
+        "empty": "No landing spots recorded for this match",
+        "playerEmpty": "No landing spots recorded for this player",
+        "selectPlayer": "Select a player",
+        "legendScored": "Circle: point scored",
+        "legendLost": "Diamond: point lost",
+        "courtLabel": "Landing spot chart: {{scored}} scored, {{lost}} lost",
+        "orientation": "Team A's half is on the left, Team B's on the right; spots outside the court lines were out.",
+        "coverageScored": "Scored: {{plotted}} plotted of {{total}} point(s)",
+        "coverageLost": "Lost: {{plotted}} plotted of {{total}} point(s)"
+      }
     }
   },
   "errors": {

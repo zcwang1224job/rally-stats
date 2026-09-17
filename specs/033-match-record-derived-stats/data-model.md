@@ -90,7 +90,7 @@
 | `serve_stats` | `ServeStats \| None = None` | 紀錄不完整；有效得分與最終比分不符；該場沒有任何發球快照；或所有分數皆被排除。 |
 | `momentum_stats` | `MomentumStats \| None = None` | 紀錄不完整；有效得分與最終比分不符。 |
 | `tempo_stats` | `TempoStats \| None = None` | 同上；或沒有任何一分可列入計算。 |
-| `landing_distribution` | `list[PlayerLandingDistribution] = []` | 同上；或全場沒有任何含座標的落點紀錄。非空時恆列出**全部**參賽者。 |
+| `landing_distribution` | `list[PlayerLandingDistribution] = []` | 同上；或沒有任何一位球員有可畫的點（含「有座標但當時沒選球員」與「有選球員但沒標座標」兩種情況——兩者都不會讓任何球員的圖上出現點）。非空時恆列出**全部**參賽者。 |
 
 「紀錄不完整」＝既有 `record_completeness != "complete"`（FR-004）。既有欄位完全不變；`MatchRecordSummary` 與所有清單端點零變動。
 

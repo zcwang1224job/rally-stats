@@ -76,6 +76,10 @@ function setup(options: {
           record_completeness: 'complete',
           events: [],
           player_stats: [],
+          serve_stats: null,
+          momentum_stats: null,
+          tempo_stats: null,
+          landing_distribution: [],
         } satisfies MatchRecordDetailResponse)),
   };
 
