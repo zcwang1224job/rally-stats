@@ -109,3 +109,29 @@
   border: 2px solid var(--color-surface);
   pointer-events: none;
 }
+
+// 033-match-record-derived-stats: a player's landing distribution — many
+// points at once. Scored = filled circle, lost = hollow diamond: told apart
+// by SHAPE (and fill), not by colour alone. Slightly smaller than the single
+// landing marker and translucent so overlapping points still read as several.
+.court-marker {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  margin-top: -6px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.court-marker--scored {
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  border: 2px solid var(--color-surface);
+}
+
+.court-marker--lost {
+  transform: rotate(45deg);
+  background: var(--color-surface);
+  border: 2px solid var(--color-danger);
+}

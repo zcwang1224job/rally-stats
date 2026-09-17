@@ -47,58 +47,204 @@ h2 {
   }
 }
 
-.chart-card {
-  margin-bottom: var(--space-lg);
+// The chart/event-list/player-stats blocks are collapsible <details>, one
+// visual rhythm with the derived-stats blocks below them (kept here rather
+// than shared via class name — Angular view encapsulation doesn't share
+// styles across components).
+.match-detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
 
-  h3 {
+.chart-card,
+.event-list,
+.player-stats-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+
+  > summary {
+    cursor: pointer;
     font-size: var(--font-size-body);
+    font-weight: var(--font-weight-bold);
+    padding: var(--space-xs) 0;
+  }
+
+  &[open] > summary {
     margin-bottom: var(--space-sm);
   }
 }
 
+// dataviz skill: a readout synced to hover/touch, sitting above the plot
+// (see interaction.md) — fixed height reserved via the hint's own line-box
+// so revealing it never shifts the chart below.
+.trend-chart__readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-md);
+  min-height: 1.5em;
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-caption);
+}
+
+.trend-chart__readout-hint {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.trend-chart__readout-time {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-chart__readout-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs, 2px);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+// Line keys, not color-only boxes (interaction.md) — a short stroke that
+// echoes each series' actual line style (solid vs dashed) right in the key.
+.trend-chart__readout-key {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+
+  &--a {
+    border-top-color: var(--color-team-a-bg);
+  }
+
+  &--b {
+    border-top-color: var(--color-team-b-bg);
+    border-top-style: dashed;
+  }
+}
+
+.trend-chart-body {
+  display: flex;
+  gap: var(--space-xs);
+  // The topmost/bottommost tick labels are vertically CENTERED on the edge
+  // gridline (translateY(-50%)), so each pokes half its own line-height
+  // past the 140px box — this keeps that from touching the readout above
+  // or the legend below.
+  margin: 0.5em 0;
+}
+
+// A narrow, non-scaling gutter for the Y-axis numbers — kept as plain HTML
+// text rather than in-SVG <text>, since the chart's own
+// `preserveAspectRatio="none"` stretch would otherwise distort glyph shapes.
+.trend-chart__y-axis {
+  position: relative;
+  flex: none;
+  width: 1.5em;
+  height: 140px;
+}
+
+.trend-chart__y-axis-label {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.trend-chart__plot {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  // This layer owns horizontal pointer movement (the crosshair); let the
+  // browser keep handling vertical scroll/pinch instead of waiting to
+  // disambiguate the gesture.
+  touch-action: pan-y;
+}
+
 .trend-chart {
+  display: block;
   width: 100%;
   height: 140px;
   overflow: visible;
 }
 
-.trend-chart__midline {
+.trend-chart__gridline {
   stroke: var(--color-border);
-  stroke-width: 0.5;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
+}
+
+.trend-chart__crosshair {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .trend-chart__line {
   fill: none;
-  stroke-width: 1.5;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 
   // FR-008 / constitution VII: the two teams' lines MUST be distinguishable
   // by more than color alone — team A is a solid line, team B is dashed.
+  // Colors match --color-team-a-bg/--color-team-b-bg, the SAME red/blue
+  // pair the scoreboard, control-panel, all-courts, and court-control
+  // screens already use for these two teams (_tokens.scss) — a match's
+  // history reads in the same colors as the match itself did live.
   &--a {
-    stroke: var(--color-brand-primary);
+    stroke: var(--color-team-a-bg);
   }
 
   &--b {
-    stroke: var(--color-ink);
+    stroke: var(--color-team-b-bg);
     stroke-dasharray: 4 2;
   }
 }
 
+// Plain HTML, positioned by `left`/`top` % against `.trend-chart__plot`
+// (see the template comment) — NOT SVG shapes, so they stay a true
+// circle/square regardless of the chart's non-uniform stretch.
 .trend-chart__dot {
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
+  position: absolute;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  // The ring is in the surface color, not a plain outline — it's what keeps
+  // a marker legible where it sits on top of a line or another marker,
+  // matching the dataviz skill's "surface ring" spacer. Thin at rest (a
+  // dense chart can have 30-45 of these) — it steps up to the full 2px
+  // spec only on the one point that's actually hovered (see dotRadius()).
+  border: 1.25px solid var(--color-surface);
+  transition:
+    width 0.1s ease,
+    height 0.1s ease,
+    border-width 0.1s ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 
   // Marker SHAPE differs too (circle vs square), a second non-color cue
   // alongside the line style.
   &--a {
-    fill: var(--color-surface);
-    stroke: var(--color-brand-primary);
+    background: var(--color-team-a-bg);
+    border-radius: 50%;
   }
 
   &--b {
-    fill: var(--color-surface);
-    stroke: var(--color-ink);
+    background: var(--color-team-b-bg);
+  }
+
+  &--hovered {
+    border-width: 2px;
   }
 }
 
@@ -126,19 +272,12 @@ h2 {
   border-top-style: solid;
 
   &--a {
-    border-top-color: var(--color-brand-primary);
+    border-top-color: var(--color-team-a-bg);
   }
 
   &--b {
-    border-top-color: var(--color-ink);
+    border-top-color: var(--color-team-b-bg);
     border-top-style: dashed;
-  }
-}
-
-.event-list {
-  h3 {
-    font-size: var(--font-size-body);
-    margin-bottom: var(--space-sm);
   }
 }
 

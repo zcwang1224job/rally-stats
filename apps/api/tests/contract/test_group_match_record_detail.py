@@ -215,6 +215,73 @@ async def test_detailed_match_returns_shot_placement_detail_and_player_stats(
     assert stats_by_id[team_b_id]["scored_count"] == 0
     assert stats_by_id[team_b_id]["fault_count"] == 1
 
+    # 033-match-record-derived-stats: same placements, regrouped per player —
+    # totals must agree with player_stats, plotted points only where a
+    # landing was actually recorded.
+    landing_by_id = {p["roster_entry_id"]: p for p in body["landing_distribution"]}
+    assert set(landing_by_id) == set(stats_by_id)
+    assert landing_by_id[team_a_id]["scored"] == [{"x": 0.62, "y": 0.18}]
+    assert landing_by_id[team_a_id]["scored_total"] == 2
+    assert landing_by_id[team_b_id]["lost"] == [{"x": 0.62, "y": 0.18}]
+    assert landing_by_id[team_b_id]["lost_total"] == 1
+
+
+async def test_derived_stats_from_the_real_write_path(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """033-match-record-derived-stats: A, B, A, A (3:1) scored through the
+    real control-panel endpoint, so the serve records are exactly what
+    production writes — a snapshot taken AFTER each point. Whoever the
+    random pre-match draw picked, the first point is excluded and the rest
+    is fully determined: A serves points 2 and 4 (wins one), B serves point
+    3 (loses it). Reading each point's OWN record instead would report
+    every serve as won."""
+    created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+    match_id = await _get_match_id(client, court)
+    for side in ("A", "B", "A", "A"):
+        scored = await client.post(
+            f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+            json={"side": side, "delta": 1},
+        )
+        assert scored.status_code == 200
+
+    guest_join = await client.post(f"/groups/{created['group_id']}/join", json={"nickname": "小美"})
+    response = await client.get(
+        f"/groups/{created['group_id']}/match-records/{match_id}",
+        params={"guest_session_token": guest_join.json()["guest_session_token"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["score_a"], body["score_b"]) == (3, 1)
+
+    serve = body["serve_stats"]
+    team_a, team_b = serve["teams"]
+    assert (team_a["team"], team_b["team"]) == ("A", "B")
+    assert (team_a["serve_points_won"], team_a["serve_points_total"]) == (1, 2)
+    assert (team_b["serve_points_won"], team_b["serve_points_total"]) == (0, 1)
+    assert (team_a["receive_points_won"], team_a["receive_points_total"]) == (1, 1)
+    assert (team_b["receive_points_won"], team_b["receive_points_total"]) == (1, 2)
+    assert serve["excluded_points"] == 1
+    assert (
+        team_a["serve_points_total"] + team_b["serve_points_total"] + serve["excluded_points"]
+        == body["score_a"] + body["score_b"]
+    )
+    assert serve["players"] == []  # singles: no separate player level
+
+    momentum = body["momentum_stats"]
+    assert [run["length"] for run in momentum["longest_runs"]] == [2, 1]
+    assert [lead["margin"] for lead in momentum["max_leads"]] == [2, 0]
+    assert momentum["lead_changes"] == []
+
+    tempo = body["tempo_stats"]
+    assert tempo["counted_points"] == 4
+    assert tempo["longest"]["seconds"] >= tempo["average_seconds"] >= 0
+
+    assert body["landing_distribution"] == []  # simple scoring mode
+
 
 async def test_match_from_different_group_returns_match_not_found(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str

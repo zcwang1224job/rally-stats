@@ -83,6 +83,10 @@ async def test_full_scoring_lifecycle(
         "score_b": 0,
         "winner_team": None,
         "score_event_id": None,
+        # A rejected mutation changes nothing, so there's no serve state to
+        # hand back (the field itself was added to every score response by
+        # feature/control-panel-scoreboard-style).
+        "serve": None,
     }
     await client.post(f"{control1}/score", json={"side": "A", "delta": 1})
     await client.post(f"{control1}/score", json={"side": "A", "delta": 1})

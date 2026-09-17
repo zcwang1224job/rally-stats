@@ -563,6 +563,97 @@ class PlayerScoringStat(BaseModel):
     fault_count: int
 
 
+class ServeCounts(BaseModel):
+    """033-match-record-derived-stats: counts only — the frontend derives
+    the percentage and renders "—" for a zero total, so no divide-by-zero
+    representation has to be invented here."""
+
+    serve_points_won: int
+    serve_points_total: int
+    receive_points_won: int
+    receive_points_total: int
+
+
+class TeamServeStat(ServeCounts):
+    team: Literal["A", "B"]
+
+
+class PlayerServeStat(ServeCounts):
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+
+
+class ServeStats(BaseModel):
+    teams: list[TeamServeStat]  # always [A, B]
+    # Doubles: every participant, all-zero ones included. Singles: [] — the
+    # player-level numbers would just repeat the team-level ones.
+    players: list[PlayerServeStat]
+    # Points whose server couldn't be determined — always >= 1, since the
+    # pre-match serve draw is never persisted (research.md Decision 4).
+    excluded_points: int
+
+
+class ScoringRun(BaseModel):
+    team: Literal["A", "B"]
+    length: int
+    # Score right BEFORE the run's first point / right AFTER its last; all
+    # four None when length == 0.
+    start_score_a: int | None = None
+    start_score_b: int | None = None
+    end_score_a: int | None = None
+    end_score_b: int | None = None
+
+
+class MaxLead(BaseModel):
+    team: Literal["A", "B"]
+    margin: int
+    # Score the first time this margin was reached; None when margin == 0.
+    score_a: int | None = None
+    score_b: int | None = None
+
+
+class LeadChange(BaseModel):
+    new_leader: Literal["A", "B"]
+    score_a: int
+    score_b: int
+
+
+class MomentumStats(BaseModel):
+    longest_runs: list[ScoringRun]  # always [A, B]
+    max_leads: list[MaxLead]  # always [A, B]
+    lead_changes: list[LeadChange]
+
+
+class LongestPoint(BaseModel):
+    seconds: float
+    score_a: int
+    score_b: int
+
+
+class TempoStats(BaseModel):
+    average_seconds: float
+    counted_points: int
+    longest: LongestPoint
+
+
+class LandingPoint(BaseModel):
+    x: float
+    y: float
+
+
+class PlayerLandingDistribution(BaseModel):
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+    scored: list[LandingPoint]
+    # Every point credited to this player, plotted or not — the denominator
+    # next to `scored`. Same meaning for lost/lost_total.
+    scored_total: int
+    lost: list[LandingPoint]
+    lost_total: int
+
+
 class MatchRecordDetailResponse(MatchRecordSummary):
     record_completeness: Literal["complete", "partial", "none"]
     events: list[ScoreEventSummary]
@@ -572,6 +663,14 @@ class MatchRecordDetailResponse(MatchRecordSummary):
     # counts included (FR-009) — there is no third state, so no separate
     # boolean flag is needed alongside this list.
     player_stats: list[PlayerScoringStat] = []
+    # 033-match-record-derived-stats: four independent read-only derivations
+    # (group/match_stats.py). None / [] IS the "no data" signal the frontend
+    # turns into a notice — never an all-zero structure. All four stay at
+    # these defaults unless record_completeness == "complete".
+    serve_stats: ServeStats | None = None
+    momentum_stats: MomentumStats | None = None
+    tempo_stats: TempoStats | None = None
+    landing_distribution: list[PlayerLandingDistribution] = []
 
 
 class RoundWinRatePoint(BaseModel):

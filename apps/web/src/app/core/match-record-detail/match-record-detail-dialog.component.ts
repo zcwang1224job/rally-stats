@@ -3,11 +3,63 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { MatchRecordDetailResponse, ScoreEventSummary } from '../api/group-member-view.models';
 import { CourtDiagramComponent } from '../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../nickname/nickname.component';
+import { MatchDerivedStatsComponent } from './match-derived-stats/match-derived-stats.component';
 
 interface ChartPoint {
   x: number;
   yA: number;
   yB: number;
+  elapsedSeconds: number;
+  scoreA: number;
+  scoreB: number;
+}
+
+interface YAxisTick {
+  value: number;
+  /** Distance from the chart's TOP edge, as a % of its height — the same
+   * orientation `yA`/`yB` use (0 = top = maxScore, 100 = bottom = 0). */
+  percent: number;
+}
+
+/** dataviz skill, marks-and-anatomy.md: "Y-axis ticks: round to clean
+ * numbers." A plain step-size picker (nice-numbers algorithm) — badminton
+ * scores are always whole numbers, so the step itself is never fractional
+ * (`Math.max(1, ...)` floors it before rounding to a power-of-ten residual).
+ * Exported for direct unit testing without any DOM/component setup. */
+export function niceAxisStep(maxValue: number, targetTicks = 4): number {
+  const rawStep = Math.max(1, maxValue / targetTicks);
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const residual = rawStep / magnitude;
+  const niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
+  return niceResidual * magnitude;
+}
+
+/** Ticks from 0 up to (and stopping at or just before) `maxValue` — the
+ * top of the actual data range never gets a forced, non-round tick of its
+ * own; the final score is already shown above the chart (`basic-info`). */
+export function computeYTicks(maxValue: number): YAxisTick[] {
+  const step = niceAxisStep(maxValue);
+  const ticks: YAxisTick[] = [];
+  for (let value = 0; value <= maxValue + 1e-9; value += step) {
+    ticks.push({ value: Math.round(value), percent: 100 - (value / maxValue) * 100 });
+  }
+  return ticks;
+}
+
+/** dataviz skill, interaction.md: "The crosshair finds the X... snaps to
+ * the nearest data position." A pure array scan — no DOM/rect involved —
+ * so hover behavior is testable independent of layout. */
+export function nearestPointIndex(points: readonly { x: number }[], xPercent: number): number {
+  let closest = 0;
+  let closestDistance = Infinity;
+  points.forEach((point, index) => {
+    const distance = Math.abs(point.x - xPercent);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = index;
+    }
+  });
+  return closest;
 }
 
 /** 016-match-score-timeline (US1/US2/US3): 比賽詳情彈出視窗— 逐筆加減分
@@ -18,7 +70,7 @@ interface ChartPoint {
  * groupId 參數決定端點」導致的 I1 那類錯誤。 */
 @Component({
   selector: 'app-match-record-detail-dialog',
-  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent],
+  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent, MatchDerivedStatsComponent],
   templateUrl: './match-record-detail-dialog.component.html',
   styleUrl: './match-record-detail-dialog.component.scss',
 })
@@ -28,6 +80,7 @@ export class MatchRecordDetailDialogComponent {
   readonly loadError = input(false);
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
+  private readonly plotArea = viewChild<ElementRef<HTMLElement>>('plotArea');
 
   readonly teamANames = computed(() =>
     (this.detail()?.team_a ?? []).map((p) => p.nickname).join('、'),
@@ -41,6 +94,13 @@ export class MatchRecordDetailDialogComponent {
   readonly isSinglesMatch = computed(() => {
     const d = this.detail();
     return !d || d.team_a.length + d.team_b.length <= 2;
+  });
+
+  /** The Y-axis's fixed ceiling — shared by `chartPoints()` (point placement)
+   * and `yTicks()` (gridlines/labels) so the two can never disagree. */
+  private readonly maxScore = computed(() => {
+    const d = this.detail();
+    return Math.max(d?.score_a ?? 0, d?.score_b ?? 0, 1);
   });
 
   /** research.md #3: chart x-axis is elapsed seconds since match start.
@@ -61,11 +121,14 @@ export class MatchRecordDetailDialogComponent {
           ]
         : d.events;
     const maxElapsed = Math.max(events[events.length - 1].elapsed_seconds, 1);
-    const maxScore = Math.max(d.score_a, d.score_b, 1);
+    const maxScore = this.maxScore();
     return events.map((event) => ({
       x: (event.elapsed_seconds / maxElapsed) * 100,
       yA: 100 - (event.score_a / maxScore) * 100,
       yB: 100 - (event.score_b / maxScore) * 100,
+      elapsedSeconds: event.elapsed_seconds,
+      scoreA: event.score_a,
+      scoreB: event.score_b,
     }));
   });
 
@@ -75,6 +138,58 @@ export class MatchRecordDetailDialogComponent {
   readonly polylineB = computed(
     () => this.chartPoints()?.map((p) => `${p.x},${p.yB}`).join(' ') ?? '',
   );
+
+  /** dataviz skill, marks-and-anatomy.md: recessive horizontal gridlines +
+   * axis labels, "round to clean numbers" — see `computeYTicks()`. */
+  readonly yTicks = computed(() => computeYTicks(this.maxScore()));
+
+  /** dataviz skill, interaction.md: "An HTML/SVG chart is interactive by
+   * default." `null` = no hover/touch in progress. Reset alongside
+   * `expandedEventIndex` whenever the detail changes (below) so a pointer
+   * lingering from a previous match's chart can't show stale data. */
+  readonly hoveredIndex = signal<number | null>(null);
+
+  readonly hoveredPoint = computed<ChartPoint | null>(() => {
+    const index = this.hoveredIndex();
+    const points = this.chartPoints();
+    return index !== null && points ? (points[index] ?? null) : null;
+  });
+
+  /** dataviz skill, marks-and-anatomy.md's ">= 8px (r >= 4)" marker floor is
+   * sized for a point that's an actual read/reference target — exactly what
+   * the HOVERED point is, paired with the readout above. A badminton match
+   * can have 30-45 scoring events on one compact chart; drawing all of them
+   * at that size would overplot the line into a solid bead-string (an
+   * anti-pattern this method also guards against — see anti-patterns.md's
+   * hover/hit-target guidance, which already separates "the painted mark"
+   * from "the interactive treatment"). Resting points therefore stay small
+   * (close to this chart's original r=2) and only the hovered one grows to
+   * meet the spec's floor. */
+  dotRadius(index: number): number {
+    return this.hoveredIndex() === index ? 5 : 2.5;
+  }
+
+  /** Every value the readout/tooltip shows is also in the point-by-point
+   * list right below the chart (interaction.md: "tooltips enhance, they
+   * never gate") — so this hover layer only needs to work for pointer/touch;
+   * it doesn't need its own parallel keyboard-navigation model. */
+  onChartPointerMove(event: PointerEvent): void {
+    const points = this.chartPoints();
+    const area = this.plotArea()?.nativeElement;
+    if (!points || points.length === 0 || !area) {
+      return;
+    }
+    const rect = area.getBoundingClientRect();
+    if (rect.width === 0) {
+      return;
+    }
+    const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
+    this.hoveredIndex.set(nearestPointIndex(points, xPercent));
+  }
+
+  onChartPointerLeave(): void {
+    this.hoveredIndex.set(null);
+  }
 
   /** 032-match-record-scoring-stats (US2, Clarifications 2026-09-16): the
    * index within `detail().events` currently expanded to show its landing
@@ -86,6 +201,7 @@ export class MatchRecordDetailDialogComponent {
   private readonly resetExpandedOnDetailChange = effect(() => {
     this.detail();
     this.expandedEventIndex.set(null);
+    this.hoveredIndex.set(null);
   });
 
   toggleExpand(index: number): void {

@@ -150,6 +150,11 @@ async def test_success_with_bearer_token(
     assert body["match_id"] == match_id
     assert body["record_completeness"] == "complete"
     assert len(body["events"]) == 3
+    # 033-match-record-derived-stats: same shared builder, same new fields.
+    assert body["serve_stats"]["excluded_points"] >= 1
+    assert len(body["momentum_stats"]["longest_runs"]) == 2
+    assert body["tempo_stats"]["counted_points"] == 3
+    assert body["landing_distribution"] == []
 
 
 async def test_requires_login(client: AsyncClient) -> None:

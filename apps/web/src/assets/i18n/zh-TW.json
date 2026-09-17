@@ -619,7 +619,8 @@
     "chart": {
       "title": "比分趨勢圖",
       "legendTeamA": "－ A 隊（實線）",
-      "legendTeamB": "┄ B 隊（虛線）"
+      "legendTeamB": "┄ B 隊（虛線）",
+      "hoverHint": "拖曳或點擊圖表，查看當下比分"
     },
     "eventList": {
       "title": "加減分紀錄",
@@ -638,6 +639,57 @@
       "scoredCount": "得分次數",
       "faultCount": "造成失分次數",
       "empty": "此比賽沒有球員得失分紀錄"
+    },
+    "derived": {
+      "teamA": "A 隊",
+      "teamB": "B 隊",
+      "serve": {
+        "title": "發球／接發球得分率",
+        "empty": "此比賽沒有發球紀錄",
+        "teamsCaption": "各隊發球與接發球得分",
+        "playersCaption": "各球員發球與接發球得分",
+        "teamColumn": "隊伍",
+        "playerColumn": "球員",
+        "serveColumn": "發球時得分",
+        "receiveColumn": "接發球時得分",
+        "excludedNote": "有 {{count}} 分無法判定發球方、未列入統計（含開賽第一分：系統沒有記錄開賽時由誰發球）。"
+      },
+      "momentum": {
+        "title": "比分走勢摘要",
+        "empty": "此比賽沒有完整的加減分紀錄，無法計算走勢",
+        "longestRun": "最長連續得分",
+        "runValue": "連得 {{length}} 分（{{startA}}:{{startB}} → {{endA}}:{{endB}}）",
+        "runNone": "沒有得分",
+        "maxLead": "最大領先",
+        "leadValue": "領先 {{margin}} 分（{{scoreA}}:{{scoreB}} 時）",
+        "leadNone": "未曾領先",
+        "leadChanges": "領先易手",
+        "leadChangesCount": "{{count}} 次",
+        "leadChangeToA": "{{scoreA}}:{{scoreB}} 時改由 A 隊領先",
+        "leadChangeToB": "{{scoreA}}:{{scoreB}} 時改由 B 隊領先"
+      },
+      "tempo": {
+        "title": "每分耗時",
+        "empty": "此比賽沒有可用來估算每分耗時的紀錄",
+        "average": "平均每分耗時",
+        "longest": "最長的一分",
+        "longestAt": "（打完後比分 {{scoreA}}:{{scoreB}}）",
+        "seconds": "{{seconds}} 秒",
+        "minutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
+        "estimateNote": "估計值，包含回合之間的間隔。以計分時間推算，共計入 {{count}} 分；中間做過比分修正的區間不列入。"
+      },
+      "landing": {
+        "title": "球員落點分布",
+        "empty": "此比賽沒有落點紀錄",
+        "playerEmpty": "這位球員沒有已標示落點的紀錄",
+        "selectPlayer": "選擇球員",
+        "legendScored": "圓形：得分落點",
+        "legendLost": "菱形：失分落點",
+        "courtLabel": "落點分布圖：得分落點 {{scored}} 個、失分落點 {{lost}} 個",
+        "orientation": "左半場為 A 隊、右半場為 B 隊；球場線外的點代表出界。",
+        "coverageScored": "得分：已標落點 {{plotted}}／共 {{total}} 分",
+        "coverageLost": "失分：已標落點 {{plotted}}／共 {{total}} 分"
+      }
     }
   },
   "errors": {
