@@ -12,6 +12,12 @@ alembic upgrade head        # 新增 shot_placement_records.ending_type
 alembic downgrade -1 && alembic upgrade head   # 確認可逆
 ```
 
+> **本機 docker 環境也要手動執行**：`infra` 的後端容器不會自動跑 migration（而且它直接掛載主 checkout 的 `apps/api`，在主 checkout 切到這個分支就等於換了它跑的程式）。切分支、重啟容器之後，若比賽詳情或儀表板出現 500（`column shot_placement_records.ending_type does not exist`），就是少了這一步：
+>
+> `docker compose -f infra/docker-compose.yml exec backend alembic upgrade head`
+>
+> 正式環境同理：**先跑 migration，再部署後端**。順序反了，壞掉的是所有比賽詳情、整個儀表板與詳細計分的 `-1`。
+
 需要：一個開啟 `detailed_scoring_enabled` 的雙打團與一個單打團、一個場地、一位已驗證信箱的會員 M（在團內有 roster entry）。比賽需自然達標結束才會出現在對戰紀錄。
 
 自動化測試：

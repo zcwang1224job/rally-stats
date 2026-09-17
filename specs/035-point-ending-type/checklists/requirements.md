@@ -44,4 +44,5 @@
 - 無 [NEEDS CLARIFICATION]：以下皆採合理預設並記錄於 Assumptions——不要求計分員判斷受迫／非受迫（畫面用語為「失誤」）、得分方式固定五種、「主動得分」採寬鬆定義、只在無歧義時自動帶入、舊比賽不回填、確認後不可編輯。若對這些預設有異議，可用 `/speckit-clarify` 調整。
 - **最值得你確認的一項預設**：你的原始描述用的是「非受迫性失誤」，規格改為只記錄客觀可見的「失誤」（出界／掛網／發球失誤／其他），不要求計分員判斷是否受迫。理由見 Assumptions 第一條。
 - Validation iteration 2 (2026-09-18，`/speckit-plan` 之後)：all items still pass。設計期間對規格的兩處修正——FR-013 的入口由四個更正為三個；FR-009 明訂「新落點使親手選擇自相矛盾時清除」的例外，並新增 FR-009a（選項隨落點收斂）。
+- Validation iteration 3 (2026-09-18，`/speckit-analyze` 之後)：all items still pass；0 項 CRITICAL。對規格的修正只有一處——FR-021 明訂失誤組成與落點分布**共用**同一個「最近 10 場／全部」切換（analyze I3，使用者選定方案 a）。其餘四項（邊界測試向量、`EndingType` 一致性測試、部署順序的影響範圍、SC-002 改為人工驗收 T037）落在 plan／data-model／quickstart／tasks。
 - 建議實作順序：US1 → US2 → US3（US2、US3 的所有數字都來自 US1；US3 的單場貢獻值來自 US2）。

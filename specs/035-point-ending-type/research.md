@@ -26,6 +26,7 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
 
 - **Decision**：`attach_shot_placement()` 新增參數 `ending_type`；除了值域檢查外，只在**同時提供了落點**時檢查兩條：`winner` 且落點界外 → 拒絕；`out` 且落點界內 → 拒絕。錯誤代碼 `ENDING_TYPE_CONTRADICTS_LANDING`（422）。界內／界外沿用該函式既有的判定（含單打較窄邊線）。
 - **Rationale**：與既有的 `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING` 同一精神——只擋「資料本身自相矛盾」，不擋「計分員的判斷」。`net`／`serve_fault`／`other_error` 與落點沒有必然關係（掛網的球可能落在任何地方；發球失誤可以是出界也可以是掛網），不加限制。沒有落點時不檢查（FR-010）。
+- **被拒的代價比看起來高**（analyze I1）：已查證三個掛載點呼叫補記 API 時沒有錯誤處理（既有行為），請求被拒就等於整筆細節無聲消失。Decision 3 讓前端不會送出矛盾的組合，但界內／界外是前後端**各算一次**（含單打邊線的浮點邊界），因此以共用的邊界測試向量（data-model.md）鎖定兩邊一致。
 - **「整列皆空」的既有規則要跟著改**：目前 `build_match_record_detail()` 把「四個欄位全為 NULL 的列」視同沒有明細。新增欄位後，只記了得分方式的列是有意義的——該判斷改為五個欄位全空才算空。
 
 ## Decision 5：單場拆分是 `match_stats.py` 的新純函式 `ending_stats()`
@@ -63,7 +64,7 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
   - **選擇器**：`ShotPlacementConfirmed` 新增 `endingType`；三個掛載點（計分板、單一場地控制板、全部場地控制板）只是把它多傳一格給 `CourtControlService` 的兩個既有方法。
   - **逐點清單**（FR-014）：`ShotPlacementSummary` 新增 `ending_type`；既有的明細列多顯示一個帶**圖示＋文字**的標籤——主動得分用「★」、失誤用「✕」，類別以形狀區分而非僅顏色（Constitution VII）。
   - **單場拆分**（FR-015／FR-016）：新元件 `core/match-record-detail/match-ending-stats/`，由 `MatchDerivedStatsComponent` 掛為第六個 `<details>`，重用 034 抽出的 `_derived-blocks.scss`。
-  - **儀表板**：`DASHBOARD_METRIC_KEYS` 加 5 個 key；`GROUP_OF` 新增群組 `ending`（TypeScript 的 exhaustive `Record` 會在漏掉時編譯失敗——034 當初就是為此設計）；失誤組成以四列「次數＋佔比＋細長條」呈現，四類是名目類別，用同一個顏色（不用漸層、不用四種色相）。
+  - **儀表板**：`DASHBOARD_METRIC_KEYS` 加 5 個 key；`GROUP_OF` 新增群組 `ending`（TypeScript 的 exhaustive `Record` 會在漏掉時編譯失敗——034 當初就是為此設計）；失誤組成以四列「次數＋佔比＋細長條」呈現，四類是名目類別，用同一個顏色（不用漸層、不用四種色相）。「最近 10 場／全部」提升為**儀表板層級的單一切換**，由落點分布與失誤組成共用（analyze I3）——034 原本放在落點群組內的那兩顆按鈕移到群組清單上方；指標卡不受影響，它們本來就同時顯示兩個範圍的數字。
 - **Rationale**：每一處都是在 034／033 已有的骨架上加一格，沒有新的互動模式。
 
 ## Decision 8：舊資料、即時廣播、權限——都不動

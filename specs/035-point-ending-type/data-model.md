@@ -24,6 +24,18 @@
 - 同時提供落點時：`winner` ∧ 落點界外 → `ENDING_TYPE_CONTRADICTS_LANDING`；`out` ∧ 落點界內 → 同。界內／界外沿用該函式既有判定（單打用較窄邊線）。
 - 與 `roster_entry_id`／`losing_roster_entry_id`／落點**互相獨立**：可單獨存在（FR-010）。
 
+**界內／界外的邊界測試向量**（analyze I1）：界內／界外由前端（選擇畫面）與後端（`attach_shot_placement()`）**各自判定一次**，兩者 MUST 一致——任何一點判定不同，補記請求就會被拒，而三個掛載點呼叫補記 API 時沒有錯誤處理（既有行為），整筆細節（落點＋球員＋得分方式）會無聲消失。後端 `test_shot_placement.py` 與前端 `shot-placement-picker.component.spec.ts` MUST 逐字採用同一張表，並互相註明出處：
+
+| 賽制 | (x, y) | 判定 |
+|---|---|---|
+| 雙打 | (0.0, 0.5)、(1.0, 0.5)、(0.5, 0.0)、(0.5, 1.0) | 界內（線上算界內） |
+| 雙打 | (-0.0001, 0.5)、(1.0001, 0.5)、(0.5, -0.0001)、(0.5, 1.0001) | 界外 |
+| 單打 | (0.5, INSET)、(0.5, 1 − INSET) | 界內 |
+| 單打 | (0.5, INSET − 0.0001)、(0.5, 1 − INSET + 0.0001) | 界外 |
+| 單打 | (0.5, 0.03)——雙打邊線內、單打邊線外 | 界外 |
+
+`INSET = 0.46 / 6.1`（兩邊既有的常數：後端 `_SINGLES_SIDELINE_INSET`、前端 `SINGLES_SIDELINE_INSET`）。
+
 **生命週期**：與所在列完全相同——確認時隨列寫入一次；不可 UPDATE；`-1` 修正時隨列刪除（既有 `_remove_last_shot_placement_record()`，不需修改）。
 
 **Migration**：`down_revision = 'd0c14187b0e3'`；`upgrade` 只有一個 `op.add_column`，`downgrade` 只有一個 `op.drop_column`。不回填。
