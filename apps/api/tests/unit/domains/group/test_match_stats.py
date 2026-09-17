@@ -22,6 +22,7 @@ from app.domains.group.match_stats import (
     _wins,
     clutch_stats,
     effective_points,
+    ending_stats,
     landing_distribution,
     momentum_stats,
     player_landings,
@@ -648,3 +649,165 @@ def test_ending_type_is_the_same_set_on_the_write_side_and_in_this_pure_module()
     assert match_stats.ERROR_TYPES == tuple(
         kind for kind in get_args(WriteSideEndingType) if kind != "winner"
     )
+
+
+# ---------------------------------------------------------------- ending_stats (035 T014)
+
+
+def _ending(
+    scorer: uuid.UUID | None, loser: uuid.UUID | None, ending: str | None
+) -> Placement:
+    return Placement(scorer_id=scorer, loser_id=loser, landing=None, ending=ending)  # type: ignore[arg-type]
+
+
+def test_winner_goes_to_the_scorer_and_an_error_to_the_loser() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    second = sim.plus("A")
+    third = sim.plus("B")
+    placements = {
+        first: _ending(A1, B1, "winner"),
+        second: _ending(A2, B1, "net"),
+        third: _ending(B2, A1, "out"),
+    }
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    a1, a2, b1, b2 = (result.players[p] for p in (A1, A2, B1, B2))
+    assert (a1.winners, a1.opponent_errors, a1.beaten_by_winners, a1.own_errors) == (1, 0, 0, 1)
+    assert (a2.winners, a2.opponent_errors, a2.own_errors) == (0, 1, 0)
+    assert (b1.beaten_by_winners, b1.own_errors, b1.own_errors_by_type["net"]) == (1, 1, 1)
+    assert (b2.winners, b2.opponent_errors) == (0, 1)
+    assert a1.own_errors_by_type == {"out": 1, "net": 0, "serve_fault": 0, "other_error": 0}
+    assert (result.recorded_points, result.total_points) == (3, 3)
+
+
+def test_an_ending_without_the_matching_player_counts_for_the_team_only() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    second = sim.plus("A")
+    placements = {
+        first: _ending(None, None, "winner"),
+        second: _ending(None, B1, "serve_fault"),
+    }
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    assert (result.teams["A"].winners, result.teams["B"].errors) == (1, 1)
+    assert result.teams["B"].errors_by_type["serve_fault"] == 1
+    assert all(p.winners == 0 and p.opponent_errors == 0 for p in result.players.values())
+    assert result.players[B1].own_errors == 1
+    assert result.recorded_points == 2
+
+
+def test_each_player_split_adds_up_to_their_landing_totals() -> None:
+    sim = _Sim(DOUBLES)
+    kinds = ["winner", "net", None, "out", None, "other_error", "winner"]
+    sides = "AABBABA"
+    placements = {}
+    for side, kind in zip(sides, kinds, strict=True):
+        event_id = sim.plus(side)  # type: ignore[arg-type]
+        scorer, loser = (A1, B2) if side == "A" else (B1, A2)
+        placements[event_id] = _ending(scorer, loser, kind)
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+    landings = player_landings(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    for player_id, split in result.players.items():
+        assert split.winners + split.opponent_errors + split.scored_unrecorded == (
+            landings[player_id].scored_total
+        ), player_id
+        assert split.beaten_by_winners + split.own_errors + split.lost_unrecorded == (
+            landings[player_id].lost_total
+        ), player_id
+    assert result.players[A1].scored_unrecorded == 1
+    assert result.players[A2].lost_unrecorded == 1
+    assert (result.recorded_points, result.total_points) == (5, 7)
+
+
+def test_team_errors_are_the_ones_that_team_committed() -> None:
+    sim = _Sim(DOUBLES)
+    placements = {}
+    for kind in ("out", "net", "net", "serve_fault", "winner"):
+        placements[sim.plus("A")] = _ending(A1, B1, kind)  # A scores, so B errs
+    placements[sim.plus("B")] = _ending(B1, A1, "other_error")
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    assert (result.teams["A"].winners, result.teams["A"].errors) == (1, 1)
+    assert (result.teams["B"].winners, result.teams["B"].errors) == (0, 4)
+    assert result.teams["B"].errors_by_type == {
+        "out": 1, "net": 2, "serve_fault": 1, "other_error": 0
+    }
+    for team in result.teams.values():
+        assert sum(team.errors_by_type.values()) == team.errors
+    # Invariant: A's winners + B's errors = A's recorded points.
+    assert result.teams["A"].winners + result.teams["B"].errors == 5
+    assert result.recorded_points == 6
+
+
+def test_recorded_points_counts_only_effective_points_with_an_ending() -> None:
+    sim = _Sim(DOUBLES)
+    with_ending = sim.plus("A")
+    without = sim.plus("B")
+    no_row = sim.plus("A")
+    placements = {
+        with_ending: _ending(A1, B1, "winner"),
+        without: _ending(B1, A1, None),
+    }
+    assert no_row not in placements
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    assert (result.recorded_points, result.total_points) == (1, 3)
+
+
+def test_a_voided_point_contributes_to_nothing() -> None:
+    sim = _Sim(DOUBLES)
+    kept = sim.plus("A")
+    voided = sim.plus("A")
+    sim.minus("A")
+    placements = {
+        kept: _ending(A1, B1, "winner"),
+        voided: _ending(A1, B1, "net"),
+    }
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    assert (result.teams["A"].winners, result.teams["B"].errors) == (1, 0)
+    assert (result.players[A1].winners, result.players[A1].opponent_errors) == (1, 0)
+    assert (result.recorded_points, result.total_points) == (1, 1)
+
+
+def test_ending_stats_is_none_when_no_point_recorded_an_ending() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    sim.plus("B")
+    placements = {first: _ending(A1, B1, None)}
+
+    assert ending_stats(sim.points(), placements, DOUBLES) is None
+    assert ending_stats(sim.points(), {}, DOUBLES) is None
+
+
+def test_players_follow_the_participants_order_and_include_all_zero_rows() -> None:
+    sim = _Sim(DOUBLES)
+    placements = {sim.plus("A"): _ending(A1, B1, "winner")}
+
+    result = ending_stats(sim.points(), placements, DOUBLES)
+
+    assert result is not None
+    assert list(result.players) == [A1, A2, B1, B2]
+    assert list(result.teams) == ["A", "B"]
+    a2 = result.players[A2]
+    assert (a2.roster_entry_id, a2.team) == (A2, "A")
+    assert (
+        a2.winners, a2.opponent_errors, a2.scored_unrecorded,
+        a2.beaten_by_winners, a2.own_errors, a2.lost_unrecorded,
+    ) == (0, 0, 0, 0, 0, 0)
+    assert sum(a2.own_errors_by_type.values()) == 0

@@ -33,6 +33,8 @@ from app.domains.group.schemas import (
     CreateGroupRequest,
     EditGroupRequest,
     EditScoringSettingsRequest,
+    EndingStats,
+    ErrorsByType,
     FinalStandingRow,
     GroupMatchRecordsResponse,
     GroupStandingsResponse,
@@ -45,6 +47,7 @@ from app.domains.group.schemas import (
     MemberStandingRow,
     MomentumStats,
     OpponentRecord,
+    PlayerEndingStat,
     PlayerLandingDistribution,
     PlayerScoringStat,
     PlayerServeStat,
@@ -53,6 +56,7 @@ from app.domains.group.schemas import (
     ScoringRun,
     ServeStats,
     ShotPlacementSummary,
+    TeamEndingStat,
     TeamServeStat,
     TempoStats,
 )
@@ -1620,7 +1624,9 @@ _DerivedStats = tuple[
     TempoStats | None,
     list[PlayerLandingDistribution],
     ClutchStats | None,
+    EndingStats | None,
 ]
+_NO_DERIVED_STATS: _DerivedStats = (None, None, None, [], None, None)
 
 
 def _clutch_stats_schema(
@@ -1685,7 +1691,7 @@ async def _build_derived_stats(
     table nothing displayed before (`ScoreServeRecord`, written since 030);
     `placements` is 032's existing query result, reused rather than
     re-queried."""
-    no_data: _DerivedStats = (None, None, None, [], None)
+    no_data = _NO_DERIVED_STATS
 
     started_at = match.started_at
     assert started_at is not None  # always set for completed matches
@@ -1753,6 +1759,7 @@ async def _build_derived_stats(
         else None
     )
 
+    stat_placements = _to_placements(placements)
     landing_distribution = [
         PlayerLandingDistribution(
             roster_entry_id=str(player.roster_entry_id),
@@ -1764,7 +1771,7 @@ async def _build_derived_stats(
             lost_total=player.lost_total,
         )
         for player in match_stats.landing_distribution(
-            points, _to_placements(placements), stat_participants
+            points, stat_placements, stat_participants
         )
     ]
 
@@ -1775,7 +1782,56 @@ async def _build_derived_stats(
         match.winner_team,  # type: ignore[arg-type]
     )
 
-    return serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats
+    # 035-point-ending-type: None when not one point recorded an ending
+    # (the pure function's own rule), so a pre-035 match shows the single
+    # "no data" notice rather than a table of zeros.
+    ending = match_stats.ending_stats(points, stat_placements, stat_participants)
+    ending_stats = (
+        EndingStats(
+            recorded_points=ending.recorded_points,
+            total_points=ending.total_points,
+            teams=[
+                TeamEndingStat(
+                    team=team.team,
+                    winners=team.winners,
+                    errors=team.errors,
+                    errors_by_type=ErrorsByType(
+                        out=team.errors_by_type["out"],
+                        net=team.errors_by_type["net"],
+                        serve_fault=team.errors_by_type["serve_fault"],
+                        other_error=team.errors_by_type["other_error"],
+                    ),
+                )
+                for team in ending.teams.values()  # built in A, B order
+            ],
+            players=[
+                PlayerEndingStat(
+                    roster_entry_id=p.roster_entry_id,
+                    nickname=p.nickname,
+                    team=p.team,
+                    winners=split.winners,
+                    opponent_errors=split.opponent_errors,
+                    scored_unrecorded=split.scored_unrecorded,
+                    beaten_by_winners=split.beaten_by_winners,
+                    own_errors=split.own_errors,
+                    lost_unrecorded=split.lost_unrecorded,
+                )
+                for p in participants
+                for split in (ending.players[uuid.UUID(p.roster_entry_id)],)
+            ],
+        )
+        if ending is not None
+        else None
+    )
+
+    return (
+        serve_stats,
+        momentum_stats,
+        tempo_stats,
+        landing_distribution,
+        clutch_stats,
+        ending_stats,
+    )
 
 
 async def build_match_record_detail(
@@ -1837,13 +1893,16 @@ async def build_match_record_detail(
         placement = placement_by_event_id.get(event.id)
         if placement is None:
             return None
-        # research.md Decision 2: a row with all four fields NULL (confirmed
-        # with nothing picked) renders identically to no row at all.
+        # research.md Decision 2: a row with all its fields NULL (confirmed
+        # with nothing picked) renders identically to no row at all. 035
+        # made that five fields: a row carrying only an ending type IS a
+        # recorded detail (research.md Decision 4).
         if (
             placement.roster_entry_id is None
             and placement.losing_roster_entry_id is None
             and placement.landing_x is None
             and placement.landing_y is None
+            and placement.ending_type is None
         ):
             return None
         return ShotPlacementSummary(
@@ -1867,6 +1926,7 @@ async def build_match_record_detail(
             ),
             landing_x=placement.landing_x,
             landing_y=placement.landing_y,
+            ending_type=placement.ending_type,
         )
 
     event_summaries = [
@@ -1910,12 +1970,12 @@ async def build_match_record_detail(
             )
 
     # 033-match-record-derived-stats FR-004: a partial/absent history gets
-    # the "no data" defaults for all four blocks, never numbers computed
-    # from an incomplete record.
-    serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats = (
+    # the "no data" defaults for every derived block, never numbers
+    # computed from an incomplete record.
+    serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats, ending_stats = (
         await _build_derived_stats(session, match, summary, score_events, placements)
         if completeness == "complete"
-        else (None, None, None, [], None)
+        else _NO_DERIVED_STATS
     )
 
     return MatchRecordDetailResponse(
@@ -1928,6 +1988,7 @@ async def build_match_record_detail(
         tempo_stats=tempo_stats,
         landing_distribution=landing_distribution,
         clutch_stats=clutch_stats,
+        ending_stats=ending_stats,
     )
 
 

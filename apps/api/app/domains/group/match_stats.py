@@ -194,6 +194,49 @@ class PlayerLandingResult:
     lost_total: int = 0
 
 
+@dataclass(frozen=True)
+class TeamEndingResult:
+    """035. `errors` are the ones THIS team committed — i.e. points the
+    other team was credited with by an error — so a team's own line reads
+    "we hit N winners and gave away M"."""
+
+    team: Team
+    winners: int
+    errors: int
+    errors_by_type: dict[EndingType, int]
+
+
+@dataclass(frozen=True)
+class PlayerEndingResult:
+    """035. Points scored split three ways (winners / opponent errors /
+    ending not recorded) and points lost likewise (beaten by a winner / own
+    errors / not recorded), so each triple adds up to the player's
+    `PlayerLandingResult.*_total` (FR-015)."""
+
+    roster_entry_id: uuid.UUID
+    team: Team
+    winners: int
+    opponent_errors: int
+    scored_unrecorded: int
+    beaten_by_winners: int
+    own_errors: int
+    lost_unrecorded: int
+    own_errors_by_type: dict[EndingType, int]
+
+
+@dataclass(frozen=True)
+class EndingStatsResult:
+    """`recorded_points`: effective points whose ending was recorded;
+    `total_points`: every effective point, so a viewer can see how much of
+    the match the numbers cover. `players` is insertion-ordered by
+    `participants` and includes every one of them, all-zero rows too."""
+
+    recorded_points: int
+    total_points: int
+    teams: dict[Team, TeamEndingResult]
+    players: dict[uuid.UUID, PlayerEndingResult]
+
+
 def effective_points(
     events: list[RawEvent], final_score_a: int, final_score_b: int
 ) -> list[EffectivePoint] | None:
@@ -532,3 +575,89 @@ def landing_distribution(
     if not any(result.scored or result.lost for result in results.values()):
         return []
     return list(results.values())
+
+
+def ending_stats(
+    points: list[EffectivePoint],
+    placements: dict[uuid.UUID, Placement],
+    participants: list[Participant],
+) -> EndingStatsResult | None:
+    """035 research.md Decision 5. Who a point is attributed to follows the
+    row's own players (FR-003): a winner is the scorer's, an error is the
+    loser's — and where that player wasn't recorded, the point still counts
+    for its TEAM (the effective point's side, which is fixed) but for no
+    individual. A row whose ending is None, or no row at all, is "not
+    recorded" and lands in the `*_unrecorded` buckets so each player's
+    triple keeps adding up to their `player_landings()` totals (FR-015).
+    None when not a single point recorded an ending — the caller shows one
+    "no data" notice instead of a table of zeros (FR-017)."""
+    team_winners: dict[Team, int] = {"A": 0, "B": 0}
+    team_errors: dict[Team, dict[EndingType, int]] = {
+        "A": dict.fromkeys(ERROR_TYPES, 0),
+        "B": dict.fromkeys(ERROR_TYPES, 0),
+    }
+    # Per player: [winners, opponent_errors, scored_unrecorded,
+    #              beaten_by_winners, own_errors, lost_unrecorded]
+    tallies: dict[uuid.UUID, list[int]] = {p.roster_entry_id: [0] * 6 for p in participants}
+    own_errors_by_type: dict[uuid.UUID, dict[EndingType, int]] = {
+        p.roster_entry_id: dict.fromkeys(ERROR_TYPES, 0) for p in participants
+    }
+    recorded = 0
+
+    for point in points:
+        placement = placements.get(point.event_id)
+        ending = placement.ending if placement is not None else None
+        scorer = tallies.get(placement.scorer_id) if placement and placement.scorer_id else None
+        loser = tallies.get(placement.loser_id) if placement and placement.loser_id else None
+        if ending is None:
+            if scorer is not None:
+                scorer[2] += 1
+            if loser is not None:
+                loser[5] += 1
+            continue
+
+        recorded += 1
+        if ending == "winner":
+            team_winners[point.side] += 1
+            if scorer is not None:
+                scorer[0] += 1
+            if loser is not None:
+                loser[3] += 1
+        else:
+            team_errors[_other(point.side)][ending] += 1
+            if scorer is not None:
+                scorer[1] += 1
+            if loser is not None and placement is not None and placement.loser_id is not None:
+                loser[4] += 1
+                own_errors_by_type[placement.loser_id][ending] += 1
+
+    if recorded == 0:
+        return None
+    teams: tuple[Team, Team] = ("A", "B")
+    return EndingStatsResult(
+        recorded_points=recorded,
+        total_points=len(points),
+        teams={
+            team: TeamEndingResult(
+                team=team,
+                winners=team_winners[team],
+                errors=sum(team_errors[team].values()),
+                errors_by_type=team_errors[team],
+            )
+            for team in teams
+        },
+        players={
+            p.roster_entry_id: PlayerEndingResult(
+                roster_entry_id=p.roster_entry_id,
+                team=p.team,
+                winners=tallies[p.roster_entry_id][0],
+                opponent_errors=tallies[p.roster_entry_id][1],
+                scored_unrecorded=tallies[p.roster_entry_id][2],
+                beaten_by_winners=tallies[p.roster_entry_id][3],
+                own_errors=tallies[p.roster_entry_id][4],
+                lost_unrecorded=tallies[p.roster_entry_id][5],
+                own_errors_by_type=own_errors_by_type[p.roster_entry_id],
+            )
+            for p in participants
+        },
+    )
