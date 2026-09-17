@@ -202,6 +202,16 @@ class ShotPlacementRecord(Base):
     # without the other (service.py enforces this).
     landing_x: Mapped[float | None] = mapped_column(Float, nullable=True)
     landing_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 035-point-ending-type: how the rally ended — 'winner' (credited to
+    # roster_entry_id) or one of the loser's errors 'out' / 'net' /
+    # 'serve_fault' / 'other_error' (charged to losing_roster_entry_id).
+    # NULL = not recorded, which includes every row written before 035 (no
+    # backfill). Independent of the other optional fields — it can be the
+    # only thing recorded on a row. A plain string validated in the service
+    # (schemas.EndingType), same convention as `team` above: no DB enum, so
+    # a sixth kind needs no migration. Lives on this row so that "-1" takes
+    # it away together with the landing and players, with no code of its own.
+    ending_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

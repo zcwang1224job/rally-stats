@@ -14,6 +14,12 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 Team = Literal["A", "B"]
+# 035-point-ending-type: how a rally ended. A deliberate copy of
+# `schedule.schemas.EndingType` — this module imports nothing from the ORM
+# side — pinned to the original by test_match_stats.py.
+EndingType = Literal["winner", "out", "net", "serve_fault", "other_error"]
+# Everything but a winner is the LOSER's doing.
+ERROR_TYPES: tuple[EndingType, ...] = ("out", "net", "serve_fault", "other_error")
 
 
 @dataclass(frozen=True)
@@ -49,6 +55,8 @@ class Placement:
     scorer_id: uuid.UUID | None
     loser_id: uuid.UUID | None
     landing: tuple[float, float] | None
+    # 035: None = not recorded (every point scored before 035 included).
+    ending: EndingType | None = None
 
 
 @dataclass(frozen=True)

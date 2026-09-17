@@ -239,6 +239,13 @@ class UndoMatchCompletionRequest(BaseModel):
     side: Team
 
 
+# 035-point-ending-type: how a rally ended. 'winner' is the scorer's doing;
+# the other four are the loser's errors. `group/match_stats.py` keeps its own
+# copy of this Literal (a pure module can't import from here) — a test in
+# test_match_stats.py pins the two together.
+EndingType = Literal["winner", "out", "net", "serve_fault", "other_error"]
+
+
 # 032-score-then-record: attaches shot-placement detail to a `+1` point
 # that's already been applied via a plain ScoreRequest above — the score
 # itself is never blocked on the scorer filling this in (see

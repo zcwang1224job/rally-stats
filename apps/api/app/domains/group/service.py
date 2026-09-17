@@ -1544,6 +1544,7 @@ def _to_placements(
                 if placement.landing_x is not None and placement.landing_y is not None
                 else None
             ),
+            ending=placement.ending_type,  # type: ignore[arg-type]
         )
         for placement in placements
     }

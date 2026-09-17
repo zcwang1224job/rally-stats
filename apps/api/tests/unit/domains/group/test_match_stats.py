@@ -6,9 +6,11 @@ snapshot taken AFTER each +1 — so these tests exercise the same data shape
 production rows have (research.md Decision 3)."""
 
 import uuid
+from typing import get_args
 
 import pytest
 
+from app.domains.group import match_stats
 from app.domains.group.match_stats import (
     ClutchResult,
     EffectivePoint,
@@ -26,6 +28,7 @@ from app.domains.group.match_stats import (
     serve_stats,
     tempo_stats,
 )
+from app.domains.schedule.schemas import EndingType as WriteSideEndingType
 from app.domains.schedule.service import match_wins
 
 A1, A2, B1, B2 = (uuid.uuid4() for _ in range(4))
@@ -632,3 +635,16 @@ def test_clutch_uses_the_reaccumulated_score_not_the_recorded_one() -> None:
     result = clutch_stats(sim.points(), 21, 30)
     b = result.by_state["B"]
     assert (b.tied.total, b.leading.total) == (1, 1)  # second point starts at 0:1, not 1:1
+
+
+# ---------------------------------------------------------------- 035 EndingType (T003)
+
+
+def test_ending_type_is_the_same_set_on_the_write_side_and_in_this_pure_module() -> None:
+    """The pure module can't import `schedule.schemas`, so it keeps its own
+    Literal. Adding a sixth kind to one and not the other would silently drop
+    it from every statistic — same reason 034 pins `_wins` to `match_wins`."""
+    assert get_args(match_stats.EndingType) == get_args(WriteSideEndingType)
+    assert match_stats.ERROR_TYPES == tuple(
+        kind for kind in get_args(WriteSideEndingType) if kind != "winner"
+    )
