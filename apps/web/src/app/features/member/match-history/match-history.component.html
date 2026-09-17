@@ -122,6 +122,15 @@
     </div>
   </section>
 
+  <!-- 034: its own request, so a dashboard that fails or is still loading
+       never holds back the record list above and below it. -->
+  <app-player-dashboard
+    [dashboard]="dashboard()"
+    [loading]="dashboardLoading()"
+    [failed]="dashboardFailed()"
+    [singlesCourt]="singlesOnly()"
+  />
+
   @if (r.total_matches > 0) {
     <section class="card chart-card">
       <h2>{{ 'member.matchHistory.charts.roundTrendTitle' | translate }}</h2>

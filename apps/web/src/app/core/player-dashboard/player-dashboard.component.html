@@ -1,0 +1,146 @@
+<section class="dashboard card" [attr.aria-busy]="loading()">
+  <h2 class="dashboard__title">{{ 'playerDashboard.title' | translate }}</h2>
+
+  @if (dashboard(); as d) {
+    @if (d.total_matches === 0) {
+      <p class="dashboard__empty" data-state="empty">{{ 'playerDashboard.empty' | translate }}</p>
+    } @else {
+      <p class="dashboard__intro">
+        {{ 'playerDashboard.intro' | translate: { total: d.total_matches } }}
+        @if (d.has_comparison) {
+          {{ 'playerDashboard.introRecent' | translate: { window: d.recent_window } }}
+        }
+      </p>
+
+      @for (group of groups; track group; let first = $first) {
+        <details class="dashboard-group" [attr.data-group]="group" [open]="first">
+          <summary>{{ 'playerDashboard.group.' + group | translate }}</summary>
+          @if (group === 'serve') {
+            <p class="dashboard-group__note">{{ 'playerDashboard.serveExclusionNote' | translate }}</p>
+          }
+          <div class="dashboard-group__cards">
+            @for (metric of metricsByGroup()[group]; track metric.key) {
+              <app-dashboard-metric-card
+                [metric]="metric"
+                [totalMatches]="d.total_matches"
+                [trendSelected]="selectedTrendMetric()?.key === metric.key"
+                (trendToggle)="toggleTrend(metric.key)"
+              />
+            }
+          </div>
+          @if (trendGroup() === group && selectedTrendMetric(); as metric) {
+            <app-dashboard-trend-chart
+              class="dashboard-group__trend"
+              [series]="selectedTrend()"
+              [kind]="metric.kind"
+              [labelKey]="labelKey(metric.key)"
+            />
+          }
+        </details>
+      }
+
+      <details class="dashboard-group" data-group="landing">
+        <summary>{{ 'playerDashboard.group.landing' | translate }}</summary>
+        @if (landingView(); as view) {
+          <div class="landing-controls">
+            @if (d.has_comparison) {
+              <div
+                class="landing-range"
+                role="group"
+                [attr.aria-label]="'playerDashboard.landing.rangeLabel' | translate"
+              >
+                <button
+                  type="button"
+                  class="landing-range__button"
+                  [attr.aria-pressed]="effectiveRange() === 'all'"
+                  (click)="landingRange.set('all')"
+                >
+                  {{ 'playerDashboard.landing.rangeAll' | translate }}
+                </button>
+                <button
+                  type="button"
+                  class="landing-range__button"
+                  [attr.aria-pressed]="effectiveRange() === 'recent'"
+                  (click)="landingRange.set('recent')"
+                >
+                  {{ 'playerDashboard.landing.rangeRecent' | translate: { window: d.recent_window } }}
+                </button>
+              </div>
+            }
+            <div class="landing-toggles">
+              <label>
+                <input
+                  #scoredToggle
+                  type="checkbox"
+                  [checked]="showScored()"
+                  (change)="showScored.set(scoredToggle.checked)"
+                />
+                <span class="landing-legend__shape landing-legend__shape--scored" aria-hidden="true"></span>
+                {{ 'playerDashboard.landing.legendScored' | translate }}
+              </label>
+              <label>
+                <input
+                  #lostToggle
+                  type="checkbox"
+                  [checked]="showLost()"
+                  (change)="showLost.set(lostToggle.checked)"
+                />
+                <span class="landing-legend__shape landing-legend__shape--lost" aria-hidden="true"></span>
+                {{ 'playerDashboard.landing.legendLost' | translate }}
+              </label>
+            </div>
+          </div>
+
+          <div class="landing-court">
+            <app-court-diagram
+              role="img"
+              [attr.aria-label]="
+                'playerDashboard.landing.courtLabel'
+                  | translate: { scored: view.scored.length, lost: view.lost.length }
+              "
+              [isSinglesMatch]="singlesCourt()"
+              [markers]="markers()"
+              [dense]="dense()"
+            />
+            <!-- In words, not just by position: which half is mine (FR-031). -->
+            <p class="landing-sides" data-sides>
+              <span>← {{ 'playerDashboard.landing.mySide' | translate }}</span>
+              <span>{{ 'playerDashboard.landing.opponentSide' | translate }} →</span>
+            </p>
+          </div>
+
+          <ul class="landing-coverage">
+            <li data-coverage="scored">
+              {{
+                'playerDashboard.landing.coverageScored'
+                  | translate: { plotted: view.scored.length, total: view.scoredTotal }
+              }}
+            </li>
+            <li data-coverage="lost">
+              {{
+                'playerDashboard.landing.coverageLost'
+                  | translate: { plotted: view.lost.length, total: view.lostTotal }
+              }}
+            </li>
+            <li data-coverage="matches">
+              {{
+                'playerDashboard.basedOn'
+                  | translate: { used: view.matchesUsed, total: landingMatchTotal() }
+              }}
+            </li>
+          </ul>
+        } @else {
+          <p class="dashboard__empty" data-state="landing-empty">
+            {{ 'playerDashboard.landing.empty' | translate }}
+          </p>
+        }
+      </details>
+    }
+  } @else if (failed()) {
+    <p class="dashboard__empty" data-state="failed" role="alert">
+      {{ 'playerDashboard.failed' | translate }}
+    </p>
+  } @else {
+    <p class="dashboard__empty" data-state="loading">{{ 'playerDashboard.loading' | translate }}</p>
+  }
+</section>

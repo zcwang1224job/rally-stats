@@ -135,3 +135,14 @@
   background: var(--color-surface);
   border: 2px solid var(--color-danger);
 }
+
+// 034: see `dense` on the component. 8px keeps the marker at the minimum
+// size a shape can still be told apart at.
+:host(.court--dense) .court-marker {
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border-width: 1px;
+  opacity: 0.5;
+}

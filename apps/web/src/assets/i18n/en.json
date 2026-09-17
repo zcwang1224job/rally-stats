@@ -607,6 +607,154 @@
       "winnerLabel": "{{names}} won"
     }
   },
+  "playerDashboard": {
+    "title": "Technique dashboard",
+    "intro": "Worked out from the {{total}} matches under the current filters.",
+    "introRecent": "\"Last {{window}}\" means the newest {{window}} of them.",
+    "empty": "No matches to work from yet",
+    "loading": "Loading dashboard…",
+    "failed": "The dashboard couldn't be loaded. Please try again later",
+    "basedOn": "Based on {{used}} of {{total}} matches",
+    "serveExclusionNote": "Serve stats leave out each match's first point (the opening server isn't recorded) and any point whose serve record doesn't line up with the score.",
+    "group": {
+      "serve": "Serve and return",
+      "clutch": "Clutch points",
+      "scoring": "Scoring and margins",
+      "landing": "Landing distribution"
+    },
+    "fraction": {
+      "perMatch": "{{total}} over {{matches}} matches"
+    },
+    "recent": {
+      "label": "Last 10",
+      "basedOn": "{{used}} matches"
+    },
+    "delta": {
+      "points": "{{delta}} pts",
+      "plain": "{{delta}}"
+    },
+    "verdict": {
+      "improved": "Improving",
+      "declined": "Declining",
+      "unchanged": "Steady",
+      "insufficient": "Too few matches"
+    },
+    "trend": {
+      "show": "Show trend",
+      "title": "Trend: {{metric}}",
+      "summary": "Trend of {{metric}}: {{count}} data points, from {{from}} to {{to}}",
+      "windowNote": "Each data point adds up 5 consecutive matches that have this data, so one odd match isn't mistaken for a trend. At most the newest 60 points are shown.",
+      "notEnough": "Not enough matches for a trend yet (this metric needs at least 6 matches with data)",
+      "tableView": "View as a table",
+      "tablePeriod": "Period",
+      "tableValue": "Value"
+    },
+    "landing": {
+      "empty": "No landing records — the scorer has to mark where the shuttle landed, in a match with detailed scoring on",
+      "rangeLabel": "Landing range",
+      "rangeAll": "All",
+      "rangeRecent": "Last {{window}}",
+      "legendScored": "Points won (circle)",
+      "legendLost": "Points lost (diamond)",
+      "courtLabel": "Landing distribution across matches: {{scored}} points won, {{lost}} points lost",
+      "mySide": "My side",
+      "opponentSide": "Opponents",
+      "coverageScored": "Won: {{plotted}} plotted of {{total}} recorded",
+      "coverageLost": "Lost: {{plotted}} plotted of {{total}} recorded"
+    },
+    "metric": {
+      "team_serve": {
+        "label": "Points won on our serve",
+        "hint": "Of the points our side served, how many we won",
+        "empty": "Needs matches with serve records (older matches have none)"
+      },
+      "team_receive": {
+        "label": "Points won receiving",
+        "hint": "Of the points the opponents served, how many we won",
+        "empty": "Needs matches with serve records (older matches have none)"
+      },
+      "own_serve": {
+        "label": "Points won on my own serve",
+        "hint": "Doubles only: points I served myself",
+        "empty": "Needs doubles matches with serve records"
+      },
+      "own_receive": {
+        "label": "Points won on my own return",
+        "hint": "Doubles only: points I received myself",
+        "empty": "Needs doubles matches with serve records"
+      },
+      "points_scored": {
+        "label": "Points I scored (per match)",
+        "hint": "Points where I was recorded as the scorer",
+        "empty": "Needs detailed-scoring matches where the scorer recorded who won and lost the point"
+      },
+      "points_lost": {
+        "label": "Points I lost (per match)",
+        "hint": "Points where I was recorded at fault — lower is better",
+        "empty": "Needs detailed-scoring matches where the scorer recorded who won and lost the point"
+      },
+      "scored_lost_ratio": {
+        "label": "Scored-to-lost ratio",
+        "hint": "Points I scored ÷ points I lost; above 1 means more scored than lost",
+        "empty": "Needs detailed-scoring matches where the scorer recorded who won and lost the point"
+      },
+      "endgame": {
+        "label": "Endgame points won",
+        "hint": "Once either side is within 3 of the target (from 18 in a game to 21)",
+        "empty": "Needs matches with a complete point-by-point record and a target of at least 11"
+      },
+      "deuce": {
+        "label": "Deuce points won",
+        "hint": "Once both sides are one short of the target (from 20-all in a game to 21)",
+        "empty": "Needs matches that went to deuce, with a complete point-by-point record"
+      },
+      "match_point_conversion": {
+        "label": "Match points closed out",
+        "hint": "Of the matches where we held a match point, how many we won",
+        "empty": "Needs matches where we held a match point, with a complete point-by-point record"
+      },
+      "match_points_saved": {
+        "label": "Match points saved (per match)",
+        "hint": "Opponent match points survived. Saving many also means facing many, so this is never marked as better or worse",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "when_leading": {
+        "label": "Points won when leading",
+        "hint": "Points that started with our side ahead",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "when_tied": {
+        "label": "Points won when tied",
+        "hint": "Points that started level",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "when_trailing": {
+        "label": "Points won when trailing",
+        "hint": "Points that started with our side behind — how well we chase",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "avg_points_for": {
+        "label": "Points for (per match)",
+        "hint": "Our side's final score",
+        "empty": "No matches"
+      },
+      "avg_points_against": {
+        "label": "Points against (per match)",
+        "hint": "The opponents' final score — lower is better",
+        "empty": "No matches"
+      },
+      "avg_win_margin": {
+        "label": "Average winning margin",
+        "hint": "Wins only",
+        "empty": "No wins in this range"
+      },
+      "avg_loss_margin": {
+        "label": "Average losing margin",
+        "hint": "Losses only — lower is better: losing by less is progress too",
+        "empty": "No losses in this range"
+      }
+    }
+  },
   "matchRecordDetail": {
     "title": "Match Details",
     "close": "Close",

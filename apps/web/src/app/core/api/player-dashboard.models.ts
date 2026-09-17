@@ -1,0 +1,93 @@
+// 034-clutch-points-player-dashboard: a member's cross-match technique
+// dashboard (`GET /members/me/match-dashboard`, and the same shape for a
+// friend's). Every number arrives computed — including whether a change is
+// progress — so the frontend only formats and lays out. null / [] IS the
+// "no data" signal, never an all-zero structure.
+
+export const DASHBOARD_METRIC_KEYS = [
+  'team_serve',
+  'team_receive',
+  'own_serve',
+  'own_receive',
+  'points_scored',
+  'points_lost',
+  'scored_lost_ratio',
+  'endgame',
+  'deuce',
+  'match_point_conversion',
+  'match_points_saved',
+  'when_leading',
+  'when_tied',
+  'when_trailing',
+  'avg_points_for',
+  'avg_points_against',
+  'avg_win_margin',
+  'avg_loss_margin',
+] as const;
+
+export type DashboardMetricKey = (typeof DASHBOARD_METRIC_KEYS)[number];
+
+// rate: won / played, shown as a percentage. average: a count per match.
+// ratio: one count over another.
+export type DashboardMetricKind = 'rate' | 'average' | 'ratio';
+
+export type DashboardVerdict = 'improved' | 'declined' | 'unchanged' | 'insufficient';
+
+export interface DashboardMetricValue {
+  // null with matches_used > 0: the metric applies but its denominator is 0
+  // (e.g. never trailed) — shown as "0/0 —", never as 0%.
+  value: number | null;
+  numerator: number;
+  denominator: number;
+  matches_used: number;
+}
+
+export interface DashboardMetric {
+  key: DashboardMetricKey;
+  kind: DashboardMetricKind;
+  // null: no direction (saving many match points also means facing many).
+  better_when: 'higher' | 'lower' | null;
+  all: DashboardMetricValue | null; // null: no match has this metric's data
+  recent: DashboardMetricValue | null; // null: no comparison is shown
+  verdict: DashboardVerdict | null;
+}
+
+export interface DashboardTrendPoint {
+  from_ended_at: string;
+  to_ended_at: string;
+  value: number | null;
+  numerator: number;
+  denominator: number;
+}
+
+export interface DashboardTrend {
+  key: DashboardMetricKey;
+  points: DashboardTrendPoint[]; // oldest first
+}
+
+export type DashboardLandingPoint = [x: number, y: number];
+
+export interface DashboardLanding {
+  // Newest match first, already turned so the member's own side is on the
+  // left (x < 0.5): the recent range is `scored.slice(0, recent_scored_count)`.
+  scored: DashboardLandingPoint[];
+  lost: DashboardLandingPoint[];
+  // Every point credited/charged to the member, plotted or not.
+  scored_total: number;
+  lost_total: number;
+  matches_used: number;
+  recent_scored_count: number;
+  recent_lost_count: number;
+  recent_scored_total: number;
+  recent_lost_total: number;
+  recent_matches_used: number;
+}
+
+export interface MemberMatchDashboardResponse {
+  total_matches: number;
+  recent_window: number;
+  has_comparison: boolean;
+  metrics: DashboardMetric[]; // [] iff total_matches === 0, otherwise all 18
+  trends: DashboardTrend[]; // only metrics with enough matches for a trend
+  landing: DashboardLanding | null;
+}

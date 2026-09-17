@@ -7,8 +7,10 @@ import {
   MatchRecordDetailResponse,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
+import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { AuthService } from '../../auth/auth.service';
 
 /** 023-view-friend-match-records US1/US2: a deliberately thin sibling of
@@ -23,7 +25,13 @@ import { AuthService } from '../../auth/auth.service';
  * component never remembers "was I allowed last time" and skips the call. */
 @Component({
   selector: 'app-friend-match-records',
-  imports: [TranslatePipe, DatePipe, MatchRecordDetailDialogComponent, NicknameComponent],
+  imports: [
+    TranslatePipe,
+    DatePipe,
+    MatchRecordDetailDialogComponent,
+    NicknameComponent,
+    PlayerDashboardComponent,
+  ],
   templateUrl: './friend-match-records.component.html',
   styleUrl: './friend-match-records.component.scss',
 })
@@ -41,6 +49,9 @@ export class FriendMatchRecordsComponent {
   readonly records = signal<MemberMatchRecordsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
+  /** 034 US5: the friend's technique dashboard — same privacy gate as the
+   * records, checked by the server on its own request. */
+  readonly dashboard = signal<MemberMatchDashboardResponse | null>(null);
   readonly pageNumbers = computed(() => {
     const totalPages = this.records()?.total_pages ?? 1;
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -54,6 +65,7 @@ export class FriendMatchRecordsComponent {
 
   constructor() {
     this.load(this.page());
+    this.loadDashboard();
   }
 
   goToPage(page: number): void {
@@ -67,8 +79,21 @@ export class FriendMatchRecordsComponent {
       next: (response) => this.records.set(response),
       error: (error: ApiError) => {
         this.records.set(null);
+        // Refused now (unfriended / sharing turned off since the page
+        // opened): nothing of theirs may stay on screen (023 FR-007).
+        this.dashboard.set(null);
         this.errorKey.set(error.i18nKey);
       },
+    });
+  }
+
+  /** Once per visit — the friend page has no filters, and a page flip does
+   * not change what the dashboard covers. A failure is silent on purpose:
+   * see the template. */
+  private loadDashboard(): void {
+    this.auth.getFriendMatchDashboard(this.memberId).subscribe({
+      next: (response) => this.dashboard.set(response),
+      error: () => this.dashboard.set(null),
     });
   }
 

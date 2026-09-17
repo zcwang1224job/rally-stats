@@ -28,6 +28,13 @@
     </div>
   </section>
 
+  <!-- 034 US5: rendered only once it has loaded. A refusal (not friends /
+       sharing off) already shows as the page's single alert above, so the
+       dashboard never adds a second message for the same reason. -->
+  @if (dashboard(); as d) {
+    <app-player-dashboard [dashboard]="d" />
+  }
+
   @if (r.matches.length === 0) {
     <p class="empty-state">{{ 'friendMatchRecords.empty' | translate }}</p>
   } @else {

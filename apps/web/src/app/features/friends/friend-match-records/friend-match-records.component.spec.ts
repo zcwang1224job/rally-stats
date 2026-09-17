@@ -7,6 +7,7 @@ import {
   MatchRecordDetailResponse,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import { dashboardFixture } from '../../../core/player-dashboard/dashboard-fixtures';
 import { AuthService } from '../../auth/auth.service';
 import { FriendMatchRecordsComponent } from './friend-match-records.component';
 
@@ -53,12 +54,18 @@ function setup(options: {
   nickname?: string | null;
   getFriendMatchRecords?: () => unknown;
   getFriendMatchRecordDetail?: () => unknown;
+  getFriendMatchDashboard?: () => unknown;
 }) {
   const getFriendMatchRecordsCalls: unknown[][] = [];
+  const getFriendMatchDashboardCalls: unknown[][] = [];
   const authServiceStub = {
     getFriendMatchRecords: (...args: unknown[]) => {
       getFriendMatchRecordsCalls.push(args);
       return (options.getFriendMatchRecords ?? (() => of(oneMatch)))();
+    },
+    getFriendMatchDashboard: (...args: unknown[]) => {
+      getFriendMatchDashboardCalls.push(args);
+      return (options.getFriendMatchDashboard ?? (() => of(dashboardFixture())))();
     },
     getFriendMatchRecordDetail:
       options.getFriendMatchRecordDetail ??
@@ -108,7 +115,7 @@ function setup(options: {
   });
   const fixture = TestBed.createComponent(FriendMatchRecordsComponent);
   fixture.detectChanges();
-  return { fixture, getFriendMatchRecordsCalls };
+  return { fixture, getFriendMatchRecordsCalls, getFriendMatchDashboardCalls };
 }
 
 describe('FriendMatchRecordsComponent', () => {
@@ -237,5 +244,64 @@ describe('FriendMatchRecordsComponent', () => {
       fixture.detectChanges();
     }).not.toThrow();
     expect(fixture.componentInstance.detail()?.match_id).toBe('match-1');
+  });
+
+  // 034-clutch-points-player-dashboard US5 (T037)
+  describe('technique dashboard', () => {
+    const refused = (errorCode: string) => () =>
+      throwError(
+        () =>
+          ({ errorCode, i18nKey: `errors.${errorCode}`, detail: null, status: 403 }) satisfies ApiError,
+      );
+
+    it('loads the friend\'s dashboard once, unfiltered, and not again on a page flip', () => {
+      const { fixture, getFriendMatchDashboardCalls } = setup({
+        getFriendMatchRecords: () => of({ ...oneMatch, total_pages: 3 } satisfies MemberMatchRecordsResponse),
+      });
+
+      expect(getFriendMatchDashboardCalls).toEqual([['friend-1']]);
+      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(18);
+
+      fixture.componentInstance.goToPage(2);
+      expect(getFriendMatchDashboardCalls.length).toBe(1);
+    });
+
+    it('shows exactly one message when sharing is off — the page\'s own (US5 scenario 2)', () => {
+      const { fixture } = setup({
+        getFriendMatchRecords: refused('MATCH_RECORDS_PRIVATE'),
+        getFriendMatchDashboard: refused('MATCH_RECORDS_PRIVATE'),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('[role="alert"]').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard')).toBeNull();
+    });
+
+    it('stays silent when only the dashboard fails; the records still show', () => {
+      const { fixture } = setup({ getFriendMatchDashboard: refused('FRIENDSHIP_REQUIRED') });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard')).toBeNull();
+      expect(root.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('drops an already-shown dashboard once the records are refused (023 FR-007)', () => {
+      let allowed = true;
+      const { fixture } = setup({
+        getFriendMatchRecords: () =>
+          allowed
+            ? of({ ...oneMatch, total_pages: 2 } satisfies MemberMatchRecordsResponse)
+            : refused('MATCH_RECORDS_PRIVATE')(),
+      });
+      expect(fixture.nativeElement.querySelector('app-player-dashboard')).not.toBeNull();
+
+      allowed = false; // the friend turns sharing off while the page is open
+      fixture.componentInstance.goToPage(2);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.dashboard()).toBeNull();
+      expect(fixture.nativeElement.querySelector('app-player-dashboard')).toBeNull();
+    });
   });
 });
