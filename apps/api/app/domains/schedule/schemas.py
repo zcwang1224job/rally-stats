@@ -287,6 +287,16 @@ class ScoreMutationResult(BaseModel):
     # ShotPlacementRecord afterward (POST .../shot-placement) without
     # blocking the score itself on that follow-up UI.
     score_event_id: str | None = None
+    # feature/control-panel-scoreboard-style: the acting client's own +1/-1
+    # request previously only got score_a/score_b back — it had to wait for
+    # its own match.scoreUpdated realtime echo to learn the new serve
+    # rotation, which meant the station display went stale (or never
+    # updated at all, if that echo didn't reach it) right after the very
+    # button press that changed it. Riding the same already-computed
+    # station on this direct response removes that dependency. `None` when
+    # `applied` is false, when the match just ended (no more serve state to
+    # show), or for a mutation with no serve concept (end_match_early()).
+    serve: ServeStationInfo | None = None
 
 
 class MatchLiveDetail(BaseModel):

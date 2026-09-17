@@ -256,6 +256,81 @@ async def test_minus_one_creates_no_record_and_does_not_disturb_existing_ones(
     assert match.serving_team == serving_team
 
 
+async def test_minus_one_after_a_side_out_restores_the_pre_side_out_server(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """feature/control-panel-scoreboard-style bugfix: undoing a point that
+    caused a side-out previously left match.serving_team/reference_server_id
+    at their POST-point (post-swap) values while only the score rolled
+    back — combined with the now-reverted score, `_build_serve_station()`
+    would then compute the wrong server. `-1` must restore the live serve
+    columns to exactly what they were right before the undone point, using
+    the read-only ScoreServeRecord history (never itself modified, per
+    FR-004) — not just leave them stale."""
+    _created, _headers, court, match_id, _team_a_ids, _team_b_ids = (
+        await _create_doubles_match_via_manual_assign(
+            client, db_session, valid_turnstile_token, "Serve Cancel Side Out"
+        )
+    )
+    match = (
+        await db_session.execute(select(Match).where(Match.id == uuid.UUID(match_id)))
+    ).scalar_one()
+    serving_team = match.serving_team
+    other_team = "B" if serving_team == "A" else "A"
+    control_url = f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}"
+
+    # A prior, non-side-out point first — undoing THIS match's very first
+    # point is a separate, narrower edge case (see apply_score_delta()'s
+    # comment): the initial random assignment is never itself snapshotted,
+    # so there is nothing to fall back to. Scoring one such point first
+    # gives the side-out below a real snapshot to revert to.
+    await client.post(f"{control_url}/score", json={"side": serving_team, "delta": 1})
+    await db_session.refresh(match)
+    pre_side_out_team_a_reference = match.team_a_reference_server_id
+    pre_side_out_team_b_reference = match.team_b_reference_server_id
+    assert match.serving_team == serving_team
+
+    # The receiving team wins the next rally -> a genuine side-out.
+    score_response = await client.post(
+        f"{control_url}/score", json={"side": other_team, "delta": 1}
+    )
+    assert score_response.json()["serve"]["server_team"] == other_team
+    await db_session.refresh(match)
+    assert match.serving_team == other_team  # sanity check: side-out really happened
+
+    # Undo that exact (side-out) point.
+    cancel_response = await client.post(
+        f"{control_url}/score", json={"side": other_team, "delta": -1}
+    )
+    cancel_body = cancel_response.json()
+
+    await db_session.refresh(match)
+    assert match.serving_team == serving_team
+    assert match.team_a_reference_server_id == pre_side_out_team_a_reference
+    assert match.team_b_reference_server_id == pre_side_out_team_b_reference
+    # The acting client's own response reflects the correctly-reverted
+    # server directly — not the stale, just-undone one.
+    assert cancel_body["serve"]["server_team"] == serving_team
+    expected_server = (
+        pre_side_out_team_a_reference if serving_team == "A" else pre_side_out_team_b_reference
+    )
+    assert cancel_body["serve"]["server_roster_entry_id"] == str(expected_server)
+
+    # 030-score-serve-record FR-004: both prior ScoreServeRecords (the
+    # first point, and the side-out point this correction just undid) are
+    # read-only history — this correction must not touch either of them.
+    records = (
+        await db_session.execute(
+            select(ScoreServeRecord)
+            .where(ScoreServeRecord.match_id == match.id)
+            .order_by(ScoreServeRecord.created_at)
+        )
+    ).scalars().all()
+    assert len(records) == 2
+    assert records[0].server_team == serving_team
+    assert records[1].server_team == other_team
+
+
 # --- Polish (E2/FR-006): link regeneration doesn't affect existing records --
 
 

@@ -53,6 +53,12 @@ export interface ScoreMutationResult {
   score_a: number;
   score_b: number;
   winner_team: Team | null;
+  // feature/control-panel-scoreboard-style: lets court-control.component
+  // patch its own station display directly from this response instead of
+  // waiting on its own match.scoreUpdated realtime echo — null when the
+  // match just ended this point (no more serve state to show) or the
+  // mutation wasn't applied.
+  serve: ServeStationInfo | null;
 }
 
 export interface RosterScheduleStatus {

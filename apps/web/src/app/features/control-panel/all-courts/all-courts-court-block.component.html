@@ -76,6 +76,7 @@
         #shotPlacementPicker
         [participants]="match.participants"
         [scoringTeam]="pendingScoringSide()"
+        [servingTeam]="pendingServingTeam()"
         (confirmed)="onShotPlacementConfirmed($event)"
         (scoreCancelled)="onShotPlacementCancelled()"
         (closed)="onShotPlacementClosed()"

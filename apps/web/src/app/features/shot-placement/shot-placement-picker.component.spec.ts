@@ -48,7 +48,11 @@ function tap(target: Element, clientX: number, clientY: number): void {
 /** 032-score-then-record: `scoringTeam` defaults to 'A' — the caller (a
  * wiring component) always sets it before open() to whichever side's "+"
  * was just pressed and already scored. */
-function setup(participantsList: ParticipantSummary[] = participants, scoringTeam: Team = 'A') {
+function setup(
+  participantsList: ParticipantSummary[] = participants,
+  scoringTeam: Team = 'A',
+  servingTeam: Team | null = null,
+) {
   TestBed.configureTestingModule({
     imports: [ShotPlacementPickerComponent],
     providers: [provideTranslateService({})],
@@ -56,6 +60,7 @@ function setup(participantsList: ParticipantSummary[] = participants, scoringTea
   const fixture = TestBed.createComponent(ShotPlacementPickerComponent);
   fixture.componentRef.setInput('participants', participantsList);
   fixture.componentRef.setInput('scoringTeam', scoringTeam);
+  fixture.componentRef.setInput('servingTeam', servingTeam);
   fixture.detectChanges();
   const courtAreaEl: HTMLDivElement = fixture.nativeElement.querySelector('.court-area');
   const courtEl: HTMLDivElement = fixture.nativeElement.querySelector('.court');
@@ -357,6 +362,32 @@ describe('ShotPlacementPickerComponent', () => {
     expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
     expect(nicknames(losingButtons(fixture))).toEqual(['徐丙', '李丁']);
     expect(fixture.nativeElement.querySelector('.hint--warning')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
+  });
+
+  it('conflicts (not a fault) for a short-serve-fault-zone landing when the credited side was itself serving', () => {
+    // A won this rally while already serving (no side-out) — a landing on
+    // A's own half here can't be explained by "the opponent's serve
+    // faulted", since A wasn't receiving. This must fall through to a
+    // genuine conflict instead of being read as a fault.
+    const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+    tap(courtAreaEl, 140, 75); // same short-serve-fault-zone landing as above
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual([]);
+    expect(nicknames(losingButtons(fixture))).toEqual([]);
+    expect(fixture.nativeElement.querySelector('.status-badge')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.hint--warning')).not.toBeNull();
+  });
+
+  it('still treats it as a fault when the credited side was receiving (servingTeam is the other team)', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A', 'B');
+
+    tap(courtAreaEl, 140, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
     expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
   });
 

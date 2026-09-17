@@ -93,6 +93,15 @@ export class ShotPlacementPickerComponent {
   /** 032-score-then-record: which team was already credited the point
    * (fixed before this dialog ever opens — see the class doc comment). */
   readonly scoringTeam = input.required<Team>();
+  /** Who was serving THIS rally, captured by the caller from the match's
+   * live serve state right before the point was applied (not after — the
+   * winner always serves next in badminton, so a post-point reading would
+   * always equal `scoringTeam` and could never distinguish anything).
+   * `null` for a match with no serve-state at all (created before
+   * 030-score-serve-record) — `isServeFault` below falls back to its
+   * pre-existing, ungated behavior in that case rather than assuming an
+   * answer it doesn't have. */
+  readonly servingTeam = input<Team | null>(null);
   readonly confirmed = output<ShotPlacementConfirmed>();
   /** 032-cancel-score: the caller applies the matching -1 correction — this
    * component never touches the score itself, only requests it. */
@@ -170,10 +179,21 @@ export class ShotPlacementPickerComponent {
    * the point on a service fault, without ever having to return anything.
    * Surfaced in the template as a badge next to "select the losing player"
    * so the scorer understands why the pools below aren't empty despite the
-   * landing being on their own side. */
+   * landing being on their own side.
+   *
+   * A serve fault is only a coherent explanation when the credited side
+   * was RECEIVING this rally — if `scoringTeam` was the one serving and
+   * still won, there is no "my own serve faulted, so I win" reading
+   * available; a landing that lands on their own half in that case is a
+   * genuine data-entry contradiction instead (falls through to
+   * `landingConflict` below), not a fault. */
   readonly isServeFault = computed(() => {
     const point = this.selectedPoint();
     if (!this.landingOnCreditedSidesOwnHalf() || point === null) {
+      return false;
+    }
+    const serving = this.servingTeam();
+    if (serving !== null && serving === this.scoringTeam()) {
       return false;
     }
     return this.isServeFaultZone(point.x, this.scoringTeam());

@@ -2061,7 +2061,10 @@ async def _fetch_match_for_court(
 
 
 def _score_mutation_result(
-    applied: bool, match: Match, score_event_id: uuid.UUID | None = None
+    applied: bool,
+    match: Match,
+    score_event_id: uuid.UUID | None = None,
+    serve: ServeStationInfo | None = None,
 ) -> ScoreMutationResult:
     return ScoreMutationResult(
         applied=applied,
@@ -2071,6 +2074,7 @@ def _score_mutation_result(
         score_b=match.score_b,
         winner_team=cast("Team | None", match.winner_team),
         score_event_id=str(score_event_id) if score_event_id is not None else None,
+        serve=serve,
     )
 
 
@@ -2303,12 +2307,64 @@ async def apply_score_delta(
         # harmless no-op there.
         await _remove_last_shot_placement_record(session, match_id, side)
 
+        # feature/control-panel-scoreboard-style: a `-1` correcting the
+        # point that just advanced the serve state (a side-out rotation
+        # swap — see _advance_serve_state_and_snapshot()) previously left
+        # match.serving_team/team_{a,b}_reference_server_id at their
+        # POST-point values while only the score itself rolled back — a
+        # stale, inconsistent combination that showed the wrong server
+        # whenever the undone point was a side-out. 030-score-serve-record's
+        # ScoreServeRecord rows are read-only history per its Clarifications
+        # (never written or deleted by `-1`) — this only reads them to
+        # restore match's own LIVE columns. `row.score_a`/`row.score_b` are
+        # this correction's resulting totals; the historical point that
+        # originally produced that exact score is exactly the state to
+        # restore back to (robust to undoing several points in a row, not
+        # just the single most recent one, since it matches by score
+        # rather than by position in the history).
+        prior = (
+            await session.execute(
+                select(ScoreServeRecord)
+                .join(ScoreEvent, ScoreServeRecord.score_event_id == ScoreEvent.id)
+                .where(
+                    ScoreServeRecord.match_id == match_id,
+                    ScoreEvent.score_a == row.score_a,
+                    ScoreEvent.score_b == row.score_b,
+                )
+                .order_by(ScoreServeRecord.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if prior is not None:
+            match.serving_team = prior.server_team
+            match.team_a_reference_server_id = (
+                prior.team_a_right_roster_entry_id
+                if row.score_a % 2 == 0
+                else prior.team_a_left_roster_entry_id
+            )
+            match.team_b_reference_server_id = (
+                prior.team_b_right_roster_entry_id
+                if row.score_b % 2 == 0
+                else prior.team_b_left_roster_entry_id
+            )
+        # else: undoing all the way back past this match's first recorded
+        # point — no earlier snapshot exists to restore from. If that
+        # first point wasn't itself a side-out, match's serve columns were
+        # never mutated for it and are already correct as-is; if it WAS, the
+        # true pre-match-start random assignment (_initialize_serve_state())
+        # was never persisted anywhere and can't be recovered here — a
+        # narrow, accepted gap rather than something this correction can fix.
+
     await session.commit()
     await session.refresh(match)
 
     my_score, opp_score = (
         (match.score_a, match.score_b) if side == "A" else (match.score_b, match.score_a)
     )
+    # feature/control-panel-scoreboard-style: also handed back on this same
+    # response below (not just published) — None when the match ends this
+    # point (no more serve state to show).
+    serve_payload: dict[str, str | None] | None = None
     if match_wins(my_score, opp_score, match.target_score, match.cap_score):
         await session.execute(
             update(Match)
@@ -2328,7 +2384,6 @@ async def apply_score_delta(
         # there's no `serve_record` in scope here; recompute fresh from the
         # unchanged serve state + corrected score instead (same helper
         # `court_live_state()` uses).
-        serve_payload: dict[str, str | None] | None
         if delta > 0:
             serve_payload = {
                 "server_roster_entry_id": str(serve_record.server_roster_entry_id),
@@ -2364,7 +2419,12 @@ async def apply_score_delta(
             },
         )
 
-    return _score_mutation_result(applied=True, match=match, score_event_id=score_event_id)
+    return _score_mutation_result(
+        applied=True,
+        match=match,
+        score_event_id=score_event_id,
+        serve=ServeStationInfo(**serve_payload) if serve_payload is not None else None,
+    )
 
 
 async def undo_match_completion(

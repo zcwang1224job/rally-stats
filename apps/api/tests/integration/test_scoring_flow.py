@@ -118,6 +118,12 @@ async def test_score_to_natural_completion_then_picks_up_next_queued_match(
     r1 = await client.post(f"{control_url}/score", json={"side": "A", "delta": 1})
     r1_body = r1.json()
     assert r1_body.pop("score_event_id") is not None
+    # feature/control-panel-scoreboard-style: the acting client's own
+    # response now carries the freshly-advanced serve station directly
+    # (see apply_score_delta()'s docstring) rather than only publishing it —
+    # asserted separately since its exact roster-entry-id contents aren't
+    # this test's concern.
+    assert r1_body.pop("serve") is not None
     assert r1_body == {
         "applied": True,
         "match_id": first_match_id,
