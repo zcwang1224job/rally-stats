@@ -4,7 +4,7 @@
 
 ## `GET /members/me/match-dashboard`（本人）
 
-- **授權**：`require_verified_member`（憲章原則 IV：對戰紀錄在信箱驗證前 MUST 鎖定）。**刻意不比照**既有 `GET /members/me/match-records` 的 `require_member`——那是既有偏離，不延續。
+- **授權**：`require_verified_member`（憲章原則 IV：對戰紀錄在信箱驗證前 MUST 鎖定）。與 `GET /members/me/match-records` 相同（Revision 2026-09-18：本功能上線時該端點仍是較寬鬆的 `require_member`，屬既有偏離；已於 `feature/require-verified-match-records` 一併更正，兩者現在一致）。
 - **Query 參數**：與 `GET /members/me/match-records` 的篩選參數**完全相同**——`opponent1`、`opponent2`、`partner`、`result`、`date_from`、`date_to`、`round_from`、`round_to`、`self_score_cmp`、`self_score`、`opponent_score_cmp`、`opponent_score`、`match_mode`；驗證規則（長度、`ge`、列舉值）亦同。**沒有 `page`**——儀表板恆對整個篩選結果計算（FR-019）。
 - **Errors**：`MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`（403）。
 

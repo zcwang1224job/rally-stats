@@ -95,7 +95,7 @@ async def test_requires_login(client: AsyncClient) -> None:
 async def test_unverified_member_is_locked_out(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Constitution IV — deliberately stricter than /members/me/match-records."""
+    """Constitution IV — the same lock as /members/me/match-records."""
     await _register(db_session, "dash-unverified@example.com", verified=False)
     headers = await _login(client, "dash-unverified@example.com")
 
