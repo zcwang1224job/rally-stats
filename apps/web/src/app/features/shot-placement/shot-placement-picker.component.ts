@@ -272,12 +272,20 @@ export class ShotPlacementPickerComponent {
     // ineligible (e.g. the point moved from one half of the court to the
     // other, or in/out of bounds) — drop a pick the instant it falls
     // outside its own pool rather than leaving a stale, now-invalid
-    // selection displayed as chosen.
+    // selection displayed as chosen. Conversely, in singles there's only
+    // ever one possible player on each side (pool.length === 1) — tapping a
+    // chip that has no real alternative is a needless step for the scorer,
+    // so pre-select it the same way a genuine tap would, the moment the
+    // pool settles on that single option (open()'s reset to null, or the
+    // pool becoming valid again after a landing conflict clears, both flow
+    // through here since both signals are read below).
     effect(() => {
       const pool = this.scoringPlayers();
       const id = this.selectedRosterEntryId();
       if (id !== null && !pool.some((p) => p.roster_entry_id === id)) {
         this.selectedRosterEntryId.set(null);
+      } else if (id === null && pool.length === 1) {
+        this.selectedRosterEntryId.set(pool[0].roster_entry_id);
       }
     });
     effect(() => {
@@ -285,6 +293,8 @@ export class ShotPlacementPickerComponent {
       const id = this.selectedLosingRosterEntryId();
       if (id !== null && !pool.some((p) => p.roster_entry_id === id)) {
         this.selectedLosingRosterEntryId.set(null);
+      } else if (id === null && pool.length === 1) {
+        this.selectedLosingRosterEntryId.set(pool[0].roster_entry_id);
       }
     });
 

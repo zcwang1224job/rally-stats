@@ -516,6 +516,74 @@ describe('ShotPlacementPickerComponent', () => {
     expect(nicknames(losingButtons(fixture))).toEqual([]);
   });
 
+  // --- singles pre-selects the sole player on each side -------------------
+
+  it('pre-selects the only possible scoring and losing player in a singles match, with no tap needed', () => {
+    const { fixture } = setup(singlesParticipants, 'A');
+
+    const selected = fixture.nativeElement.querySelectorAll('.player--selected');
+    expect(Array.from(selected).map((el) => (el as HTMLElement).textContent?.trim())).toEqual([
+      '陳甲',
+      '徐丙',
+    ]);
+  });
+
+  it('confirm() in a singles match sends both players without the scorer picking either', () => {
+    const { fixture, courtAreaEl } = setup(singlesParticipants, 'A');
+    const confirmedSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+    tap(courtAreaEl, 200, 75); // x=0.75, B's half — consistent with A credited
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('.actions button:last-of-type').click();
+
+    expect(confirmedSpy).toHaveBeenCalledWith({
+      rosterEntryId: 'p1',
+      losingRosterEntryId: 'p3',
+      landingX: 0.75,
+      landingY: 0.5,
+    });
+  });
+
+  it('still lets the scorer override the pre-selected singles player', () => {
+    // A degenerate case (a "singles" match somehow has 2 players still
+    // listed on one team) but confirms the pre-select never locks the pick.
+    const threePlayers: ParticipantSummary[] = [
+      { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+      { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+      { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+    ];
+    const { fixture } = setup(threePlayers, 'A');
+
+    // Team B's pool has exactly one player (p3) and is pre-selected...
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙']);
+    expect(fixture.nativeElement.querySelectorAll('.player--selected')[0].textContent?.trim()).toBe(
+      '徐丙',
+    );
+    // ...but team A's pool has two, so nothing is pre-selected there, and a
+    // manual pick still works normally.
+    expect(fixture.nativeElement.querySelectorAll('.player--selected').length).toBe(1);
+    scoringButtons(fixture)[1].click(); // p2
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.player--selected').length).toBe(2);
+  });
+
+  it('re-opening the dialog re-selects the sole singles player after the reset', () => {
+    const { fixture } = setup(singlesParticipants, 'A');
+
+    scoringButtons(fixture)[0].click(); // already pre-selected, but exercise a real pick too
+    fixture.detectChanges();
+
+    fixture.componentInstance.open();
+    fixture.detectChanges();
+
+    const selected = fixture.nativeElement.querySelectorAll('.player--selected');
+    expect(Array.from(selected).map((el) => (el as HTMLElement).textContent?.trim())).toEqual([
+      '陳甲',
+      '徐丙',
+    ]);
+  });
+
   it('shades the out-of-play strip for a singles match', () => {
     const { fixture } = setup(singlesParticipants);
     expect(fixture.nativeElement.querySelectorAll('.out-of-play-band').length).toBe(2);
