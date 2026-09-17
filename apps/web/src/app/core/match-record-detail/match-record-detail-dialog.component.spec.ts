@@ -1,7 +1,58 @@
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
 import { MatchRecordDetailResponse } from '../api/group-member-view.models';
-import { MatchRecordDetailDialogComponent } from './match-record-detail-dialog.component';
+import {
+  MatchRecordDetailDialogComponent,
+  computeYTicks,
+  nearestPointIndex,
+  niceAxisStep,
+} from './match-record-detail-dialog.component';
+
+describe('niceAxisStep (dataviz skill, marks-and-anatomy.md)', () => {
+  it('rounds to a clean 1/2/5-times-a-power-of-ten step', () => {
+    expect(niceAxisStep(2)).toBe(1);
+    expect(niceAxisStep(5)).toBe(2);
+    expect(niceAxisStep(8)).toBe(2);
+    expect(niceAxisStep(21)).toBe(10);
+    expect(niceAxisStep(30)).toBe(10);
+  });
+
+  it('never returns a fractional step (scores are always whole numbers)', () => {
+    expect(niceAxisStep(1)).toBe(1);
+    expect(Number.isInteger(niceAxisStep(1))).toBe(true);
+  });
+});
+
+describe('computeYTicks (dataviz skill, marks-and-anatomy.md)', () => {
+  it('builds ticks from 0 to the max, at the nice step, top-to-bottom percent', () => {
+    expect(computeYTicks(2)).toEqual([
+      { value: 0, percent: 100 },
+      { value: 1, percent: 50 },
+      { value: 2, percent: 0 },
+    ]);
+  });
+
+  it('never places a forced tick past the actual maximum', () => {
+    const ticks = computeYTicks(21);
+    expect(ticks.map((t) => t.value)).toEqual([0, 10, 20]);
+    expect(ticks.every((t) => t.value <= 21)).toBe(true);
+  });
+});
+
+describe('nearestPointIndex (dataviz skill, interaction.md)', () => {
+  const points = [{ x: 0 }, { x: 33 }, { x: 67 }, { x: 100 }];
+
+  it('snaps to the closest point by X position', () => {
+    expect(nearestPointIndex(points, 0)).toBe(0);
+    expect(nearestPointIndex(points, 40)).toBe(1);
+    expect(nearestPointIndex(points, 60)).toBe(2);
+    expect(nearestPointIndex(points, 100)).toBe(3);
+  });
+
+  it('returns index 0 for an empty-ish edge (single point)', () => {
+    expect(nearestPointIndex([{ x: 50 }], 0)).toBe(0);
+  });
+});
 
 const completeDetail: MatchRecordDetailResponse = {
   match_id: 'm1',
@@ -122,6 +173,124 @@ describe('MatchRecordDetailDialogComponent — trend chart (US2)', () => {
     const legendText = fixture.nativeElement.querySelector('.trend-legend').textContent as string;
     expect(legendText).toContain('小明');
     expect(legendText).toContain('小華');
+  });
+});
+
+describe('MatchRecordDetailDialogComponent — Y-axis ticks (dataviz polish)', () => {
+  it('renders clean round-number ticks scaled to the final score (maxScore=2 -> 0/1/2)', () => {
+    const fixture = setup(completeDetail);
+
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('.trend-chart__y-axis-label'),
+    ).map((el) => (el as HTMLElement).textContent);
+    expect(labels).toEqual(['0', '1', '2']);
+    // Same number of gridlines as ticks, one per label.
+    expect(fixture.nativeElement.querySelectorAll('.trend-chart__gridline').length).toBe(3);
+  });
+
+  it('picks a coarser step for a larger score range (maxScore=21 -> 0/10/20)', () => {
+    const fixture = setup({
+      ...completeDetail,
+      score_a: 21,
+      score_b: 15,
+      events: [{ side: 'A', delta: 1, score_a: 21, score_b: 15, elapsed_seconds: 600, detail: null }],
+    });
+
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('.trend-chart__y-axis-label'),
+    ).map((el) => (el as HTMLElement).textContent);
+    expect(labels).toEqual(['0', '10', '20']);
+  });
+
+  it('never renders ticks/gridlines when there is no chart at all', () => {
+    const fixture = setup({ ...completeDetail, record_completeness: 'none', events: [] });
+
+    expect(fixture.nativeElement.querySelector('.trend-chart__y-axis-label')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.trend-chart__gridline')).toBeNull();
+  });
+});
+
+describe('MatchRecordDetailDialogComponent — chart hover readout (dataviz polish)', () => {
+  function stubPlotWidth(fixture: ReturnType<typeof setup>, width: number): void {
+    const plot: HTMLElement = fixture.nativeElement.querySelector('.trend-chart__plot');
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      width,
+      top: 0,
+      height: 140,
+      right: width,
+      bottom: 140,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+  }
+
+  function pointerMoveAt(fixture: ReturnType<typeof setup>, clientX: number): void {
+    const plot: HTMLElement = fixture.nativeElement.querySelector('.trend-chart__plot');
+    plot.dispatchEvent(new PointerEvent('pointermove', { clientX }));
+    fixture.detectChanges();
+  }
+
+  it('shows a hint and no crosshair before any hover/touch', () => {
+    const fixture = setup(completeDetail);
+
+    expect(fixture.nativeElement.textContent).toContain('matchRecordDetail.chart.hoverHint');
+    expect(fixture.nativeElement.querySelector('.trend-chart__crosshair')).toBeNull();
+  });
+
+  it('hovering near a point reveals its elapsed time and both scores, and a crosshair', () => {
+    const fixture = setup(completeDetail);
+    stubPlotWidth(fixture, 100);
+
+    // Points (maxElapsed=30s): x = elapsed/30*100 -> [0, 33.3, 66.7, 83.3, 93.3, 100].
+    // clientX=100 (with a 100-wide stubbed rect) is nearest the LAST point
+    // (elapsed 30s, score 2:1).
+    pointerMoveAt(fixture, 100);
+
+    const readout = fixture.nativeElement.querySelector('.trend-chart__readout').textContent as string;
+    expect(readout).not.toContain('matchRecordDetail.chart.hoverHint');
+    expect(readout).toContain('2');
+    expect(readout).toContain('1');
+    expect(fixture.nativeElement.querySelector('.trend-chart__crosshair')).not.toBeNull();
+    expect(fixture.componentInstance.hoveredIndex()).toBe(5);
+  });
+
+  it('the hovered point’s markers grow to meet the >= 8px minimum; resting points stay small', () => {
+    const fixture = setup(completeDetail);
+    stubPlotWidth(fixture, 100);
+    pointerMoveAt(fixture, 100);
+
+    expect(fixture.componentInstance.dotRadius(5) * 2).toBeGreaterThanOrEqual(8);
+    expect(fixture.componentInstance.dotRadius(0)).toBeLessThan(fixture.componentInstance.dotRadius(5));
+    const hoveredDot = fixture.nativeElement.querySelector('.trend-chart__dot--hovered');
+    expect(hoveredDot).not.toBeNull();
+  });
+
+  it('leaving the chart hides the readout and crosshair again', () => {
+    const fixture = setup(completeDetail);
+    stubPlotWidth(fixture, 100);
+    pointerMoveAt(fixture, 100);
+
+    const plot: HTMLElement = fixture.nativeElement.querySelector('.trend-chart__plot');
+    plot.dispatchEvent(new PointerEvent('pointerleave'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.hoveredIndex()).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('matchRecordDetail.chart.hoverHint');
+    expect(fixture.nativeElement.querySelector('.trend-chart__crosshair')).toBeNull();
+  });
+
+  it('resets the hover state when the detail changes to a different match', () => {
+    const fixture = setup(completeDetail);
+    stubPlotWidth(fixture, 100);
+    pointerMoveAt(fixture, 100);
+    expect(fixture.componentInstance.hoveredIndex()).not.toBeNull();
+
+    fixture.componentRef.setInput('detail', { ...completeDetail, match_id: 'm2' });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.hoveredIndex()).toBeNull();
   });
 });
 

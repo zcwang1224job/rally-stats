@@ -43,32 +43,90 @@
       <div class="match-detail-sections">
         <details class="chart-card" open>
           <summary>{{ 'matchRecordDetail.chart.title' | translate }}</summary>
-          <svg
-            class="trend-chart"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            role="img"
-            [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
-          >
-            <line x1="0" y1="100" x2="100" y2="100" class="trend-chart__midline" />
-            <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
-            <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
-            @for (point of chartPoints(); track $index) {
-              <circle
-                [attr.cx]="point.x"
-                [attr.cy]="point.yA"
-                r="2"
-                class="trend-chart__dot trend-chart__dot--a"
-              />
-              <rect
-                [attr.x]="point.x - 1.6"
-                [attr.y]="point.yB - 1.6"
-                width="3.2"
-                height="3.2"
-                class="trend-chart__dot trend-chart__dot--b"
-              />
+
+          <!-- dataviz skill, interaction.md: a synced readout above the plot
+               instead of a floating tooltip — sidesteps collision with the
+               lines/markers it would otherwise cover, and reserves its own
+               height so hovering never shifts the layout underneath it. -->
+          <p class="trend-chart__readout" aria-live="polite">
+            @if (hoveredPoint(); as hp) {
+              <span class="trend-chart__readout-time">
+                {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(hp.elapsedSeconds) }}
+              </span>
+              <span class="trend-chart__readout-value trend-chart__readout-value--a">
+                <span class="trend-chart__readout-key trend-chart__readout-key--a" aria-hidden="true"></span>
+                {{ teamANames() }} {{ hp.scoreA }}
+              </span>
+              <span class="trend-chart__readout-value trend-chart__readout-value--b">
+                <span class="trend-chart__readout-key trend-chart__readout-key--b" aria-hidden="true"></span>
+                {{ teamBNames() }} {{ hp.scoreB }}
+              </span>
+            } @else {
+              <span class="trend-chart__readout-hint">{{ 'matchRecordDetail.chart.hoverHint' | translate }}</span>
             }
-          </svg>
+          </p>
+
+          <div class="trend-chart-body">
+            <div class="trend-chart__y-axis" aria-hidden="true">
+              @for (tick of yTicks(); track tick.value) {
+                <span class="trend-chart__y-axis-label" [style.top.%]="tick.percent">{{ tick.value }}</span>
+              }
+            </div>
+            <div
+              #plotArea
+              class="trend-chart__plot"
+              (pointerdown)="onChartPointerMove($event)"
+              (pointermove)="onChartPointerMove($event)"
+              (pointerup)="onChartPointerLeave()"
+              (pointercancel)="onChartPointerLeave()"
+              (pointerleave)="onChartPointerLeave()"
+            >
+              <svg
+                class="trend-chart"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                role="img"
+                [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
+              >
+                @for (tick of yTicks(); track tick.value) {
+                  <line x1="0" x2="100" [attr.y1]="tick.percent" [attr.y2]="tick.percent" class="trend-chart__gridline" />
+                }
+                <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
+                <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
+                @if (hoveredPoint(); as hp) {
+                  <line [attr.x1]="hp.x" [attr.x2]="hp.x" y1="0" y2="100" class="trend-chart__crosshair" />
+                }
+              </svg>
+
+              <!-- Markers are plain HTML, not SVG shapes: the chart's
+                   `preserveAspectRatio="none"` stretches width and height by
+                   DIFFERENT factors, which would turn an in-SVG circle/square
+                   into a stretched oval/rectangle at any size big enough to
+                   notice (`vector-effect: non-scaling-stroke` only protects
+                   stroke width, not a shape's own geometry). Plain CSS
+                   `left`/`top` percentages don't have that problem — each
+                   axis maps against this box's own actual rendered size. -->
+              @for (point of chartPoints(); track $index) {
+                <span
+                  class="trend-chart__dot trend-chart__dot--a"
+                  [class.trend-chart__dot--hovered]="hoveredIndex() === $index"
+                  [style.left.%]="point.x"
+                  [style.top.%]="point.yA"
+                  [style.width.px]="dotRadius($index) * 2"
+                  [style.height.px]="dotRadius($index) * 2"
+                ></span>
+                <span
+                  class="trend-chart__dot trend-chart__dot--b"
+                  [class.trend-chart__dot--hovered]="hoveredIndex() === $index"
+                  [style.left.%]="point.x"
+                  [style.top.%]="point.yB"
+                  [style.width.px]="dotRadius($index) * 2"
+                  [style.height.px]="dotRadius($index) * 2"
+                ></span>
+              }
+            </div>
+          </div>
+
           <ul class="trend-legend">
             <li class="trend-legend__item">
               <span class="trend-legend__swatch trend-legend__swatch--a"></span>

@@ -619,7 +619,8 @@
     "chart": {
       "title": "比分趨勢圖",
       "legendTeamA": "－ A 隊（實線）",
-      "legendTeamB": "┄ B 隊（虛線）"
+      "legendTeamB": "┄ B 隊（虛線）",
+      "hoverHint": "拖曳或點擊圖表，查看當下比分"
     },
     "eventList": {
       "title": "加減分紀錄",

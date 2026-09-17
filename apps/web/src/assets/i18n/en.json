@@ -619,7 +619,8 @@
     "chart": {
       "title": "Score Trend Chart",
       "legendTeamA": "－ Team A (solid line)",
-      "legendTeamB": "┄ Team B (dashed line)"
+      "legendTeamB": "┄ Team B (dashed line)",
+      "hoverHint": "Drag or tap the chart to see the score at that moment"
     },
     "eventList": {
       "title": "Point-by-Point Record",
