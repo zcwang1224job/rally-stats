@@ -114,6 +114,49 @@ describe('MatchRecordDetailDialogComponent — event list (US1)', () => {
     expect(text).toContain('matchRecordDetail.eventList.delta.minus');
     expect(text).toContain('matchRecordDetail.eventList.delta.plus');
   });
+
+  it('marks each row with the scoring team’s color accent, matching its side', () => {
+    const fixture = setup(completeDetail);
+
+    const rows = fixture.nativeElement.querySelectorAll('.event-row');
+    // completeDetail.events sides, in order: A, B, A, A, A.
+    const expectedSides = completeDetail.events.map((e) => e.side);
+    Array.from(rows).forEach((row, index) => {
+      const el = row as HTMLElement;
+      expect(el.classList.contains('event-row--a')).toBe(expectedSides[index] === 'A');
+      expect(el.classList.contains('event-row--b')).toBe(expectedSides[index] === 'B');
+    });
+  });
+});
+
+describe('MatchRecordDetailDialogComponent — scoreboard-style header', () => {
+  it('shows a team-colored dot beside each team’s names', () => {
+    const fixture = setup(completeDetail);
+
+    const dotA = fixture.nativeElement.querySelector('.basic-info__dot--a');
+    const dotB = fixture.nativeElement.querySelector('.basic-info__dot--b');
+    expect(dotA).not.toBeNull();
+    expect(dotB).not.toBeNull();
+  });
+
+  it('gives the winning side’s score the winner modifier, not the losing side', () => {
+    const fixture = setup(completeDetail); // winner_team: 'A'
+
+    const values = fixture.nativeElement.querySelectorAll('.basic-info__score-value');
+    expect(values.length).toBe(2);
+    expect((values[0] as HTMLElement).classList.contains('basic-info__score-value--winner')).toBe(true);
+    expect((values[1] as HTMLElement).classList.contains('basic-info__score-value--winner')).toBe(false);
+    expect(values[0].textContent).toContain('2');
+    expect(values[1].textContent).toContain('1');
+  });
+
+  it('shows the round label on its own line, still translated', () => {
+    const fixture = setup(completeDetail);
+
+    expect(fixture.nativeElement.querySelector('.basic-info__round')?.textContent).toContain(
+      'groupMemberView.standings.roundColumnLabel',
+    );
+  });
 });
 
 describe('MatchRecordDetailDialogComponent — trend chart (US2)', () => {
@@ -307,7 +350,9 @@ describe('MatchRecordDetailDialogComponent — completeness states (US3)', () =>
     expect(fixture.nativeElement.querySelector('.trend-chart')).toBeNull();
     expect(fixture.nativeElement.querySelector('.event-row')).toBeNull();
     // Basic info (FR-007) still shows even with no history.
-    expect(fixture.nativeElement.textContent).toContain('2 : 1');
+    expect(fixture.nativeElement.textContent).toContain('2');
+    expect(fixture.nativeElement.textContent).toContain('1');
+    expect(fixture.nativeElement.querySelector('.basic-info__score')).not.toBeNull();
   });
 
   it('shows the existing list/chart plus an incompleteness banner when "partial"', () => {
@@ -535,6 +580,8 @@ describe('MatchRecordDetailDialogComponent — player scoring stats (US3)', () =
     expect(fixture.nativeElement.textContent).toContain('3');
     // the zero-count player MUST still be shown, not omitted.
     expect(rows[1].textContent).toContain('0');
+    expect(rows[0].classList.contains('player-stat-row--a')).toBe(true);
+    expect(rows[1].classList.contains('player-stat-row--b')).toBe(true);
   });
 
   it('shows an empty-state message instead of a stats table when player_stats is empty', () => {

@@ -96,6 +96,21 @@
   margin-right: var(--space-xs);
 }
 
+// feature/match-record-detail-scoreboard-style: the SAME team-a/-b color
+// pair the chart, header dot, and event-list rows already key these two
+// teams to (see match-record-detail-dialog.component.scss's fuller
+// comment) — the `-border` shade, dark enough to read as text on this
+// component's plain white surface.
+.team-label {
+  &--a {
+    color: var(--color-team-a-border);
+  }
+
+  &--b {
+    color: var(--color-team-b-border);
+  }
+}
+
 .lead-change-list {
   margin: var(--space-xs) 0 0;
   padding-left: var(--space-lg);

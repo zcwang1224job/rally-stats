@@ -14,18 +14,51 @@
     <p role="alert">{{ 'matchRecordDetail.loadError' | translate }}</p>
   } @else if (detail(); as d) {
     <h2>{{ 'matchRecordDetail.title' | translate }}</h2>
-    <p class="basic-info">
-      {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: d.round_number } }}
-      ·
-      @for (p of d.team_a; track p.roster_entry_id; let last = $last) {
-        <app-nickname [value]="p.nickname" />@if (!last) { 、 }
-      }
-      vs
-      @for (p of d.team_b; track p.roster_entry_id; let last = $last) {
-        <app-nickname [value]="p.nickname" />@if (!last) { 、 }
-      }
-      · <strong>{{ d.score_a }} : {{ d.score_b }}</strong>
-    </p>
+
+    <!-- feature/match-record-detail-scoreboard-style: a compact echo of the
+         live scoreboard (scoreboard.component.scss) — team-colored dots
+         (--color-team-a-bg/-b-bg, the SAME pair the scoreboard/chart/
+         derived-stats already use for these two teams) and the score in
+         --font-family-score, the tabular numeral stack reserved everywhere
+         else in the app for an actual score display. The winning side reads
+         bolder AND darker (weight + color, never color alone) rather than
+         graying the loser out entirely — both scores stay fully legible. -->
+    <div class="basic-info">
+      <p class="basic-info__round">
+        {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: d.round_number } }}
+      </p>
+      <div class="basic-info__scoreboard">
+        <div class="basic-info__team basic-info__team--a">
+          <span class="basic-info__dot basic-info__dot--a" aria-hidden="true"></span>
+          <span class="basic-info__names">
+            @for (p of d.team_a; track p.roster_entry_id; let last = $last) {
+              <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+            }
+          </span>
+        </div>
+        <div class="basic-info__score">
+          <span
+            class="basic-info__score-value"
+            [class.basic-info__score-value--winner]="d.winner_team === 'A'"
+            >{{ d.score_a }}</span
+          >
+          <span class="basic-info__score-sep">:</span>
+          <span
+            class="basic-info__score-value"
+            [class.basic-info__score-value--winner]="d.winner_team === 'B'"
+            >{{ d.score_b }}</span
+          >
+        </div>
+        <div class="basic-info__team basic-info__team--b">
+          <span class="basic-info__names">
+            @for (p of d.team_b; track p.roster_entry_id; let last = $last) {
+              <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+            }
+          </span>
+          <span class="basic-info__dot basic-info__dot--b" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
 
     @if (d.record_completeness === 'none') {
       <p class="completeness-note">{{ 'matchRecordDetail.completeness.none' | translate }}</p>
@@ -144,6 +177,8 @@
             @for (event of d.events; track $index) {
               <li
                 class="card event-row"
+                [class.event-row--a]="event.side === 'A'"
+                [class.event-row--b]="event.side === 'B'"
                 [class.event-row--clickable]="event.detail"
                 [attr.role]="event.detail ? 'button' : null"
                 [attr.tabindex]="event.detail ? 0 : null"
@@ -210,7 +245,11 @@
           } @else {
             <ul class="player-stats-list">
               @for (stat of d.player_stats; track stat.roster_entry_id) {
-                <li class="card player-stat-row">
+                <li
+                  class="card player-stat-row"
+                  [class.player-stat-row--a]="stat.team === 'A'"
+                  [class.player-stat-row--b]="stat.team === 'B'"
+                >
                   <span class="player-stat-row__nickname"><app-nickname [value]="stat.nickname" /></span>
                   <span class="player-stat-row__count">
                     {{ 'matchRecordDetail.playerStats.scoredCount' | translate }}：{{ stat.scored_count }}
