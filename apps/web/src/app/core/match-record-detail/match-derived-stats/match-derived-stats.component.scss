@@ -2,9 +2,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
-  // The dialog's sections carry no bottom margin of their own after the
-  // last one; same rhythm as .chart-card's gap to what follows it.
-  margin-top: var(--space-lg);
+  // Spacing from the dialog's other sections above is handled by the
+  // parent's `.match-detail-sections` flex gap, not a margin here — this
+  // component is itself one item in that same column.
 }
 
 .derived-section {
@@ -14,6 +14,7 @@
 
   > summary {
     cursor: pointer;
+    font-size: var(--font-size-body);
     font-weight: var(--font-weight-bold);
     // A comfortable touch target without making the collapsed list tall.
     padding: var(--space-xs) 0;

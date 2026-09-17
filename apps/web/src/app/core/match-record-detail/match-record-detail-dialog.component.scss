@@ -47,11 +47,31 @@ h2 {
   }
 }
 
-.chart-card {
-  margin-bottom: var(--space-lg);
+// The chart/event-list/player-stats blocks are collapsible <details>, one
+// visual rhythm with the derived-stats blocks below them (kept here rather
+// than shared via class name — Angular view encapsulation doesn't share
+// styles across components).
+.match-detail-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
 
-  h3 {
+.chart-card,
+.event-list,
+.player-stats-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+
+  > summary {
+    cursor: pointer;
     font-size: var(--font-size-body);
+    font-weight: var(--font-weight-bold);
+    padding: var(--space-xs) 0;
+  }
+
+  &[open] > summary {
     margin-bottom: var(--space-sm);
   }
 }
@@ -132,13 +152,6 @@ h2 {
   &--b {
     border-top-color: var(--color-ink);
     border-top-style: dashed;
-  }
-}
-
-.event-list {
-  h3 {
-    font-size: var(--font-size-body);
-    margin-bottom: var(--space-sm);
   }
 }
 

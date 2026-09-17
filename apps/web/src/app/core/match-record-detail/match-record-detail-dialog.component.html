@@ -36,135 +36,142 @@
         </p>
       }
 
-      <section class="chart-card">
-        <h3>{{ 'matchRecordDetail.chart.title' | translate }}</h3>
-        <svg
-          class="trend-chart"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          role="img"
-          [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
-        >
-          <line x1="0" y1="100" x2="100" y2="100" class="trend-chart__midline" />
-          <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
-          <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
-          @for (point of chartPoints(); track $index) {
-            <circle
-              [attr.cx]="point.x"
-              [attr.cy]="point.yA"
-              r="2"
-              class="trend-chart__dot trend-chart__dot--a"
-            />
-            <rect
-              [attr.x]="point.x - 1.6"
-              [attr.y]="point.yB - 1.6"
-              width="3.2"
-              height="3.2"
-              class="trend-chart__dot trend-chart__dot--b"
-            />
-          }
-        </svg>
-        <ul class="trend-legend">
-          <li class="trend-legend__item">
-            <span class="trend-legend__swatch trend-legend__swatch--a"></span>
-            {{ 'matchRecordDetail.chart.legendTeamA' | translate }}：{{ teamANames() }}
-          </li>
-          <li class="trend-legend__item">
-            <span class="trend-legend__swatch trend-legend__swatch--b"></span>
-            {{ 'matchRecordDetail.chart.legendTeamB' | translate }}：{{ teamBNames() }}
-          </li>
-        </ul>
-      </section>
-
-      <section class="event-list">
-        <h3>{{ 'matchRecordDetail.eventList.title' | translate }}</h3>
-        <ul class="record-list">
-          @for (event of d.events; track $index) {
-            <li
-              class="card event-row"
-              [class.event-row--clickable]="event.detail"
-              [attr.role]="event.detail ? 'button' : null"
-              [attr.tabindex]="event.detail ? 0 : null"
-              [attr.aria-expanded]="event.detail ? expandedEventIndex() === $index : null"
-              (click)="event.detail && toggleExpand($index)"
-              (keydown.enter)="event.detail && toggleExpand($index)"
-              (keydown.space)="event.detail && toggleExpand($index)"
-            >
-              <span
-                class="status-badge"
-                [class.status-badge--success]="event.delta === 1"
-                [class.status-badge--danger]="event.delta === -1"
-              >
-                {{
-                  (event.delta === 1
-                    ? 'matchRecordDetail.eventList.delta.plus'
-                    : 'matchRecordDetail.eventList.delta.minus'
-                  ) | translate
-                }}
-              </span>
-              <span class="event-row__side">{{ event.side === 'A' ? teamANames() : teamBNames() }}</span>
-              <span class="event-row__score">{{ event.score_a }} : {{ event.score_b }}</span>
-              <span class="event-row__time">
-                {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(event.elapsed_seconds) }}
-              </span>
-              @if (event.detail; as eventDetail) {
-                @if (eventDetail.scoring_nickname) {
-                  <span class="event-row__player event-row__player--scoring">
-                    {{ 'matchRecordDetail.eventList.scoringPlayerPrefix' | translate }}
-                    <app-nickname [value]="eventDetail.scoring_nickname" />
-                  </span>
-                }
-                @if (eventDetail.losing_nickname) {
-                  <span class="event-row__player event-row__player--losing">
-                    {{ 'matchRecordDetail.eventList.losingPlayerPrefix' | translate }}
-                    <app-nickname [value]="eventDetail.losing_nickname" />
-                  </span>
-                }
-                @if (expandedEventIndex() === $index) {
-                  <div class="event-row__landing">
-                    @if (eventDetail.landing_x !== null && eventDetail.landing_y !== null) {
-                      <app-court-diagram
-                        [isSinglesMatch]="isSinglesMatch()"
-                        [landingX]="eventDetail.landing_x"
-                        [landingY]="eventDetail.landing_y"
-                      />
-                    } @else {
-                      <p class="landing-not-recorded">
-                        {{ 'matchRecordDetail.eventList.landingNotRecorded' | translate }}
-                      </p>
-                    }
-                  </div>
-                }
-              }
+      <!-- Every block below is a native <details> — collapsible, and open
+           by default so nothing that was always visible before this change
+           starts out hidden (only the derived-stats blocks below default to
+           collapsed, per their own FR-009). -->
+      <div class="match-detail-sections">
+        <details class="chart-card" open>
+          <summary>{{ 'matchRecordDetail.chart.title' | translate }}</summary>
+          <svg
+            class="trend-chart"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            role="img"
+            [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
+          >
+            <line x1="0" y1="100" x2="100" y2="100" class="trend-chart__midline" />
+            <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
+            <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
+            @for (point of chartPoints(); track $index) {
+              <circle
+                [attr.cx]="point.x"
+                [attr.cy]="point.yA"
+                r="2"
+                class="trend-chart__dot trend-chart__dot--a"
+              />
+              <rect
+                [attr.x]="point.x - 1.6"
+                [attr.y]="point.yB - 1.6"
+                width="3.2"
+                height="3.2"
+                class="trend-chart__dot trend-chart__dot--b"
+              />
+            }
+          </svg>
+          <ul class="trend-legend">
+            <li class="trend-legend__item">
+              <span class="trend-legend__swatch trend-legend__swatch--a"></span>
+              {{ 'matchRecordDetail.chart.legendTeamA' | translate }}：{{ teamANames() }}
             </li>
-          }
-        </ul>
-      </section>
+            <li class="trend-legend__item">
+              <span class="trend-legend__swatch trend-legend__swatch--b"></span>
+              {{ 'matchRecordDetail.chart.legendTeamB' | translate }}：{{ teamBNames() }}
+            </li>
+          </ul>
+        </details>
 
-      <section class="player-stats-card">
-        <h3>{{ 'matchRecordDetail.playerStats.title' | translate }}</h3>
-        @if (d.player_stats.length === 0) {
-          <p class="player-stats-empty">{{ 'matchRecordDetail.playerStats.empty' | translate }}</p>
-        } @else {
-          <ul class="player-stats-list">
-            @for (stat of d.player_stats; track stat.roster_entry_id) {
-              <li class="card player-stat-row">
-                <span class="player-stat-row__nickname"><app-nickname [value]="stat.nickname" /></span>
-                <span class="player-stat-row__count">
-                  {{ 'matchRecordDetail.playerStats.scoredCount' | translate }}：{{ stat.scored_count }}
+        <details class="event-list" open>
+          <summary>{{ 'matchRecordDetail.eventList.title' | translate }}</summary>
+          <ul class="record-list">
+            @for (event of d.events; track $index) {
+              <li
+                class="card event-row"
+                [class.event-row--clickable]="event.detail"
+                [attr.role]="event.detail ? 'button' : null"
+                [attr.tabindex]="event.detail ? 0 : null"
+                [attr.aria-expanded]="event.detail ? expandedEventIndex() === $index : null"
+                (click)="event.detail && toggleExpand($index)"
+                (keydown.enter)="event.detail && toggleExpand($index)"
+                (keydown.space)="event.detail && toggleExpand($index)"
+              >
+                <span
+                  class="status-badge"
+                  [class.status-badge--success]="event.delta === 1"
+                  [class.status-badge--danger]="event.delta === -1"
+                >
+                  {{
+                    (event.delta === 1
+                      ? 'matchRecordDetail.eventList.delta.plus'
+                      : 'matchRecordDetail.eventList.delta.minus'
+                    ) | translate
+                  }}
                 </span>
-                <span class="player-stat-row__count">
-                  {{ 'matchRecordDetail.playerStats.faultCount' | translate }}：{{ stat.fault_count }}
+                <span class="event-row__side">{{ event.side === 'A' ? teamANames() : teamBNames() }}</span>
+                <span class="event-row__score">{{ event.score_a }} : {{ event.score_b }}</span>
+                <span class="event-row__time">
+                  {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(event.elapsed_seconds) }}
                 </span>
+                @if (event.detail; as eventDetail) {
+                  @if (eventDetail.scoring_nickname) {
+                    <span class="event-row__player event-row__player--scoring">
+                      {{ 'matchRecordDetail.eventList.scoringPlayerPrefix' | translate }}
+                      <app-nickname [value]="eventDetail.scoring_nickname" />
+                    </span>
+                  }
+                  @if (eventDetail.losing_nickname) {
+                    <span class="event-row__player event-row__player--losing">
+                      {{ 'matchRecordDetail.eventList.losingPlayerPrefix' | translate }}
+                      <app-nickname [value]="eventDetail.losing_nickname" />
+                    </span>
+                  }
+                  @if (expandedEventIndex() === $index) {
+                    <div class="event-row__landing">
+                      @if (eventDetail.landing_x !== null && eventDetail.landing_y !== null) {
+                        <app-court-diagram
+                          [isSinglesMatch]="isSinglesMatch()"
+                          [landingX]="eventDetail.landing_x"
+                          [landingY]="eventDetail.landing_y"
+                        />
+                      } @else {
+                        <p class="landing-not-recorded">
+                          {{ 'matchRecordDetail.eventList.landingNotRecorded' | translate }}
+                        </p>
+                      }
+                    </div>
+                  }
+                }
               </li>
             }
           </ul>
-        }
-      </section>
+        </details>
 
-      <!-- 033-match-record-derived-stats: after everything that was already
-           here, collapsed by default, so nothing existing moves (FR-009). -->
-      <app-match-derived-stats [detail]="d" />
+        <details class="player-stats-card" open>
+          <summary>{{ 'matchRecordDetail.playerStats.title' | translate }}</summary>
+          @if (d.player_stats.length === 0) {
+            <p class="player-stats-empty">{{ 'matchRecordDetail.playerStats.empty' | translate }}</p>
+          } @else {
+            <ul class="player-stats-list">
+              @for (stat of d.player_stats; track stat.roster_entry_id) {
+                <li class="card player-stat-row">
+                  <span class="player-stat-row__nickname"><app-nickname [value]="stat.nickname" /></span>
+                  <span class="player-stat-row__count">
+                    {{ 'matchRecordDetail.playerStats.scoredCount' | translate }}：{{ stat.scored_count }}
+                  </span>
+                  <span class="player-stat-row__count">
+                    {{ 'matchRecordDetail.playerStats.faultCount' | translate }}：{{ stat.fault_count }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        </details>
+
+        <!-- 033-match-record-derived-stats: after everything that was
+             already here, collapsed by default, so nothing existing moves
+             (FR-009). -->
+        <app-match-derived-stats [detail]="d" />
+      </div>
     }
   }
 </dialog>

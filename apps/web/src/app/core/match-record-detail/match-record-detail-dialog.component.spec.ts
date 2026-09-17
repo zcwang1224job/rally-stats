@@ -398,3 +398,40 @@ describe('MatchRecordDetailDialogComponent — derived stats (033)', () => {
     expect(root.querySelector('app-match-derived-stats')).toBeNull();
   });
 });
+
+describe('MatchRecordDetailDialogComponent — collapsible sections', () => {
+  it('renders the chart, event list, and player stats as native <details>, open by default', () => {
+    const root: HTMLElement = setup(completeDetail).nativeElement;
+
+    const chart = root.querySelector('details.chart-card') as HTMLDetailsElement;
+    const eventList = root.querySelector('details.event-list') as HTMLDetailsElement;
+    const playerStats = root.querySelector('details.player-stats-card') as HTMLDetailsElement;
+    expect(chart?.open).toBe(true);
+    expect(eventList?.open).toBe(true);
+    expect(playerStats?.open).toBe(true);
+    // A <summary> replaces the old plain heading so each section has its
+    // own native disclosure toggle.
+    expect(chart.querySelector('summary')?.textContent).toContain('matchRecordDetail.chart.title');
+    expect(eventList.querySelector('summary')?.textContent).toContain(
+      'matchRecordDetail.eventList.title',
+    );
+    expect(playerStats.querySelector('summary')?.textContent).toContain(
+      'matchRecordDetail.playerStats.title',
+    );
+  });
+
+  it('collapsing a section hides its content without affecting the others', () => {
+    const fixture = setup(completeDetail);
+    const root: HTMLElement = fixture.nativeElement;
+    const chart = root.querySelector('details.chart-card') as HTMLDetailsElement;
+    const eventList = root.querySelector('details.event-list') as HTMLDetailsElement;
+
+    chart.open = false;
+    chart.dispatchEvent(new Event('toggle'));
+    fixture.detectChanges();
+
+    expect(chart.open).toBe(false);
+    expect(eventList.open).toBe(true);
+    expect(root.querySelectorAll('.event-row').length).toBe(completeDetail.events.length);
+  });
+});
