@@ -11,7 +11,6 @@ import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { getScoreSwapPreference, setScoreSwapPreference } from '../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
-import { LanguageSwitcherComponent } from '../../core/language/language-switcher.component';
 import {
   ShotPlacementConfirmed,
   ShotPlacementPickerComponent,
@@ -22,7 +21,7 @@ import {
  * US1/US2）。 */
 @Component({
   selector: 'app-control-panel',
-  imports: [TranslatePipe, ConfirmDialogComponent, LanguageSwitcherComponent, ShotPlacementPickerComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent],
   templateUrl: './control-panel.component.html',
   styleUrl: './control-panel.component.scss',
 })
@@ -184,28 +183,45 @@ export class ControlPanelComponent {
   }
 
   /** feature/control-panel-scoreboard-style: resolves one of the four
-   * station slots for `team`'s "left"/"right" service court — see
-   * ScoreboardComponent's `station()` for the shared lookup logic this
-   * wraps. Control-panel additionally lets the scorer swap which visual
-   * side each team renders on (`leftTeam()`/`rightTeam()`), so — unlike
-   * the scoreboard, which always renders A on the physical left — this
-   * takes `team` as a parameter rather than hardcoding it. */
-  serveRosterId(match: MatchLiveDetail, team: Team, position: 'left' | 'right'): string | null {
+   * station slots for `team`'s top/bottom pill. `slot` names a fixed
+   * SCREEN position (the block's top edge vs. bottom edge), not a
+   * badminton-sense left/right court — teams face each other across the
+   * net, so team A's own right service court and team B's own right
+   * service court sit on OPPOSITE physical sidelines (see
+   * ScoreboardComponent.html's identical comment): binding `_right` to
+   * the bottom slot for A but to the TOP slot for B (and vice versa) is
+   * what keeps a station's left/right consistent with the real court.
+   * This mapping is per-TEAM, not per-screen-half — control-panel
+   * additionally lets the scorer swap which half each team renders in
+   * (`leftTeam()`/`rightTeam()`), but swapping only moves a team
+   * sideways, it never changes which direction that team actually
+   * faces, so the top/bottom mirroring must follow the team, not the
+   * slot it's currently drawn in. */
+  serveRosterId(match: MatchLiveDetail, team: Team, slot: 'top' | 'bottom'): string | null {
     const serve = match.serve;
     if (!serve) {
       return null;
     }
     if (team === 'A') {
-      return position === 'left'
+      return slot === 'top'
         ? serve.team_a_left_roster_entry_id
         : serve.team_a_right_roster_entry_id;
     }
-    return position === 'left'
-      ? serve.team_b_left_roster_entry_id
-      : serve.team_b_right_roster_entry_id;
+    return slot === 'top'
+      ? serve.team_b_right_roster_entry_id
+      : serve.team_b_left_roster_entry_id;
   }
 
-  station(match: MatchLiveDetail, rosterEntryId: string | null): { nickname: string; isServer: boolean } | null {
+  /** A station pill is a fixed-size chip in a court corner, not a name
+   * list — displayName truncates to the first 2 characters so a long
+   * nickname never forces the pill (or the court markings around it) to
+   * grow or wrap; `nickname` (the untruncated original) is kept alongside
+   * it for the pill's aria-label, so screen readers still get the full
+   * name even though the visible text doesn't. */
+  station(
+    match: MatchLiveDetail,
+    rosterEntryId: string | null,
+  ): { nickname: string; displayName: string; isServer: boolean } | null {
     if (!rosterEntryId) {
       return null;
     }
@@ -213,7 +229,11 @@ export class ControlPanelComponent {
     if (!participant) {
       return null;
     }
-    return { nickname: participant.nickname, isServer: match.serve?.server_roster_entry_id === rosterEntryId };
+    return {
+      nickname: participant.nickname,
+      displayName: participant.nickname.slice(0, 2),
+      isServer: match.serve?.server_roster_entry_id === rosterEntryId,
+    };
   }
 
   score(side: Team, delta: 1 | -1): void {
@@ -237,6 +257,7 @@ export class ControlPanelComponent {
               ...state.current_match,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           });
         }
@@ -247,6 +268,14 @@ export class ControlPanelComponent {
    * recording detail for — set right before open() below, bound to the
    * picker's `scoringTeam` input in the template. */
   readonly pendingScoringSide = signal<Team>('A');
+  /** Who was serving THIS rally — captured from `currentMatch.serve` right
+   * BEFORE the point below is applied (not the response's post-point
+   * value, which always equals `side`: the winner always serves next in
+   * badminton, so it could never distinguish a side-out from a server who
+   * just won their own rally). Bound to the picker's `servingTeam` input,
+   * which uses it to stop treating an own-serve win as a possible "serve
+   * fault". */
+  readonly pendingServingTeam = signal<Team | null>(null);
   // Captured once, right when the point is scored — onShotPlacementConfirmed()
   // and onShotPlacementCancelled() below use these rather than re-deriving
   // "the current match" from liveState()/frozenState() at the time the
@@ -309,6 +338,7 @@ export class ControlPanelComponent {
               ...currentMatch,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           };
           // For a plain continuing point also commit the patch to the real
@@ -324,6 +354,7 @@ export class ControlPanelComponent {
             this.pendingMatchId = matchId;
             this.pendingScoreEventId = result.score_event_id;
             this.pendingScoringSide.set(side);
+            this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
             this.pendingMatchCompleted = result.status !== 'in_progress';
             this.cancelScoreErrorKey.set(null);
             this.shotPlacementPicker()?.open();
@@ -413,6 +444,7 @@ export class ControlPanelComponent {
               ...state.current_match,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           });
         }

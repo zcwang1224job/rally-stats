@@ -142,28 +142,36 @@ export class CourtControlComponent implements OnInit {
   }
 
   /** feature/control-panel-scoreboard-style: resolves one of the four
-   * station slots for `team`'s "left"/"right" service court — mirrors
-   * ControlPanelComponent's identical method (see its comment for the
-   * shared lookup logic this wraps). */
-  serveRosterId(match: MatchSummary, team: Team, position: 'left' | 'right'): string | null {
+   * station slots for `team`'s top/bottom pill — mirrors
+   * ControlPanelComponent's identical method (see its comment for why
+   * `slot` is a fixed screen position, mapped per-team rather than
+   * per-screen-half, to correctly mirror each team's own left/right
+   * service court across the net). */
+  serveRosterId(match: MatchSummary, team: Team, slot: 'top' | 'bottom'): string | null {
     const serve = match.serve;
     if (!serve) {
       return null;
     }
     if (team === 'A') {
-      return position === 'left'
+      return slot === 'top'
         ? serve.team_a_left_roster_entry_id
         : serve.team_a_right_roster_entry_id;
     }
-    return position === 'left'
-      ? serve.team_b_left_roster_entry_id
-      : serve.team_b_right_roster_entry_id;
+    return slot === 'top'
+      ? serve.team_b_right_roster_entry_id
+      : serve.team_b_left_roster_entry_id;
   }
 
+  /** A station pill is a fixed-size chip in a court corner, not a name
+   * list — displayName truncates to the first 2 characters so a long
+   * nickname never forces the pill (or the court markings around it) to
+   * grow or wrap; `nickname` (the untruncated original) is kept alongside
+   * it for the pill's aria-label, so screen readers still get the full
+   * name even though the visible text doesn't. */
   station(
     match: MatchSummary,
     rosterEntryId: string | null,
-  ): { nickname: string; isServer: boolean } | null {
+  ): { nickname: string; displayName: string; isServer: boolean } | null {
     if (!rosterEntryId) {
       return null;
     }
@@ -171,7 +179,11 @@ export class CourtControlComponent implements OnInit {
     if (!participant) {
       return null;
     }
-    return { nickname: participant.nickname, isServer: match.serve?.server_roster_entry_id === rosterEntryId };
+    return {
+      nickname: participant.nickname,
+      displayName: participant.nickname.slice(0, 2),
+      isServer: match.serve?.server_roster_entry_id === rosterEntryId,
+    };
   }
 
   score(side: Team, delta: 1 | -1): void {

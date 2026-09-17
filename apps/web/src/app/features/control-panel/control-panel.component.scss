@@ -26,10 +26,7 @@
 
 .board-header {
   display: flex;
-  align-items: baseline;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
 }
 
 h1 {
@@ -50,13 +47,28 @@ h1 {
   z-index: 1;
 }
 
-// FR-005 (swap teams) predates this restyle and stays — camouflaged like
-// the scoring/end-match buttons below rather than the light-theme
-// .btn--secondary pill, so it doesn't read as a stray bright box on the
-// dark board.
-.score-controls-toolbar {
+// Round number + swap-teams button share one line — the button reads as
+// part of this compact header row now, not a separate full-width button
+// bar, so it's sized to match the court-name heading's own box (same
+// font-size, ~1.6x for a comfortable square) instead of the shared .btn's
+// touch-target minimum. FR-005 (swap teams) predates this restyle and
+// stays camouflaged like the scoring/end-match buttons below rather than
+// the light-theme .btn--secondary pill, so it doesn't read as a stray
+// bright box on the dark board.
+.round-row {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+
+  .swap-teams-button {
+    min-width: 0;
+    min-height: 0;
+    width: calc(var(--font-size-heading) * 1.6);
+    height: calc(var(--font-size-heading) * 1.6);
+    padding: 0;
+    font-size: 1.25rem;
+  }
 
   .btn {
     background: var(--scoreboard-bg);
@@ -88,7 +100,10 @@ h1 {
   justify-content: center;
   align-items: stretch;
   gap: var(--space-md);
-  min-height: 50vh;
+  // Bumped up from 50vh — merging the swap button into .round-row above
+  // freed a whole row's worth of vertical space, so the court claims it
+  // instead of leaving it unused.
+  min-height: 58vh;
   position: relative;
 }
 
@@ -329,21 +344,21 @@ h1 {
   }
 }
 
-// 024-add-english-language FR-003a — re-themed to the dark board via the
-// switcher's own --language-switcher-* custom properties (see
-// language-switcher.component.scss) instead of its light-page defaults.
-.control-panel-language-switcher {
-  display: block;
-  margin: 0 0 var(--space-md);
-
-  --language-switcher-bg: var(--scoreboard-bg);
-  --language-switcher-color: color-mix(in srgb, var(--color-ink) 55%, white);
-  --language-switcher-border: color-mix(in srgb, var(--color-ink) 75%, white);
-}
-
 @media (orientation: landscape) and (max-height: 500px) {
+  // .board-main's container-query below needs a genuinely definite (not
+  // just floored) ancestor height to resolve — confirmed by direct
+  // measurement in a real browser: with only `min-height: 100vh` (the
+  // base rule, a floor content can grow past), the browser can't rule out
+  // a sizing cycle through this container-query chain and silently
+  // resolves every cqh-based length to 0, collapsing the court instead of
+  // enlarging it. An explicit `height` here (with `overflow: hidden` so
+  // content that still doesn't quite fit is clipped, same trade-off this
+  // whole breakpoint already makes to avoid scrolling) removes that
+  // ambiguity.
   :host {
     padding: var(--space-sm);
+    height: 100vh;
+    overflow: hidden;
   }
 
   h1,
@@ -351,8 +366,42 @@ h1 {
     font-size: var(--font-size-body);
   }
 
+  // Matches h1/.round-label's own shrink above, so the button stays
+  // proportioned to the (now smaller) heading text it's sized against.
+  .swap-teams-button {
+    width: calc(var(--font-size-body) * 1.6);
+    height: calc(var(--font-size-body) * 1.6);
+  }
+
+  // A wide-but-short phone screen let .score-board stretch edge-to-edge
+  // while staying short — since it's a flex row with .team { flex: 1 },
+  // the drawn court ended up a much wider/flatter rectangle than a real
+  // badminton court, so its line markings (drawn as % offsets, sized for
+  // a normal-ish rectangle) looked distorted.
+  //
+  // A guessed max-height (a plain vh fraction) undershot the space this
+  // panel's chrome (header/round-row/scoring-controls) actually leaves
+  // free — it capped the court SMALLER than it was before this fix, the
+  // opposite of the goal. Container query units fix that properly:
+  // .board-main becomes a size container (its own height is already fixed
+  // by the flex column above, independent of its children, so this can't
+  // create a sizing loop), and .score-board's width is the LARGER of "fill
+  // the container's width" or "fill its height" — whichever the real
+  // court ratio (13.4m / 6.1m — see shot-placement-picker.component.ts's
+  // identical dimensions) hits first — capped at 100% so it never
+  // overflows either dimension. That's the maximum size that both
+  // preserves the ratio and fits, i.e. this panel's exact available
+  // space, not a guessed fraction of it.
+  .board-main {
+    container-type: size;
+  }
+
   .score-board {
     min-height: 0;
+    aspect-ratio: 13.4 / 6.1;
+    width: min(100%, 100cqh * (13.4 / 6.1));
+    height: auto;
+    margin: 0 auto;
   }
 
   .team {

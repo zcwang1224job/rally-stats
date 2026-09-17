@@ -27,6 +27,12 @@
   justify-content: flex-end;
   margin-bottom: var(--space-sm);
 
+  // Icon-only (no label text) — sized up a bit from the shared .btn body
+  // font so the glyph itself reads clearly as the button's whole content.
+  .swap-teams-button {
+    font-size: 1.25rem;
+  }
+
   .btn {
     background: var(--scoreboard-bg);
     border-color: color-mix(in srgb, var(--color-ink) 75%, white);

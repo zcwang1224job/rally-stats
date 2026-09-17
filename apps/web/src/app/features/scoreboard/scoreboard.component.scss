@@ -485,8 +485,20 @@ h1 {
 // specifically in this short-viewport case and leaves real tablets/desktops
 // (which have height to spare) on the normal sizing above.
 @media (orientation: landscape) and (max-height: 500px) {
+  // .board-main's container-query below needs a genuinely definite (not
+  // just floored) ancestor height to resolve — confirmed by direct
+  // measurement in a real browser: with only `min-height: 100vh` (the
+  // base rule, a floor content can grow past), the browser can't rule out
+  // a sizing cycle through this container-query chain and silently
+  // resolves every cqh-based length to 0, collapsing the court instead of
+  // enlarging it. An explicit `height` here (with `overflow: hidden` so
+  // content that still doesn't quite fit is clipped, same trade-off this
+  // whole breakpoint already makes to avoid scrolling) removes that
+  // ambiguity.
   :host {
     padding: var(--space-sm);
+    height: 100vh;
+    overflow: hidden;
   }
 
   h1,
@@ -494,8 +506,32 @@ h1 {
     font-size: var(--font-size-body);
   }
 
+  // A wide-but-short phone screen let .score-board stretch edge-to-edge
+  // while staying short, so the drawn court ended up a much wider/flatter
+  // rectangle than a real badminton court. A guessed max-height (a plain vh
+  // fraction) was tried first and confirmed — via an actual headless-
+  // browser measurement, not just reasoning — to backfire: combined with
+  // aspect-ratio + width:auto on this flex item, the browser sized off
+  // .team's tiny natural content width instead, collapsing the court to a
+  // sliver regardless of screen size. Container query units fix that
+  // correctly: .board-main becomes a size container (its own height is
+  // already fixed by the flex column above, independent of its children,
+  // so this can't create a sizing loop), and .score-board's width is
+  // min(100%, 100cqh × the real court's own length:width ratio — 13.4m /
+  // 6.1m, see shot-placement-picker.component.ts's identical dimensions) —
+  // the largest size that both preserves the ratio and fits within
+  // whatever space this screen actually leaves free, letterboxing only
+  // when the screen is wider or narrower than that ratio calls for.
+  .board-main {
+    container-type: size;
+  }
+
   .score-board {
     min-height: 0;
+    aspect-ratio: 13.4 / 6.1;
+    width: min(100%, 100cqh * (13.4 / 6.1));
+    height: auto;
+    margin: 0 auto;
   }
 
   .team {

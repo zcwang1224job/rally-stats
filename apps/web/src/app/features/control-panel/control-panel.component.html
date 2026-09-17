@@ -1,5 +1,3 @@
-<app-language-switcher class="control-panel-language-switcher" />
-
 @if (linkInvalidated()) {
   <p role="alert">{{ 'courtManagement.linkInvalidatedNotice' | translate }}</p>
 } @else if (loading()) {
@@ -19,20 +17,21 @@
     }
     <div class="board-header">
       <h1>{{ info.name }}</h1>
-      @if (displayState(); as state) {
-        <p class="round-label">
-          {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
-        </p>
-      }
     </div>
     @if (displayState(); as state) {
       @if (cancelScoreErrorKey(); as key) {
         <p role="alert">{{ key | translate }}</p>
       }
-      <div class="score-controls-toolbar">
-        <button type="button" class="btn btn--secondary" (click)="toggleSwap()">
-          ⇄ {{ 'controlPanel.swapTeams' | translate }}
-        </button>
+      <div class="round-row">
+        <p class="round-label">
+          {{ 'scheduleManagement.roundLabel' | translate: { round: state.round_number } }}
+        </p>
+        <button
+          type="button"
+          class="btn btn--secondary swap-teams-button"
+          [attr.aria-label]="'controlPanel.swapTeams' | translate"
+          (click)="toggleSwap()"
+        >⇄</button>
       </div>
 
       <div class="board-main">
@@ -48,9 +47,9 @@
         <div class="score-board">
           <div class="team" [class.team--a]="leftTeam() === 'A'" [class.team--b]="leftTeam() === 'B'">
             @if (state.current_match; as match) {
-              @if (station(match, serveRosterId(match, leftTeam(), 'left')); as topStation) {
-                <div class="station station--top" [class.station--server]="topStation.isServer">
-                  {{ topStation.nickname }}
+              @if (station(match, serveRosterId(match, leftTeam(), 'top')); as topStation) {
+                <div class="station station--top" [class.station--server]="topStation.isServer" [attr.aria-label]="topStation.nickname">
+                  {{ topStation.displayName }}
                   @if (topStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -64,9 +63,9 @@
               >{{ (leftTeam() === 'A' ? state.current_match?.score_a : state.current_match?.score_b) ?? 0 }}</span>
             </div>
             @if (state.current_match; as match) {
-              @if (station(match, serveRosterId(match, leftTeam(), 'right')); as bottomStation) {
-                <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
-                  {{ bottomStation.nickname }}
+              @if (station(match, serveRosterId(match, leftTeam(), 'bottom')); as bottomStation) {
+                <div class="station station--bottom" [class.station--server]="bottomStation.isServer" [attr.aria-label]="bottomStation.nickname">
+                  {{ bottomStation.displayName }}
                   @if (bottomStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -76,9 +75,9 @@
           </div>
           <div class="team" [class.team--a]="rightTeam() === 'A'" [class.team--b]="rightTeam() === 'B'">
             @if (state.current_match; as match) {
-              @if (station(match, serveRosterId(match, rightTeam(), 'left')); as topStation) {
-                <div class="station station--top" [class.station--server]="topStation.isServer">
-                  {{ topStation.nickname }}
+              @if (station(match, serveRosterId(match, rightTeam(), 'top')); as topStation) {
+                <div class="station station--top" [class.station--server]="topStation.isServer" [attr.aria-label]="topStation.nickname">
+                  {{ topStation.displayName }}
                   @if (topStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -92,9 +91,9 @@
               >{{ (rightTeam() === 'A' ? state.current_match?.score_a : state.current_match?.score_b) ?? 0 }}</span>
             </div>
             @if (state.current_match; as match) {
-              @if (station(match, serveRosterId(match, rightTeam(), 'right')); as bottomStation) {
-                <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
-                  {{ bottomStation.nickname }}
+              @if (station(match, serveRosterId(match, rightTeam(), 'bottom')); as bottomStation) {
+                <div class="station station--bottom" [class.station--server]="bottomStation.isServer" [attr.aria-label]="bottomStation.nickname">
+                  {{ bottomStation.displayName }}
                   @if (bottomStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -143,6 +142,7 @@
           #shotPlacementPicker
           [participants]="match.participants"
           [scoringTeam]="pendingScoringSide()"
+          [servingTeam]="pendingServingTeam()"
           (confirmed)="onShotPlacementConfirmed($event)"
           (scoreCancelled)="onShotPlacementCancelled()"
           (closed)="onShotPlacementClosed()"

@@ -231,7 +231,16 @@ export class ScoreboardComponent {
    * `serve` itself hasn't been computed yet (legacy match, research.md
    * Decision 4). `isServer` drives the non-purely-color marker (FR-005,
    * Constitution VII) — never the station's own presence/absence. */
-  station(match: MatchLiveDetail, rosterEntryId: string | null): { nickname: string; isServer: boolean } | null {
+  /** A station pill is a fixed-size chip in a court corner, not a name
+   * list — displayName truncates to the first 2 characters so a long
+   * nickname never forces the pill (or the court markings around it) to
+   * grow or wrap; `nickname` (the untruncated original) is kept alongside
+   * it for the pill's aria-label, so screen readers still get the full
+   * name even though the visible text doesn't. */
+  station(
+    match: MatchLiveDetail,
+    rosterEntryId: string | null,
+  ): { nickname: string; displayName: string; isServer: boolean } | null {
     if (!rosterEntryId) {
       return null;
     }
@@ -239,7 +248,11 @@ export class ScoreboardComponent {
     if (!participant) {
       return null;
     }
-    return { nickname: participant.nickname, isServer: match.serve?.server_roster_entry_id === rosterEntryId };
+    return {
+      nickname: participant.nickname,
+      displayName: participant.nickname.slice(0, 2),
+      isServer: match.serve?.server_roster_entry_id === rosterEntryId,
+    };
   }
 
   /** 同 ControlPanelComponent.score()——`canScore()` 已經在模板端決定按鈕
@@ -262,7 +275,12 @@ export class ScoreboardComponent {
           this.triggerScorePulse(side);
           this.liveState.set({
             ...state,
-            current_match: { ...state.current_match, score_a: result.score_a, score_b: result.score_b },
+            current_match: {
+              ...state.current_match,
+              score_a: result.score_a,
+              score_b: result.score_b,
+              serve: result.serve,
+            },
           });
         }
       });
@@ -272,6 +290,14 @@ export class ScoreboardComponent {
    * recording detail for — set right before open() below, bound to the
    * picker's `scoringTeam` input in the template. */
   readonly pendingScoringSide = signal<Team>('A');
+  /** Who was serving THIS rally — captured from `currentMatch.serve` right
+   * BEFORE the point below is applied (not the response's post-point
+   * value, which always equals `side`: the winner always serves next in
+   * badminton, so it could never distinguish a side-out from a server who
+   * just won their own rally). Bound to the picker's `servingTeam` input,
+   * which uses it to stop treating an own-serve win as a possible "serve
+   * fault". */
+  readonly pendingServingTeam = signal<Team | null>(null);
   // Captured once, right when the point is scored — onShotPlacementConfirmed()
   // and onShotPlacementCancelled() below use these rather than re-deriving
   // "the current match" from liveState()/frozenState() at the time the
@@ -335,7 +361,12 @@ export class ScoreboardComponent {
           this.triggerScorePulse(side);
           const patched: CourtStateResponse = {
             ...state,
-            current_match: { ...currentMatch, score_a: result.score_a, score_b: result.score_b },
+            current_match: {
+              ...currentMatch,
+              score_a: result.score_a,
+              score_b: result.score_b,
+              serve: result.serve,
+            },
           };
           // For a plain continuing point (status still 'in_progress') also
           // commit the patch to the real liveState() so the score is still
@@ -350,6 +381,7 @@ export class ScoreboardComponent {
             this.pendingMatchId = matchId;
             this.pendingScoreEventId = result.score_event_id;
             this.pendingScoringSide.set(side);
+            this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
             this.pendingMatchCompleted = result.status !== 'in_progress';
             this.cancelScoreErrorKey.set(null);
             this.shotPlacementPicker()?.open();
@@ -444,7 +476,12 @@ export class ScoreboardComponent {
           this.triggerScorePulse(side);
           this.liveState.set({
             ...state,
-            current_match: { ...state.current_match, score_a: result.score_a, score_b: result.score_b },
+            current_match: {
+              ...state.current_match,
+              score_a: result.score_a,
+              score_b: result.score_b,
+              serve: result.serve,
+            },
           });
         }
       });
