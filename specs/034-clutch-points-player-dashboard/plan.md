@@ -30,7 +30,7 @@
   - `tests/unit/domains/member/test_member_match_dashboard.py`（新，經資料庫）——批次載入與轉接、篩選連動、028 綁定的比賽、逐分不完整的比賽仍計入最終比分類；**單一比賽的儀表板 vs. 該場詳情回應**的一致性（FR-003）；查詢次數不隨場數成長。
   - `tests/unit/domains/member/test_member_match_records.py`（既有，不改斷言）——作為 `_filtered_member_matches()` 重構的安全網。
   - `tests/unit/domains/group/test_match_record_detail.py`（擴充）——`clutch_stats` 的組裝、`comeback` 與 `max_leads` 一致、不完整紀錄 → `null`。
-  - `tests/contract/`：`test_group_match_record_detail.py`／`test_member_match_record_detail.py`（擴充回應形狀）；`test_member_match_dashboard_endpoint.py`（新）——兩端點的回應形狀、篩選參數驗證、好友端點四種拒絕情境的狀態碼與錯誤代碼、`me` 路由不被 `{member_id}` 攔截。
+  - `tests/contract/`：`test_group_match_record_detail.py`／`test_member_match_record_detail.py`（擴充回應形狀）；`test_member_match_dashboard_endpoint.py`（新）——兩端點的回應形狀、篩選參數驗證、未驗證信箱的會員 403 `EMAIL_NOT_VERIFIED`、好友端點四種拒絕情境的狀態碼與錯誤代碼、`me` 路由不被 `{member_id}` 攔截。
 - 前端：Vitest。`match-clutch-stats.component.spec.ts`（新）——五個項目的有值／不適用／未進延長／未曾握有賽末點／未曾落後／整塊無資料。`player-dashboard.component.spec.ts`＋`dashboard-metric-card`／`dashboard-trend-chart` 的 spec（新）——空狀態、指標無資料提示、「0／0 —」、依據場數、對比欄位的顯示與隱藏、verdict 以圖示＋文字呈現、趨勢不足提示、落點範圍切換取前綴、`dense` 門檻、我方標示。`court-diagram.component.spec.ts`（擴充）——`dense` 輸入、預設行為不變。`match-history.component.spec.ts`（擴充）——篩選觸發儀表板請求、翻頁不觸發。`friend-match-records.component.spec.ts`（擴充）——掛載、拒絕時不出現第二則錯誤。`match-derived-stats.component.spec.ts`（擴充）——子元件有被掛上。
 
 **Target Platform**：延續既有（Docker on AWS ECS；行動裝置優先的瀏覽器支援範圍）。
@@ -52,7 +52,7 @@
 | I. 型別安全 | 新增的 Pydantic schema、純函式 dataclass、`MemberMatchFilters` 皆為明確型別，`mypy --strict` 通過；前端 `DashboardMetricKey` 為字串聯集，使語系 key 對照表與群組表在 strict mode 下受檢，無 `any`。`ruff`／`mypy`／`tsc --noEmit`／`ng lint` 沿用既有 blocking check。 | PASS |
 | II. 測試優先 | 關鍵分是「比分計算」核心邏輯的讀取延伸（重述了獲勝條件），彙總規則細緻（總和相除、視角旋轉、進步方向）。兩個純函式模組 MUST 有完整單元測試並**先於實作撰寫**；`_wins` MUST 以網格測試鎖定與寫入路徑的 `match_wins()` 一致；新端點 MUST 有契約測試；`_filtered_member_matches()` 的重構以既有測試不改斷言通過為準。 | PASS（列入 tasks.md 強制項） |
 | III. 即時性與資料一致性 | 不新增寫入路徑。只讀 `completed` 比賽（`_completed_matches_query()`），abandoned 不混入。賽制一律讀 `Match` 上的**快照**而非團的現行設定——正是本原則「設定變更的時間一致性」要求的讀法。本原則同時是 Decision 3 的依據（completed 必然自然達標）。儀表板非即時畫面，不訂閱事件；重新進入頁面即重新請求。 | PASS |
-| IV. 權限與安全 | 兩個新端點各自沿用對應 `match-records` 端點的 dependency；好友端點經同一個 `_resolve_viewable_member()`，每次請求重新檢查、不快取資格，錯誤代碼不變。回應只含數值與座標——**不含任何暱稱或他人識別資訊**，揭露範圍小於既有 `match-records`。不新增隱私設定（依 023 既定的「明細與彙總同一開關」）。PR 描述 MUST 說明此授權邊界。 | PASS |
+| IV. 權限與安全 | 兩個新端點皆使用 `require_verified_member`——本原則明定對戰紀錄在信箱驗證前 MUST 鎖定。**刻意不比照**既有 `GET /members/me/match-records` 的 `require_member`：那是 005 留下、與本原則不符的既有偏離，本功能不延續它，也不在此修正它（應另案處理）。好友端點經同一個 `_resolve_viewable_member()`，每次請求重新檢查、不快取資格，錯誤代碼不變。回應只含數值與座標——**不含任何暱稱或他人識別資訊**，揭露範圍小於既有 `match-records`。不新增隱私設定（依 023 既定的「明細與彙總同一開關」）。PR 描述 MUST 說明此授權邊界。 | PASS |
 | V. 破壞性操作二次確認 | 純呈現，無破壞性操作。 | 不適用 |
 | VI. 可維護性 | 規則（`match_stats`）、視角與彙總（`player_dashboard`）、查詢與轉接（service）三者分離；兩個純模組皆不 import ORM。`member` → `group` 的 import 方向為既有，未新增反向依賴；`group` 只多公開一個批次載入函式作為介面。前端儀表板為單一共用元件，兩頁掛載；球場繪製仍只有 `CourtDiagramComponent` 一份。 | PASS |
 | VII. 無障礙與行動裝置優先 | 進步／退步以**圖示＋文字**表達、得分／失分落點以**形狀**＋圖例區分（FR-008）；百分比同時附分子／分母文字；區塊收合用原生 `<details>`；趨勢圖提供文字替代（`aria-label` 摘要起訖值）；指標選擇與範圍切換為原生按鈕並帶 `aria-pressed`；「我方」以文字標示。手機上比賽詳情的新區塊預設收合、儀表板僅第一群組展開（FR-007）。 | PASS |
@@ -64,6 +64,8 @@
 **Gate 結果**：無違反項目，不需填寫 Complexity Tracking。
 
 **Post-design re-check（Phase 1 完成後）**：data-model.md 與 contracts/ 確認——無新資料表／欄位／索引；新端點 2 個、皆唯讀、授權完全重用既有路徑；比賽詳情回應只新增一個具預設值的欄位；既有函式對外簽章不變；回應不含他人識別資訊。Phase 1 設計期間另查證出「影響的詳情端點是 3 個而非 4 個」（四個 UI 入口共用三個端點），已反映於 contract。Gate 結果維持 PASS。
+
+**`/speckit-analyze` 後修正**：初版本列原則 IV 誤把「比照既有 `match-records` 的 `require_member`」當成 PASS，未對照憲章條文——已改為 `require_verified_member`（analyze C1）。同次一併修正：`match_points_saved` 改為每場平均使其可比較、可畫趨勢（I1）；FR-004／FR-015 的「0／0」措辭互斥（I2）；SC-007 後半缺驗證任務（G1）；純單打篩選時球場圖改畫單打場地（U1）。
 
 ## Project Structure
 

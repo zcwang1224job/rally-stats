@@ -71,7 +71,7 @@
 | `endgame` | rate | higher | 局末階段我方得分 ÷ 階段總分 | `point_log.endgame` 有值 | 021d |
 | `deuce` | rate | higher | 延長階段我方得分 ÷ 階段總分 | `point_log.deuce` 有值 | 021d |
 | `match_point_conversion` | rate | higher | 握有賽末點且獲勝的場數 ÷ 握有賽末點的場數 | `point_log` 有值且 `held ≥ 1` | 021d |
-| `match_points_saved` | count | — | Σ化解次數（`denominator`＝場數） | `point_log` 有值 | 021d |
+| `match_points_saved` | average | —（無好壞方向） | Σ化解次數 ÷ 場數（`numerator` 即總次數） | `point_log` 有值 | 021d |
 | `when_leading` | rate | higher | 領先時得分 ÷ 領先時總分 | `point_log` 有值 | 021e |
 | `when_tied` | rate | higher | 平手時得分 ÷ 平手時總分 | 同上 | 021e |
 | `when_trailing` | rate | higher | 落後時得分 ÷ 落後時總分 | 同上 | 021e |
@@ -134,7 +134,7 @@ class DashboardMetricValue(BaseModel):
 
 class DashboardMetric(BaseModel):
     key: str                                   # 見指標目錄
-    kind: Literal["rate", "average", "ratio", "count"]
+    kind: Literal["rate", "average", "ratio"]
     better_when: Literal["higher", "lower"] | None
     all: DashboardMetricValue | None           # None = 沒有任何一場具備資料
     recent: DashboardMetricValue | None        # None = 不顯示對比
@@ -185,6 +185,7 @@ class MemberMatchDashboardResponse(BaseModel):
 - `core/api/group-member-view.models.ts`：`ClutchStats` 及其子型別；`MatchRecordDetailResponse.clutch_stats`。
 - `core/api/player-dashboard.models.ts`（新）：`DashboardMetric`、`DashboardMetricValue`、`DashboardTrend`、`DashboardTrendPoint`、`DashboardLanding`、`MemberMatchDashboardResponse`；`DashboardMetricKey` 為字串聯集（對應指標目錄），使語系 key 與分組表在 strict mode 下受型別檢查。
 - `core/court-diagram`：`CourtDiagramComponent` 新增選用輸入 `dense = input(false)`。
+- `core/player-dashboard`：`PlayerDashboardComponent` 的選用輸入 `singlesCourt = input(false)`——直接轉給 `CourtDiagramComponent` 的 `isSinglesMatch`；只有 `match-history` 在已套用的篩選為單打時傳 `true`。
 
 ## 語系 key（`assets/i18n/zh-TW.json`／`en.json`）
 
