@@ -32,6 +32,7 @@ from app.domains.member.schemas import (
     LoginRequest,
     LoginResponse,
     MemberGroupHistoryResponse,
+    MemberMatchDashboardResponse,
     MemberPublicResponse,
     MyGroupsResponse,
     OAuthStartResponse,
@@ -523,6 +524,58 @@ async def get_member_match_record_detail(
     已驗證，比照既有 `/members/me/match-records`）。Errors:
     `MEMBER_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`GROUP_MEMBERSHIP_NEVER_HELD`。"""
     return await service.get_member_match_record_detail(session, member.id, match_id)
+
+
+def match_filters_query(
+    opponent1: Annotated[str | None, Query(max_length=20)] = None,
+    opponent2: Annotated[str | None, Query(max_length=20)] = None,
+    partner: Annotated[str | None, Query(max_length=20)] = None,
+    result: Annotated[Literal["win", "loss"] | None, Query()] = None,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+    round_from: Annotated[int | None, Query(ge=1)] = None,
+    round_to: Annotated[int | None, Query(ge=1)] = None,
+    self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    self_score: Annotated[int | None, Query(ge=0)] = None,
+    opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    opponent_score: Annotated[int | None, Query(ge=0)] = None,
+    match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+) -> service.MemberMatchFilters:
+    """034-clutch-points-player-dashboard: the 13 filter query parameters of
+    `/members/me/match-records` — same names, same validation, no `page` —
+    as one dependency. (`opponent1`/`opponent2` fold into `opponents`, hence
+    12 fields on `MemberMatchFilters`.) The two dashboard endpoints take
+    this instead of spelling the list out a fifth and sixth time."""
+    return service.MemberMatchFilters(
+        opponents=tuple(name for name in (opponent1, opponent2) if name),
+        partners=(partner,) if partner else (),
+        result=result,
+        date_from=date_from,
+        date_to=date_to,
+        round_from=round_from,
+        round_to=round_to,
+        self_score_cmp=self_score_cmp,
+        self_score=self_score,
+        opponent_score_cmp=opponent_score_cmp,
+        opponent_score=opponent_score,
+        match_mode=match_mode,
+    )
+
+
+@router.get("/members/me/match-dashboard", response_model=MemberMatchDashboardResponse)
+async def get_member_match_dashboard(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    filters: Annotated[service.MemberMatchFilters, Depends(match_filters_query)],
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US2-US4: 會員跨場個人技術儀表板，
+    對「整個篩選結果」計算（沒有 `page`）——與同一組篩選條件下
+    `/members/me/match-records` 的 `total_matches` 恆相同。
+    `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
+    鎖定；**刻意不比照** `/members/me/match-records` 的 `require_member`
+    （那是既有偏離，見 034 research.md Decision 14）。Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`。"""
+    return await service.build_member_match_dashboard(session, member.id, filters)
 
 
 @router.get("/members/me/supported-languages", response_model=SupportedLanguagesResponse)

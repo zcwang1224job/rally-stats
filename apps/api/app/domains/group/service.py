@@ -1549,6 +1549,70 @@ def _to_placements(
     }
 
 
+@dataclasses.dataclass(frozen=True)
+class MatchStatInputs:
+    """One match's point-level history, already converted to `match_stats`'
+    pure inputs."""
+
+    completeness: RecordCompleteness
+    raw_events: list[match_stats.RawEvent]
+    snapshots: dict[uuid.UUID, match_stats.ServeSnapshot]
+    placements: dict[uuid.UUID, match_stats.Placement]
+
+
+_STAT_INPUT_BATCH = 500
+
+
+async def load_match_stat_inputs(
+    session: AsyncSession, matches: Sequence[Match]
+) -> dict[uuid.UUID, MatchStatInputs]:
+    """034-clutch-points-player-dashboard research.md Decision 7: the same
+    three tables `build_match_record_detail()` reads for ONE match, loaded
+    for MANY with `match_id IN (...)` — three queries per batch however many
+    matches there are, never one detail build per match. Rows go through the
+    very converters the single-match path uses, so a match contributes the
+    same numbers to the cross-match dashboard as it shows on its own
+    (FR-003). Every requested match gets an entry, event-less ones
+    included."""
+    events_by_match: dict[uuid.UUID, list[ScoreEvent]] = {match.id: [] for match in matches}
+    serve_by_match: dict[uuid.UUID, list[ScoreServeRecord]] = defaultdict(list)
+    placements_by_match: dict[uuid.UUID, list[ShotPlacementRecord]] = defaultdict(list)
+
+    match_ids = list(events_by_match)
+    for offset in range(0, len(match_ids), _STAT_INPUT_BATCH):
+        batch = match_ids[offset : offset + _STAT_INPUT_BATCH]
+        events_result = await session.execute(
+            select(ScoreEvent)
+            .where(ScoreEvent.match_id.in_(batch))
+            .order_by(ScoreEvent.match_id, ScoreEvent.created_at, ScoreEvent.id)
+        )
+        for event in events_result.scalars():
+            events_by_match[event.match_id].append(event)
+        serve_result = await session.execute(
+            select(ScoreServeRecord).where(ScoreServeRecord.match_id.in_(batch))
+        )
+        for record in serve_result.scalars():
+            serve_by_match[record.match_id].append(record)
+        placements_result = await session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id.in_(batch))
+        )
+        for placement in placements_result.scalars():
+            placements_by_match[placement.match_id].append(placement)
+
+    inputs: dict[uuid.UUID, MatchStatInputs] = {}
+    for match in matches:
+        score_events = events_by_match[match.id]
+        started_at = match.started_at
+        assert started_at is not None  # always set for completed matches
+        inputs[match.id] = MatchStatInputs(
+            completeness=_record_completeness(score_events),
+            raw_events=_to_raw_events(score_events, started_at),
+            snapshots=_to_serve_snapshots(serve_by_match[match.id]),
+            placements=_to_placements(placements_by_match[match.id]),
+        )
+    return inputs
+
+
 _DerivedStats = tuple[
     ServeStats | None,
     MomentumStats | None,
