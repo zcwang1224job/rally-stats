@@ -137,11 +137,11 @@
 ## Phase 8: Polish & Cross-Cutting Concerns
 
 - [X] T038 [P] 語系檔一致性：確認 `zh-TW.json` 與 `en.json` 的 `matchRecordDetail.clutch.*` 與 `playerDashboard.*` 鍵集合完全相同、18 個 `playerDashboard.metric.<key>.{label,hint,empty}` 皆存在、模板中沒有寫死的中英文字串 in `apps/web/src/assets/i18n/`
-- [ ] T039 後端品質關卡：`ruff check app/ tests/`、`mypy app/`、`python -m pytest tests/` 全數通過 in `apps/api/`（完整測試約 20 分鐘，於背景執行並把 `-rf` 輸出存檔；出現大量無法解釋的失敗先重跑一次再調查）
+- [X] T039 後端品質關卡：`ruff check app/ tests/`、`mypy app/`、`python -m pytest tests/` 全數通過 in `apps/api/`（完整測試約 20 分鐘，於背景執行並把 `-rf` 輸出存檔；出現大量無法解釋的失敗先重跑一次再調查）
 - [X] T040 前端品質關卡：`npm run lint`、`npx tsc --noEmit -p tsconfig.app.json`、`npm test -- --watch=false` 全數通過 in `apps/web/`（`admin-page.component.spec.ts` 既有的 1 則 `NG04002` unhandled error 為本功能之前即存在）
-- [ ] T041 效能驗證（SC-007，quickstart.md 情境 12）：以種子資料為一位會員建立 300 場含逐分事件的已完成比賽，量測 `GET /members/me/match-dashboard` < 3 秒、回應大小、`GET /members/me/match-records` 回應時間與本功能前相當（增幅 < 10%）、以及一場 40 分以上比賽的 `GET /members/me/match-records/{match_id}` < 2 秒（SC-007 後半）；結果記錄於 `specs/034-clutch-points-player-dashboard/quickstart.md` 情境 12 之下；未達標時回報而非自行加入快取（規格 Assumptions）
-- [ ] T042 手機寬度版面檢查（FR-007、SC-009）：比賽詳情的關鍵分區塊預設收合且位於走勢摘要之後；對戰紀錄頁儀表板僅第一群組展開，既有對戰清單在 3 次捲動／點擊內可達；好友戰績頁亦同 in `apps/web/src/app/core/player-dashboard/`、`apps/web/src/app/core/match-record-detail/match-clutch-stats/`
-- [ ] T043 依憲章「技術治理與品質關卡」於 PR 描述說明授權邊界：兩個新端點皆用 `require_verified_member`（並註明既有 `match-records` 的 `require_member` 為既有偏離、本功能未延續）、好友端點經同一個 `_resolve_viewable_member()` 且不快取資格、回應不含任何暱稱或他人識別資訊、未新增寫入路徑（plan.md Constitution Check 原則 IV）
+- [X] T041 效能驗證（SC-007，quickstart.md 情境 12）：以種子資料為一位會員建立 300 場含逐分事件的已完成比賽，量測 `GET /members/me/match-dashboard` < 3 秒、回應大小、`GET /members/me/match-records` 回應時間與本功能前相當（增幅 < 10%）、以及一場 40 分以上比賽的 `GET /members/me/match-records/{match_id}` < 2 秒（SC-007 後半）；結果記錄於 `specs/034-clutch-points-player-dashboard/quickstart.md` 情境 12 之下；未達標時回報而非自行加入快取（規格 Assumptions）
+- [X] T042 手機寬度版面檢查（FR-007、SC-009）：比賽詳情的關鍵分區塊預設收合且位於走勢摘要之後；對戰紀錄頁儀表板僅第一群組展開，既有對戰清單在 3 次捲動／點擊內可達；好友戰績頁亦同 in `apps/web/src/app/core/player-dashboard/`、`apps/web/src/app/core/match-record-detail/match-clutch-stats/`
+- [X] T043 依憲章「技術治理與品質關卡」於 PR 描述說明授權邊界：兩個新端點皆用 `require_verified_member`（並註明既有 `match-records` 的 `require_member` 為既有偏離、本功能未延續）、好友端點經同一個 `_resolve_viewable_member()` 且不快取資格、回應不含任何暱稱或他人識別資訊、未新增寫入路徑（plan.md Constitution Check 原則 IV）
 
 ---
 

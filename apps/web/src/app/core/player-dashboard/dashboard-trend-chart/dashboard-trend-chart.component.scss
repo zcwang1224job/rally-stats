@@ -4,6 +4,9 @@
 
 .trend {
   margin: 0;
+  // The plot keeps its aspect ratio, so an uncapped width makes a handful of
+  // points tower over the cards on a desktop.
+  max-width: 36rem;
 }
 
 .trend__title {

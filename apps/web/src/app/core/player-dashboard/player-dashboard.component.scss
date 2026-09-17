@@ -47,10 +47,11 @@
   font-size: var(--font-size-caption);
 }
 
-// One column on a phone; as many ~12rem tiles as fit beyond that.
+// Two tiles across on a phone (eighteen single-column tiles is a very long
+// scroll), as many as fit beyond that.
 .dashboard-group__cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 8rem), 1fr));
   gap: var(--space-sm);
 }
 

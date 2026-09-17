@@ -14,4 +14,9 @@
 
 .clutch-state-table {
   margin-top: var(--space-sm);
+
+  // "落後時" must not break after two characters on a phone.
+  thead th:not(:first-child) {
+    white-space: nowrap;
+  }
 }
