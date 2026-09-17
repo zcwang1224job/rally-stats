@@ -825,6 +825,32 @@
       "whenTrailing": "落後時",
       "note": "每一分依「開打前」的比分歸類；關鍵分的得失以整隊計算。"
     },
+    "ending": {
+      "title": "得分方式",
+      "empty": "此比賽沒有得分方式紀錄",
+      "coverage": "已記錄 {{recorded}}／共 {{total}} 分",
+      "teamWinners": "主動得分 {{count}}",
+      "teamErrors": "失誤 {{count}}",
+      "errorsBreakdown": "失誤組成：出界 {{out}}・掛網 {{net}}・發球失誤 {{serveFault}}・其他 {{other}}",
+      "playersCaption": "各球員得分與失分的組成",
+      "player": "球員",
+      "scoredGroup": "得分",
+      "lostGroup": "失分",
+      "winners": "主動得分",
+      "opponentErrors": "對手失誤",
+      "unrecorded": "未記錄",
+      "beatenByWinners": "被主動得分",
+      "ownErrors": "自己失誤",
+      "playerTotals": "得 {{scored}}／失 {{lost}}",
+      "note": "主動得分歸得分球員；失誤歸失分球員。未記錄的分數不計入任何比例。",
+      "label": {
+        "winner": "主動得分",
+        "out": "對手出界",
+        "net": "對手掛網",
+        "serve_fault": "發球失誤",
+        "other_error": "其他失誤"
+      }
+    },
     "derived": {
       "teamA": "A 隊",
       "teamB": "B 隊",

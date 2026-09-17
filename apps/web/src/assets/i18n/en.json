@@ -825,6 +825,32 @@
       "whenTrailing": "When trailing",
       "note": "Each point is grouped by the score before it was played. Clutch points are counted per team."
     },
+    "ending": {
+      "title": "How points were won",
+      "empty": "No point-ending data was recorded for this match",
+      "coverage": "{{recorded}} of {{total}} points recorded",
+      "teamWinners": "{{count}} winners",
+      "teamErrors": "{{count}} errors",
+      "errorsBreakdown": "Errors: out {{out}} · net {{net}} · serve fault {{serveFault}} · other {{other}}",
+      "playersCaption": "How each player's points scored and lost break down",
+      "player": "Player",
+      "scoredGroup": "Scored",
+      "lostGroup": "Lost",
+      "winners": "Winners",
+      "opponentErrors": "Opp. errors",
+      "unrecorded": "Unrecorded",
+      "beatenByWinners": "By winners",
+      "ownErrors": "Own errors",
+      "playerTotals": "scored {{scored}} / lost {{lost}}",
+      "note": "A winner goes to the scoring player; an error to the player at fault. Unrecorded points count toward no ratio.",
+      "label": {
+        "winner": "Winner",
+        "out": "Opponent out",
+        "net": "Opponent net",
+        "serve_fault": "Serve fault",
+        "other_error": "Other error"
+      }
+    },
     "derived": {
       "teamA": "Team A",
       "teamB": "Team B",

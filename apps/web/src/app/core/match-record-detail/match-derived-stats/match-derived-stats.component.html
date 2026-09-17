@@ -173,6 +173,12 @@
   <app-match-clutch-stats [clutchStats]="d.clutch_stats ?? null" />
 </details>
 
+<details class="derived-section" data-section="ending">
+  <summary>{{ 'matchRecordDetail.ending.title' | translate }}</summary>
+  <!-- 035: `?? null` for the same reason as the clutch block above. -->
+  <app-match-ending-stats [endingStats]="d.ending_stats ?? null" />
+</details>
+
 <details class="derived-section" data-section="tempo">
   <summary>{{ 'matchRecordDetail.derived.tempo.title' | translate }}</summary>
   @if (d.tempo_stats; as tempo) {

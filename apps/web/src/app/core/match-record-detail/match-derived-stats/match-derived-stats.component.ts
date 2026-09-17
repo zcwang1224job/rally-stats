@@ -8,12 +8,15 @@ import {
 import { CourtDiagramComponent, CourtMarker } from '../../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../../nickname/nickname.component';
 import { MatchClutchStatsComponent } from '../match-clutch-stats/match-clutch-stats.component';
+import { MatchEndingStatsComponent } from '../match-ending-stats/match-ending-stats.component';
 import { percentOrDash } from '../ratio-format';
 
 /** 033-match-record-derived-stats: the derived blocks of the match detail
  * dialog — serve/receive win rate, momentum, per-point tempo, and per-player
- * landing distribution — plus 034's clutch-point block, which lives in its
- * own `MatchClutchStatsComponent` and is only hosted here.
+ * landing distribution — plus 034's clutch-point block and 035's
+ * winners-vs-errors block, which live in their own components
+ * (`MatchClutchStatsComponent`, `MatchEndingStatsComponent`) and are only
+ * hosted here.
  * **Purely presentational**: every number
  * arrives already computed on `detail` (the rules — which points still
  * stand after a correction, who was serving — exist once, on the backend);
@@ -25,7 +28,13 @@ import { percentOrDash } from '../ratio-format';
  * data never blanks the others. */
 @Component({
   selector: 'app-match-derived-stats',
-  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent, MatchClutchStatsComponent],
+  imports: [
+    TranslatePipe,
+    NicknameComponent,
+    CourtDiagramComponent,
+    MatchClutchStatsComponent,
+    MatchEndingStatsComponent,
+  ],
   templateUrl: './match-derived-stats.component.html',
   styleUrl: './match-derived-stats.component.scss',
 })

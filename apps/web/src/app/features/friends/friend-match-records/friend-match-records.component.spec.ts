@@ -88,6 +88,7 @@ function setup(options: {
           tempo_stats: null,
           landing_distribution: [],
           clutch_stats: null,
+          ending_stats: null,
         } satisfies MatchRecordDetailResponse)),
   };
 

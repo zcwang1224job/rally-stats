@@ -80,6 +80,7 @@ const completeDetail: MatchRecordDetailResponse = {
   tempo_stats: null,
   landing_distribution: [],
   clutch_stats: null,
+  ending_stats: null,
 };
 
 function setup(detail: MatchRecordDetailResponse | null, loading = false, loadError = false) {
@@ -394,7 +395,7 @@ describe('MatchRecordDetailDialogComponent — completeness states (US3)', () =>
           detail: {
             scoring_roster_entry_id: 'p1', scoring_nickname: '小明',
             losing_roster_entry_id: 'p2', losing_nickname: '小華',
-            landing_x: 0.6, landing_y: 0.2,
+            landing_x: 0.6, landing_y: 0.2, ending_type: null,
           },
         },
       ],
@@ -417,7 +418,7 @@ describe('MatchRecordDetailDialogComponent — completeness states (US3)', () =>
           detail: {
             scoring_roster_entry_id: 'p1', scoring_nickname: '小明',
             losing_roster_entry_id: null, losing_nickname: null,
-            landing_x: null, landing_y: null,
+            landing_x: null, landing_y: null, ending_type: null,
           },
         },
       ],
@@ -467,7 +468,7 @@ describe('MatchRecordDetailDialogComponent — landing detail expand/collapse (U
         detail: {
           scoring_roster_entry_id: 'p1', scoring_nickname: '小明',
           losing_roster_entry_id: 'p2', losing_nickname: '小華',
-          landing_x: 0.6, landing_y: 0.2,
+          landing_x: 0.6, landing_y: 0.2, ending_type: null,
         },
       },
       {
@@ -475,7 +476,7 @@ describe('MatchRecordDetailDialogComponent — landing detail expand/collapse (U
         detail: {
           scoring_roster_entry_id: 'p1', scoring_nickname: '小明',
           losing_roster_entry_id: null, losing_nickname: null,
-          landing_x: null, landing_y: null,
+          landing_x: null, landing_y: null, ending_type: null,
         },
       },
       { side: 'B', delta: 1, score_a: 2, score_b: 1, elapsed_seconds: 30, detail: null },
@@ -650,5 +651,95 @@ describe('MatchRecordDetailDialogComponent — collapsible sections', () => {
     expect(chart.open).toBe(false);
     expect(eventList.open).toBe(true);
     expect(root.querySelectorAll('.event-row').length).toBe(completeDetail.events.length);
+  });
+});
+
+describe('MatchRecordDetailDialogComponent — ending type in the event list (035)', () => {
+  const emptyDetail = {
+    scoring_roster_entry_id: null, scoring_nickname: null,
+    losing_roster_entry_id: null, losing_nickname: null,
+    landing_x: null, landing_y: null,
+  };
+
+  it('labels a point with its ending type, a winner and an error told apart by glyph and class', () => {
+    const fixture = setup({
+      ...completeDetail,
+      events: [
+        {
+          side: 'A', delta: 1, score_a: 1, score_b: 0, elapsed_seconds: 10,
+          detail: { ...emptyDetail, scoring_roster_entry_id: 'p1', scoring_nickname: '小明', ending_type: 'winner' },
+        },
+        {
+          side: 'B', delta: 1, score_a: 1, score_b: 1, elapsed_seconds: 20,
+          detail: { ...emptyDetail, ending_type: 'net' },
+        },
+      ],
+    });
+
+    const root: HTMLElement = fixture.nativeElement;
+    const labels = Array.from(root.querySelectorAll<HTMLElement>('.event-row__ending'));
+    expect(labels.map((el) => el.dataset['ending'])).toEqual(['winner', 'net']);
+    expect(labels[0].classList.contains('event-row__ending--winner')).toBe(true);
+    expect(labels[0].textContent).toContain('★');
+    expect(labels[0].textContent).toContain('matchRecordDetail.ending.label.winner');
+    expect(labels[1].classList.contains('event-row__ending--error')).toBe(true);
+    expect(labels[1].textContent).toContain('✕');
+    expect(labels[1].textContent).toContain('matchRecordDetail.ending.label.net');
+  });
+
+  it('renders a row with a null ending exactly as before — no label at all', () => {
+    const fixture = setup({
+      ...completeDetail,
+      events: [
+        {
+          side: 'A', delta: 1, score_a: 1, score_b: 0, elapsed_seconds: 10,
+          detail: { ...emptyDetail, scoring_roster_entry_id: 'p1', scoring_nickname: '小明', ending_type: null },
+        },
+      ],
+    });
+
+    const row = fixture.nativeElement.querySelector('.event-row') as HTMLElement;
+    expect(row.querySelector('.event-row__ending')).toBeNull();
+    expect(row.querySelectorAll('.event-row__player').length).toBe(1);
+    expect(row.classList.contains('event-row--clickable')).toBe(true);
+  });
+
+  it('shows a row that recorded only the ending without the expand affordance', () => {
+    const fixture = setup({
+      ...completeDetail,
+      events: [
+        {
+          side: 'A', delta: 1, score_a: 1, score_b: 0, elapsed_seconds: 10,
+          detail: { ...emptyDetail, ending_type: 'out' },
+        },
+      ],
+    });
+
+    const row = fixture.nativeElement.querySelector('.event-row') as HTMLElement;
+    expect(row.querySelector('.event-row__ending')).not.toBeNull();
+    expect(row.classList.contains('event-row--clickable')).toBe(false);
+    expect(row.getAttribute('role')).toBeNull();
+    row.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.expandedEventIndex()).toBeNull();
+    expect(fixture.nativeElement.querySelector('.event-row__landing')).toBeNull();
+  });
+
+  it('keeps a row with a player but no landing expandable (unchanged 032 behaviour)', () => {
+    const fixture = setup({
+      ...completeDetail,
+      events: [
+        {
+          side: 'A', delta: 1, score_a: 1, score_b: 0, elapsed_seconds: 10,
+          detail: { ...emptyDetail, scoring_roster_entry_id: 'p1', scoring_nickname: '小明', ending_type: 'winner' },
+        },
+      ],
+    });
+
+    const row = fixture.nativeElement.querySelector('.event-row') as HTMLElement;
+    expect(row.classList.contains('event-row--clickable')).toBe(true);
+    row.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('matchRecordDetail.eventList.landingNotRecorded');
   });
 });

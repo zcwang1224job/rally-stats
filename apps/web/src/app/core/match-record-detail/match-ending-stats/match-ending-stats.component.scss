@@ -1,0 +1,69 @@
+@use '../derived-blocks';
+
+:host {
+  display: block;
+}
+
+.ending-coverage {
+  margin-top: 0;
+  margin-bottom: var(--space-sm);
+}
+
+// A team's line: "★ 7 winners   ✕ 5 errors   (out 2 · net 1 · …)". The
+// icon is what separates the two kinds from each other (FR-014) — the
+// colour below is only a reinforcement.
+.ending-kind {
+  display: inline-block;
+  margin-right: var(--space-md);
+  white-space: nowrap;
+}
+
+.ending-kind__icon {
+  display: inline-block;
+  width: 1.1em;
+  text-align: center;
+  font-size: 0.85em;
+}
+
+.ending-kind--winner .ending-kind__icon {
+  color: var(--color-brand-primary);
+}
+
+.ending-kind--error .ending-kind__icon {
+  color: var(--color-danger);
+}
+
+.ending-breakdown {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// Six numeric columns don't fit a phone: the table scrolls sideways inside
+// the block instead of squeezing the headers into unreadable stacks.
+.ending-table-scroll {
+  margin-top: var(--space-sm);
+  overflow-x: auto;
+}
+
+.ending-table {
+  min-width: 480px;
+
+  thead th {
+    white-space: nowrap;
+  }
+
+  td {
+    text-align: right;
+    padding-right: var(--space-md);
+  }
+}
+
+.ending-table__group {
+  text-align: center;
+  border-bottom-style: dashed;
+}
+
+.ending-table__muted {
+  color: var(--color-text-muted);
+}
