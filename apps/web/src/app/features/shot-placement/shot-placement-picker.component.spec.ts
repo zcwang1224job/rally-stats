@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { ParticipantSummary, Team } from '../../core/api/court-live-state.models';
+import {
+  ENDING_TYPES,
+  EndingType,
+  ParticipantSummary,
+  Team,
+} from '../../core/api/court-live-state.models';
 import { ShotPlacementPickerComponent } from './shot-placement-picker.component';
 
 const participants: ParticipantSummary[] = [
@@ -225,6 +230,7 @@ describe('ShotPlacementPickerComponent', () => {
       losingRosterEntryId: 'p3',
       landingX: 0.75,
       landingY: 0.5,
+      endingType: null,
     });
   });
 
@@ -243,6 +249,7 @@ describe('ShotPlacementPickerComponent', () => {
       losingRosterEntryId: null,
       landingX: null,
       landingY: null,
+      endingType: null,
     });
   });
 
@@ -573,6 +580,7 @@ describe('ShotPlacementPickerComponent', () => {
       losingRosterEntryId: 'p3',
       landingX: 0.75,
       landingY: 0.5,
+      endingType: null,
     });
   });
 
@@ -701,6 +709,272 @@ describe('ShotPlacementPickerComponent', () => {
 
       expect(fixture.componentInstance.useTabs()).toBe(false);
       expect(fixture.nativeElement.querySelector('.tabs')).toBeNull();
+    });
+  });
+
+  // --- 035-point-ending-type: the "how did the rally end" chip row --------
+
+  describe('ending type', () => {
+    /** The chip row lives in .landing-section, under the court; chips are
+     * in ENDING_TYPES order (component.html). */
+    function chips(fixture: { nativeElement: HTMLElement }): HTMLButtonElement[] {
+      return Array.from(
+        fixture.nativeElement.querySelectorAll<HTMLButtonElement>('.landing-section .ending-chip'),
+      );
+    }
+    function chip(fixture: { nativeElement: HTMLElement }, kind: EndingType): HTMLButtonElement {
+      return chips(fixture)[ENDING_TYPES.indexOf(kind)];
+    }
+    function pressed(fixture: { nativeElement: HTMLElement }): EndingType[] {
+      return ENDING_TYPES.filter((kind) => chip(fixture, kind).getAttribute('aria-pressed') === 'true');
+    }
+    function disabled(fixture: { nativeElement: HTMLElement }): EndingType[] {
+      return ENDING_TYPES.filter((kind) => chip(fixture, kind).getAttribute('aria-disabled') === 'true');
+    }
+    const confirmButton = (fixture: { nativeElement: HTMLElement }): HTMLButtonElement =>
+      fixture.nativeElement.querySelector('.actions button:last-of-type') as HTMLButtonElement;
+
+    it('renders the five kinds as chips in their fixed order, all enabled and none pressed, with no landing (d)', () => {
+      const { fixture } = setup(participants, 'A');
+
+      expect(chips(fixture).length).toBe(ENDING_TYPES.length);
+      expect(pressed(fixture)).toEqual([]);
+      expect(disabled(fixture)).toEqual([]);
+      expect(fixture.componentInstance.endingType()).toBeNull();
+    });
+
+    it('auto-fills "out" and disables "winner" for an out-of-bounds landing (a)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 20, 10); // outside the mocked court on both axes
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBe('out');
+      expect(pressed(fixture)).toEqual(['out']);
+      expect(disabled(fixture)).toEqual(['winner']);
+    });
+
+    it('auto-fills "serve_fault" for a serve-fault landing on the credited side\'s own half (b)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'B'); // A receiving
+
+      tap(courtAreaEl, 140, 75); // x=0.45, short-serve-fault zone of A
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.isServeFault()).toBe(true);
+      expect(fixture.componentInstance.endingType()).toBe('serve_fault');
+      expect(pressed(fixture)).toEqual(['serve_fault']);
+    });
+
+    it('auto-fills nothing for an in-bounds landing on the loser\'s half and disables only "out" (c, SC-006)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 200, 75); // x=0.75, B's half — A credited
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBeNull();
+      expect(pressed(fixture)).toEqual([]);
+      expect(disabled(fixture)).toEqual(['out']);
+      // Still one tap away from either reading of that landing.
+      chip(fixture, 'winner').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBe('winner');
+    });
+
+    // (c2) The in/out boundary vectors — the SAME table as the backend's
+    // BOUNDS_VECTORS in tests/unit/domains/schedule/test_shot_placement.py
+    // (035 data-model.md「界內／界外的邊界測試向量」). The two sides judge
+    // "in bounds" independently (this component's landingSide() and
+    // attach_shot_placement()'s check); a point they disagree on would let
+    // the picker auto-fill a value the server then refuses, silently
+    // losing the whole row. Keep both copies identical.
+    const INSET = 0.46 / 6.1;
+    const BOUNDS_VECTORS: [mode: 'doubles' | 'singles', x: number, y: number, inBounds: boolean][] = [
+      ['doubles', 0.0, 0.5, true],
+      ['doubles', 1.0, 0.5, true],
+      ['doubles', 0.5, 0.0, true],
+      ['doubles', 0.5, 1.0, true],
+      ['doubles', -0.0001, 0.5, false],
+      ['doubles', 1.0001, 0.5, false],
+      ['doubles', 0.5, -0.0001, false],
+      ['doubles', 0.5, 1.0001, false],
+      ['singles', 0.5, INSET, true],
+      ['singles', 0.5, 1 - INSET, true],
+      ['singles', 0.5, INSET - 0.0001, false],
+      ['singles', 0.5, 1 - INSET + 0.0001, false],
+      ['singles', 0.5, 0.03, false],
+    ];
+
+    it.each(BOUNDS_VECTORS)(
+      'judges (%s, x=%d, y=%d) in-bounds=%s exactly like the backend (c2)',
+      (mode, x, y, inBounds) => {
+        // The credited side is whichever makes an in-bounds point land on
+        // the LOSER's half (x=0.5 is B's half), so nothing else interferes.
+        const { fixture } = setup(mode === 'singles' ? singlesParticipants : participants, 'A');
+
+        fixture.componentInstance.selectedPoint.set({ x, y });
+        fixture.detectChanges();
+
+        if (inBounds) {
+          expect(fixture.componentInstance.landingSide()).not.toBe('out');
+          expect(disabled(fixture)).toEqual(['out']);
+        } else {
+          expect(fixture.componentInstance.landingSide()).toBe('out');
+          expect(disabled(fixture)).toEqual(['winner']);
+          expect(fixture.componentInstance.endingType()).toBe('out');
+        }
+      },
+    );
+
+    it('keeps a hand-picked kind when the landing moves somewhere that does not contradict it (e, FR-009)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 200, 75); // in bounds, B's half
+      fixture.detectChanges();
+      chip(fixture, 'net').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBe('net');
+
+      tap(courtAreaEl, 20, 10); // out of bounds — auto would say 'out'
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBe('net');
+      expect(pressed(fixture)).toEqual(['net']);
+    });
+
+    it('clears a hand-picked "winner" once the landing moves out of bounds, falling back to the auto "out" (f)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 200, 75);
+      fixture.detectChanges();
+      chip(fixture, 'winner').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBe('winner');
+
+      tap(courtAreaEl, 20, 10);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBe('out');
+      expect(pressed(fixture)).toEqual(['out']);
+      expect(confirmButton(fixture).disabled).toBe(false);
+    });
+
+    it('clears a hand-picked "out" once the landing moves in bounds (f, the other direction)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 20, 10);
+      fixture.detectChanges();
+      chip(fixture, 'out').click(); // an explicit pick of the auto value
+      fixture.detectChanges();
+
+      tap(courtAreaEl, 200, 75);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBeNull();
+      expect(pressed(fixture)).toEqual([]);
+    });
+
+    it('tapping the pressed chip again unselects it, and the auto-fill no longer overrides that (g)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 20, 10); // auto 'out'
+      fixture.detectChanges();
+      chip(fixture, 'out').click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBeNull();
+      expect(pressed(fixture)).toEqual([]);
+
+      tap(courtAreaEl, 30, 10); // still out of bounds — auto would say 'out' again
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBeNull();
+    });
+
+    it('a disabled chip cannot be picked', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 20, 10);
+      fixture.detectChanges();
+      chip(fixture, 'winner').click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBe('out');
+    });
+
+    it('confirm() emits the effective kind, or null when nothing is selected (h)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+      const confirmedSpy = vi.fn();
+      fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+      confirmButton(fixture).click();
+      expect(confirmedSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ endingType: null, landingX: null }),
+      );
+
+      fixture.componentInstance.open();
+      tap(courtAreaEl, 20, 10); // auto 'out'
+      fixture.detectChanges();
+      confirmButton(fixture).click();
+      expect(confirmedSpy).toHaveBeenLastCalledWith(expect.objectContaining({ endingType: 'out' }));
+
+      fixture.componentInstance.open();
+      tap(courtAreaEl, 200, 75);
+      fixture.detectChanges();
+      chip(fixture, 'other_error').click();
+      fixture.detectChanges();
+      confirmButton(fixture).click();
+      expect(confirmedSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ endingType: 'other_error', landingX: 0.75 }),
+      );
+    });
+
+    it('open() resets the hand-picked kind (i)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 200, 75);
+      fixture.detectChanges();
+      chip(fixture, 'net').click();
+      fixture.detectChanges();
+
+      fixture.componentInstance.open();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBeNull();
+      expect(pressed(fixture)).toEqual([]);
+    });
+
+    it('shows a hint while the kind is auto-filled, not once it is hand-picked (j)', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+      const hint = (): Element | null => fixture.nativeElement.querySelector('.ending-auto-hint');
+
+      expect(hint()).toBeNull();
+      tap(courtAreaEl, 20, 10);
+      fixture.detectChanges();
+      expect(hint()).not.toBeNull();
+
+      chip(fixture, 'net').click();
+      fixture.detectChanges();
+      expect(hint()).toBeNull();
+    });
+
+    it('keeps the chips inside the landing tab and the tab count at 2 in the tab layout (k)', async () => {
+      const { fixture } = setup();
+      vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(400);
+      const dialogEl = fixture.nativeElement.querySelector('.shot-placement-dialog') as HTMLElement;
+      vi.spyOn(dialogEl, 'getBoundingClientRect').mockReturnValue({
+        height: 900, width: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON: () => '',
+      });
+      const contentEl = fixture.nativeElement.querySelector('.content') as HTMLElement;
+      Object.defineProperty(contentEl, 'clientHeight', { value: 700, configurable: true });
+      Object.defineProperty(contentEl, 'scrollHeight', { value: 900, configurable: true });
+
+      fixture.componentInstance.open();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.useTabs()).toBe(true);
+      expect(fixture.nativeElement.querySelectorAll('.tab').length).toBe(2);
+      expect(chips(fixture).length).toBe(ENDING_TYPES.length);
+      expect(fixture.nativeElement.querySelectorAll('.players-section .ending-chip').length).toBe(0);
     });
   });
 });

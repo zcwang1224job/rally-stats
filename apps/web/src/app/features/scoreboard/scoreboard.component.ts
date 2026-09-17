@@ -419,6 +419,7 @@ export class ScoreboardComponent {
         event.losingRosterEntryId,
         event.landingX,
         event.landingY,
+        event.endingType,
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {

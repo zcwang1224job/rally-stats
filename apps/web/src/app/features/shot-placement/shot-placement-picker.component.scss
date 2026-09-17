@@ -231,6 +231,48 @@ h2 {
   gap: var(--space-sm);
 }
 
+// 035: the ending-type chip row under the court — one line, sideways
+// scroll on a narrow screen (never wraps, never grows the dialog's
+// height, so the Cancel/Confirm actions stay in view). The same
+// selected look as the player chips.
+.ending-hint {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.ending-auto-hint {
+  font-size: var(--font-size-small);
+}
+
+.ending-chips {
+  display: flex;
+  gap: var(--space-sm);
+  overflow-x: auto;
+  scrollbar-width: none;
+  // A little breathing room so the chips' focus ring isn't clipped by
+  // the scroll container.
+  padding: 2px;
+  margin: 0 -2px;
+}
+
+.ending-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+
+  &[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.ending-chip--selected {
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  border-color: var(--color-brand-primary);
+}
+
 .player--selected {
   background: var(--color-brand-primary);
   color: var(--color-brand-primary-contrast);

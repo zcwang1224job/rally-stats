@@ -512,7 +512,20 @@
     "tabPlayers": "Scoring / fault players",
     "skip": "Skip",
     "cancelScore": "Cancel score",
-    "confirm": "Save detail"
+    "confirm": "Save detail",
+    "ending": {
+      "label": "How the rally ended",
+      "autoHint": "Pre-filled from the landing — tap to change",
+      "winner": "Winner",
+      "out": "Opponent out",
+      "net": "Opponent net",
+      "serve_fault": "Serve fault",
+      "other_error": "Other error",
+      "disabled": {
+        "winner": "The landing is out of bounds, so it can't be a winner",
+        "out": "The landing is in bounds, so it isn't out"
+      }
+    }
   },
   "scheduleManagement": {
     "sectionTitle": "Court Control",

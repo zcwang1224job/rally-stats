@@ -6,6 +6,20 @@ import { CourtLinkType } from './court-link.models';
 export type Team = 'A' | 'B';
 export type WaitingReason = 'manual_assignment' | 'no_queued_match';
 
+// 035-point-ending-type: how a rally ended — 'winner' is the scorer's doing,
+// the other four are the loser's errors. Mirrors `EndingType` in
+// schedule/schemas.py; the backend contract test sends every value of
+// ENDING_TYPES in this order, which is the check between the two sides.
+export type EndingType = 'winner' | 'out' | 'net' | 'serve_fault' | 'other_error';
+/** The five kinds in their fixed display order (the picker's chip row). */
+export const ENDING_TYPES: readonly EndingType[] = [
+  'winner',
+  'out',
+  'net',
+  'serve_fault',
+  'other_error',
+];
+
 export interface ParticipantSummary {
   roster_entry_id: string;
   nickname: string;

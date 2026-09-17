@@ -426,6 +426,31 @@ describe('ScoreboardComponent', () => {
     expect(fixture.componentInstance.pendingScoringSide()).toBe('A');
   });
 
+  it('passes the picker\'s ending type through to recordShotPlacement as the last argument (035)', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'in_progress', score_a: 21, score_b: 10,
+        winner_team: null, score_event_id: 'ev1',
+      }),
+    );
+    const recordSpy = vi.fn().mockReturnValue(of({ recorded: true }));
+    const fixture = setup(detailedMatchState, true, {
+      score: scoreSpy,
+      recordShotPlacement: recordSpy,
+    });
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    fixture.componentInstance.onShotPlacementConfirmed({
+      rosterEntryId: 'p1',
+      losingRosterEntryId: 'p2',
+      landingX: 1.1,
+      landingY: 0.5,
+      endingType: 'out',
+    });
+
+    expect(recordSpy).toHaveBeenCalledWith('tok', 'm1', 'ev1', 'p1', 'p2', 1.1, 0.5, 'out');
+  });
+
   it('keeps the shot-placement picker mounted through a match.ended refresh that clears current_match (regression)', () => {
     const matchEndedSubject = new Subject<{ data: unknown }>();
     const scoreSpy = vi.fn().mockReturnValue(

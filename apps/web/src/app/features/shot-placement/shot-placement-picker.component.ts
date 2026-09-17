@@ -11,7 +11,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
-import { ParticipantSummary, Team } from '../../core/api/court-live-state.models';
+import {
+  ENDING_TYPES,
+  EndingType,
+  ParticipantSummary,
+  Team,
+} from '../../core/api/court-live-state.models';
 import { CourtDiagramComponent } from '../../core/court-diagram/court-diagram.component';
 
 /** 032-optional-shot-placement-detail: every field is independently
@@ -22,6 +27,10 @@ export interface ShotPlacementConfirmed {
   losingRosterEntryId: string | null;
   landingX: number | null;
   landingY: number | null;
+  /** 035-point-ending-type: the effective kind — auto-filled from the
+   * landing or hand-picked (see `endingType` below) — or null when the
+   * scorer left it unrecorded. */
+  endingType: EndingType | null;
 }
 
 /** 031-shot-placement-scoring: shared "tap the court, pick the scoring
@@ -217,6 +226,48 @@ export class ShotPlacementPickerComponent {
    * contradicting the side that was already credited the point. */
   readonly canConfirm = computed(() => !this.landingConflict());
 
+  /** 035-point-ending-type: how the rally ended, one chip row under the
+   * court. Two layers, hand-picked over auto-filled:
+   *
+   * - `manualEndingType` is what the scorer tapped. `undefined` = never
+   *   touched (the auto-fill decides); `null` = tapped the pressed chip
+   *   again to unselect — an explicit "not recorded" that the auto-fill
+   *   MUST NOT quietly override afterwards (FR-009). A hand-pick survives
+   *   re-tapping the landing, except when the new landing makes it
+   *   self-contradicting (the effect in the constructor clears it back to
+   *   `undefined`, so the auto-fill takes over again).
+   * - `autoEndingType` follows the landing where it leaves no doubt:
+   *   out of bounds → 'out'; a serve-fault landing → 'serve_fault'. An
+   *   in-bounds landing on the loser's half is deliberately NOT read as
+   *   'winner' — it looks the same as a net shot dropping on the hitter's
+   *   own side (spec edge case), so that one stays a real tap (SC-006).
+   *
+   * `disabledEndingTypes` mirrors attach_shot_placement()'s contradiction
+   * check (service.py, ENDING_TYPE_CONTRADICTS_LANDING) so a value the
+   * server would refuse can't be picked here in the first place — the
+   * callers drop a failed request silently, which would lose the whole
+   * row. The in/out judgement itself is `landingSide()`, pinned to the
+   * backend's by a shared boundary-vector table (035 data-model.md). */
+  readonly endingTypes = ENDING_TYPES;
+  readonly manualEndingType = signal<EndingType | null | undefined>(undefined);
+  readonly autoEndingType = computed<EndingType | null>(() =>
+    this.landingSide() === 'out' ? 'out' : this.isServeFault() ? 'serve_fault' : null,
+  );
+  readonly disabledEndingTypes = computed<readonly EndingType[]>(() => {
+    const side = this.landingSide();
+    return side === null ? [] : side === 'out' ? ['winner'] : ['out'];
+  });
+  readonly endingType = computed<EndingType | null>(() => {
+    const manual = this.manualEndingType();
+    return manual === undefined ? this.autoEndingType() : manual;
+  });
+  /** True while the pressed chip came from the auto-fill rather than the
+   * scorer's own tap — the template shows a short hint then, so it's
+   * clear the value can still be changed. */
+  readonly endingTypeIsAuto = computed(
+    () => this.manualEndingType() === undefined && this.autoEndingType() !== null,
+  );
+
   private isServeFaultZone(x: number, side: Team): boolean {
     const isDoubles = !this.isSinglesMatch();
     if (side === 'A') {
@@ -318,6 +369,17 @@ export class ShotPlacementPickerComponent {
       }
     });
 
+    // 035: a hand-picked ending that the new landing contradicts (e.g.
+    // 'winner' picked, then the landing moved out of bounds) is cleared
+    // back to "never touched", so the auto-fill decides again — never
+    // left standing as a pick the server would refuse.
+    effect(() => {
+      const manual = this.manualEndingType();
+      if (manual != null && this.disabledEndingTypes().includes(manual)) {
+        this.manualEndingType.set(undefined);
+      }
+    });
+
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.handleWindowResize);
       inject(DestroyRef).onDestroy(() => {
@@ -336,6 +398,7 @@ export class ShotPlacementPickerComponent {
     this.selectedPoint.set(null);
     this.selectedRosterEntryId.set(null);
     this.selectedLosingRosterEntryId.set(null);
+    this.manualEndingType.set(undefined);
     this.magnifierVisible.set(false);
     this.useTabs.set(false);
     this.activeTab.set('landing');
@@ -450,6 +513,17 @@ export class ShotPlacementPickerComponent {
     this.selectedLosingRosterEntryId.set(rosterEntryId);
   }
 
+  /** 035: tap a chip to pick it; tap the pressed one again to unselect
+   * (an explicit null — see `manualEndingType`). Disabled chips stay
+   * focusable (`aria-disabled`, not `disabled`) so their reason can be
+   * read out, hence the guard here rather than in the browser. */
+  pickEndingType(kind: EndingType): void {
+    if (this.disabledEndingTypes().includes(kind)) {
+      return;
+    }
+    this.manualEndingType.set(this.endingType() === kind ? null : kind);
+  }
+
   /** 032-optional-shot-placement-detail: sends whatever the scorer actually
    * picked — none of the three fields is required — the `[disabled]`
    * binding (canConfirm()) already keeps this from firing while the
@@ -465,6 +539,7 @@ export class ShotPlacementPickerComponent {
       losingRosterEntryId: this.selectedLosingRosterEntryId(),
       landingX: point?.x ?? null,
       landingY: point?.y ?? null,
+      endingType: this.endingType(),
     });
     this.closeIfSupported();
   }

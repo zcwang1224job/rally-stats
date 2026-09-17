@@ -512,7 +512,20 @@
     "tabPlayers": "得失分選手",
     "skip": "跳過",
     "cancelScore": "取消得分",
-    "confirm": "確認記錄"
+    "confirm": "確認記錄",
+    "ending": {
+      "label": "這一分怎麼結束的",
+      "autoHint": "已依落點自動帶入，可再改",
+      "winner": "主動得分",
+      "out": "對手出界",
+      "net": "對手掛網",
+      "serve_fault": "發球失誤",
+      "other_error": "其他失誤",
+      "disabled": {
+        "winner": "落點在界外，不可能是主動得分",
+        "out": "落點在界內，不是出界"
+      }
+    }
   },
   "scheduleManagement": {
     "sectionTitle": "場地控制",

@@ -553,3 +553,80 @@ describe('Nav-shell-less all-courts control panel carries its own language switc
     expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
   });
 });
+
+/** 035-point-ending-type: the picker's fourth optional detail rides the same
+ * call as the other three — pinned here for the control panel (the
+ * scoreboard has its own copy of this test; the all-courts block shares
+ * the same shape via recordShotPlacementAllCourts). */
+describe('ControlPanelComponent passes the ending type through (035)', () => {
+  it('sends the picker\'s endingType as recordShotPlacement\'s last argument', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'in_progress', score_a: 4, score_b: 2,
+        winner_team: null, score_event_id: 'ev1',
+      }),
+    );
+    const recordSpy = vi.fn().mockReturnValue(of({ recorded: true }));
+    TestBed.configureTestingModule({
+      imports: [ControlPanelComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ courtToken: 'tok' }) } },
+        },
+        {
+          provide: LinkHeartbeatService,
+          useValue: {
+            watchCourtLink: () =>
+              of({
+                court_id: 'c1',
+                group_id: 'g1',
+                name: '1號場',
+                link_type: 'control_panel',
+                link_version: 0,
+                deleted: false,
+                group_disbanded: false,
+              }),
+          },
+        },
+        { provide: RealtimeService, useFactory: realtimeStub },
+        { provide: ReconnectRefetchService, useFactory: reconnectStub },
+        {
+          provide: CourtControlService,
+          useValue: {
+            getState: () =>
+              of({
+                ...courtStateResponse,
+                current_match: { ...currentMatch, detailed_scoring_enabled: true },
+              }),
+            score: scoreSpy,
+            recordShotPlacement: recordSpy,
+          },
+        },
+        { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ControlPanelComponent);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector('.buttons--left button').click();
+    fixture.componentInstance.onShotPlacementConfirmed({
+      rosterEntryId: null,
+      losingRosterEntryId: null,
+      landingX: null,
+      landingY: null,
+      endingType: 'net',
+    });
+
+    expect(scoreSpy).toHaveBeenCalledTimes(1);
+    expect(recordSpy).toHaveBeenCalledWith('tok', 'm1', 'ev1', null, null, null, null, 'net');
+  });
+});
