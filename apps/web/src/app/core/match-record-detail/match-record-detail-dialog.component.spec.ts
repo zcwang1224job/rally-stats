@@ -569,15 +569,15 @@ describe('MatchRecordDetailDialogComponent — derived stats (033)', () => {
 });
 
 describe('MatchRecordDetailDialogComponent — collapsible sections', () => {
-  it('renders the chart, event list, and player stats as native <details>, open by default', () => {
+  it('renders the chart, event list, and player stats as native <details>, collapsed by default', () => {
     const root: HTMLElement = setup(completeDetail).nativeElement;
 
     const chart = root.querySelector('details.chart-card') as HTMLDetailsElement;
     const eventList = root.querySelector('details.event-list') as HTMLDetailsElement;
     const playerStats = root.querySelector('details.player-stats-card') as HTMLDetailsElement;
-    expect(chart?.open).toBe(true);
-    expect(eventList?.open).toBe(true);
-    expect(playerStats?.open).toBe(true);
+    expect(chart?.open).toBe(false);
+    expect(eventList?.open).toBe(false);
+    expect(playerStats?.open).toBe(false);
     // A <summary> replaces the old plain heading so each section has its
     // own native disclosure toggle.
     expect(chart.querySelector('summary')?.textContent).toContain('matchRecordDetail.chart.title');
@@ -589,14 +589,14 @@ describe('MatchRecordDetailDialogComponent — collapsible sections', () => {
     );
   });
 
-  it('collapsing a section hides its content without affecting the others', () => {
+  it('expanding a section reveals its content without affecting the others', () => {
     const fixture = setup(completeDetail);
     const root: HTMLElement = fixture.nativeElement;
     const chart = root.querySelector('details.chart-card') as HTMLDetailsElement;
     const eventList = root.querySelector('details.event-list') as HTMLDetailsElement;
 
-    chart.open = false;
-    chart.dispatchEvent(new Event('toggle'));
+    eventList.open = true;
+    eventList.dispatchEvent(new Event('toggle'));
     fixture.detectChanges();
 
     expect(chart.open).toBe(false);

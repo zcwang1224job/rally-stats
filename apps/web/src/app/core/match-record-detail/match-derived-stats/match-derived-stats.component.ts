@@ -15,10 +15,10 @@ import { NicknameComponent } from '../../nickname/nickname.component';
  * stand after a correction, who was serving — exist once, on the backend);
  * the only arithmetic here is turning won/total into a percentage.
  *
- * Each block is a native `<details>` so the dialog's existing content isn't
- * pushed out of reach on a phone (only the first starts open), and each
- * shows its own "no data" notice when its field is null/empty — one block
- * lacking data never blanks the others. */
+ * Each block is a native `<details>`, collapsed by default so the dialog's
+ * existing content isn't pushed out of reach on a phone, and each shows its
+ * own "no data" notice when its field is null/empty — one block lacking
+ * data never blanks the others. */
 @Component({
   selector: 'app-match-derived-stats',
   imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent],

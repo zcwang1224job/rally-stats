@@ -106,12 +106,12 @@ function section(root: HTMLElement, name: string): HTMLElement {
 }
 
 describe('MatchDerivedStatsComponent — layout (FR-003/FR-009)', () => {
-  it('renders four collapsible sections, only the first one open', () => {
+  it('renders four collapsible sections, all collapsed by default', () => {
     const root: HTMLElement = setup().nativeElement;
 
     const sections = Array.from(root.querySelectorAll('details'));
     expect(sections.map((s) => s.dataset['section'])).toEqual(['serve', 'momentum', 'tempo', 'landing']);
-    expect(sections.map((s) => s.open)).toEqual([true, false, false, false]);
+    expect(sections.map((s) => s.open)).toEqual([false, false, false, false]);
   });
 
   it('shows an independent no-data notice per section, and no numbers', () => {

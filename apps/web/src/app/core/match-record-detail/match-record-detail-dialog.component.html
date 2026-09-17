@@ -36,12 +36,11 @@
         </p>
       }
 
-      <!-- Every block below is a native <details> — collapsible, and open
-           by default so nothing that was always visible before this change
-           starts out hidden (only the derived-stats blocks below default to
-           collapsed, per their own FR-009). -->
+      <!-- Every block below is a native <details>, collapsed by default —
+           the reader picks what they want to look at rather than being
+           handed everything open at once. -->
       <div class="match-detail-sections">
-        <details class="chart-card" open>
+        <details class="chart-card">
           <summary>{{ 'matchRecordDetail.chart.title' | translate }}</summary>
 
           <!-- dataviz skill, interaction.md: a synced readout above the plot
@@ -139,7 +138,7 @@
           </ul>
         </details>
 
-        <details class="event-list" open>
+        <details class="event-list">
           <summary>{{ 'matchRecordDetail.eventList.title' | translate }}</summary>
           <ul class="record-list">
             @for (event of d.events; track $index) {
@@ -204,7 +203,7 @@
           </ul>
         </details>
 
-        <details class="player-stats-card" open>
+        <details class="player-stats-card">
           <summary>{{ 'matchRecordDetail.playerStats.title' | translate }}</summary>
           @if (d.player_stats.length === 0) {
             <p class="player-stats-empty">{{ 'matchRecordDetail.playerStats.empty' | translate }}</p>
