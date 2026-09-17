@@ -356,3 +356,61 @@ class LoginRecordsResponse(BaseModel):
     records: list[LoginRecordSummary]
     page: int
     total_pages: int
+
+
+# 034-clutch-points-player-dashboard: the cross-match technique dashboard
+# (member/player_dashboard.py). Same convention as the match detail's derived
+# blocks — None / [] IS the "no data" signal, never an all-zero structure.
+class DashboardMetricValue(BaseModel):
+    # None with matches_used > 0: applies, but the denominator is 0 (e.g.
+    # never trailed) — shown as "0/0 —", never as 0%.
+    value: float | None
+    numerator: int
+    denominator: int
+    matches_used: int
+
+
+class DashboardMetric(BaseModel):
+    key: str
+    kind: Literal["rate", "average", "ratio"]
+    better_when: Literal["higher", "lower"] | None
+    all: DashboardMetricValue | None  # None: no match has this metric's data
+    recent: DashboardMetricValue | None  # None: no comparison is shown
+    verdict: Literal["improved", "declined", "unchanged", "insufficient"] | None
+
+
+class DashboardTrendPoint(BaseModel):
+    from_ended_at: datetime
+    to_ended_at: datetime
+    value: float | None
+    numerator: int
+    denominator: int
+
+
+class DashboardTrend(BaseModel):
+    key: str
+    points: list[DashboardTrendPoint]  # oldest first
+
+
+class DashboardLanding(BaseModel):
+    # Newest match first and already turned so the member's own side is on
+    # the left (x < 0.5): the recent window is scored[:recent_scored_count].
+    scored: list[tuple[float, float]]
+    lost: list[tuple[float, float]]
+    scored_total: int
+    lost_total: int
+    matches_used: int
+    recent_scored_count: int
+    recent_lost_count: int
+    recent_scored_total: int
+    recent_lost_total: int
+    recent_matches_used: int
+
+
+class MemberMatchDashboardResponse(BaseModel):
+    total_matches: int
+    recent_window: int
+    has_comparison: bool
+    metrics: list[DashboardMetric]  # [] iff total_matches == 0, else all 18
+    trends: list[DashboardTrend]
+    landing: DashboardLanding | None

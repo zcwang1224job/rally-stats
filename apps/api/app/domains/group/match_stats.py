@@ -1,6 +1,8 @@
 """033-match-record-derived-stats: pure derivations over one completed
 match's existing score/serve/placement history — serve & receive win rates,
 momentum, per-point tempo, and per-player landing distribution.
+034-clutch-points-player-dashboard adds clutch-point performance
+(`clutch_stats()`), which also needs the match's own rule snapshot.
 
 Deliberately free of any ORM model or `AsyncSession` (research.md Decision
 1): `build_match_record_detail()` does the querying and converts rows into
@@ -130,6 +132,48 @@ class TempoResult:
     longest_seconds: float
     longest_score_a: int
     longest_score_b: int
+
+
+@dataclass(frozen=True)
+class PhaseCounts:
+    """One team's points won out of the points played in some phase or
+    score state."""
+
+    won: int
+    total: int
+
+
+@dataclass(frozen=True)
+class MatchPointResult:
+    """`converted_on`: which of this team's match points (1-based) ended the
+    match — None for the loser. `saved`: opponent match points this team
+    survived."""
+
+    held: int
+    converted_on: int | None
+    saved: int
+
+
+@dataclass(frozen=True)
+class StateCounts:
+    """Grouped by the score BEFORE each point was played."""
+
+    leading: PhaseCounts
+    tied: PhaseCounts
+    trailing: PhaseCounts
+
+
+@dataclass(frozen=True)
+class ClutchResult:
+    """`endgame_from`/`endgame` are None when the target is too low for an
+    "endgame" to mean anything; `deuce` is None when the match never got
+    there."""
+
+    endgame_from: int | None
+    endgame: dict[Team, PhaseCounts] | None
+    deuce: dict[Team, PhaseCounts] | None
+    match_points: dict[Team, MatchPointResult]
+    by_state: dict[Team, StateCounts]
 
 
 @dataclass
@@ -348,17 +392,104 @@ def tempo_stats(points: list[EffectivePoint]) -> TempoResult | None:
     )
 
 
-def landing_distribution(
+def _wins(score_x: int, score_y: int, target_score: int, cap_score: int) -> bool:
+    """034 research.md Decision 2: the write path's win rule
+    (`schedule.service.match_wins()`), restated because that module drags in
+    the ORM and realtime publishing. test_match_stats.py pins the two
+    together over a grid so they cannot drift apart."""
+    return score_x >= cap_score or (score_x >= target_score and score_x - score_y >= 2)
+
+
+# Below this target an "endgame" of the last three points would swallow half
+# the match or more, so the phase is reported as not applicable (FR-010).
+_ENDGAME_MIN_TARGET = 11
+_ENDGAME_WINDOW = 3
+
+
+def clutch_stats(
+    points: list[EffectivePoint], target_score: int, cap_score: int
+) -> ClutchResult:
+    """034 research.md Decision 1-3. Every phase is judged by the score a
+    point STARTS from — the previous effective point's re-accumulated score,
+    0:0 for the first. `target_score`/`cap_score` are the match's own rule
+    snapshot, so matches under different rules can be aggregated later
+    without any of them borrowing another's thresholds. A completed match
+    can only end on a converted match point (anything cut short is
+    `abandoned` and never gets here), so the winner always has
+    `converted_on == held`."""
+    endgame_from = (
+        target_score - _ENDGAME_WINDOW if target_score >= _ENDGAME_MIN_TARGET else None
+    )
+    teams: tuple[Team, Team] = ("A", "B")
+    # [won, total] per team
+    endgame: dict[Team, list[int]] = {team: [0, 0] for team in teams}
+    deuce: dict[Team, list[int]] = {team: [0, 0] for team in teams}
+    state: dict[Team, dict[str, list[int]]] = {
+        team: {"leading": [0, 0], "tied": [0, 0], "trailing": [0, 0]} for team in teams
+    }
+    held: dict[Team, int] = {"A": 0, "B": 0}
+    converted_on: dict[Team, int | None] = {"A": None, "B": None}
+
+    before: dict[Team, int] = {"A": 0, "B": 0}
+    for point in points:
+        in_endgame = endgame_from is not None and max(before.values()) >= endgame_from
+        in_deuce = min(before.values()) >= target_score - 1
+        for team in teams:
+            mine, theirs = before[team], before[_other(team)]
+            won = int(point.side == team)
+            key = "leading" if mine > theirs else "trailing" if mine < theirs else "tied"
+            for applies, tally in (
+                (True, state[team][key]),
+                (in_endgame, endgame[team]),
+                (in_deuce, deuce[team]),
+            ):
+                if applies:
+                    tally[0] += won
+                    tally[1] += 1
+            if _wins(mine + 1, theirs, target_score, cap_score):
+                held[team] += 1
+                if won:
+                    converted_on[team] = held[team]
+        before = {"A": point.score_a, "B": point.score_b}
+
+    def _phase(tallies: dict[Team, list[int]]) -> dict[Team, PhaseCounts] | None:
+        if tallies["A"][1] == 0:
+            return None
+        return {team: PhaseCounts(*tallies[team]) for team in teams}
+
+    return ClutchResult(
+        endgame_from=endgame_from,
+        endgame=_phase(endgame) if endgame_from is not None else None,
+        deuce=_phase(deuce),
+        match_points={
+            team: MatchPointResult(
+                held=held[team],
+                converted_on=converted_on[team],
+                saved=held[_other(team)] - int(converted_on[_other(team)] is not None),
+            )
+            for team in teams
+        },
+        by_state={
+            team: StateCounts(
+                leading=PhaseCounts(*state[team]["leading"]),
+                tied=PhaseCounts(*state[team]["tied"]),
+                trailing=PhaseCounts(*state[team]["trailing"]),
+            )
+            for team in teams
+        },
+    )
+
+
+def player_landings(
     points: list[EffectivePoint],
     placements: dict[uuid.UUID, Placement],
     participants: list[Participant],
-) -> list[PlayerLandingResult]:
-    """research.md Decision 7. `*_total` counts every effective point the
-    player was credited/charged with, plotted or not — the denominator that
-    tells a viewer how much of the picture the plotted points cover. Empty
-    when nobody ends up with a single plotted point, so the caller shows one
-    "no landing data" notice rather than a court per player with nothing on
-    it."""
+) -> dict[uuid.UUID, PlayerLandingResult]:
+    """Every participant's full result, insertion-ordered by `participants`.
+    `*_total` counts every effective point the player was credited/charged
+    with, plotted or not. 034's cross-match dashboard reads the totals even
+    from a match where nobody plotted a single landing, which is why this
+    has no "empty" rule of its own — see `landing_distribution()`."""
     results = {
         p.roster_entry_id: PlayerLandingResult(p.roster_entry_id, p.team) for p in participants
     }
@@ -376,7 +507,20 @@ def landing_distribution(
             loser.lost_total += 1
             if placement.landing is not None:
                 loser.lost.append(placement.landing)
+    return results
 
+
+def landing_distribution(
+    points: list[EffectivePoint],
+    placements: dict[uuid.UUID, Placement],
+    participants: list[Participant],
+) -> list[PlayerLandingResult]:
+    """research.md Decision 7. `*_total` is the denominator that tells a
+    viewer how much of the picture the plotted points cover. Empty when
+    nobody ends up with a single plotted point, so the caller shows one
+    "no landing data" notice rather than a court per player with nothing on
+    it."""
+    results = player_landings(points, placements, participants)
     if not any(result.scored or result.lost for result in results.values()):
         return []
     return list(results.values())

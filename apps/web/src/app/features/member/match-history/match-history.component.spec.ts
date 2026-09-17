@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
+import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
+import { dashboardFixture } from '../../../core/player-dashboard/dashboard-fixtures';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import { MatchHistoryComponent } from './match-history.component';
@@ -44,6 +46,8 @@ function setup(
     records?: MemberMatchRecordsResponse;
     candidates?: InviteCandidatesResponse;
     selfMemberId?: string | null;
+    dashboard?: Observable<MemberMatchDashboardResponse>;
+    dashboardCalls?: unknown[][];
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -54,6 +58,10 @@ function setup(
         provide: AuthService,
         useValue: {
           getMatchRecords: () => of(options.records ?? recordsResponse),
+          getMatchDashboard: (...args: unknown[]) => {
+            options.dashboardCalls?.push(args);
+            return options.dashboard ?? of(dashboardFixture());
+          },
           getMatchRecordDetail: (...args: unknown[]) => {
             detailCalls.push(args);
             return of(null);
@@ -163,5 +171,61 @@ describe('MatchHistoryComponent', () => {
     });
 
     expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
+  });
+
+  // 034-clutch-points-player-dashboard (T023)
+  describe('technique dashboard', () => {
+    function applyFilter(fixture: ReturnType<typeof setup>, matchMode: string): void {
+      fixture.componentInstance.filterForm.patchValue({ match_mode: matchMode });
+      fixture.componentInstance.applyFilters();
+      fixture.detectChanges();
+    }
+
+    it('is fetched once on load, with the same (empty) filters as the list', () => {
+      const dashboardCalls: unknown[][] = [];
+      const fixture = setup([], { dashboardCalls });
+
+      expect(dashboardCalls).toEqual([[{}]]);
+      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(18);
+    });
+
+    it('is fetched again when the filters change, never for a page flip', () => {
+      const dashboardCalls: unknown[][] = [];
+      const fixture = setup([], { dashboardCalls });
+
+      fixture.componentInstance.goToPage(2);
+      fixture.componentInstance.goToPage(1);
+      expect(dashboardCalls.length).toBe(1);
+
+      applyFilter(fixture, 'singles');
+      expect(dashboardCalls.length).toBe(2);
+      expect(dashboardCalls[1]).toEqual([{ match_mode: 'singles' }]);
+
+      fixture.componentInstance.goToPage(2);
+      expect(dashboardCalls.length).toBe(2);
+
+      fixture.componentInstance.clearFilters();
+      expect(dashboardCalls.length).toBe(3);
+    });
+
+    it('draws the landing court with singles lines only under the singles filter', () => {
+      const fixture = setup();
+      expect(fixture.componentInstance.singlesOnly()).toBe(false);
+
+      applyFilter(fixture, 'singles');
+      expect(fixture.componentInstance.singlesOnly()).toBe(true);
+
+      applyFilter(fixture, 'doubles');
+      expect(fixture.componentInstance.singlesOnly()).toBe(false);
+    });
+
+    it('failing leaves the record list untouched and says so inside the dashboard only', () => {
+      const fixture = setup([], { dashboard: throwError(() => new Error('boom')) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard [data-state="failed"]')).not.toBeNull();
+      expect(root.querySelector('app-player-dashboard [data-metric]')).toBeNull();
+    });
   });
 });

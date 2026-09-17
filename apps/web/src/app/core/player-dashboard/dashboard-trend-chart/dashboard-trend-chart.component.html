@@ -1,0 +1,86 @@
+@if (series(); as trend) {
+  <figure class="trend">
+    <figcaption class="trend__title">
+      {{ 'playerDashboard.trend.title' | translate: { metric: labelKey() | translate } }}
+    </figcaption>
+
+    <div class="trend__plot">
+      <span class="trend__axis trend__axis--max">{{ axisMax() }}</span>
+      <span class="trend__axis trend__axis--min">{{ axisMin() }}</span>
+      <!-- Focusable so arrow keys can walk the crosshair; the readout and
+           the table below carry the same values for everyone else. -->
+      <svg
+        class="trend__svg"
+        [attr.viewBox]="viewBox"
+        role="img"
+        tabindex="0"
+        [attr.aria-label]="
+          'playerDashboard.trend.summary'
+            | translate
+              : {
+                  metric: labelKey() | translate,
+                  from: first() ? format(first()!.point) : '—',
+                  to: last() ? format(last()!.point) : '—',
+                  count: trend.points.length,
+                }
+        "
+        (pointermove)="onPointerMove($event)"
+        (pointerleave)="resetHover()"
+        (keydown)="onKeydown($event)"
+        (blur)="resetHover()"
+      >
+        <line class="trend__grid" x1="0" [attr.x2]="width" y1="12" y2="12" />
+        <line class="trend__grid" x1="0" [attr.x2]="width" [attr.y1]="height - 12" [attr.y2]="height - 12" />
+        @if (active(); as point) {
+          <line class="trend__crosshair" [attr.x1]="point.x" [attr.x2]="point.x" y1="0" [attr.y2]="height" />
+        }
+        @for (segment of segments(); track $index) {
+          <polyline class="trend__line" [attr.points]="segment" />
+        }
+        @if (active(); as point) {
+          <circle class="trend__dot" [attr.cx]="point.x" [attr.cy]="point.y" r="4" />
+        }
+      </svg>
+    </div>
+
+    <div class="trend__range">
+      <span>{{ trend.points[0].from_ended_at | date: 'M/d' }}</span>
+      <span>{{ trend.points[trend.points.length - 1].to_ended_at | date: 'M/d' }}</span>
+    </div>
+
+    @if (active(); as point) {
+      <p class="trend__readout" aria-live="polite" data-readout>
+        <strong>{{ format(point.point) }}</strong>
+        <span>
+          {{ point.point.from_ended_at | date: 'M/d' }}–{{ point.point.to_ended_at | date: 'M/d' }}
+          · {{ point.point.numerator }}/{{ point.point.denominator }}
+        </span>
+      </p>
+    }
+    <p class="trend__note">{{ 'playerDashboard.trend.windowNote' | translate }}</p>
+
+    <details class="trend__table">
+      <summary>{{ 'playerDashboard.trend.tableView' | translate }}</summary>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">{{ 'playerDashboard.trend.tablePeriod' | translate }}</th>
+            <th scope="col">{{ 'playerDashboard.trend.tableValue' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (point of trend.points; track $index) {
+            <tr>
+              <th scope="row">
+                {{ point.from_ended_at | date: 'M/d' }}–{{ point.to_ended_at | date: 'M/d' }}
+              </th>
+              <td>{{ format(point) }} ({{ point.numerator }}/{{ point.denominator }})</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </details>
+  </figure>
+} @else {
+  <p class="trend-empty">{{ 'playerDashboard.trend.notEnough' | translate }}</p>
+}

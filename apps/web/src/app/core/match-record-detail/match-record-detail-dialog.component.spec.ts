@@ -79,6 +79,7 @@ const completeDetail: MatchRecordDetailResponse = {
   momentum_stats: null,
   tempo_stats: null,
   landing_distribution: [],
+  clutch_stats: null,
 };
 
 function setup(detail: MatchRecordDetailResponse | null, loading = false, loadError = false) {

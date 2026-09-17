@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
+import { MemberMatchDashboardResponse } from '../../core/api/player-dashboard.models';
 import {
   MatchRecordDetailResponse,
   MemberMatchRecordFilters,
@@ -124,16 +125,36 @@ export class AuthService {
     page = 1,
     filters: MemberMatchRecordFilters = {},
   ): Observable<MemberMatchRecordsResponse> {
-    const params = new URLSearchParams({ page: String(page) });
+    const params = this.withMatchFilters(new URLSearchParams({ page: String(page) }), filters);
+    return this.api.get<MemberMatchRecordsResponse>(
+      `/members/me/match-records?${params.toString()}`,
+      this.authHeader(),
+    );
+  }
+
+  /** 034-clutch-points-player-dashboard: same filters as `getMatchRecords()`,
+   * no page — the dashboard always covers the whole filtered set, so it is
+   * fetched when the filters change, never when the page does. */
+  getMatchDashboard(
+    filters: MemberMatchRecordFilters = {},
+  ): Observable<MemberMatchDashboardResponse> {
+    const query = this.withMatchFilters(new URLSearchParams(), filters).toString();
+    return this.api.get<MemberMatchDashboardResponse>(
+      `/members/me/match-dashboard${query ? `?${query}` : ''}`,
+      this.authHeader(),
+    );
+  }
+
+  private withMatchFilters(
+    params: URLSearchParams,
+    filters: MemberMatchRecordFilters,
+  ): URLSearchParams {
     for (const [key, value] of Object.entries(filters)) {
       if (value !== undefined && value !== null && value !== '') {
         params.set(key, String(value));
       }
     }
-    return this.api.get<MemberMatchRecordsResponse>(
-      `/members/me/match-records?${params.toString()}`,
-      this.authHeader(),
-    );
+    return params;
   }
 
   /** 016-match-score-timeline (US1/US2/US3): shared by the cross-group
@@ -223,6 +244,16 @@ export class AuthService {
   getFriendMatchRecords(memberId: string, page = 1): Observable<MemberMatchRecordsResponse> {
     return this.api.get<MemberMatchRecordsResponse>(
       `/members/${memberId}/match-records?page=${page}`,
+      this.authHeader(),
+    );
+  }
+
+  /** 034 US5: a friend's dashboard, behind the same per-request friendship
+   * + privacy check as `getFriendMatchRecords()`. Unfiltered, like that
+   * page. */
+  getFriendMatchDashboard(memberId: string): Observable<MemberMatchDashboardResponse> {
+    return this.api.get<MemberMatchDashboardResponse>(
+      `/members/${memberId}/match-dashboard`,
       this.authHeader(),
     );
   }

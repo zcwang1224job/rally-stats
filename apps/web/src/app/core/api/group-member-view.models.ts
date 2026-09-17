@@ -201,6 +201,50 @@ export interface PlayerLandingDistribution {
   lost_total: number;
 }
 
+// 034-clutch-points-player-dashboard: how each TEAM did when it mattered.
+// Every phase/state is judged by the score a point STARTED from.
+export interface ClutchPhaseTotals {
+  won: number;
+  total: number;
+}
+
+export interface ClutchPhaseCounts extends ClutchPhaseTotals {
+  team: Team;
+}
+
+export interface ClutchMatchPoints {
+  team: Team;
+  held: number;
+  // Which of this team's match points (1-based) ended the match; null for
+  // the loser.
+  converted_on: number | null;
+  saved: number;
+}
+
+// A `total` of 0 means "never in that state" — shown as "0/0 —", never 0%.
+export interface ClutchStateCounts {
+  team: Team;
+  leading: ClutchPhaseTotals;
+  tied: ClutchPhaseTotals;
+  trailing: ClutchPhaseTotals;
+}
+
+export interface ClutchComeback {
+  winner: Team;
+  max_deficit: number;
+  score_a: number;
+  score_b: number;
+}
+
+export interface ClutchStats {
+  endgame_from: number | null; // null: target too low for the phase to apply
+  endgame: ClutchPhaseCounts[] | null; // [A, B]; null iff endgame_from is
+  deuce: ClutchPhaseCounts[] | null; // [A, B]; null: never reached deuce
+  match_points: ClutchMatchPoints[]; // always [A, B]
+  by_state: ClutchStateCounts[]; // always [A, B]
+  comeback: ClutchComeback | null; // null: the winner never trailed
+}
+
 // `record_completeness` distinguishes three states purely derived from
 // the events themselves (research.md #3, no deploy-timestamp dependency):
 // "complete" (first event is the match's real first point), "partial"
@@ -220,6 +264,8 @@ export interface MatchRecordDetailResponse extends MatchRecordSummary {
   momentum_stats: MomentumStats | null;
   tempo_stats: TempoStats | null;
   landing_distribution: PlayerLandingDistribution[];
+  // 034: same "complete record only" rule as the four above.
+  clutch_stats: ClutchStats | null;
 }
 
 export interface RoundWinRatePoint {

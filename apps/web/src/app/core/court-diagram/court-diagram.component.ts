@@ -21,6 +21,7 @@ export interface CourtMarker {
   imports: [],
   templateUrl: './court-diagram.component.html',
   styleUrl: './court-diagram.component.scss',
+  host: { '[class.court--dense]': 'dense()' },
 })
 export class CourtDiagramComponent {
   readonly isSinglesMatch = input.required<boolean>();
@@ -29,4 +30,10 @@ export class CourtDiagramComponent {
   /** 033: many points at once, alongside (never instead of) the single
    * landing marker above — existing callers pass nothing and see no change. */
   readonly markers = input<CourtMarker[]>([]);
+  /** 034-clutch-points-player-dashboard: a cross-match distribution can
+   * carry hundreds of markers. Dense mode draws them smaller and more
+   * transparent so overlap reads as density; circle vs diamond is untouched,
+   * so the two kinds still differ by shape. Existing callers pass nothing
+   * and see no change. */
+  readonly dense = input(false);
 }

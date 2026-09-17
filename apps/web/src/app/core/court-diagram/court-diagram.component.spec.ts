@@ -77,4 +77,20 @@ describe('CourtDiagramComponent — multiple markers (033)', () => {
     expect(marker.style.left).toBe('104%');
     expect(marker.style.top).toBe('-12%');
   });
+
+  it('is not dense unless asked, and dense mode keeps both marker shapes (034)', () => {
+    const fixture = setupMarkers([
+      { x: 0.8, y: 0.2, kind: 'scored' },
+      { x: 0.1, y: 0.9, kind: 'lost' },
+    ]);
+    const host: HTMLElement = fixture.nativeElement;
+    expect(host.classList.contains('court--dense')).toBe(false);
+
+    fixture.componentRef.setInput('dense', true);
+    fixture.detectChanges();
+
+    expect(host.classList.contains('court--dense')).toBe(true);
+    expect(host.querySelectorAll('.court-marker--scored').length).toBe(1);
+    expect(host.querySelectorAll('.court-marker--lost').length).toBe(1);
+  });
 });

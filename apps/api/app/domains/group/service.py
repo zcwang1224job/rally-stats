@@ -10,7 +10,7 @@ import dataclasses
 import secrets
 import uuid
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from datetime import UTC, datetime, time, timedelta
 from itertools import permutations
 from typing import Literal
@@ -25,6 +25,11 @@ from app.domains.court.models import Court
 from app.domains.group import match_stats
 from app.domains.group.models import Group, RoundHistory
 from app.domains.group.schemas import (
+    ClutchComeback,
+    ClutchMatchPoints,
+    ClutchPhaseCounts,
+    ClutchStateCounts,
+    ClutchStats,
     CreateGroupRequest,
     EditGroupRequest,
     EditScoringSettingsRequest,
@@ -1478,9 +1483,191 @@ async def get_completed_match_or_404(session: AsyncSession, match_id: uuid.UUID)
     return match
 
 
+RecordCompleteness = Literal["complete", "partial", "none"]
+
+
+def _record_completeness(score_events: Sequence[ScoreEvent]) -> RecordCompleteness:
+    """016-match-score-timeline research.md #3, derived purely from the
+    events themselves (no deploy-timestamp dependency): no events ->
+    `"none"`; a first event at `score_a + score_b == 1` really is the
+    match's first point -> `"complete"`; otherwise recording started
+    mid-match -> `"partial"`. `score_events` MUST be in `created_at, id`
+    order."""
+    if not score_events:
+        return "none"
+    if score_events[0].score_a + score_events[0].score_b == 1:
+        return "complete"
+    return "partial"
+
+
+def _to_raw_events(
+    score_events: Sequence[ScoreEvent], started_at: datetime
+) -> list[match_stats.RawEvent]:
+    return [
+        match_stats.RawEvent(
+            event_id=event.id,
+            side=event.side,  # type: ignore[arg-type]
+            delta=event.delta,  # type: ignore[arg-type]
+            score_a=event.score_a,
+            score_b=event.score_b,
+            at_seconds=(event.created_at - started_at).total_seconds(),
+        )
+        for event in score_events
+    ]
+
+
+def _to_serve_snapshots(
+    records: Iterable[ScoreServeRecord],
+) -> dict[uuid.UUID, match_stats.ServeSnapshot]:
+    return {
+        record.score_event_id: match_stats.ServeSnapshot(
+            server_team=record.server_team,  # type: ignore[arg-type]
+            server_id=record.server_roster_entry_id,
+            team_a_right=record.team_a_right_roster_entry_id,
+            team_a_left=record.team_a_left_roster_entry_id,
+            team_b_right=record.team_b_right_roster_entry_id,
+            team_b_left=record.team_b_left_roster_entry_id,
+        )
+        for record in records
+    }
+
+
+def _to_placements(
+    placements: Iterable[ShotPlacementRecord],
+) -> dict[uuid.UUID, match_stats.Placement]:
+    return {
+        placement.score_event_id: match_stats.Placement(
+            scorer_id=placement.roster_entry_id,
+            loser_id=placement.losing_roster_entry_id,
+            landing=(
+                (placement.landing_x, placement.landing_y)
+                if placement.landing_x is not None and placement.landing_y is not None
+                else None
+            ),
+        )
+        for placement in placements
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class MatchStatInputs:
+    """One match's point-level history, already converted to `match_stats`'
+    pure inputs."""
+
+    completeness: RecordCompleteness
+    raw_events: list[match_stats.RawEvent]
+    snapshots: dict[uuid.UUID, match_stats.ServeSnapshot]
+    placements: dict[uuid.UUID, match_stats.Placement]
+
+
+_STAT_INPUT_BATCH = 500
+
+
+async def load_match_stat_inputs(
+    session: AsyncSession, matches: Sequence[Match]
+) -> dict[uuid.UUID, MatchStatInputs]:
+    """034-clutch-points-player-dashboard research.md Decision 7: the same
+    three tables `build_match_record_detail()` reads for ONE match, loaded
+    for MANY with `match_id IN (...)` — three queries per batch however many
+    matches there are, never one detail build per match. Rows go through the
+    very converters the single-match path uses, so a match contributes the
+    same numbers to the cross-match dashboard as it shows on its own
+    (FR-003). Every requested match gets an entry, event-less ones
+    included."""
+    events_by_match: dict[uuid.UUID, list[ScoreEvent]] = {match.id: [] for match in matches}
+    serve_by_match: dict[uuid.UUID, list[ScoreServeRecord]] = defaultdict(list)
+    placements_by_match: dict[uuid.UUID, list[ShotPlacementRecord]] = defaultdict(list)
+
+    match_ids = list(events_by_match)
+    for offset in range(0, len(match_ids), _STAT_INPUT_BATCH):
+        batch = match_ids[offset : offset + _STAT_INPUT_BATCH]
+        events_result = await session.execute(
+            select(ScoreEvent)
+            .where(ScoreEvent.match_id.in_(batch))
+            .order_by(ScoreEvent.match_id, ScoreEvent.created_at, ScoreEvent.id)
+        )
+        for event in events_result.scalars():
+            events_by_match[event.match_id].append(event)
+        serve_result = await session.execute(
+            select(ScoreServeRecord).where(ScoreServeRecord.match_id.in_(batch))
+        )
+        for record in serve_result.scalars():
+            serve_by_match[record.match_id].append(record)
+        placements_result = await session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id.in_(batch))
+        )
+        for placement in placements_result.scalars():
+            placements_by_match[placement.match_id].append(placement)
+
+    inputs: dict[uuid.UUID, MatchStatInputs] = {}
+    for match in matches:
+        score_events = events_by_match[match.id]
+        started_at = match.started_at
+        assert started_at is not None  # always set for completed matches
+        inputs[match.id] = MatchStatInputs(
+            completeness=_record_completeness(score_events),
+            raw_events=_to_raw_events(score_events, started_at),
+            snapshots=_to_serve_snapshots(serve_by_match[match.id]),
+            placements=_to_placements(placements_by_match[match.id]),
+        )
+    return inputs
+
+
 _DerivedStats = tuple[
-    ServeStats | None, MomentumStats | None, TempoStats | None, list[PlayerLandingDistribution]
+    ServeStats | None,
+    MomentumStats | None,
+    TempoStats | None,
+    list[PlayerLandingDistribution],
+    ClutchStats | None,
 ]
+
+
+def _clutch_stats_schema(
+    clutch: match_stats.ClutchResult,
+    momentum: match_stats.MomentumResult,
+    winner: Literal["A", "B"],
+) -> ClutchStats:
+    """`comeback` is read off 033's `max_leads` rather than recomputed: the
+    winner's deepest deficit IS the loser's biggest lead, so the two blocks
+    cannot disagree (034 research.md Decision 4)."""
+    teams: tuple[match_stats.Team, match_stats.Team] = ("A", "B")
+
+    def _phase(
+        counts: dict[match_stats.Team, match_stats.PhaseCounts] | None,
+    ) -> list[ClutchPhaseCounts] | None:
+        if counts is None:
+            return None
+        return [
+            ClutchPhaseCounts(team=team, **dataclasses.asdict(counts[team])) for team in teams
+        ]
+
+    loser_lead = next(lead for lead in momentum.max_leads if lead.team != winner)
+    comeback = (
+        ClutchComeback(
+            winner=winner,
+            max_deficit=loser_lead.margin,
+            score_a=loser_lead.score_a,
+            score_b=loser_lead.score_b,
+        )
+        if loser_lead.margin > 0
+        and loser_lead.score_a is not None
+        and loser_lead.score_b is not None
+        else None
+    )
+    return ClutchStats(
+        endgame_from=clutch.endgame_from,
+        endgame=_phase(clutch.endgame),
+        deuce=_phase(clutch.deuce),
+        match_points=[
+            ClutchMatchPoints(team=team, **dataclasses.asdict(clutch.match_points[team]))
+            for team in teams
+        ],
+        by_state=[
+            ClutchStateCounts(team=team, **dataclasses.asdict(clutch.by_state[team]))
+            for team in teams
+        ],
+        comeback=comeback,
+    )
 
 
 async def _build_derived_stats(
@@ -1497,24 +1684,12 @@ async def _build_derived_stats(
     table nothing displayed before (`ScoreServeRecord`, written since 030);
     `placements` is 032's existing query result, reused rather than
     re-queried."""
-    no_data: _DerivedStats = (None, None, None, [])
+    no_data: _DerivedStats = (None, None, None, [], None)
 
     started_at = match.started_at
     assert started_at is not None  # always set for completed matches
     points = match_stats.effective_points(
-        [
-            match_stats.RawEvent(
-                event_id=event.id,
-                side=event.side,  # type: ignore[arg-type]
-                delta=event.delta,  # type: ignore[arg-type]
-                score_a=event.score_a,
-                score_b=event.score_b,
-                at_seconds=(event.created_at - started_at).total_seconds(),
-            )
-            for event in score_events
-        ],
-        match.score_a,
-        match.score_b,
+        _to_raw_events(score_events, started_at), match.score_a, match.score_b
     )
     if points is None:
         return no_data
@@ -1529,19 +1704,7 @@ async def _build_derived_stats(
         select(ScoreServeRecord).where(ScoreServeRecord.match_id == match.id)
     )
     serve = match_stats.serve_stats(
-        points,
-        {
-            record.score_event_id: match_stats.ServeSnapshot(
-                server_team=record.server_team,  # type: ignore[arg-type]
-                server_id=record.server_roster_entry_id,
-                team_a_right=record.team_a_right_roster_entry_id,
-                team_a_left=record.team_a_left_roster_entry_id,
-                team_b_right=record.team_b_right_roster_entry_id,
-                team_b_left=record.team_b_left_roster_entry_id,
-            )
-            for record in serve_result.scalars()
-        },
-        stat_participants,
+        points, _to_serve_snapshots(serve_result.scalars()), stat_participants
     )
     serve_stats = (
         ServeStats(
@@ -1600,24 +1763,18 @@ async def _build_derived_stats(
             lost_total=player.lost_total,
         )
         for player in match_stats.landing_distribution(
-            points,
-            {
-                placement.score_event_id: match_stats.Placement(
-                    scorer_id=placement.roster_entry_id,
-                    loser_id=placement.losing_roster_entry_id,
-                    landing=(
-                        (placement.landing_x, placement.landing_y)
-                        if placement.landing_x is not None and placement.landing_y is not None
-                        else None
-                    ),
-                )
-                for placement in placements
-            },
-            stat_participants,
+            points, _to_placements(placements), stat_participants
         )
     ]
 
-    return serve_stats, momentum_stats, tempo_stats, landing_distribution
+    assert match.winner_team is not None  # always set for completed matches
+    clutch_stats = _clutch_stats_schema(
+        match_stats.clutch_stats(points, match.target_score, match.cap_score),
+        momentum,
+        match.winner_team,  # type: ignore[arg-type]
+    )
+
+    return serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats
 
 
 async def build_match_record_detail(
@@ -1648,13 +1805,7 @@ async def build_match_record_detail(
     )
     score_events = list(events_result.scalars())
 
-    completeness: Literal["complete", "partial", "none"]
-    if not score_events:
-        completeness = "none"
-    elif score_events[0].score_a + score_events[0].score_b == 1:
-        completeness = "complete"
-    else:
-        completeness = "partial"
+    completeness = _record_completeness(score_events)
 
     started_at = match.started_at
     assert started_at is not None  # always set for completed matches (see MatchRecordSummary)
@@ -1760,10 +1911,10 @@ async def build_match_record_detail(
     # 033-match-record-derived-stats FR-004: a partial/absent history gets
     # the "no data" defaults for all four blocks, never numbers computed
     # from an incomplete record.
-    serve_stats, momentum_stats, tempo_stats, landing_distribution = (
+    serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats = (
         await _build_derived_stats(session, match, summary, score_events, placements)
         if completeness == "complete"
-        else (None, None, None, [])
+        else (None, None, None, [], None)
     )
 
     return MatchRecordDetailResponse(
@@ -1775,6 +1926,7 @@ async def build_match_record_detail(
         momentum_stats=momentum_stats,
         tempo_stats=tempo_stats,
         landing_distribution=landing_distribution,
+        clutch_stats=clutch_stats,
     )
 
 

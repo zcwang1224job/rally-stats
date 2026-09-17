@@ -1,3 +1,6 @@
+@use '../derived-blocks';
+@use '../../court-diagram/landing-legend';
+
 :host {
   display: flex;
   flex-direction: column;
@@ -22,92 +25,6 @@
 
   &[open] > summary {
     margin-bottom: var(--space-sm);
-  }
-}
-
-.derived-empty,
-.derived-note {
-  color: var(--color-text-muted);
-  margin: 0;
-}
-
-.derived-note {
-  font-size: var(--font-size-caption);
-  margin-top: var(--space-sm);
-}
-
-.derived-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-
-  & + & {
-    margin-top: var(--space-md);
-  }
-
-  th,
-  td {
-    text-align: left;
-    padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
-    border-bottom: 1px solid var(--color-border);
-    vertical-align: top;
-  }
-
-  thead th {
-    color: var(--color-text-muted);
-    font-size: var(--font-size-caption);
-    font-weight: normal;
-  }
-}
-
-.derived-table__names {
-  display: block;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-caption);
-  font-weight: normal;
-}
-
-.derived-table__rate {
-  display: block;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-caption);
-}
-
-.derived-facts {
-  margin: 0;
-
-  dt {
-    color: var(--color-text-muted);
-    font-size: var(--font-size-caption);
-    margin-top: var(--space-sm);
-
-    &:first-child {
-      margin-top: 0;
-    }
-  }
-
-  dd {
-    margin: 0;
-  }
-}
-
-.derived-facts__team {
-  font-weight: var(--font-weight-bold);
-  margin-right: var(--space-xs);
-}
-
-// feature/match-record-detail-scoreboard-style: the SAME team-a/-b color
-// pair the chart, header dot, and event-list rows already key these two
-// teams to (see match-record-detail-dialog.component.scss's fuller
-// comment) — the `-border` shade, dark enough to read as text on this
-// component's plain white surface.
-.team-label {
-  &--a {
-    color: var(--color-team-a-border);
-  }
-
-  &--b {
-    color: var(--color-team-b-border);
   }
 }
 
@@ -143,62 +60,4 @@
     outline: 2px solid var(--color-brand-primary);
     outline-offset: 2px;
   }
-}
-
-.landing-toggles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs) var(--space-md);
-  margin-top: var(--space-sm);
-  font-size: var(--font-size-caption);
-
-  label {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-xs);
-    cursor: pointer;
-  }
-}
-
-// Same shapes as CourtDiagramComponent's .court-marker--scored/--lost.
-.landing-legend__shape {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-
-  &--scored {
-    border-radius: 50%;
-    background: var(--color-brand-primary);
-  }
-
-  &--lost {
-    transform: rotate(45deg);
-    background: var(--color-surface);
-    border: 2px solid var(--color-danger);
-  }
-}
-
-// An out-of-bounds landing is stored up to 0.3 court-lengths/widths outside
-// the box and must be drawn there, not clipped (FR-025). The court is twice
-// as long as it is wide, and padding percentages resolve against the
-// container's WIDTH, so: 0.3 / 1.6 inline, 0.15 / 1.6 block.
-.landing-court {
-  padding: 9.375% 18.75%;
-}
-
-.landing-coverage {
-  list-style: none;
-  margin: var(--space-sm) 0 0;
-  padding: 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-caption);
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }

@@ -607,6 +607,154 @@
       "winnerLabel": "{{names}} 獲勝"
     }
   },
+  "playerDashboard": {
+    "title": "個人技術儀表板",
+    "intro": "依目前篩選條件下的 {{total}} 場比賽計算。",
+    "introRecent": "「最近 {{window}} 場」是其中最新的 {{window}} 場。",
+    "empty": "目前沒有比賽可以統計",
+    "loading": "儀表板載入中…",
+    "failed": "儀表板載入失敗，請稍後再試",
+    "basedOn": "依據 {{used}} 場／共 {{total}} 場",
+    "serveExclusionNote": "發球統計不含每場的第一分（開賽發球方沒有紀錄），也不含發球紀錄與比分對不上的分數。",
+    "group": {
+      "serve": "發球與接發球",
+      "clutch": "關鍵分",
+      "scoring": "得失分與分差",
+      "landing": "落點分布"
+    },
+    "fraction": {
+      "perMatch": "共 {{total}}（{{matches}} 場）"
+    },
+    "recent": {
+      "label": "最近 10 場",
+      "basedOn": "依據 {{used}} 場"
+    },
+    "delta": {
+      "points": "{{delta}} 個百分點",
+      "plain": "{{delta}}"
+    },
+    "verdict": {
+      "improved": "進步",
+      "declined": "退步",
+      "unchanged": "持平",
+      "insufficient": "樣本不足"
+    },
+    "trend": {
+      "show": "查看趨勢",
+      "title": "{{metric}}的趨勢",
+      "summary": "{{metric}}的趨勢，共 {{count}} 個資料點，由 {{from}} 到 {{to}}",
+      "windowNote": "每個資料點是連續 5 場具備此資料的比賽合計，避免單場的偶然波動被誤讀；最多顯示最近 60 點。",
+      "notEnough": "比賽場數不足以呈現趨勢（此指標至少需要 6 場具備資料的比賽）",
+      "tableView": "以表格檢視",
+      "tablePeriod": "期間",
+      "tableValue": "數值"
+    },
+    "landing": {
+      "empty": "沒有落點紀錄——需要在開啟詳細計分的比賽中，由計分員標示羽球落點",
+      "rangeLabel": "落點範圍",
+      "rangeAll": "全部",
+      "rangeRecent": "最近 {{window}} 場",
+      "legendScored": "得分落點（圓形）",
+      "legendLost": "失分落點（菱形）",
+      "courtLabel": "跨場落點分布：{{scored}} 個得分落點、{{lost}} 個失分落點",
+      "mySide": "我方",
+      "opponentSide": "對手",
+      "coverageScored": "得分：已標落點 {{plotted}}／有紀錄 {{total}}",
+      "coverageLost": "失分：已標落點 {{plotted}}／有紀錄 {{total}}"
+    },
+    "metric": {
+      "team_serve": {
+        "label": "我方發球時得分率",
+        "hint": "輪到我方發球的分數裡，我方拿下幾成",
+        "empty": "需要有發球紀錄的比賽（較早期的比賽沒有）"
+      },
+      "team_receive": {
+        "label": "我方接發球時得分率",
+        "hint": "對方發球的分數裡，我方拿下幾成",
+        "empty": "需要有發球紀錄的比賽（較早期的比賽沒有）"
+      },
+      "own_serve": {
+        "label": "我親自發球時得分率",
+        "hint": "只計雙打、由我本人發球的分數",
+        "empty": "需要有發球紀錄的雙打比賽"
+      },
+      "own_receive": {
+        "label": "我親自接發球時得分率",
+        "hint": "只計雙打、由我本人接發球的分數",
+        "empty": "需要有發球紀錄的雙打比賽"
+      },
+      "points_scored": {
+        "label": "個人得分（每場）",
+        "hint": "我被記為得分球員的分數",
+        "empty": "需要開啟詳細計分、且計分員有記錄得分／失分球員的比賽"
+      },
+      "points_lost": {
+        "label": "個人失分（每場）",
+        "hint": "我被記為失分球員的分數，越低越好",
+        "empty": "需要開啟詳細計分、且計分員有記錄得分／失分球員的比賽"
+      },
+      "scored_lost_ratio": {
+        "label": "個人得失分比",
+        "hint": "個人得分 ÷ 個人失分，大於 1 代表得分多於失分",
+        "empty": "需要開啟詳細計分、且計分員有記錄得分／失分球員的比賽"
+      },
+      "endgame": {
+        "label": "局末階段得分率",
+        "hint": "任一方距目標分 3 分以內之後（21 分制為 18 分起）",
+        "empty": "需要有完整逐分紀錄的比賽，且目標分至少 11 分"
+      },
+      "deuce": {
+        "label": "平分延長得分率",
+        "hint": "雙方都到目標分前一分之後（21 分制為 20 比 20 起）",
+        "empty": "需要曾打到平分延長、且有完整逐分紀錄的比賽"
+      },
+      "match_point_conversion": {
+        "label": "賽末點兌現率",
+        "hint": "握有過賽末點的比賽裡，最後贏下幾成",
+        "empty": "需要我方握有過賽末點、且有完整逐分紀錄的比賽"
+      },
+      "match_points_saved": {
+        "label": "化解賽末點（每場）",
+        "hint": "救回對手賽末點的次數；救得多也代表面臨得多，因此不標示進步或退步",
+        "empty": "需要有完整逐分紀錄的比賽"
+      },
+      "when_leading": {
+        "label": "領先時得分率",
+        "hint": "開打前我方領先的分數",
+        "empty": "需要有完整逐分紀錄的比賽"
+      },
+      "when_tied": {
+        "label": "平手時得分率",
+        "hint": "開打前雙方平手的分數",
+        "empty": "需要有完整逐分紀錄的比賽"
+      },
+      "when_trailing": {
+        "label": "落後時得分率",
+        "hint": "開打前我方落後的分數——追分能力",
+        "empty": "需要有完整逐分紀錄的比賽"
+      },
+      "avg_points_for": {
+        "label": "平均每場得分",
+        "hint": "我方的最終比分",
+        "empty": "沒有比賽"
+      },
+      "avg_points_against": {
+        "label": "平均每場失分",
+        "hint": "對手的最終比分，越低越好",
+        "empty": "沒有比賽"
+      },
+      "avg_win_margin": {
+        "label": "贏球時平均分差",
+        "hint": "只計贏的比賽",
+        "empty": "這個範圍內沒有贏的比賽"
+      },
+      "avg_loss_margin": {
+        "label": "輸球時平均分差",
+        "hint": "只計輸的比賽，越低越好——輸得越來越接近也是進步",
+        "empty": "這個範圍內沒有輸的比賽"
+      }
+    }
+  },
   "matchRecordDetail": {
     "title": "比賽詳情",
     "close": "關閉",
@@ -639,6 +787,30 @@
       "scoredCount": "得分次數",
       "faultCount": "造成失分次數",
       "empty": "此比賽沒有球員得失分紀錄"
+    },
+    "clutch": {
+      "title": "關鍵分表現",
+      "empty": "此比賽沒有完整的加減分紀錄，無法計算關鍵分表現",
+      "endgame": "局末階段（任一方達 {{from}} 分之後）",
+      "endgameTitle": "局末階段",
+      "endgameNotApplicable": "此賽制不適用（目標分過低）",
+      "deuce": "平分延長階段",
+      "deuceNone": "本場未進入平分延長",
+      "matchPoints": "賽末點",
+      "matchPointsNeverHeld": "未曾握有賽末點",
+      "matchPointsConverted": "握有 {{held}} 次，第 {{on}} 次兌現",
+      "matchPointsNotConverted": "握有 {{held}} 次，未兌現",
+      "matchPointsSaved": "化解對手賽末點 {{saved}} 次",
+      "comeback": "逆轉",
+      "comebackByA": "A 隊最多曾落後 {{deficit}} 分（{{scoreA}}:{{scoreB}} 時）後逆轉獲勝；B 隊未能守住 {{deficit}} 分領先",
+      "comebackByB": "B 隊最多曾落後 {{deficit}} 分（{{scoreA}}:{{scoreB}} 時）後逆轉獲勝；A 隊未能守住 {{deficit}} 分領先",
+      "comebackNone": "勝方全場未曾落後",
+      "byState": "開打前的比分狀態",
+      "byStateCaption": "各隊在領先、平手、落後時的得分",
+      "whenLeading": "領先時",
+      "whenTied": "平手時",
+      "whenTrailing": "落後時",
+      "note": "每一分依「開打前」的比分歸類；關鍵分的得失以整隊計算。"
     },
     "derived": {
       "teamA": "A 隊",

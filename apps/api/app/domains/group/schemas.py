@@ -654,6 +654,53 @@ class PlayerLandingDistribution(BaseModel):
     lost_total: int
 
 
+class ClutchPhaseTotals(BaseModel):
+    won: int
+    total: int
+
+
+class ClutchPhaseCounts(ClutchPhaseTotals):
+    team: Literal["A", "B"]
+
+
+class ClutchMatchPoints(BaseModel):
+    team: Literal["A", "B"]
+    held: int
+    # Which of this team's match points (1-based) ended the match; None for
+    # the loser.
+    converted_on: int | None
+    saved: int
+
+
+class ClutchStateCounts(BaseModel):
+    """Grouped by the score BEFORE each point. A `total` of 0 means "never
+    in that state" — shown as "0/0 —", never as 0% (FR-015)."""
+
+    team: Literal["A", "B"]
+    leading: ClutchPhaseTotals
+    tied: ClutchPhaseTotals
+    trailing: ClutchPhaseTotals
+
+
+class ClutchComeback(BaseModel):
+    """The winner's deepest deficit — by construction the same number as the
+    loser's entry in `momentum_stats.max_leads` (FR-014)."""
+
+    winner: Literal["A", "B"]
+    max_deficit: int
+    score_a: int
+    score_b: int
+
+
+class ClutchStats(BaseModel):
+    endgame_from: int | None  # None: target too low for the phase to apply
+    endgame: list[ClutchPhaseCounts] | None  # [A, B], None iff endgame_from is
+    deuce: list[ClutchPhaseCounts] | None  # [A, B]; None: never reached deuce
+    match_points: list[ClutchMatchPoints]  # always [A, B]
+    by_state: list[ClutchStateCounts]  # always [A, B]
+    comeback: ClutchComeback | None  # None: the winner never trailed
+
+
 class MatchRecordDetailResponse(MatchRecordSummary):
     record_completeness: Literal["complete", "partial", "none"]
     events: list[ScoreEventSummary]
@@ -671,6 +718,9 @@ class MatchRecordDetailResponse(MatchRecordSummary):
     momentum_stats: MomentumStats | None = None
     tempo_stats: TempoStats | None = None
     landing_distribution: list[PlayerLandingDistribution] = []
+    # 034-clutch-points-player-dashboard: same "complete record only" rule
+    # as the four above.
+    clutch_stats: ClutchStats | None = None
 
 
 class RoundWinRatePoint(BaseModel):

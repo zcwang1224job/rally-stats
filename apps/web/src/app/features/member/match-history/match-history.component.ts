@@ -11,8 +11,10 @@ import {
   MemberMatchRecordFilters,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
+import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
@@ -45,6 +47,7 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
     MatchRecordDetailDialogComponent,
     NicknameComponent,
     AddFriendButtonComponent,
+    PlayerDashboardComponent,
   ],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
@@ -94,6 +97,15 @@ export class MatchHistoryComponent {
   });
 
   private readonly appliedFilters = signal<MemberMatchRecordFilters>({});
+
+  /** 034-clutch-points-player-dashboard: the cross-match dashboard, always
+   * over the same filters as `records`. */
+  readonly dashboard = signal<MemberMatchDashboardResponse | null>(null);
+  readonly dashboardLoading = signal(false);
+  readonly dashboardFailed = signal(false);
+  /** The landing court draws singles lines only when every match is one. */
+  readonly singlesOnly = computed(() => this.appliedFilters().match_mode === 'singles');
+  private dashboardFiltersKey: string | null = null;
   readonly hasActiveFilters = computed(
     () => Object.keys(this.appliedFilters()).length > 0,
   );
@@ -223,12 +235,46 @@ export class MatchHistoryComponent {
       match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
     };
     this.appliedFilters.set(filters);
+    this.loadDashboard(filters);
     this.auth.getMatchRecords(page, filters).subscribe({
       next: (response) => {
         this.records.set(response);
         this.loadInviteCandidates(response);
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+    });
+  }
+
+  /** The dashboard reads every match's point log, so it is fetched when the
+   * FILTERS change — never for a mere page flip. Keyed on the filters that
+   * were actually sent rather than on which button was pressed, because
+   * `load()` re-reads the form on a page flip too: whatever path changed
+   * the list's filters, the dashboard follows. */
+  private loadDashboard(filters: MemberMatchRecordFilters): void {
+    const key = JSON.stringify(filters);
+    if (key === this.dashboardFiltersKey) {
+      return;
+    }
+    this.dashboardFiltersKey = key;
+    this.dashboardLoading.set(true);
+    this.dashboardFailed.set(false);
+    this.auth.getMatchDashboard(filters).subscribe({
+      next: (response) => {
+        if (key !== this.dashboardFiltersKey) {
+          return; // a newer request has been sent since
+        }
+        this.dashboard.set(response);
+        this.dashboardLoading.set(false);
+      },
+      error: () => {
+        if (key !== this.dashboardFiltersKey) {
+          return;
+        }
+        this.dashboard.set(null);
+        this.dashboardFailed.set(true);
+        this.dashboardLoading.set(false);
+        this.dashboardFiltersKey = null; // let the next load retry
+      },
     });
   }
 

@@ -7,10 +7,14 @@ import {
 } from '../../api/group-member-view.models';
 import { CourtDiagramComponent, CourtMarker } from '../../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../../nickname/nickname.component';
+import { MatchClutchStatsComponent } from '../match-clutch-stats/match-clutch-stats.component';
+import { percentOrDash } from '../ratio-format';
 
-/** 033-match-record-derived-stats: the four derived blocks of the match
- * detail dialog — serve/receive win rate, momentum, per-point tempo, and
- * per-player landing distribution. **Purely presentational**: every number
+/** 033-match-record-derived-stats: the derived blocks of the match detail
+ * dialog — serve/receive win rate, momentum, per-point tempo, and per-player
+ * landing distribution — plus 034's clutch-point block, which lives in its
+ * own `MatchClutchStatsComponent` and is only hosted here.
+ * **Purely presentational**: every number
  * arrives already computed on `detail` (the rules — which points still
  * stand after a correction, who was serving — exist once, on the backend);
  * the only arithmetic here is turning won/total into a percentage.
@@ -21,7 +25,7 @@ import { NicknameComponent } from '../../nickname/nickname.component';
  * data never blanks the others. */
 @Component({
   selector: 'app-match-derived-stats',
-  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent],
+  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent, MatchClutchStatsComponent],
   templateUrl: './match-derived-stats.component.html',
   styleUrl: './match-derived-stats.component.scss',
 })
@@ -76,10 +80,7 @@ export class MatchDerivedStatsComponent {
     return team === 'A' ? 'matchRecordDetail.derived.teamA' : 'matchRecordDetail.derived.teamB';
   }
 
-  /** "—" for a zero total: 0% would claim a rate that was never measured. */
-  percent(won: number, total: number): string {
-    return total === 0 ? '—' : `${Math.round((won / total) * 100)}%`;
-  }
+  readonly percent = percentOrDash;
 
   /** Key + params for the template's translate pipe — no copy is assembled
    * here. Under a minute keeps the one decimal the average carries; from a

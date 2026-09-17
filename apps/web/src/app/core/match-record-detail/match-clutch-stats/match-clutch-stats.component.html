@@ -1,0 +1,125 @@
+@if (clutchStats(); as clutch) {
+  <dl class="derived-facts">
+    <dt data-fact="endgame">
+      @if (clutch.endgame_from !== null) {
+        {{ 'matchRecordDetail.clutch.endgame' | translate: { from: clutch.endgame_from } }}
+      } @else {
+        {{ 'matchRecordDetail.clutch.endgameTitle' | translate }}
+      }
+    </dt>
+    @if (clutch.endgame; as endgame) {
+      @for (row of endgame; track row.team) {
+        <dd data-fact-row="endgame">
+          <span
+            class="derived-facts__team team-label"
+            [class.team-label--a]="row.team === 'A'"
+            [class.team-label--b]="row.team === 'B'"
+            >{{ teamLabelKey(row.team) | translate }}</span
+          >
+          {{ row.won }}/{{ row.total }}
+          <span class="clutch-rate">{{ percent(row.won, row.total) }}</span>
+        </dd>
+      }
+    } @else {
+      <dd data-fact-row="endgame">{{ 'matchRecordDetail.clutch.endgameNotApplicable' | translate }}</dd>
+    }
+
+    <dt data-fact="deuce">{{ 'matchRecordDetail.clutch.deuce' | translate }}</dt>
+    @if (clutch.deuce; as deuce) {
+      @for (row of deuce; track row.team) {
+        <dd data-fact-row="deuce">
+          <span
+            class="derived-facts__team team-label"
+            [class.team-label--a]="row.team === 'A'"
+            [class.team-label--b]="row.team === 'B'"
+            >{{ teamLabelKey(row.team) | translate }}</span
+          >
+          {{ row.won }}/{{ row.total }}
+          <span class="clutch-rate">{{ percent(row.won, row.total) }}</span>
+        </dd>
+      }
+    } @else {
+      <dd data-fact-row="deuce">{{ 'matchRecordDetail.clutch.deuceNone' | translate }}</dd>
+    }
+
+    <dt data-fact="match-points">{{ 'matchRecordDetail.clutch.matchPoints' | translate }}</dt>
+    @for (row of clutch.match_points; track row.team) {
+      <dd data-fact-row="match-points">
+        <span
+          class="derived-facts__team team-label"
+          [class.team-label--a]="row.team === 'A'"
+          [class.team-label--b]="row.team === 'B'"
+          >{{ teamLabelKey(row.team) | translate }}</span
+        >
+        @if (row.held === 0) {
+          {{ 'matchRecordDetail.clutch.matchPointsNeverHeld' | translate }}
+        } @else if (row.converted_on !== null) {
+          {{
+            'matchRecordDetail.clutch.matchPointsConverted'
+              | translate: { held: row.held, on: row.converted_on }
+          }}
+        } @else {
+          {{ 'matchRecordDetail.clutch.matchPointsNotConverted' | translate: { held: row.held } }}
+        }
+        @if (row.saved > 0) {
+          <span class="clutch-rate">
+            {{ 'matchRecordDetail.clutch.matchPointsSaved' | translate: { saved: row.saved } }}
+          </span>
+        }
+      </dd>
+    }
+
+    <dt data-fact="comeback">{{ 'matchRecordDetail.clutch.comeback' | translate }}</dt>
+    <dd data-fact-row="comeback">
+      @if (clutch.comeback; as comeback) {
+        {{
+          (comeback.winner === 'A'
+            ? 'matchRecordDetail.clutch.comebackByA'
+            : 'matchRecordDetail.clutch.comebackByB'
+          )
+            | translate
+              : { deficit: comeback.max_deficit, scoreA: comeback.score_a, scoreB: comeback.score_b }
+        }}
+      } @else {
+        {{ 'matchRecordDetail.clutch.comebackNone' | translate }}
+      }
+    </dd>
+  </dl>
+
+  <table class="derived-table clutch-state-table" data-table="by-state">
+    <caption class="visually-hidden">
+      {{ 'matchRecordDetail.clutch.byStateCaption' | translate }}
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">{{ 'matchRecordDetail.clutch.byState' | translate }}</th>
+        <th scope="col">{{ 'matchRecordDetail.clutch.whenLeading' | translate }}</th>
+        <th scope="col">{{ 'matchRecordDetail.clutch.whenTied' | translate }}</th>
+        <th scope="col">{{ 'matchRecordDetail.clutch.whenTrailing' | translate }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      @for (row of clutch.by_state; track row.team) {
+        <tr>
+          <th scope="row">
+            <span
+              class="team-label"
+              [class.team-label--a]="row.team === 'A'"
+              [class.team-label--b]="row.team === 'B'"
+              >{{ teamLabelKey(row.team) | translate }}</span
+            >
+          </th>
+          @for (cell of [row.leading, row.tied, row.trailing]; track $index) {
+            <td>
+              {{ cell.won }}/{{ cell.total }}
+              <span class="derived-table__rate">{{ percent(cell.won, cell.total) }}</span>
+            </td>
+          }
+        </tr>
+      }
+    </tbody>
+  </table>
+  <p class="derived-note">{{ 'matchRecordDetail.clutch.note' | translate }}</p>
+} @else {
+  <p class="derived-empty">{{ 'matchRecordDetail.clutch.empty' | translate }}</p>
+}

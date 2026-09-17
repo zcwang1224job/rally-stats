@@ -1,0 +1,147 @@
+:host {
+  display: block;
+}
+
+.trend {
+  margin: 0;
+  // The plot keeps its aspect ratio, so an uncapped width makes a handful of
+  // points tower over the cards on a desktop.
+  max-width: 36rem;
+}
+
+.trend__title {
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--space-xs);
+}
+
+.trend__plot {
+  position: relative;
+  // Room for the two axis labels, which sit outside the plot rather than
+  // on top of the line.
+  padding-left: 3rem;
+}
+
+.trend__axis {
+  position: absolute;
+  left: 0;
+  width: 2.5rem;
+  text-align: right;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+
+  &--max {
+    top: 6px;
+  }
+
+  &--min {
+    bottom: 6px;
+  }
+}
+
+.trend__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  // Dragging a finger along the line should move the crosshair, not scroll
+  // the page sideways.
+  touch-action: pan-y;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+}
+
+// Recessive chrome: hairline, solid, one step off the surface.
+.trend__grid,
+.trend__crosshair {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.trend__crosshair {
+  stroke: var(--color-text-muted);
+}
+
+.trend__line {
+  fill: none;
+  stroke: var(--color-brand-primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+// The marker carries a ring in the surface colour so it stays legible where
+// it sits on the line.
+.trend__dot {
+  fill: var(--color-brand-primary);
+  stroke: var(--color-surface);
+  stroke-width: 2;
+}
+
+.trend__range {
+  display: flex;
+  justify-content: space-between;
+  padding-left: 3rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// Values wear text tokens, never the series colour.
+.trend__readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0 0;
+
+  span {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-caption);
+  }
+}
+
+.trend__note,
+.trend-empty {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.trend-empty {
+  font-size: var(--font-size-body);
+}
+
+.trend__table {
+  margin-top: var(--space-sm);
+  font-size: var(--font-size-caption);
+
+  summary {
+    cursor: pointer;
+    color: var(--color-text-muted);
+    padding: var(--space-xs) 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th,
+  td {
+    text-align: left;
+    font-weight: normal;
+    padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  thead th {
+    color: var(--color-text-muted);
+  }
+}
