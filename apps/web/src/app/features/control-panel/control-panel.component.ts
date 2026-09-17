@@ -5,13 +5,12 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
-import { CourtStateResponse, Team } from '../../core/api/court-live-state.models';
+import { CourtStateResponse, MatchLiveDetail, Team } from '../../core/api/court-live-state.models';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { getScoreSwapPreference, setScoreSwapPreference } from '../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
-import { LanguageSwitcherComponent } from '../../core/language/language-switcher.component';
 import {
   ShotPlacementConfirmed,
   ShotPlacementPickerComponent,
@@ -22,7 +21,7 @@ import {
  * US1/US2）。 */
 @Component({
   selector: 'app-control-panel',
-  imports: [TranslatePipe, ConfirmDialogComponent, LanguageSwitcherComponent, ShotPlacementPickerComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent],
   templateUrl: './control-panel.component.html',
   styleUrl: './control-panel.component.scss',
 })
@@ -62,6 +61,15 @@ export class ControlPanelComponent {
   readonly leftTeam = computed<Team>(() => (this.swapped() ? 'B' : 'A'));
   readonly rightTeam = computed<Team>(() => (this.swapped() ? 'A' : 'B'));
 
+  // feature/control-panel-scoreboard-style: same "pop" animation on a
+  // genuine score change as ScoreboardComponent — see its identical field
+  // for the full rationale. Keyed on the actual A/B side (not the visual
+  // left/right slot, which can be swapped) since score_a/score_b are
+  // always A/B regardless of which slot currently shows them.
+  readonly scorePulseA = signal(false);
+  readonly scorePulseB = signal(false);
+  private readonly pulseTimeouts: Partial<Record<Team, ReturnType<typeof setTimeout>>> = {};
+
   constructor() {
     // FR-024: 重新連線後強制拉取最新完整狀態覆蓋本地暫存，不信任斷線
     // 期間可能累積的本地分數。
@@ -95,6 +103,19 @@ export class ControlPanelComponent {
       });
   }
 
+  /** Restarts the CSS pulse animation on `side`'s score even if it's still
+   * mid-animation from a previous change — see ScoreboardComponent's
+   * identical method for the full rationale. */
+  private triggerScorePulse(side: Team): void {
+    const pulseSignal = side === 'A' ? this.scorePulseA : this.scorePulseB;
+    clearTimeout(this.pulseTimeouts[side]);
+    pulseSignal.set(false);
+    requestAnimationFrame(() => {
+      pulseSignal.set(true);
+      this.pulseTimeouts[side] = setTimeout(() => pulseSignal.set(false), 1200);
+    });
+  }
+
   private loadState(): void {
     this.courtControl
       .getState(this.token)
@@ -119,12 +140,28 @@ export class ControlPanelComponent {
       .subscribe(this.subscribedChannel, 'match.scoreUpdated')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((message) => {
-        const data = message.data as { match_id: string; score_a: number; score_b: number };
+        const data = message.data as {
+          match_id: string;
+          score_a: number;
+          score_b: number;
+          serve: MatchLiveDetail['serve'];
+        };
         const state = this.liveState();
         if (state?.current_match?.match_id === data.match_id) {
+          if (data.score_a !== state.current_match.score_a) {
+            this.triggerScorePulse('A');
+          }
+          if (data.score_b !== state.current_match.score_b) {
+            this.triggerScorePulse('B');
+          }
           this.liveState.set({
             ...state,
-            current_match: { ...state.current_match, score_a: data.score_a, score_b: data.score_b },
+            current_match: {
+              ...state.current_match,
+              score_a: data.score_a,
+              score_b: data.score_b,
+              serve: data.serve,
+            },
           });
         }
       });
@@ -145,6 +182,60 @@ export class ControlPanelComponent {
       .subscribe(() => this.loadState());
   }
 
+  /** feature/control-panel-scoreboard-style: resolves one of the four
+   * station slots for `team`'s top/bottom pill. `slot` names a fixed
+   * SCREEN position (the block's top edge vs. bottom edge), not a
+   * badminton-sense left/right court — teams face each other across the
+   * net, so team A's own right service court and team B's own right
+   * service court sit on OPPOSITE physical sidelines (see
+   * ScoreboardComponent.html's identical comment): binding `_right` to
+   * the bottom slot for A but to the TOP slot for B (and vice versa) is
+   * what keeps a station's left/right consistent with the real court.
+   * This mapping is per-TEAM, not per-screen-half — control-panel
+   * additionally lets the scorer swap which half each team renders in
+   * (`leftTeam()`/`rightTeam()`), but swapping only moves a team
+   * sideways, it never changes which direction that team actually
+   * faces, so the top/bottom mirroring must follow the team, not the
+   * slot it's currently drawn in. */
+  serveRosterId(match: MatchLiveDetail, team: Team, slot: 'top' | 'bottom'): string | null {
+    const serve = match.serve;
+    if (!serve) {
+      return null;
+    }
+    if (team === 'A') {
+      return slot === 'top'
+        ? serve.team_a_left_roster_entry_id
+        : serve.team_a_right_roster_entry_id;
+    }
+    return slot === 'top'
+      ? serve.team_b_right_roster_entry_id
+      : serve.team_b_left_roster_entry_id;
+  }
+
+  /** A station pill is a fixed-size chip in a court corner, not a name
+   * list — displayName truncates to the first 2 characters so a long
+   * nickname never forces the pill (or the court markings around it) to
+   * grow or wrap; `nickname` (the untruncated original) is kept alongside
+   * it for the pill's aria-label, so screen readers still get the full
+   * name even though the visible text doesn't. */
+  station(
+    match: MatchLiveDetail,
+    rosterEntryId: string | null,
+  ): { nickname: string; displayName: string; isServer: boolean } | null {
+    if (!rosterEntryId) {
+      return null;
+    }
+    const participant = match.participants.find((p) => p.roster_entry_id === rosterEntryId);
+    if (!participant) {
+      return null;
+    }
+    return {
+      nickname: participant.nickname,
+      displayName: participant.nickname.slice(0, 2),
+      isServer: match.serve?.server_roster_entry_id === rosterEntryId,
+    };
+  }
+
   score(side: Team, delta: 1 | -1): void {
     if (this.connectionState() !== 'connected') {
       return; // FR-023: 離線期間不允許操作
@@ -159,12 +250,14 @@ export class ControlPanelComponent {
       .subscribe((result) => {
         const state = this.liveState();
         if (state?.current_match?.match_id === result.match_id && result.status === 'in_progress') {
+          this.triggerScorePulse(side);
           this.liveState.set({
             ...state,
             current_match: {
               ...state.current_match,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           });
         }
@@ -175,6 +268,14 @@ export class ControlPanelComponent {
    * recording detail for — set right before open() below, bound to the
    * picker's `scoringTeam` input in the template. */
   readonly pendingScoringSide = signal<Team>('A');
+  /** Who was serving THIS rally — captured from `currentMatch.serve` right
+   * BEFORE the point below is applied (not the response's post-point
+   * value, which always equals `side`: the winner always serves next in
+   * badminton, so it could never distinguish a side-out from a server who
+   * just won their own rally). Bound to the picker's `servingTeam` input,
+   * which uses it to stop treating an own-serve win as a possible "serve
+   * fault". */
+  readonly pendingServingTeam = signal<Team | null>(null);
   // Captured once, right when the point is scored — onShotPlacementConfirmed()
   // and onShotPlacementCancelled() below use these rather than re-deriving
   // "the current match" from liveState()/frozenState() at the time the
@@ -230,12 +331,14 @@ export class ControlPanelComponent {
             this.frozenState.set(null); // nothing to protect — release right away
             return;
           }
+          this.triggerScorePulse(side);
           const patched: CourtStateResponse = {
             ...state,
             current_match: {
               ...currentMatch,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           };
           // For a plain continuing point also commit the patch to the real
@@ -251,6 +354,7 @@ export class ControlPanelComponent {
             this.pendingMatchId = matchId;
             this.pendingScoreEventId = result.score_event_id;
             this.pendingScoringSide.set(side);
+            this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
             this.pendingMatchCompleted = result.status !== 'in_progress';
             this.cancelScoreErrorKey.set(null);
             this.shotPlacementPicker()?.open();
@@ -333,12 +437,14 @@ export class ControlPanelComponent {
         this.pendingScoreEventId = null;
         const state = this.liveState();
         if (state?.current_match?.match_id === result.match_id && result.status === 'in_progress') {
+          this.triggerScorePulse(side);
           this.liveState.set({
             ...state,
             current_match: {
               ...state.current_match,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           });
         }

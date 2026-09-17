@@ -48,7 +48,11 @@ function tap(target: Element, clientX: number, clientY: number): void {
 /** 032-score-then-record: `scoringTeam` defaults to 'A' — the caller (a
  * wiring component) always sets it before open() to whichever side's "+"
  * was just pressed and already scored. */
-function setup(participantsList: ParticipantSummary[] = participants, scoringTeam: Team = 'A') {
+function setup(
+  participantsList: ParticipantSummary[] = participants,
+  scoringTeam: Team = 'A',
+  servingTeam: Team | null = null,
+) {
   TestBed.configureTestingModule({
     imports: [ShotPlacementPickerComponent],
     providers: [provideTranslateService({})],
@@ -56,6 +60,7 @@ function setup(participantsList: ParticipantSummary[] = participants, scoringTea
   const fixture = TestBed.createComponent(ShotPlacementPickerComponent);
   fixture.componentRef.setInput('participants', participantsList);
   fixture.componentRef.setInput('scoringTeam', scoringTeam);
+  fixture.componentRef.setInput('servingTeam', servingTeam);
   fixture.detectChanges();
   const courtAreaEl: HTMLDivElement = fixture.nativeElement.querySelector('.court-area');
   const courtEl: HTMLDivElement = fixture.nativeElement.querySelector('.court');
@@ -360,6 +365,32 @@ describe('ShotPlacementPickerComponent', () => {
     expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
   });
 
+  it('conflicts (not a fault) for a short-serve-fault-zone landing when the credited side was itself serving', () => {
+    // A won this rally while already serving (no side-out) — a landing on
+    // A's own half here can't be explained by "the opponent's serve
+    // faulted", since A wasn't receiving. This must fall through to a
+    // genuine conflict instead of being read as a fault.
+    const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+    tap(courtAreaEl, 140, 75); // same short-serve-fault-zone landing as above
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual([]);
+    expect(nicknames(losingButtons(fixture))).toEqual([]);
+    expect(fixture.nativeElement.querySelector('.status-badge')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.hint--warning')).not.toBeNull();
+  });
+
+  it('still treats it as a fault when the credited side was receiving (servingTeam is the other team)', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A', 'B');
+
+    tap(courtAreaEl, 140, 75);
+    fixture.detectChanges();
+
+    expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
+    expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
+  });
+
   it('still conflicts for the identical deep landing in a singles match (no long-fault zone)', () => {
     const { fixture, courtAreaEl } = setup(singlesParticipants, 'A');
 
@@ -514,6 +545,74 @@ describe('ShotPlacementPickerComponent', () => {
     // x=0.25 is A's own half -> contradicts A already being credited.
     expect(nicknames(scoringButtons(fixture))).toEqual([]);
     expect(nicknames(losingButtons(fixture))).toEqual([]);
+  });
+
+  // --- singles pre-selects the sole player on each side -------------------
+
+  it('pre-selects the only possible scoring and losing player in a singles match, with no tap needed', () => {
+    const { fixture } = setup(singlesParticipants, 'A');
+
+    const selected = fixture.nativeElement.querySelectorAll('.player--selected');
+    expect(Array.from(selected).map((el) => (el as HTMLElement).textContent?.trim())).toEqual([
+      '陳甲',
+      '徐丙',
+    ]);
+  });
+
+  it('confirm() in a singles match sends both players without the scorer picking either', () => {
+    const { fixture, courtAreaEl } = setup(singlesParticipants, 'A');
+    const confirmedSpy = vi.fn();
+    fixture.componentInstance.confirmed.subscribe(confirmedSpy);
+
+    tap(courtAreaEl, 200, 75); // x=0.75, B's half — consistent with A credited
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('.actions button:last-of-type').click();
+
+    expect(confirmedSpy).toHaveBeenCalledWith({
+      rosterEntryId: 'p1',
+      losingRosterEntryId: 'p3',
+      landingX: 0.75,
+      landingY: 0.5,
+    });
+  });
+
+  it('still lets the scorer override the pre-selected singles player', () => {
+    // A degenerate case (a "singles" match somehow has 2 players still
+    // listed on one team) but confirms the pre-select never locks the pick.
+    const threePlayers: ParticipantSummary[] = [
+      { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+      { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+      { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+    ];
+    const { fixture } = setup(threePlayers, 'A');
+
+    // Team B's pool has exactly one player (p3) and is pre-selected...
+    expect(nicknames(losingButtons(fixture))).toEqual(['徐丙']);
+    expect(fixture.nativeElement.querySelectorAll('.player--selected')[0].textContent?.trim()).toBe(
+      '徐丙',
+    );
+    // ...but team A's pool has two, so nothing is pre-selected there, and a
+    // manual pick still works normally.
+    expect(fixture.nativeElement.querySelectorAll('.player--selected').length).toBe(1);
+    scoringButtons(fixture)[1].click(); // p2
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.player--selected').length).toBe(2);
+  });
+
+  it('re-opening the dialog re-selects the sole singles player after the reset', () => {
+    const { fixture } = setup(singlesParticipants, 'A');
+
+    scoringButtons(fixture)[0].click(); // already pre-selected, but exercise a real pick too
+    fixture.detectChanges();
+
+    fixture.componentInstance.open();
+    fixture.detectChanges();
+
+    const selected = fixture.nativeElement.querySelectorAll('.player--selected');
+    expect(Array.from(selected).map((el) => (el as HTMLElement).textContent?.trim())).toEqual([
+      '陳甲',
+      '徐丙',
+    ]);
   });
 
   it('shades the out-of-play strip for a singles match', () => {

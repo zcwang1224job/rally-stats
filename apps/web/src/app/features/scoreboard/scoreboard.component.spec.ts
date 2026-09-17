@@ -136,6 +136,33 @@ describe('ScoreboardComponent', () => {
     expect(teamB.querySelector('.score').textContent).toContain('7');
   });
 
+  it('truncates a long nickname to its first 2 characters, keeping the full name as the pill\'s aria-label', () => {
+    const fixture = setup({
+      court_id: 'c1',
+      round_number: 1,
+      current_match: {
+        match_id: 'm1',
+        status: 'in_progress',
+        score_a: 5,
+        score_b: 7,
+        participants: [
+          { roster_entry_id: 'p1', nickname: '陳大文豪', team: 'A' },
+          { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' },
+          { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' },
+          { roster_entry_id: 'p4', nickname: '李丁', team: 'B' },
+        ],
+        serve: { ...doublesServe, server_roster_entry_id: 'p1' },
+      },
+      waiting_reason: null,
+      next_up: null,
+    });
+
+    const longStation = fixture.nativeElement.querySelector('.station--server');
+    expect(longStation.textContent).toContain('陳大');
+    expect(longStation.textContent).not.toContain('陳大文豪');
+    expect(longStation.getAttribute('aria-label')).toBe('陳大文豪');
+  });
+
   it('singles match: each team panel shows exactly one station, the other stays blank', () => {
     const fixture = setup({
       court_id: 'c1',
@@ -295,6 +322,36 @@ describe('ScoreboardComponent', () => {
     expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.team--a .score').textContent).toContain('2');
+  });
+
+  it('updates the station display from the score response itself, without waiting on a realtime echo', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true,
+        match_id: 'm1',
+        status: 'in_progress',
+        score_a: 2,
+        score_b: 2,
+        winner_team: null,
+        serve: {
+          server_roster_entry_id: 'p2',
+          server_team: 'B',
+          team_a_right_roster_entry_id: 'p1',
+          team_a_left_roster_entry_id: null,
+          team_b_right_roster_entry_id: null,
+          team_b_left_roster_entry_id: 'p2',
+        },
+      }),
+    );
+    const fixture = setup(scoringMatchState, true, { score: scoreSpy });
+    expect(fixture.nativeElement.querySelector('.station--server')).toBeNull();
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    fixture.detectChanges();
+
+    const serverStation = fixture.nativeElement.querySelector('.station--server');
+    expect(serverStation).not.toBeNull();
+    expect(serverStation.textContent).toContain('徐丙');
   });
 
   it('pulses team A\'s score after a successful local +1, not team B\'s', async () => {

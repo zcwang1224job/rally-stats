@@ -47,15 +47,14 @@ function reconnectStub() {
   return { onReconnect: () => EMPTY };
 }
 
-/** 010-app-wide-ui-redesign FR-005: score centered, each team's +1/-1
- * flanking it on the outside (team A's buttons before its score-block in DOM
- * order, team B's buttons after its score-block) — this is what makes both
- * scores land adjacent in the middle under a plain flex row. `.score-block`
- * groups the score with its own team's nickname(s) (added so the color
- * block can be matched to a player at a glance) — it's the unit that
- * flanks, in place of the bare `.score` this test originally checked. */
-describe('ControlPanelComponent score-board button placement (US2 FR-005)', () => {
-  it('team A renders buttons before the score-block; team B renders the score-block before its buttons', () => {
+/** feature/control-panel-scoreboard-style: supersedes the old US2 FR-005
+ * contract (each team's +1/-1 flanking its score inside `.team`) — the panel
+ * now mirrors scoreboard.component's layout instead: the score sits centered
+ * in each `.team-center` and the scoring buttons render in a single
+ * `.scoring-controls` section below `.board-main` (the court), never inside
+ * `.team` itself, so they can never draw on top of the court markings. */
+describe('ControlPanelComponent score-board layout (scoreboard-style)', () => {
+  it('renders the score centered in each team and the scoring buttons below the court', () => {
     TestBed.configureTestingModule({
       imports: [ControlPanelComponent],
       providers: [
@@ -101,12 +100,177 @@ describe('ControlPanelComponent score-board button placement (US2 FR-005)', () =
 
     const teamA = fixture.nativeElement.querySelector('.team--a');
     const teamB = fixture.nativeElement.querySelector('.team--b');
-    expect(teamA.children[0].classList.contains('buttons')).toBe(true);
-    expect(teamA.children[1].classList.contains('score-block')).toBe(true);
-    expect(teamA.querySelector('.score-block .score')).not.toBeNull();
-    expect(teamB.children[0].classList.contains('score-block')).toBe(true);
-    expect(teamB.children[1].classList.contains('buttons')).toBe(true);
-    expect(teamB.querySelector('.score-block .score')).not.toBeNull();
+    expect(teamA.querySelector('.buttons')).toBeNull();
+    expect(teamB.querySelector('.buttons')).toBeNull();
+    expect(teamA.querySelector('.team-center .score')).not.toBeNull();
+    expect(teamB.querySelector('.team-center .score')).not.toBeNull();
+
+    const scoringControls = fixture.nativeElement.querySelector('.scoring-controls');
+    expect(scoringControls).not.toBeNull();
+    expect(scoringControls.querySelectorAll('.buttons').length).toBe(2);
+
+    const boardMain = fixture.nativeElement.querySelector('.board-main');
+    // .scoring-controls must be a later sibling of .board-main (the court),
+    // never nested inside it — DOCUMENT_POSITION_FOLLOWING (4) confirms it
+    // comes after, not that it is contained within.
+    expect(
+      boardMain.compareDocumentPosition(scoringControls) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+});
+
+/** Teams face each other across the net, so each team's own right/left
+ * service court sits on OPPOSITE physical sidelines (see
+ * ScoreboardComponent.html's comment) — team A: left→top, right→bottom;
+ * team B: right→top, left→bottom. This mapping must follow team IDENTITY,
+ * not which screen half currently renders that team, since toggleSwap()
+ * only moves a team sideways and never changes which direction it faces. */
+describe('ControlPanelComponent mirrors each team\'s own left/right service court (station top/bottom)', () => {
+  const doublesServe = {
+    server_roster_entry_id: 'p1',
+    server_team: 'A' as const,
+    team_a_right_roster_entry_id: 'p1',
+    team_a_left_roster_entry_id: 'p2',
+    team_b_right_roster_entry_id: 'p3',
+    team_b_left_roster_entry_id: 'p4',
+  };
+
+  function setupWithServe(p1Nickname = '陳甲', scoreSpy = vi.fn()) {
+    TestBed.configureTestingModule({
+      imports: [ControlPanelComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ courtToken: 'tok' }) } },
+        },
+        {
+          provide: LinkHeartbeatService,
+          useValue: {
+            watchCourtLink: () =>
+              of({
+                court_id: 'c1',
+                group_id: 'g1',
+                name: '1號場',
+                link_type: 'control_panel',
+                link_version: 0,
+                deleted: false,
+                group_disbanded: false,
+              }),
+          },
+        },
+        { provide: RealtimeService, useFactory: realtimeStub },
+        { provide: ReconnectRefetchService, useFactory: reconnectStub },
+        {
+          provide: CourtControlService,
+          useValue: {
+            getState: () =>
+              of({
+                ...courtStateResponse,
+                current_match: {
+                  match_id: 'm1',
+                  status: 'in_progress' as const,
+                  score_a: 5,
+                  score_b: 7,
+                  participants: [
+                    { roster_entry_id: 'p1', nickname: p1Nickname, team: 'A' as const },
+                    { roster_entry_id: 'p2', nickname: '劉乙', team: 'A' as const },
+                    { roster_entry_id: 'p3', nickname: '徐丙', team: 'B' as const },
+                    { roster_entry_id: 'p4', nickname: '李丁', team: 'B' as const },
+                  ],
+                  serve: doublesServe,
+                },
+              }),
+            score: scoreSpy,
+          },
+        },
+        { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ControlPanelComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('unswapped: team A top=left-court player, bottom=right-court player; team B mirrored', () => {
+    const fixture = setupWithServe();
+
+    const teamA = fixture.nativeElement.querySelector('.team--a');
+    const teamB = fixture.nativeElement.querySelector('.team--b');
+    expect(teamA.querySelector('.station--top').textContent).toContain('劉乙'); // team_a_left
+    expect(teamA.querySelector('.station--bottom').textContent).toContain('陳甲'); // team_a_right
+    expect(teamB.querySelector('.station--top').textContent).toContain('徐丙'); // team_b_right
+    expect(teamB.querySelector('.station--bottom').textContent).toContain('李丁'); // team_b_left
+  });
+
+  it('swapped: the mapping follows each team, not the screen half it now renders in', () => {
+    const fixture = setupWithServe();
+    fixture.componentInstance.toggleSwap();
+    fixture.detectChanges();
+
+    // Team B now renders on the left, team A on the right — but each
+    // team's own top/bottom mapping must stay exactly as before.
+    const teamA = fixture.nativeElement.querySelector('.team--a');
+    const teamB = fixture.nativeElement.querySelector('.team--b');
+    expect(teamB.querySelector('.station--top').textContent).toContain('徐丙'); // team_b_right
+    expect(teamB.querySelector('.station--bottom').textContent).toContain('李丁'); // team_b_left
+    expect(teamA.querySelector('.station--top').textContent).toContain('劉乙'); // team_a_left
+    expect(teamA.querySelector('.station--bottom').textContent).toContain('陳甲'); // team_a_right
+  });
+
+  it('truncates a long nickname to its first 2 characters, keeping the full name as the pill\'s aria-label', () => {
+    const fixture = setupWithServe('陳大文豪');
+
+    const station = fixture.nativeElement.querySelector('.team--a .station--bottom'); // team_a_right = p1
+    expect(station.textContent).toContain('陳大');
+    expect(station.textContent).not.toContain('陳大文豪');
+    expect(station.getAttribute('aria-label')).toBe('陳大文豪');
+  });
+
+  it('updates the station display from the score response itself, without waiting on a realtime echo', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true,
+        match_id: 'm1',
+        status: 'in_progress',
+        score_a: 6,
+        score_b: 7,
+        winner_team: null,
+        score_event_id: null,
+        serve: {
+          server_roster_entry_id: 'p2',
+          server_team: 'A' as const,
+          team_a_right_roster_entry_id: null,
+          team_a_left_roster_entry_id: 'p2',
+          team_b_right_roster_entry_id: 'p3',
+          team_b_left_roster_entry_id: 'p4',
+        },
+      }),
+    );
+    const fixture = setupWithServe('陳甲', scoreSpy);
+
+    // Before: team A's bottom station (team_a_right) shows 陳甲 (p1), per
+    // the original doublesServe fixture.
+    expect(fixture.nativeElement.querySelector('.team--a .station--bottom')).not.toBeNull();
+
+    fixture.nativeElement.querySelector('.scoring-controls .buttons--left .btn:not(.btn--secondary)').click();
+    fixture.detectChanges();
+
+    // After: the response's new serve payload moves the server to 劉乙
+    // (p2, now team_a_left) and drops team_a_right entirely (null) — this
+    // must be visible immediately from the score() response, not only
+    // after some later match.scoreUpdated realtime message.
+    const teamA = fixture.nativeElement.querySelector('.team--a');
+    expect(teamA.querySelector('.station--bottom')).toBeNull();
+    expect(teamA.querySelector('.station--top').textContent).toContain('劉乙');
+    expect(teamA.querySelector('.station--server').textContent).toContain('劉乙');
   });
 });
 
@@ -318,10 +482,15 @@ describe('ControlPanelComponent buttons carry the shared touch-target class (FR-
   });
 });
 
-/** 024-add-english-language FR-003a: neither of these two routes has the
- * shared nav shell, so each MUST carry its own switcher. */
-describe('Nav-shell-less control-panel routes each carry their own language switcher (FR-003a)', () => {
-  it('ControlPanelComponent shows the language switcher even while still loading', () => {
+/** feature/control-panel-scoreboard-style: ControlPanelComponent deliberately
+ * opts out of 024-add-english-language FR-003a — the operator-facing single-
+ * court panel dropped its language switcher (whatever language is already
+ * active elsewhere on the origin, e.g. localStorage from another page,
+ * still applies here; there's just no on-screen switcher to change it from
+ * this route). AllCourtsControlPanelComponent still follows FR-003a
+ * unchanged, since it wasn't part of this restyle. */
+describe('ControlPanelComponent has no language switcher of its own', () => {
+  it('does not render app-language-switcher even while still loading', () => {
     TestBed.configureTestingModule({
       imports: [ControlPanelComponent],
       providers: [
@@ -348,9 +517,13 @@ describe('Nav-shell-less control-panel routes each carry their own language swit
     const fixture = TestBed.createComponent(ControlPanelComponent);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('app-language-switcher')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('app-language-switcher')).toBeNull();
   });
+});
 
+/** 024-add-english-language FR-003a: this route has no shared nav shell, so
+ * it MUST carry its own switcher. */
+describe('Nav-shell-less all-courts control panel carries its own language switcher (FR-003a)', () => {
   it('AllCourtsControlPanelComponent shows the language switcher even while still loading', () => {
     TestBed.configureTestingModule({
       imports: [AllCourtsControlPanelComponent],

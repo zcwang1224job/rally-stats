@@ -97,6 +97,14 @@ export class AllCourtsCourtBlockComponent implements OnInit {
    * recording detail for — set right before open() below, bound to the
    * picker's `scoringTeam` input in the template. */
   readonly pendingScoringSide = signal<Team>('A');
+  /** Who was serving THIS rally — captured from `currentMatch.serve` right
+   * BEFORE the point below is applied (not the response's post-point
+   * value, which always equals `side`: the winner always serves next in
+   * badminton, so it could never distinguish a side-out from a server who
+   * just won their own rally). Bound to the picker's `servingTeam` input,
+   * which uses it to stop treating an own-serve win as a possible "serve
+   * fault". */
+  readonly pendingServingTeam = signal<Team | null>(null);
   // Captured once, right when the point is scored — onShotPlacementConfirmed()
   // and onShotPlacementCancelled() below use these rather than re-deriving
   // "the current match" from state()/displayState() at the time the scorer
@@ -160,6 +168,7 @@ export class AllCourtsCourtBlockComponent implements OnInit {
               ...currentMatch,
               score_a: result.score_a,
               score_b: result.score_b,
+              serve: result.serve,
             },
           });
           this.changed.emit();
@@ -167,6 +176,7 @@ export class AllCourtsCourtBlockComponent implements OnInit {
             this.pendingMatchId = matchId;
             this.pendingScoreEventId = result.score_event_id;
             this.pendingScoringSide.set(side);
+            this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
             this.pendingMatchCompleted = result.status !== 'in_progress';
             this.cancelScoreErrorKey.set(null);
             this.shotPlacementPicker()?.open();

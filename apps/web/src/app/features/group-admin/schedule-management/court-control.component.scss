@@ -1,106 +1,273 @@
 @use '../../../../styles/breakpoints';
 
+// feature/control-panel-scoreboard-style: mirrors scoreboard.component.scss's
+// dark theme/station/pulse/court/camouflage patterns (see that file's
+// comments for the rationale behind each), scaled down into a bounded card
+// rather than a full-viewport page — this component renders inline inside
+// the admin page's per-court `.court-control-block.card` (admin-page.
+// component.html), alongside its own `<h3>` court-name heading outside this
+// component's template, so it never owns the whole screen the way the
+// scoreboard/public control panel do.
 :host {
-  // Aliases the shared --color-team-* tokens (_tokens.scss) — same values
-  // scoreboard.component.scss uses, so an admin glancing between this
-  // panel and the on-court scoreboard reads the same color as the same
-  // team instead of having to re-map two different palettes.
-  --team-a-bg: var(--color-team-a-bg);
-  --team-a-border: var(--color-team-a-border);
-  --team-b-bg: var(--color-team-b-bg);
-  --team-b-border: var(--color-team-b-border);
+  --scoreboard-bg: var(--color-ink);
+  --scoreboard-team-a-bg: var(--color-team-a-bg);
+  --scoreboard-team-a-border: var(--color-team-a-border);
+  --scoreboard-team-b-bg: var(--color-team-b-bg);
+  --scoreboard-team-b-border: var(--color-team-b-border);
 
   display: block;
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--scoreboard-bg);
+  color: var(--color-ink-text);
 }
 
-.score-board {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  margin: var(--space-md) 0;
-}
-
-// A swap-teams button used to sit as a third flex item between the two
-// team blocks — with `.team { flex: 1 }` already fighting for width, that
-// left almost nothing to spare on a narrow admin-page column (this
-// component's actual container, often narrower than a bare phone screen),
-// so long nicknames or the +1/-1 buttons would overflow instead of
-// shrinking. Pulling the toggle out of that row entirely removes the
-// contest for space — .score-board is back to exactly the two team
-// blocks it was before the swap feature existed, so this can't regress
-// regardless of nickname length or how narrow the container gets.
 .score-controls-toolbar {
   display: flex;
   justify-content: flex-end;
   margin-bottom: var(--space-sm);
+
+  // Icon-only (no label text) — sized up a bit from the shared .btn body
+  // font so the glyph itself reads clearly as the button's whole content.
+  .swap-teams-button {
+    font-size: 1.25rem;
+  }
+
+  .btn {
+    background: var(--scoreboard-bg);
+    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
+    color: color-mix(in srgb, var(--color-ink) 55%, white);
+    box-shadow: none;
+
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+        border-color: var(--color-ink-text);
+        color: var(--color-ink-text);
+        box-shadow: none;
+      }
+    }
+  }
+}
+
+.score-board {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--space-sm);
+  position: relative;
+}
+
+.score-board::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--space-sm);
+  transform: translateX(-50%);
+  pointer-events: none;
+  background-repeat: no-repeat, repeat, repeat;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 70%), rgba(255, 255, 255, 70%)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 35%) 0 1px,
+      transparent 1px 8px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 35%) 0 1px,
+      transparent 1px 8px
+    );
+  background-size:
+    100% 4px,
+    auto,
+    auto;
+  background-position:
+    top,
+    0 0,
+    0 0;
 }
 
 .team {
   flex: 1;
-  // Flex items default to `min-width: auto`, which floors shrinking at the
-  // content's own intrinsic width — `.names div`'s `white-space: nowrap`
-  // nicknames and the +1/-1 buttons both have one, so without this the row
-  // (two teams + the swap button between them) overflows instead of
-  // shrinking to fit on a narrow screen.
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  position: relative;
   gap: var(--space-sm);
-  padding: var(--space-sm);
-  border-radius: var(--radius-md);
-  border: 2px solid transparent;
+  padding: var(--space-md);
+  min-height: 9rem;
+  border-radius: var(--radius-sm);
+  border: 3px solid transparent;
+
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%));
+  background-size:
+    70% 4px,
+    100% 4px,
+    100% 4px,
+    4px 100%,
+    4px 100%;
+  background-position:
+    center 50%,
+    center 20%,
+    center 80%,
+    15% center,
+    85% center;
 }
 
 .team--a {
-  background: var(--team-a-bg);
-  border-color: var(--team-a-border);
+  align-items: flex-start;
 }
 
 .team--b {
-  background: var(--team-b-bg);
-  border-color: var(--team-b-border);
+  align-items: flex-end;
 }
 
-// Own team's nickname(s) shown above its score — lets an admin tell which
-// color block is which player(s) without cross-referencing a separate list.
-.names {
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-brand-primary-contrast);
-  max-width: 100%;
+.team-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
 
-  div {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
+.team--a,
+.team--b {
+  .station {
+    color: var(--color-ink-text);
   }
 }
 
-.score {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-black);
-  line-height: 1;
-  // Always rendered inside .team--a/.team--b (see the template), both of
-  // which are the same dark, saturated colors as the scoreboard — white
-  // keeps the score readable the same way it does there.
-  color: var(--color-brand-primary-contrast);
+.team--a {
+  background-color: var(--scoreboard-team-a-bg);
+  border-color: var(--scoreboard-team-a-border);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
-// Bigger than the shared .btn touch-target minimum (44px) — this is a
-// rapid-fire, mid-rally control, not a once-in-a-while form button, so it
-// gets a wider margin for a thumb that isn't aiming carefully. Scoped to
-// just these buttons rather than the global .btn class, which is used all
-// over the app for things that don't need this.
+.team--b {
+  background-color: var(--scoreboard-team-b-bg);
+  border-color: var(--scoreboard-team-b-border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.station {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-ink) 45%, transparent);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.station--bottom {
+  margin-top: auto;
+}
+
+.station--server {
+  border: 2px solid var(--color-brand-primary);
+  font-weight: var(--font-weight-black);
+}
+
+.server-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--font-size-heading);
+  line-height: 1;
+}
+
+.score {
+  display: inline-block;
+  font-family: var(--font-family-score);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+  color: var(--color-ink-text);
+}
+
+@keyframes score-pulse {
+  0% {
+    transform: scale(1.2);
+    color: var(--color-brand-primary);
+  }
+
+  100% {
+    transform: scale(1);
+    color: var(--color-ink-text);
+  }
+}
+
+.score--pulse {
+  animation: score-pulse 1.2s ease-out;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+// Below .score-board (the court), never on top of the court markings — one
+// .buttons group per team, laid out side by side so each stays roughly
+// under its own team's score column.
+.scoring-controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-lg);
+  margin: var(--space-md) 0;
+}
+
 .buttons {
   display: flex;
   gap: var(--space-sm);
-  width: 100%;
+  flex: 1;
 
   .btn {
     flex: 1;
     min-height: 64px;
     font-size: var(--font-size-heading);
+    background: var(--scoreboard-bg);
+    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
+    color: color-mix(in srgb, var(--color-ink) 55%, white);
+    box-shadow: none;
+
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+        border-color: var(--color-ink-text);
+        color: var(--color-ink-text);
+        box-shadow: none;
+      }
+    }
+  }
+}
+
+.end-match-button {
+  background: var(--scoreboard-bg);
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
+  color: color-mix(in srgb, var(--color-ink) 55%, white);
+  box-shadow: none;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+      border-color: var(--color-danger);
+      color: var(--color-ink-text);
+      box-shadow: none;
+    }
   }
 }

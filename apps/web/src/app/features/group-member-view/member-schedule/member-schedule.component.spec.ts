@@ -33,6 +33,7 @@ const scheduleResponse: ScheduleResponse = {
           { roster_entry_id: 'cp1', nickname: '會員自己', team: 'A' },
           { roster_entry_id: 'cp2', nickname: '對手', team: 'B' },
         ],
+        serve: null,
       },
     },
   ],

@@ -93,6 +93,15 @@ export class ShotPlacementPickerComponent {
   /** 032-score-then-record: which team was already credited the point
    * (fixed before this dialog ever opens — see the class doc comment). */
   readonly scoringTeam = input.required<Team>();
+  /** Who was serving THIS rally, captured by the caller from the match's
+   * live serve state right before the point was applied (not after — the
+   * winner always serves next in badminton, so a post-point reading would
+   * always equal `scoringTeam` and could never distinguish anything).
+   * `null` for a match with no serve-state at all (created before
+   * 030-score-serve-record) — `isServeFault` below falls back to its
+   * pre-existing, ungated behavior in that case rather than assuming an
+   * answer it doesn't have. */
+  readonly servingTeam = input<Team | null>(null);
   readonly confirmed = output<ShotPlacementConfirmed>();
   /** 032-cancel-score: the caller applies the matching -1 correction — this
    * component never touches the score itself, only requests it. */
@@ -170,10 +179,21 @@ export class ShotPlacementPickerComponent {
    * the point on a service fault, without ever having to return anything.
    * Surfaced in the template as a badge next to "select the losing player"
    * so the scorer understands why the pools below aren't empty despite the
-   * landing being on their own side. */
+   * landing being on their own side.
+   *
+   * A serve fault is only a coherent explanation when the credited side
+   * was RECEIVING this rally — if `scoringTeam` was the one serving and
+   * still won, there is no "my own serve faulted, so I win" reading
+   * available; a landing that lands on their own half in that case is a
+   * genuine data-entry contradiction instead (falls through to
+   * `landingConflict` below), not a fault. */
   readonly isServeFault = computed(() => {
     const point = this.selectedPoint();
     if (!this.landingOnCreditedSidesOwnHalf() || point === null) {
+      return false;
+    }
+    const serving = this.servingTeam();
+    if (serving !== null && serving === this.scoringTeam()) {
       return false;
     }
     return this.isServeFaultZone(point.x, this.scoringTeam());
@@ -272,12 +292,20 @@ export class ShotPlacementPickerComponent {
     // ineligible (e.g. the point moved from one half of the court to the
     // other, or in/out of bounds) — drop a pick the instant it falls
     // outside its own pool rather than leaving a stale, now-invalid
-    // selection displayed as chosen.
+    // selection displayed as chosen. Conversely, in singles there's only
+    // ever one possible player on each side (pool.length === 1) — tapping a
+    // chip that has no real alternative is a needless step for the scorer,
+    // so pre-select it the same way a genuine tap would, the moment the
+    // pool settles on that single option (open()'s reset to null, or the
+    // pool becoming valid again after a landing conflict clears, both flow
+    // through here since both signals are read below).
     effect(() => {
       const pool = this.scoringPlayers();
       const id = this.selectedRosterEntryId();
       if (id !== null && !pool.some((p) => p.roster_entry_id === id)) {
         this.selectedRosterEntryId.set(null);
+      } else if (id === null && pool.length === 1) {
+        this.selectedRosterEntryId.set(pool[0].roster_entry_id);
       }
     });
     effect(() => {
@@ -285,6 +313,8 @@ export class ShotPlacementPickerComponent {
       const id = this.selectedLosingRosterEntryId();
       if (id !== null && !pool.some((p) => p.roster_entry_id === id)) {
         this.selectedLosingRosterEntryId.set(null);
+      } else if (id === null && pool.length === 1) {
+        this.selectedLosingRosterEntryId.set(pool[0].roster_entry_id);
       }
     });
 

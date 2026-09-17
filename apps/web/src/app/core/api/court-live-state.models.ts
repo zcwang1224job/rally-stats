@@ -87,6 +87,12 @@ export interface ScoreMutationResult {
   // ending a match). A `+1`'s caller uses this to attach a
   // ShotPlacementRecord afterward without blocking the score itself on it.
   score_event_id: string | null;
+  // feature/control-panel-scoreboard-style: lets the acting client patch its
+  // own station display directly from this response instead of waiting on
+  // its own match.scoreUpdated realtime echo — null when the match just
+  // ended this point (no more serve state to show) or the mutation wasn't
+  // applied.
+  serve: ServeStationInfo | null;
 }
 
 export interface ShotPlacementAttachResponse {
