@@ -6,6 +6,7 @@ and (004) the browse/join flow.
 transitioning unfinished matches to `abandoned` on disband (spec FR-033).
 """
 
+import dataclasses
 import secrets
 import uuid
 from collections import defaultdict
@@ -21,6 +22,7 @@ from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.realtime import court_channel, group_notifications_channel, publish
 from app.domains.court.models import Court
+from app.domains.group import match_stats
 from app.domains.group.models import Group, RoundHistory
 from app.domains.group.schemas import (
     CreateGroupRequest,
@@ -29,14 +31,25 @@ from app.domains.group.schemas import (
     FinalStandingRow,
     GroupMatchRecordsResponse,
     GroupStandingsResponse,
+    LandingPoint,
+    LeadChange,
+    LongestPoint,
     MatchRecordDetailResponse,
     MatchRecordSummary,
+    MaxLead,
     MemberStandingRow,
+    MomentumStats,
     OpponentRecord,
+    PlayerLandingDistribution,
     PlayerScoringStat,
+    PlayerServeStat,
     RoundRecord,
     ScoreEventSummary,
+    ScoringRun,
+    ServeStats,
     ShotPlacementSummary,
+    TeamServeStat,
+    TempoStats,
 )
 from app.domains.group.security import (
     decrypt_group_password,
@@ -48,7 +61,13 @@ from app.domains.group.security import (
 )
 from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
-from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent, ShotPlacementRecord
+from app.domains.schedule.models import (
+    Match,
+    MatchParticipant,
+    ScoreEvent,
+    ScoreServeRecord,
+    ShotPlacementRecord,
+)
 from app.domains.schedule.schemas import ParticipantSummary
 from app.domains.schedule.service import handle_member_joined, handle_member_left
 from app.system_config.service import (
@@ -1459,6 +1478,148 @@ async def get_completed_match_or_404(session: AsyncSession, match_id: uuid.UUID)
     return match
 
 
+_DerivedStats = tuple[
+    ServeStats | None, MomentumStats | None, TempoStats | None, list[PlayerLandingDistribution]
+]
+
+
+async def _build_derived_stats(
+    session: AsyncSession,
+    match: Match,
+    summary: MatchRecordSummary,
+    score_events: list[ScoreEvent],
+    placements: list[ShotPlacementRecord],
+) -> _DerivedStats:
+    """033-match-record-derived-stats: the querying/conversion half of the
+    four derived blocks — every actual rule lives in `match_stats` (pure,
+    no session). Only called for a `"complete"` record: a partial history
+    has no trustworthy starting score to re-accumulate from. Reads the one
+    table nothing displayed before (`ScoreServeRecord`, written since 030);
+    `placements` is 032's existing query result, reused rather than
+    re-queried."""
+    no_data: _DerivedStats = (None, None, None, [])
+
+    started_at = match.started_at
+    assert started_at is not None  # always set for completed matches
+    points = match_stats.effective_points(
+        [
+            match_stats.RawEvent(
+                event_id=event.id,
+                side=event.side,  # type: ignore[arg-type]
+                delta=event.delta,  # type: ignore[arg-type]
+                score_a=event.score_a,
+                score_b=event.score_b,
+                at_seconds=(event.created_at - started_at).total_seconds(),
+            )
+            for event in score_events
+        ],
+        match.score_a,
+        match.score_b,
+    )
+    if points is None:
+        return no_data
+
+    participants = summary.team_a + summary.team_b
+    nickname_by_id = {uuid.UUID(p.roster_entry_id): p.nickname for p in participants}
+    stat_participants = [
+        match_stats.Participant(uuid.UUID(p.roster_entry_id), p.team) for p in participants
+    ]
+
+    serve_result = await session.execute(
+        select(ScoreServeRecord).where(ScoreServeRecord.match_id == match.id)
+    )
+    serve = match_stats.serve_stats(
+        points,
+        {
+            record.score_event_id: match_stats.ServeSnapshot(
+                server_team=record.server_team,  # type: ignore[arg-type]
+                server_id=record.server_roster_entry_id,
+                team_a_right=record.team_a_right_roster_entry_id,
+                team_a_left=record.team_a_left_roster_entry_id,
+                team_b_right=record.team_b_right_roster_entry_id,
+                team_b_left=record.team_b_left_roster_entry_id,
+            )
+            for record in serve_result.scalars()
+        },
+        stat_participants,
+    )
+    serve_stats = (
+        ServeStats(
+            teams=[
+                TeamServeStat(team=team, **dataclasses.asdict(counts))
+                for team, counts in serve.teams.items()  # built in A, B order
+            ],
+            players=[
+                PlayerServeStat(
+                    roster_entry_id=p.roster_entry_id,
+                    nickname=p.nickname,
+                    team=p.team,
+                    **dataclasses.asdict(serve.players[uuid.UUID(p.roster_entry_id)]),
+                )
+                for p in participants
+                if uuid.UUID(p.roster_entry_id) in serve.players
+            ],
+            excluded_points=serve.excluded_points,
+        )
+        if serve is not None
+        else None
+    )
+
+    momentum = match_stats.momentum_stats(points)
+    momentum_stats = MomentumStats(
+        longest_runs=[ScoringRun(**dataclasses.asdict(run)) for run in momentum.longest_runs],
+        max_leads=[MaxLead(**dataclasses.asdict(lead)) for lead in momentum.max_leads],
+        lead_changes=[
+            LeadChange(**dataclasses.asdict(change)) for change in momentum.lead_changes
+        ],
+    )
+
+    tempo = match_stats.tempo_stats(points)
+    tempo_stats = (
+        TempoStats(
+            average_seconds=tempo.average_seconds,
+            counted_points=tempo.counted_points,
+            longest=LongestPoint(
+                seconds=tempo.longest_seconds,
+                score_a=tempo.longest_score_a,
+                score_b=tempo.longest_score_b,
+            ),
+        )
+        if tempo is not None
+        else None
+    )
+
+    landing_distribution = [
+        PlayerLandingDistribution(
+            roster_entry_id=str(player.roster_entry_id),
+            nickname=nickname_by_id[player.roster_entry_id],
+            team=player.team,
+            scored=[LandingPoint(x=x, y=y) for x, y in player.scored],
+            scored_total=player.scored_total,
+            lost=[LandingPoint(x=x, y=y) for x, y in player.lost],
+            lost_total=player.lost_total,
+        )
+        for player in match_stats.landing_distribution(
+            points,
+            {
+                placement.score_event_id: match_stats.Placement(
+                    scorer_id=placement.roster_entry_id,
+                    loser_id=placement.losing_roster_entry_id,
+                    landing=(
+                        (placement.landing_x, placement.landing_y)
+                        if placement.landing_x is not None and placement.landing_y is not None
+                        else None
+                    ),
+                )
+                for placement in placements
+            },
+            stat_participants,
+        )
+    ]
+
+    return serve_stats, momentum_stats, tempo_stats, landing_distribution
+
+
 async def build_match_record_detail(
     session: AsyncSession, match: Match
 ) -> MatchRecordDetailResponse:
@@ -1596,11 +1757,24 @@ async def build_match_record_detail(
                 )
             )
 
+    # 033-match-record-derived-stats FR-004: a partial/absent history gets
+    # the "no data" defaults for all four blocks, never numbers computed
+    # from an incomplete record.
+    serve_stats, momentum_stats, tempo_stats, landing_distribution = (
+        await _build_derived_stats(session, match, summary, score_events, placements)
+        if completeness == "complete"
+        else (None, None, None, [])
+    )
+
     return MatchRecordDetailResponse(
         **summary.model_dump(),
         record_completeness=completeness,
         events=event_summaries,
         player_stats=player_stats,
+        serve_stats=serve_stats,
+        momentum_stats=momentum_stats,
+        tempo_stats=tempo_stats,
+        landing_distribution=landing_distribution,
     )
 
 

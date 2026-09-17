@@ -1,0 +1,474 @@
+"""Unit test: app.domains.group.match_stats — 033-match-record-derived-stats.
+Pure functions, no database. `_Sim` below reproduces what the real write
+path leaves behind (schedule/service.py's apply_score_delta() +
+_advance_serve_state_and_snapshot()): live recorded scores, and a serve
+snapshot taken AFTER each +1 — so these tests exercise the same data shape
+production rows have (research.md Decision 3)."""
+
+import uuid
+
+from app.domains.group.match_stats import (
+    EffectivePoint,
+    Participant,
+    Placement,
+    RawEvent,
+    ServeSnapshot,
+    Team,
+    effective_points,
+    landing_distribution,
+    momentum_stats,
+    serve_stats,
+    tempo_stats,
+)
+
+A1, A2, B1, B2 = (uuid.uuid4() for _ in range(4))
+DOUBLES = [
+    Participant(A1, "A"),
+    Participant(A2, "A"),
+    Participant(B1, "B"),
+    Participant(B2, "B"),
+]
+SINGLES = [Participant(A1, "A"), Participant(B1, "B")]
+
+
+class _Sim:
+    """Mirrors the live write path. `first_server` is the pre-match random
+    pick that production never persists — the simulator knows it, the
+    functions under test must cope without it."""
+
+    def __init__(self, participants: list[Participant], first_server: Team = "A") -> None:
+        self.team: dict[Team, list[uuid.UUID]] = {
+            "A": [p.roster_entry_id for p in participants if p.team == "A"],
+            "B": [p.roster_entry_id for p in participants if p.team == "B"],
+        }
+        self.score: dict[Team, int] = {"A": 0, "B": 0}
+        self.serving: Team = first_server
+        self.ref: dict[Team, uuid.UUID] = {"A": self.team["A"][0], "B": self.team["B"][0]}
+        self.events: list[RawEvent] = []
+        self.snapshots: dict[uuid.UUID, ServeSnapshot] = {}
+        self.clock = 0.0
+
+    def _station(self, team: Team) -> tuple[uuid.UUID | None, uuid.UUID | None]:
+        """(right, left) for `team` at its current score parity."""
+        ref = self.ref[team]
+        other = next((p for p in self.team[team] if p != ref), None)
+        return (ref, other) if self.score[team] % 2 == 0 else (other, ref)
+
+    def plus(self, side: Team, after: float = 20.0, snapshot: bool = True) -> uuid.UUID:
+        self.clock += after
+        self.score[side] += 1
+        if side != self.serving:
+            current = self.ref[side]
+            self.ref[side] = next((p for p in self.team[side] if p != current), current)
+            self.serving = side
+        event_id = uuid.uuid4()
+        self.events.append(
+            RawEvent(event_id, side, 1, self.score["A"], self.score["B"], self.clock)
+        )
+        if snapshot:
+            a_right, a_left = self._station("A")
+            b_right, b_left = self._station("B")
+            self.snapshots[event_id] = ServeSnapshot(
+                self.serving, self.ref[self.serving], a_right, a_left, b_right, b_left
+            )
+        return event_id
+
+    def minus(self, side: Team, after: float = 5.0) -> None:
+        self.clock += after
+        self.score[side] -= 1
+        self.events.append(
+            RawEvent(uuid.uuid4(), side, -1, self.score["A"], self.score["B"], self.clock)
+        )
+
+    def points(self) -> list[EffectivePoint]:
+        result = effective_points(self.events, self.score["A"], self.score["B"])
+        assert result is not None
+        return result
+
+
+def _play(sides: str, participants: list[Participant] = DOUBLES) -> _Sim:
+    sim = _Sim(participants)
+    for side in sides:
+        sim.plus("A" if side == "A" else "B")
+    return sim
+
+
+# ---------------------------------------------------------------- effective_points (T002)
+
+
+def test_effective_points_without_corrections_reaccumulates_each_score() -> None:
+    points = _play("ABA").points()
+    assert [(p.side, p.score_a, p.score_b) for p in points] == [
+        ("A", 1, 0),
+        ("B", 1, 1),
+        ("A", 2, 1),
+    ]
+    assert all((p.score_a, p.score_b) == (p.recorded_score_a, p.recorded_score_b) for p in points)
+
+
+def test_minus_voids_that_sides_latest_point() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.plus("A")
+    sim.minus("A")
+    sim.plus("B")
+    assert [(p.side, p.score_a, p.score_b) for p in sim.points()] == [("A", 1, 0), ("B", 1, 1)]
+
+
+def test_consecutive_minuses_void_the_two_latest_points_in_turn() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    sim.plus("A")
+    sim.plus("A")
+    sim.minus("A")
+    sim.minus("A")
+    points = sim.points()
+    assert [p.event_id for p in points] == [first]
+
+
+def test_out_of_order_void_reaccumulates_but_keeps_recorded_score() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.plus("B")
+    sim.minus("A")
+    [only] = sim.points()
+    assert (only.side, only.score_a, only.score_b) == ("B", 0, 1)
+    assert (only.recorded_score_a, only.recorded_score_b) == (1, 1)
+
+
+def test_effective_points_is_none_when_counts_disagree_with_final_score() -> None:
+    sim = _play("AAB")
+    assert effective_points(sim.events, 3, 1) is None
+    assert effective_points(sim.events, 2, 1) is not None
+
+
+def test_minus_with_nothing_left_to_void_makes_the_history_unusable() -> None:
+    events = [RawEvent(uuid.uuid4(), "A", -1, 0, 0, 1.0)]
+    assert effective_points(events, 0, 0) is None
+
+
+def test_gap_is_clean_only_when_the_raw_predecessor_is_an_effective_point() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")  # first raw event -> clean
+    sim.plus("B")  # predecessor effective -> clean
+    sim.plus("B")  # will be voided
+    sim.minus("B")
+    sim.plus("A")  # predecessor is a -1 -> not clean
+    sim.plus("A")  # predecessor effective -> clean
+    assert [p.gap_is_clean for p in sim.points()] == [True, True, False, True]
+
+
+def test_gap_is_not_clean_right_after_a_point_that_gets_voided_later() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.plus("B")  # voided below, out of order
+    sim.plus("A")  # its raw predecessor is that voided +1
+    sim.minus("B")
+    assert [p.gap_is_clean for p in sim.points()] == [True, False]
+
+
+def test_first_effective_point_is_not_clean_when_it_is_not_the_first_raw_event() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.minus("A")
+    sim.plus("B")
+    assert [p.gap_is_clean for p in sim.points()] == [False]
+
+
+# ---------------------------------------------------------------- serve_stats (T009)
+
+
+def test_serve_stats_attributes_each_point_to_the_previous_points_snapshot() -> None:
+    # Worked example (A serves first, refs a1/b1): A A B B A -> 3:2.
+    #  P1 excluded. P2: a1 serves to b2, A wins. P3: a1 serves to b1, B wins.
+    #  P4: b2 serves to a2, B wins. P5: b2 serves to a1, A wins.
+    sim = _play("AABBA")
+    result = serve_stats(sim.points(), sim.snapshots, DOUBLES)
+    assert result is not None
+    assert result.excluded_points == 1
+
+    team_a, team_b = result.teams["A"], result.teams["B"]
+    assert (team_a.serve_points_won, team_a.serve_points_total) == (1, 2)
+    assert (team_a.receive_points_won, team_a.receive_points_total) == (1, 2)
+    assert (team_b.serve_points_won, team_b.serve_points_total) == (1, 2)
+    assert (team_b.receive_points_won, team_b.receive_points_total) == (1, 2)
+    # Regression guard: reading each point's OWN (post-point) snapshot would
+    # make every serve a won serve.
+    assert team_a.serve_points_won < team_a.serve_points_total
+
+    def counts(player: uuid.UUID) -> tuple[int, int, int, int]:
+        c = result.players[player]
+        return (
+            c.serve_points_won,
+            c.serve_points_total,
+            c.receive_points_won,
+            c.receive_points_total,
+        )
+
+    assert counts(A1) == (1, 2, 1, 1)
+    assert counts(A2) == (0, 0, 0, 1)
+    assert counts(B1) == (0, 0, 1, 1)
+    assert counts(B2) == (1, 2, 0, 1)
+
+
+def test_serve_stats_lists_all_four_doubles_players_in_participant_order() -> None:
+    sim = _play("AA")
+    result = serve_stats(sim.points(), sim.snapshots, DOUBLES)
+    assert result is not None
+    assert list(result.players) == [A1, A2, B1, B2]
+    assert result.players[B2].serve_points_total == 0
+
+
+def test_serve_stats_totals_plus_excluded_equal_total_points() -> None:
+    sim = _play("ABBABAABBBA")
+    result = serve_stats(sim.points(), sim.snapshots, DOUBLES)
+    assert result is not None
+    served = result.teams["A"].serve_points_total + result.teams["B"].serve_points_total
+    assert served + result.excluded_points == len(sim.points())
+    assert result.teams["A"].serve_points_total == result.teams["B"].receive_points_total
+    assert result.teams["B"].serve_points_total == result.teams["A"].receive_points_total
+
+
+def test_serve_stats_follows_the_restored_state_after_an_ordinary_undo() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.plus("B")
+    sim.minus("B")  # undo the side-out; A is serving again
+    sim.plus("A")
+    result = serve_stats(sim.points(), sim.snapshots, DOUBLES)
+    assert result is not None
+    assert result.excluded_points == 1
+    assert (result.teams["A"].serve_points_won, result.teams["A"].serve_points_total) == (1, 1)
+    assert result.teams["B"].serve_points_total == 0
+
+
+def test_serve_stats_excludes_a_point_whose_previous_snapshot_is_at_a_different_score() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.plus("B")
+    sim.minus("A")  # out of order: B's snapshot was taken at 1:1, the score is now 0:1
+    sim.plus("A")
+    sim.plus("A")
+    result = serve_stats(sim.points(), sim.snapshots, DOUBLES)
+    assert result is not None
+    # 3 effective points: the first, plus the one right after the mismatch.
+    assert result.excluded_points == 2
+    assert result.teams["A"].serve_points_total + result.teams["B"].serve_points_total == 1
+
+
+def test_serve_stats_excludes_a_point_whose_previous_point_has_no_snapshot() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A", snapshot=False)  # e.g. scored before 030 shipped
+    sim.plus("A")
+    sim.plus("B")
+    result = serve_stats(sim.points(), sim.snapshots, DOUBLES)
+    assert result is not None
+    assert result.excluded_points == 2
+    assert (result.teams["A"].serve_points_won, result.teams["A"].serve_points_total) == (0, 1)
+
+
+def test_serve_stats_is_none_without_any_snapshot() -> None:
+    sim = _Sim(DOUBLES)
+    for side in ("A", "B", "A"):
+        sim.plus(side, snapshot=False)  # type: ignore[arg-type]
+    assert serve_stats(sim.points(), sim.snapshots, DOUBLES) is None
+
+
+def test_serve_stats_is_none_when_every_point_is_excluded() -> None:
+    sim = _play("A")
+    assert serve_stats(sim.points(), sim.snapshots, DOUBLES) is None
+
+
+def test_singles_has_no_player_level_and_still_counts_receiving() -> None:
+    # At 1:0 the server (A, odd) stands left while B (even) is recorded on
+    # the right — the same-named court on B's side is empty, so the receiver
+    # falls back to B's only player. Team-level numbers must be unaffected.
+    sim = _play("AAB", SINGLES)
+    result = serve_stats(sim.points(), sim.snapshots, SINGLES)
+    assert result is not None
+    assert result.players == {}
+    assert (result.teams["A"].serve_points_won, result.teams["A"].serve_points_total) == (1, 2)
+    assert (result.teams["B"].receive_points_won, result.teams["B"].receive_points_total) == (1, 2)
+
+
+# ---------------------------------------------------------------- momentum_stats (T015)
+
+
+def test_longest_run_reports_score_before_and_after() -> None:
+    result = momentum_stats(_play("ABBBA").points())
+    run_a, run_b = result.longest_runs
+    assert (run_b.team, run_b.length) == ("B", 3)
+    assert (run_b.start_score_a, run_b.start_score_b) == (1, 0)
+    assert (run_b.end_score_a, run_b.end_score_b) == (1, 3)
+    assert (run_a.team, run_a.length) == ("A", 1)
+
+
+def test_longest_run_tie_keeps_the_earliest() -> None:
+    [run_a, _] = momentum_stats(_play("AABAA").points()).longest_runs
+    assert run_a.length == 2
+    assert (run_a.start_score_a, run_a.start_score_b) == (0, 0)
+    assert (run_a.end_score_a, run_a.end_score_b) == (2, 0)
+
+
+def test_scoreless_team_has_a_zero_run_and_zero_lead_with_no_scores() -> None:
+    result = momentum_stats(_play("AAA").points())
+    run_b, lead_b = result.longest_runs[1], result.max_leads[1]
+    assert (run_b.team, run_b.length) == ("B", 0)
+    assert (run_b.start_score_a, run_b.end_score_b) == (None, None)
+    assert (lead_b.team, lead_b.margin, lead_b.score_a, lead_b.score_b) == ("B", 0, None, None)
+
+
+def test_max_lead_reports_the_first_time_the_margin_was_reached() -> None:
+    # A leads by 2 at 2:0, then again at 3:1 — report 2:0.
+    [lead_a, lead_b] = momentum_stats(_play("AABA").points()).max_leads
+    assert (lead_a.margin, lead_a.score_a, lead_a.score_b) == (2, 2, 0)
+    assert lead_b.margin == 0
+
+
+def test_tie_then_same_leader_again_is_not_a_lead_change() -> None:
+    assert momentum_stats(_play("ABA").points()).lead_changes == []
+
+
+def test_tie_then_other_leader_is_one_lead_change() -> None:
+    [change] = momentum_stats(_play("ABB").points()).lead_changes
+    assert (change.new_leader, change.score_a, change.score_b) == ("B", 1, 2)
+
+
+def test_first_lead_is_not_a_change_and_wire_to_wire_has_none() -> None:
+    assert momentum_stats(_play("AAAA").points()).lead_changes == []
+
+
+def test_lead_changes_are_listed_in_order() -> None:
+    changes = momentum_stats(_play("ABBAA").points()).lead_changes
+    assert [(c.new_leader, c.score_a, c.score_b) for c in changes] == [("B", 1, 2), ("A", 3, 2)]
+
+
+def test_momentum_ignores_a_voided_point() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("B")
+    sim.plus("A")
+    sim.plus("A")  # a false lead for A, undone next
+    sim.minus("A")
+    sim.plus("B")
+    result = momentum_stats(sim.points())
+    assert result.lead_changes == []
+    assert result.max_leads[0].margin == 0
+
+
+# ---------------------------------------------------------------- tempo_stats (T020)
+
+
+def test_tempo_measures_the_first_point_from_match_start() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A", after=12.0)
+    sim.plus("B", after=30.0)
+    result = tempo_stats(sim.points())
+    assert result is not None
+    assert result.counted_points == 2
+    assert result.average_seconds == 21.0
+    assert (result.longest_seconds, result.longest_score_a, result.longest_score_b) == (30.0, 1, 1)
+
+
+def test_tempo_skips_gaps_that_contain_a_correction() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A", after=10.0)
+    sim.plus("A", after=10.0)
+    sim.minus("A", after=5.0)
+    sim.plus("B", after=200.0)  # spans the correction: never the longest, never averaged
+    sim.plus("B", after=20.0)
+    result = tempo_stats(sim.points())
+    assert result is not None
+    assert result.counted_points == 2
+    assert result.average_seconds == 15.0
+    assert result.longest_seconds == 20.0
+
+
+def test_tempo_average_is_rounded_to_one_decimal() -> None:
+    sim = _Sim(DOUBLES)
+    for after in (10.0, 10.0, 11.0):
+        sim.plus("A", after=after)
+    result = tempo_stats(sim.points())
+    assert result is not None
+    assert result.average_seconds == 10.3
+
+
+def test_tempo_longest_tie_keeps_the_earliest() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A", after=15.0)
+    sim.plus("B", after=15.0)
+    result = tempo_stats(sim.points())
+    assert result is not None
+    assert (result.longest_score_a, result.longest_score_b) == (1, 0)
+
+
+def test_tempo_is_none_when_no_gap_is_clean() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.minus("A")
+    sim.plus("B")
+    assert tempo_stats(sim.points()) is None
+
+
+# ---------------------------------------------------------------- landing_distribution (T024)
+
+
+def test_landing_distribution_splits_scored_and_lost_per_player() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    second = sim.plus("B")
+    placements = {
+        first: Placement(scorer_id=A1, loser_id=B2, landing=(0.8, 0.2)),
+        second: Placement(scorer_id=B1, loser_id=A1, landing=(0.1, 0.9)),
+    }
+    result = landing_distribution(sim.points(), placements, DOUBLES)
+    assert [r.roster_entry_id for r in result] == [A1, A2, B1, B2]
+    by_id = {r.roster_entry_id: r for r in result}
+    assert (by_id[A1].scored, by_id[A1].scored_total) == ([(0.8, 0.2)], 1)
+    assert (by_id[A1].lost, by_id[A1].lost_total) == ([(0.1, 0.9)], 1)
+    assert (by_id[B2].lost, by_id[B2].lost_total) == ([(0.8, 0.2)], 1)
+    assert (by_id[A2].scored, by_id[A2].lost, by_id[A2].scored_total) == ([], [], 0)
+
+
+def test_landing_without_coordinates_counts_toward_the_total_only() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    second = sim.plus("A")
+    placements = {
+        first: Placement(scorer_id=A1, loser_id=None, landing=(0.7, 0.5)),
+        second: Placement(scorer_id=A1, loser_id=None, landing=None),
+    }
+    by_id = {r.roster_entry_id: r for r in landing_distribution(sim.points(), placements, DOUBLES)}
+    assert (len(by_id[A1].scored), by_id[A1].scored_total) == (1, 2)
+
+
+def test_out_of_bounds_coordinates_are_kept_verbatim() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    placements = {first: Placement(scorer_id=None, loser_id=B1, landing=(1.04, -0.12))}
+    by_id = {r.roster_entry_id: r for r in landing_distribution(sim.points(), placements, DOUBLES)}
+    assert by_id[B1].lost == [(1.04, -0.12)]
+
+
+def test_placement_of_a_voided_point_is_ignored() -> None:
+    sim = _Sim(DOUBLES)
+    kept = sim.plus("A")
+    voided = sim.plus("A")
+    sim.minus("A")
+    placements = {
+        kept: Placement(scorer_id=A1, loser_id=None, landing=(0.6, 0.4)),
+        voided: Placement(scorer_id=A1, loser_id=None, landing=(0.9, 0.9)),
+    }
+    by_id = {r.roster_entry_id: r for r in landing_distribution(sim.points(), placements, DOUBLES)}
+    assert (by_id[A1].scored, by_id[A1].scored_total) == ([(0.6, 0.4)], 1)
+
+
+def test_landing_distribution_is_empty_when_no_player_has_a_plotted_point() -> None:
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    second = sim.plus("B")
+    placements = {
+        first: Placement(scorer_id=A1, loser_id=B1, landing=None),  # players, no coordinates
+        second: Placement(scorer_id=None, loser_id=None, landing=(0.5, 0.5)),  # the reverse
+    }
+    assert landing_distribution(sim.points(), placements, DOUBLES) == []
+    assert landing_distribution(sim.points(), {}, DOUBLES) == []
