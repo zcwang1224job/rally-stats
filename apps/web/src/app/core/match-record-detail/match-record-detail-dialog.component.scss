@@ -26,9 +26,106 @@ h2 {
   font-weight: var(--font-weight-bold);
 }
 
+// feature/match-record-detail-scoreboard-style: a compact "mini scoreboard"
+// header — see the template comment for the reasoning behind each piece.
 .basic-info {
-  color: var(--color-text-muted);
   margin-bottom: var(--space-md);
+}
+
+.basic-info__round {
+  margin: 0 0 var(--space-xs);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-bold);
+}
+
+.basic-info__scoreboard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.basic-info__team {
+  display: flex;
+  // flex-start (not center): once a doubles team's names wrap onto a
+  // second line, this keeps the dot level with the FIRST line instead of
+  // straddling both.
+  align-items: flex-start;
+  gap: var(--space-xs);
+  min-width: 0;
+  // Both team blocks shrink before the score does — the score is the one
+  // number that must never wrap or truncate.
+  flex: 1 1 0;
+}
+
+.basic-info__team--a {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.basic-info__team--b {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.basic-info__names {
+  // Wraps rather than truncating — a doubles team's two nicknames MUST
+  // stay fully readable; an ellipsis here would silently drop a player's
+  // name that was always shown in full before this redesign.
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// A small identity swatch beside each team's names — always paired with the
+// names themselves (Constitution VII: never the only distinguishing cue).
+// Same --color-team-a-bg/-b-bg pair the trend chart's lines/markers and the
+// derived-stats tables already key these two teams to.
+.basic-info__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  // Levels the dot with the names' first line of text — .basic-info__team
+  // aligns to flex-start (not center) so the dot doesn't drift to the
+  // vertical midpoint once a doubles team's names wrap onto a second line.
+  margin-top: 4px;
+  border-radius: 50%;
+
+  &--a {
+    background: var(--color-team-a-bg);
+  }
+
+  &--b {
+    background: var(--color-team-b-bg);
+  }
+}
+
+.basic-info__score {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2xs, 2px);
+  font-family: var(--font-family-score);
+  font-variant-numeric: tabular-nums;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.basic-info__score-sep {
+  color: var(--color-text-muted);
+}
+
+.basic-info__score-value {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-bold);
+
+  // The winning side reads bolder AND darker than the losing side — two
+  // non-color-alone cues (weight + ink color) rather than graying the
+  // loser out, so both numbers stay fully legible at a glance.
+  &--winner {
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-black);
+  }
 }
 
 // Constitution VII: a completeness note MUST NOT rely on the surrounding
@@ -296,6 +393,22 @@ h2 {
   gap: var(--space-sm);
   flex-wrap: wrap;
   padding: var(--space-sm);
+  // A colored left edge ties each row back to the SAME team-a/-b colors the
+  // header dot, trend chart, and derived-stats tables already use — reading
+  // down the list, "which team" is visible without reading the name first.
+  // The `-border` shade (not `-bg`) is used elsewhere in the app as text on
+  // a saturated team block; on this row's plain white it doubles as an
+  // accent that still contrasts comfortably against --color-surface.
+  border-left-width: 4px;
+  border-left-style: solid;
+
+  &--a {
+    border-left-color: var(--color-team-a-border);
+  }
+
+  &--b {
+    border-left-color: var(--color-team-b-border);
+  }
 }
 
 .event-row__side {
@@ -310,6 +423,16 @@ h2 {
   color: var(--color-text-muted);
   font-size: var(--font-size-caption);
   margin-left: auto;
+}
+
+// feature/match-record-detail-scoreboard-style: rounder than the global
+// `.status-badge` default (var(--radius-sm), a boxy 6px) — a fully-rounded
+// chip echoes the scoreboard's pill-shaped station badges. Scoped to this
+// component only (Angular view encapsulation), so every OTHER screen's
+// `.status-badge` is unaffected.
+.status-badge {
+  border-radius: 999px;
+  padding: var(--space-xs) var(--space-md);
 }
 
 // 032-match-record-scoring-stats
@@ -355,6 +478,17 @@ h2 {
   gap: var(--space-sm);
   flex-wrap: wrap;
   padding: var(--space-sm);
+  // Same team-colored left edge as .event-row above.
+  border-left-width: 4px;
+  border-left-style: solid;
+
+  &--a {
+    border-left-color: var(--color-team-a-border);
+  }
+
+  &--b {
+    border-left-color: var(--color-team-b-border);
+  }
 }
 
 .player-stat-row__nickname {

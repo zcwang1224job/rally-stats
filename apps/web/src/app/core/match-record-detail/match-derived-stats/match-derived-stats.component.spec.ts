@@ -186,6 +186,14 @@ describe('MatchDerivedStatsComponent — serve stats (US1)', () => {
 
     expect(root.textContent).toContain('matchRecordDetail.derived.serve.excludedNote');
   });
+
+  it('colors each team row’s label to match that team (scoreboard-style header)', () => {
+    const root = section(setup({ serve_stats: doublesServe }).nativeElement, 'serve');
+
+    const rows = root.querySelectorAll('[data-table="teams"] tbody tr');
+    expect(rows[0].querySelector('.team-label--a')).not.toBeNull();
+    expect(rows[1].querySelector('.team-label--b')).not.toBeNull();
+  });
 });
 
 describe('MatchDerivedStatsComponent — momentum (US2)', () => {

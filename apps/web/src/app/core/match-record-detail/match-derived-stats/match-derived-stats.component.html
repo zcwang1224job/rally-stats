@@ -18,7 +18,12 @@
         @for (row of serve.teams; track row.team) {
           <tr>
             <th scope="row">
-              {{ teamLabelKey(row.team) | translate }}
+              <span
+                class="team-label"
+                [class.team-label--a]="row.team === 'A'"
+                [class.team-label--b]="row.team === 'B'"
+                >{{ teamLabelKey(row.team) | translate }}</span
+              >
               <span class="derived-table__names">
                 @for (p of row.team === 'A' ? d.team_a : d.team_b; track p.roster_entry_id; let last = $last) {
                   <app-nickname [value]="p.nickname" />@if (!last) { 、 }
@@ -55,7 +60,12 @@
             <tr>
               <th scope="row">
                 <app-nickname [value]="row.nickname" />
-                <span class="derived-table__names">{{ teamLabelKey(row.team) | translate }}</span>
+                <span
+                  class="derived-table__names team-label"
+                  [class.team-label--a]="row.team === 'A'"
+                  [class.team-label--b]="row.team === 'B'"
+                  >{{ teamLabelKey(row.team) | translate }}</span
+                >
               </th>
               <td>
                 {{ row.serve_points_won }}/{{ row.serve_points_total }}
@@ -86,7 +96,12 @@
       <dt>{{ 'matchRecordDetail.derived.momentum.longestRun' | translate }}</dt>
       @for (run of momentum.longest_runs; track run.team) {
         <dd>
-          <span class="derived-facts__team">{{ teamLabelKey(run.team) | translate }}</span>
+          <span
+            class="derived-facts__team team-label"
+            [class.team-label--a]="run.team === 'A'"
+            [class.team-label--b]="run.team === 'B'"
+            >{{ teamLabelKey(run.team) | translate }}</span
+          >
           @if (run.length > 0) {
             {{
               'matchRecordDetail.derived.momentum.runValue'
@@ -108,7 +123,12 @@
       <dt>{{ 'matchRecordDetail.derived.momentum.maxLead' | translate }}</dt>
       @for (lead of momentum.max_leads; track lead.team) {
         <dd>
-          <span class="derived-facts__team">{{ teamLabelKey(lead.team) | translate }}</span>
+          <span
+            class="derived-facts__team team-label"
+            [class.team-label--a]="lead.team === 'A'"
+            [class.team-label--b]="lead.team === 'B'"
+            >{{ teamLabelKey(lead.team) | translate }}</span
+          >
           @if (lead.margin > 0) {
             {{
               'matchRecordDetail.derived.momentum.leadValue'
