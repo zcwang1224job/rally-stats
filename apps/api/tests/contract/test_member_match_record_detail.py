@@ -155,6 +155,13 @@ async def test_success_with_bearer_token(
     assert len(body["momentum_stats"]["longest_runs"]) == 2
     assert body["tempo_stats"]["counted_points"] == 3
     assert body["landing_distribution"] == []
+    # 034-clutch-points-player-dashboard: same shared builder again.
+    clutch = body["clutch_stats"]
+    assert [m["team"] for m in clutch["match_points"]] == ["A", "B"]
+    winner = clutch["match_points"][0]
+    assert winner["held"] >= 1 and winner["converted_on"] == winner["held"]
+    assert clutch["match_points"][1]["converted_on"] is None
+    assert clutch["comeback"] is None  # A won 3:0
 
 
 async def test_requires_login(client: AsyncClient) -> None:

@@ -7,19 +7,26 @@ production rows have (research.md Decision 3)."""
 
 import uuid
 
+import pytest
+
 from app.domains.group.match_stats import (
+    ClutchResult,
     EffectivePoint,
     Participant,
     Placement,
     RawEvent,
     ServeSnapshot,
     Team,
+    _wins,
+    clutch_stats,
     effective_points,
     landing_distribution,
     momentum_stats,
+    player_landings,
     serve_stats,
     tempo_stats,
 )
+from app.domains.schedule.service import match_wins
 
 A1, A2, B1, B2 = (uuid.uuid4() for _ in range(4))
 DOUBLES = [
@@ -472,3 +479,156 @@ def test_landing_distribution_is_empty_when_no_player_has_a_plotted_point() -> N
     }
     assert landing_distribution(sim.points(), placements, DOUBLES) == []
     assert landing_distribution(sim.points(), {}, DOUBLES) == []
+
+
+def test_player_landings_keeps_totals_even_when_nothing_is_plotted() -> None:
+    """034 (T002): the dashboard needs "how many points was I credited
+    with" from a match where the scorer picked players but never tapped a
+    landing — `landing_distribution()` throws that away by design."""
+    sim = _Sim(DOUBLES)
+    first = sim.plus("A")
+    second = sim.plus("B")
+    placements = {
+        first: Placement(scorer_id=A1, loser_id=B1, landing=None),
+        second: Placement(scorer_id=B1, loser_id=A1, landing=None),
+    }
+    results = player_landings(sim.points(), placements, DOUBLES)
+    assert list(results) == [A1, A2, B1, B2]
+    assert (results[A1].scored_total, results[A1].lost_total) == (1, 1)
+    assert (results[B1].scored_total, results[B1].lost_total) == (1, 1)
+    assert results[A1].scored == [] and results[A1].lost == []
+    assert landing_distribution(sim.points(), placements, DOUBLES) == []
+
+
+# ---------------------------------------------------------------- clutch_stats (034 T004)
+
+
+def _clutch(sides: str, target: int = 21, cap: int = 30) -> ClutchResult:
+    return clutch_stats(_play(sides).points(), target, cap)
+
+
+@pytest.mark.parametrize("target", [1, 11, 15, 21])
+@pytest.mark.parametrize("extra", [0, 9])
+def test_wins_matches_the_write_paths_rule_everywhere(target: int, extra: int) -> None:
+    cap = target + extra
+    for x in range(cap + 1):
+        for y in range(cap + 1):
+            assert _wins(x, y, target, cap) == match_wins(x, y, target, cap), (x, y)
+
+
+def test_endgame_starts_once_either_side_reaches_target_minus_three() -> None:
+    # 17:0 -> the 18th point is still played at 17, so it is NOT endgame;
+    # every point from 18:0 on is.
+    result = _clutch("A" * 17 + "A" + "BB" + "AAA")
+    assert result.endgame_from == 18
+    assert result.endgame is not None
+    assert (result.endgame["A"].won, result.endgame["A"].total) == (3, 5)
+    assert (result.endgame["B"].won, result.endgame["B"].total) == (2, 5)
+
+
+def test_endgame_also_covers_the_deuce_that_follows_it() -> None:
+    result = _clutch("AB" * 20 + "ABABBB")
+    assert result.endgame is not None
+    # A reaches 18 first, at 18:17 -> 35 points played before the phase.
+    assert result.endgame["A"].total == 46 - 35
+
+
+def test_endgame_does_not_apply_below_an_eleven_point_target() -> None:
+    result = _clutch("A" * 7, target=7, cap=10)
+    assert result.endgame_from is None and result.endgame is None
+    assert result.by_state["A"].tied.total == 1  # the rest still works
+    assert result.match_points["A"].converted_on == 1
+
+
+def test_deuce_is_none_when_the_match_never_got_there() -> None:
+    assert _clutch("A" * 21).deuce is None
+    assert _clutch("AB" * 15 + "A" * 6).deuce is None  # 21:15
+
+
+def test_deuce_and_match_points_through_a_long_tiebreak() -> None:
+    """quickstart scenario 1: alternate to 20:20 (A scoring first, so A
+    already holds a match point at 20:19 — nobody reaches 20:20 without one
+    side having held one), then A B A B B B -> 22:24."""
+    result = _clutch("AB" * 20 + "ABABBB")
+    assert result.deuce is not None
+    assert (result.deuce["A"].won, result.deuce["A"].total) == (2, 6)
+    assert (result.deuce["B"].won, result.deuce["B"].total) == (4, 6)
+    a, b = result.match_points["A"], result.match_points["B"]
+    assert (a.held, a.converted_on, a.saved) == (3, None, 0)  # 20:19, 21:20, 22:21
+    assert (b.held, b.converted_on, b.saved) == (1, 1, 3)  # 22:23
+
+
+def test_winner_converts_on_the_third_match_point() -> None:
+    # 20:18 (MP1) -> 20:19 (MP2) -> 20:20 -> 21:20 (MP3) -> 22:20
+    result = _clutch("AB" * 18 + "AA" + "BB" + "AA")
+    a, b = result.match_points["A"], result.match_points["B"]
+    assert (a.held, a.converted_on, a.saved) == (3, 3, 0)
+    assert (b.held, b.converted_on, b.saved) == (0, None, 2)
+
+
+def test_point_before_the_cap_is_a_match_point_for_both_sides() -> None:
+    result = _clutch("AB" * 29 + "A")  # 29:29, cap 30
+    a, b = result.match_points["A"], result.match_points["B"]
+    assert a.converted_on == a.held and b.converted_on is None
+    # 29:29 counts once for each side; B never converts.
+    assert a.saved == b.held
+    assert a.saved + b.saved + 1 == a.held + b.held
+
+
+def test_no_extension_rule_makes_the_last_tie_sudden_death() -> None:
+    result = _clutch("AB" * 20 + "B", target=21, cap=21)  # 20:20 -> 20:21
+    a, b = result.match_points["A"], result.match_points["B"]
+    assert (a.held, a.converted_on) == (2, None)  # 20:19, then 20:20 (shared)
+    assert (b.held, b.converted_on, b.saved) == (1, 1, 2)
+
+
+def test_score_state_is_judged_before_the_point_is_played() -> None:
+    result = _clutch("AAB")
+    a, b = result.by_state["A"], result.by_state["B"]
+    assert (a.tied.won, a.tied.total) == (1, 1)  # a match's first point is always tied
+    assert (a.leading.won, a.leading.total) == (1, 2)
+    assert (a.trailing.won, a.trailing.total) == (0, 0)
+    assert (b.tied.won, b.tied.total) == (0, 1)
+    assert (b.trailing.won, b.trailing.total) == (1, 2)
+    assert (b.leading.won, b.leading.total) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "sides",
+    ["AB" * 20 + "ABABBB", "AB" * 29 + "A", "A" * 21, "BBBBB" + "AB" * 13 + "A" * 7 + "BA"],
+)
+def test_clutch_invariants_hold_for_a_completed_match(sides: str) -> None:
+    sim = _play(sides)
+    points = sim.points()
+    result = clutch_stats(points, 21, 30)
+    winner: Team = points[-1].side
+    loser: Team = "B" if winner == "A" else "A"
+
+    for team in ("A", "B"):
+        state = result.by_state[team]
+        assert state.leading.total + state.tied.total + state.trailing.total == len(points)
+    a, b = result.by_state["A"], result.by_state["B"]
+    assert a.leading.total == b.trailing.total and a.trailing.total == b.leading.total
+    assert a.tied.total == b.tied.total
+    for mine, theirs in ((a.leading, b.trailing), (a.tied, b.tied), (a.trailing, b.leading)):
+        assert mine.won + theirs.won == mine.total
+    for phase in (result.endgame, result.deuce):
+        if phase is not None:
+            assert phase["A"].total == phase["B"].total
+            assert phase["A"].won + phase["B"].won == phase["A"].total
+
+    won, lost = result.match_points[winner], result.match_points[loser]
+    assert won.held >= 1 and won.converted_on == won.held
+    assert lost.converted_on is None
+    assert won.saved + lost.saved + 1 == won.held + lost.held
+
+
+def test_clutch_uses_the_reaccumulated_score_not_the_recorded_one() -> None:
+    sim = _Sim(DOUBLES)
+    sim.plus("A")
+    sim.plus("B")  # recorded at 1:1, but re-accumulates to 0:1 once A's point is voided
+    sim.minus("A")
+    sim.plus("B")
+    result = clutch_stats(sim.points(), 21, 30)
+    b = result.by_state["B"]
+    assert (b.tied.total, b.leading.total) == (1, 1)  # second point starts at 0:1, not 1:1

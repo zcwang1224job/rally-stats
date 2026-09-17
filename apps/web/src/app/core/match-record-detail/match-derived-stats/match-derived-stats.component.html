@@ -167,6 +167,12 @@
   }
 </details>
 
+<details class="derived-section" data-section="clutch">
+  <summary>{{ 'matchRecordDetail.clutch.title' | translate }}</summary>
+  <!-- `?? null`: a backend that predates 034 omits the field entirely. -->
+  <app-match-clutch-stats [clutchStats]="d.clutch_stats ?? null" />
+</details>
+
 <details class="derived-section" data-section="tempo">
   <summary>{{ 'matchRecordDetail.derived.tempo.title' | translate }}</summary>
   @if (d.tempo_stats; as tempo) {

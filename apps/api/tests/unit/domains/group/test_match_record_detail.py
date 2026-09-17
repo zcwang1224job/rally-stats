@@ -777,3 +777,120 @@ async def test_landing_distribution_totals_match_player_stats(db_session: AsyncS
     for player in detail.landing_distribution:
         assert player.scored_total == stats[player.roster_entry_id].scored_count
         assert player.lost_total == stats[player.roster_entry_id].fault_count
+
+
+# ---------------------------------------------------------------- 034 clutch_stats (T007)
+
+
+async def _play_out(session: AsyncSession, match: Match, sides: str) -> None:
+    """Writes a whole correction-free point log in one commit and makes the
+    match's final score/winner agree with it."""
+    start = match.started_at
+    assert start is not None
+    score = {"A": 0, "B": 0}
+    for index, side in enumerate(sides):
+        score[side] += 1
+        session.add(
+            ScoreEvent(
+                match_id=match.id,
+                group_id=match.group_id,
+                side=side,
+                delta=1,
+                score_a=score["A"],
+                score_b=score["B"],
+                source="control_panel",
+                created_at=start + timedelta(seconds=20 * (index + 1)),
+            )
+        )
+    match.score_a, match.score_b = score["A"], score["B"]
+    match.winner_team = sides[-1]
+    await session.commit()
+    await session.refresh(match)
+
+
+async def _singles_match(session: AsyncSession) -> Match:
+    group = await _make_group(session)
+    a = await _make_entry(session, group, "小明")
+    b = await _make_entry(session, group, "小美")
+    return await _make_match(session, group, team_a=[a.id], team_b=[b.id])
+
+
+async def test_clutch_stats_for_a_match_that_went_to_deuce(db_session: AsyncSession) -> None:
+    match = await _singles_match(db_session)
+    await _play_out(db_session, match, "AB" * 20 + "ABABBB")  # 22:24
+
+    clutch = (await build_match_record_detail(db_session, match)).clutch_stats
+
+    assert clutch is not None
+    assert clutch.endgame_from == 18
+    assert clutch.endgame is not None and [c.team for c in clutch.endgame] == ["A", "B"]
+    assert clutch.deuce is not None
+    assert [(c.team, c.won, c.total) for c in clutch.deuce] == [("A", 2, 6), ("B", 4, 6)]
+    assert [(m.team, m.held, m.converted_on, m.saved) for m in clutch.match_points] == [
+        ("A", 3, None, 0),
+        ("B", 1, 1, 3),
+    ]
+    for state in clutch.by_state:
+        assert state.leading.total + state.tied.total + state.trailing.total == 46
+
+
+async def test_clutch_comeback_is_the_losers_max_lead(db_session: AsyncSession) -> None:
+    match = await _singles_match(db_session)
+    # B leads 0:5, A wins 21:19.
+    await _play_out(db_session, match, "BBBBB" + "AB" * 13 + "A" * 7 + "BA")
+
+    detail = await build_match_record_detail(db_session, match)
+
+    assert detail.clutch_stats is not None and detail.momentum_stats is not None
+    comeback = detail.clutch_stats.comeback
+    loser_lead = next(lead for lead in detail.momentum_stats.max_leads if lead.team == "B")
+    assert comeback is not None
+    assert (comeback.winner, comeback.max_deficit) == ("A", 5)
+    assert (comeback.max_deficit, comeback.score_a, comeback.score_b) == (
+        loser_lead.margin,
+        loser_lead.score_a,
+        loser_lead.score_b,
+    )
+
+
+async def test_clutch_has_no_comeback_when_the_winner_never_trailed(
+    db_session: AsyncSession,
+) -> None:
+    match = await _singles_match(db_session)
+    await _play_out(db_session, match, "A" * 21)
+
+    clutch = (await build_match_record_detail(db_session, match)).clutch_stats
+
+    assert clutch is not None
+    assert clutch.comeback is None
+    assert clutch.deuce is None
+    assert [m.held for m in clutch.match_points] == [1, 0]
+
+
+async def test_clutch_endgame_does_not_apply_to_a_seven_point_match(
+    db_session: AsyncSession,
+) -> None:
+    match = await _singles_match(db_session)
+    match.target_score, match.deuce_threshold, match.cap_score = 7, 6, 10
+    await _play_out(db_session, match, "AAAB" + "AAAA")  # 7:1
+
+    clutch = (await build_match_record_detail(db_session, match)).clutch_stats
+
+    assert clutch is not None
+    assert clutch.endgame_from is None and clutch.endgame is None
+    assert clutch.match_points[0].converted_on == clutch.match_points[0].held
+
+
+async def test_partial_record_has_no_clutch_stats(db_session: AsyncSession) -> None:
+    match = await _singles_match(db_session)
+    start = match.started_at
+    assert start is not None
+    await _add_event(
+        db_session, match, side="A", delta=1, score_a=6, score_b=3,
+        created_at=start + timedelta(seconds=300),
+    )
+
+    detail = await build_match_record_detail(db_session, match)
+
+    assert detail.record_completeness == "partial"
+    assert detail.clutch_stats is None

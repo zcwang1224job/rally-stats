@@ -282,6 +282,28 @@ async def test_derived_stats_from_the_real_write_path(
 
     assert body["landing_distribution"] == []  # simple scoring mode
 
+    # 034-clutch-points-player-dashboard (contracts/match-record-detail-api.md)
+    clutch = body["clutch_stats"]
+    assert set(clutch) == {
+        "endgame_from", "endgame", "deuce", "match_points", "by_state", "comeback",
+    }
+    assert clutch["endgame_from"] is None and clutch["endgame"] is None  # 3-point target
+    assert clutch["deuce"] is None
+    assert [m["team"] for m in clutch["match_points"]] == ["A", "B"]
+    assert clutch["match_points"][0] == {"team": "A", "held": 1, "converted_on": 1, "saved": 0}
+    assert clutch["match_points"][1] == {"team": "B", "held": 0, "converted_on": None, "saved": 0}
+    assert [state["team"] for state in clutch["by_state"]] == ["A", "B"]
+    for state in clutch["by_state"]:
+        assert (
+            sum(state[key]["total"] for key in ("leading", "tied", "trailing"))
+            == body["score_a"] + body["score_b"]
+        )
+        # FR-017: clutch points belong to the team, never to a player.
+        assert "roster_entry_id" not in state
+    # A never trailed, which is exactly B's zero max lead in momentum_stats.
+    assert clutch["comeback"] is None
+    assert momentum["max_leads"][1]["margin"] == 0
+
 
 async def test_match_from_different_group_returns_match_not_found(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str

@@ -1,0 +1,17 @@
+@use '../derived-blocks';
+
+:host {
+  display: block;
+}
+
+// Inline (not the table's block-level `.derived-table__rate`): a fact row
+// reads as one line — "A 隊 5/9 56%".
+.clutch-rate {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  margin-left: var(--space-xs);
+}
+
+.clutch-state-table {
+  margin-top: var(--space-sm);
+}

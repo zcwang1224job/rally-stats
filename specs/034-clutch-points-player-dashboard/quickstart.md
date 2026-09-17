@@ -31,9 +31,9 @@ npm run lint && npx tsc --noEmit -p tsconfig.app.json
 
 ## 情境 1：平分延長與賽末點（US1 情境 2、4、5）
 
-1. 打一場雙打到 20:20，之後依序：A、B、A、B、B、B 得分（終場 22:24，B 勝）。查詢 `GET /groups/{group_id}/match-records/{match_id}`。
+1. 打一場雙打，由 A 先得分、雙方交替得分到 20:20（此時 A 已在 20:19 握有過一次賽末點——要打到 20:20，前一分必為 20:19 或 19:20，領先方必然握有過賽末點），之後依序：A、B、A、B、B、B 得分（終場 22:24，B 勝）。查詢 `GET /groups/{group_id}/match-records/{match_id}`。
 
-**預期**：`clutch_stats.deuce` 兩隊 `total == 6`，A `won == 2`、B `won == 4`。賽末點：A 在 21:20、22:21 各握有一次 → `held == 2`、`converted_on == null`；B 在 22:23 握有一次並兌現 → `held == 1`、`converted_on == 1`、`saved == 2`；A `saved == 0`。畫面顯示「A 隊握有賽末點 2 次、未兌現」「B 隊化解對手賽末點 2 次」。
+**預期**：`clutch_stats.deuce` 兩隊 `total == 6`，A `won == 2`、B `won == 4`。賽末點：A 在 20:19、21:20、22:21 各握有一次 → `held == 3`、`converted_on == null`、`saved == 0`；B 在 22:23 握有一次並兌現 → `held == 1`、`converted_on == 1`、`saved == 3`。畫面顯示「A 隊握有賽末點 3 次、未兌現」「B 隊化解對手賽末點 3 次」。
 
 ## 情境 2：封頂前的雙方賽末點（US1 情境 6）
 
