@@ -47,15 +47,14 @@ function reconnectStub() {
   return { onReconnect: () => EMPTY };
 }
 
-/** 010-app-wide-ui-redesign FR-005: score centered, each team's +1/-1
- * flanking it on the outside (team A's buttons before its score-block in DOM
- * order, team B's buttons after its score-block) — this is what makes both
- * scores land adjacent in the middle under a plain flex row. `.score-block`
- * groups the score with its own team's nickname(s) (added so the color
- * block can be matched to a player at a glance) — it's the unit that
- * flanks, in place of the bare `.score` this test originally checked. */
-describe('ControlPanelComponent score-board button placement (US2 FR-005)', () => {
-  it('team A renders buttons before the score-block; team B renders the score-block before its buttons', () => {
+/** feature/control-panel-scoreboard-style: supersedes the old US2 FR-005
+ * contract (each team's +1/-1 flanking its score inside `.team`) — the panel
+ * now mirrors scoreboard.component's layout instead: the score sits centered
+ * in each `.team-center` and the scoring buttons render in a single
+ * `.scoring-controls` section below `.board-main` (the court), never inside
+ * `.team` itself, so they can never draw on top of the court markings. */
+describe('ControlPanelComponent score-board layout (scoreboard-style)', () => {
+  it('renders the score centered in each team and the scoring buttons below the court', () => {
     TestBed.configureTestingModule({
       imports: [ControlPanelComponent],
       providers: [
@@ -101,12 +100,22 @@ describe('ControlPanelComponent score-board button placement (US2 FR-005)', () =
 
     const teamA = fixture.nativeElement.querySelector('.team--a');
     const teamB = fixture.nativeElement.querySelector('.team--b');
-    expect(teamA.children[0].classList.contains('buttons')).toBe(true);
-    expect(teamA.children[1].classList.contains('score-block')).toBe(true);
-    expect(teamA.querySelector('.score-block .score')).not.toBeNull();
-    expect(teamB.children[0].classList.contains('score-block')).toBe(true);
-    expect(teamB.children[1].classList.contains('buttons')).toBe(true);
-    expect(teamB.querySelector('.score-block .score')).not.toBeNull();
+    expect(teamA.querySelector('.buttons')).toBeNull();
+    expect(teamB.querySelector('.buttons')).toBeNull();
+    expect(teamA.querySelector('.team-center .score')).not.toBeNull();
+    expect(teamB.querySelector('.team-center .score')).not.toBeNull();
+
+    const scoringControls = fixture.nativeElement.querySelector('.scoring-controls');
+    expect(scoringControls).not.toBeNull();
+    expect(scoringControls.querySelectorAll('.buttons').length).toBe(2);
+
+    const boardMain = fixture.nativeElement.querySelector('.board-main');
+    // .scoring-controls must be a later sibling of .board-main (the court),
+    // never nested inside it — DOCUMENT_POSITION_FOLLOWING (4) confirms it
+    // comes after, not that it is contained within.
+    expect(
+      boardMain.compareDocumentPosition(scoringControls) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 

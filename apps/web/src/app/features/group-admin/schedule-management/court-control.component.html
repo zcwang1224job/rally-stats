@@ -11,65 +11,97 @@
   </div>
   <div class="score-board">
     <div class="team" [class.team--a]="leftTeam() === 'A'" [class.team--b]="leftTeam() === 'B'">
-      <div class="names">
-        @for (participant of match.participants; track participant.roster_entry_id) {
-          @if (participant.team === leftTeam()) {
-            <div>{{ participant.nickname }}</div>
+      @if (station(match, serveRosterId(match, leftTeam(), 'left')); as topStation) {
+        <div class="station station--top" [class.station--server]="topStation.isServer">
+          {{ topStation.nickname }}
+          @if (topStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
           }
-        }
+        </div>
+      }
+      <div class="team-center">
+        <span
+          class="score"
+          [class.score--pulse]="leftTeam() === 'A' ? scorePulseA() : scorePulseB()"
+        >{{ leftTeam() === 'A' ? match.score_a : match.score_b }}</span>
       </div>
-      <span class="score">{{ leftTeam() === 'A' ? match.score_a : match.score_b }}</span>
-      <div class="buttons">
-        <button
-          type="button"
-          class="btn"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(leftTeam(), 1)"
-        >
-          +1
-        </button>
-        <button
-          type="button"
-          class="btn btn--secondary"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(leftTeam(), -1)"
-        >
-          -1
-        </button>
-      </div>
+      @if (station(match, serveRosterId(match, leftTeam(), 'right')); as bottomStation) {
+        <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
+          {{ bottomStation.nickname }}
+          @if (bottomStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
+          }
+        </div>
+      }
     </div>
     <div class="team" [class.team--a]="rightTeam() === 'A'" [class.team--b]="rightTeam() === 'B'">
-      <div class="names">
-        @for (participant of match.participants; track participant.roster_entry_id) {
-          @if (participant.team === rightTeam()) {
-            <div>{{ participant.nickname }}</div>
+      @if (station(match, serveRosterId(match, rightTeam(), 'left')); as topStation) {
+        <div class="station station--top" [class.station--server]="topStation.isServer">
+          {{ topStation.nickname }}
+          @if (topStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
           }
-        }
+        </div>
+      }
+      <div class="team-center">
+        <span
+          class="score"
+          [class.score--pulse]="rightTeam() === 'A' ? scorePulseA() : scorePulseB()"
+        >{{ rightTeam() === 'A' ? match.score_a : match.score_b }}</span>
       </div>
-      <span class="score">{{ rightTeam() === 'A' ? match.score_a : match.score_b }}</span>
-      <div class="buttons">
-        <button
-          type="button"
-          class="btn"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(rightTeam(), 1)"
-        >
-          +1
-        </button>
-        <button
-          type="button"
-          class="btn btn--secondary"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(rightTeam(), -1)"
-        >
-          -1
-        </button>
-      </div>
+      @if (station(match, serveRosterId(match, rightTeam(), 'right')); as bottomStation) {
+        <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
+          {{ bottomStation.nickname }}
+          @if (bottomStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
+          }
+        </div>
+      }
+    </div>
+  </div>
+  <!-- Below .score-board (the court), never on top of the court markings —
+       see scoreboard.component.scss's .scoring-controls comment. -->
+  <div class="scoring-controls">
+    <div class="buttons">
+      <button
+        type="button"
+        class="btn"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="score(leftTeam(), 1)"
+      >
+        +1
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="score(leftTeam(), -1)"
+      >
+        -1
+      </button>
+    </div>
+    <div class="buttons">
+      <button
+        type="button"
+        class="btn"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="score(rightTeam(), 1)"
+      >
+        +1
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="score(rightTeam(), -1)"
+      >
+        -1
+      </button>
     </div>
   </div>
   <button
     type="button"
-    class="btn btn--danger"
+    class="btn btn--danger end-match-button"
     [disabled]="connectionState() !== 'connected'"
     (click)="openEndMatchDialog()"
   >

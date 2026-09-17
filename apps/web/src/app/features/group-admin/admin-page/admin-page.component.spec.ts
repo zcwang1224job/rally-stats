@@ -295,6 +295,7 @@ describe('AdminPageComponent', () => {
             participants: [],
             score_a: 0,
             score_b: 0,
+            serve: null,
           },
           waiting_reason: null,
           next_up: null,

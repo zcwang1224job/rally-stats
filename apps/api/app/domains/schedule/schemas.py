@@ -33,12 +33,32 @@ class NextUpPreview(BaseModel):
     participants: list[ParticipantSummary]
 
 
+class ServeStationInfo(BaseModel):
+    """029-serve-rotation-display: who's serving and where everyone stands
+    right now — mirrors 030-score-serve-record's `ScoreServeRecord` column
+    shape 1:1 (this is the live/current equivalent of that per-point
+    snapshot), computed by the shared `_compute_station()` (service.py)."""
+
+    server_roster_entry_id: str
+    server_team: Team
+    team_a_right_roster_entry_id: str | None
+    team_a_left_roster_entry_id: str | None
+    team_b_right_roster_entry_id: str | None
+    team_b_left_roster_entry_id: str | None
+
+
 class MatchSummary(BaseModel):
     match_id: str
     status: str
     participants: list[ParticipantSummary]
     score_a: int
     score_b: int
+    # feature/control-panel-scoreboard-style: lets the admin page's court-
+    # control block show the same serve-rotation stations as the scoreboard/
+    # public control panel — None when the match has no serve state yet
+    # (research.md Decision 4, 029-serve-rotation-display — a match created
+    # before 030-score-serve-record's migration).
+    serve: ServeStationInfo | None = None
 
 
 class CourtScheduleStatus(BaseModel):
@@ -267,20 +287,6 @@ class ScoreMutationResult(BaseModel):
     # ShotPlacementRecord afterward (POST .../shot-placement) without
     # blocking the score itself on that follow-up UI.
     score_event_id: str | None = None
-
-
-class ServeStationInfo(BaseModel):
-    """029-serve-rotation-display: who's serving and where everyone stands
-    right now — mirrors 030-score-serve-record's `ScoreServeRecord` column
-    shape 1:1 (this is the live/current equivalent of that per-point
-    snapshot), computed by the shared `_compute_station()` (service.py)."""
-
-    server_roster_entry_id: str
-    server_team: Team
-    team_a_right_roster_entry_id: str | None
-    team_a_left_roster_entry_id: str | None
-    team_b_right_roster_entry_id: str | None
-    team_b_left_roster_entry_id: str | None
 
 
 class MatchLiveDetail(BaseModel):

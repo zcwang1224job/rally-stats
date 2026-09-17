@@ -1,5 +1,7 @@
 // Mirrors apps/api/app/domains/schedule/schemas.py — see contracts/schedule-api.md.
 
+import type { ServeStationInfo } from '../../../core/api/court-live-state.models';
+
 export type Team = 'A' | 'B';
 export type WaitingReason = 'manual_assignment' | 'no_queued_match';
 // 018-plan-then-start: null for scheduling_mechanism === 'manual', which has
@@ -29,6 +31,11 @@ export interface MatchSummary {
   participants: ParticipantSummary[];
   score_a: number;
   score_b: number;
+  // feature/control-panel-scoreboard-style: lets court-control.component show
+  // the same serve-rotation stations as the scoreboard/public control panel.
+  // null when the match has no serve state yet (a match created before
+  // 030-score-serve-record's migration).
+  serve: ServeStationInfo | null;
 }
 
 export interface CourtScheduleStatus {
