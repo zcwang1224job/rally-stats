@@ -108,7 +108,7 @@
 
 - [X] T030 [P] 契約測試：擴充既有兩個端點的回應形狀斷言，涵蓋 contracts/ 的不變量 1–4 與「既有欄位值不變」in `apps/api/tests/contract/test_group_match_record_detail.py`、`apps/api/tests/contract/test_member_match_record_detail.py`
 - [X] T031 [P] 語系檔一致性：確認 `zh-TW.json` 與 `en.json` 的 `matchRecordDetail.derived.*` 鍵集合完全相同、模板中沒有寫死的中英文字串 in `apps/web/src/assets/i18n/`
-- [ ] T032 後端品質關卡：`ruff check app/ tests/`、`mypy app/`、`python -m pytest tests/` 全數通過 in `apps/api/`
+- [X] T032 後端品質關卡：`ruff check app/ tests/`、`mypy app/`、`python -m pytest tests/` 全數通過 in `apps/api/`
 - [X] T033 前端品質關卡：`npm run lint`、`npx tsc --noEmit -p tsconfig.app.json`、`npm test -- --watch=false` 全數通過 in `apps/web/`
 - [X] T034 手機寬度版面檢查（FR-009）：新區塊預設僅第一個展開，既有趨勢圖／逐點清單位置不變；四個入口共用同一元件故只需驗證一處 in `apps/web/src/app/core/match-record-detail/`
 
