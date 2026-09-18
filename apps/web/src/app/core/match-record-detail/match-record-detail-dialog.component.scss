@@ -7,7 +7,7 @@
   overflow-y: auto;
 
   &::backdrop {
-    background: rgb(0 0 0 / 50%);
+    background: var(--color-backdrop);
   }
 }
 
@@ -104,7 +104,7 @@ h2 {
   flex: none;
   display: flex;
   align-items: baseline;
-  gap: var(--space-2xs, 2px);
+  gap: var(--space-2xs);
   font-family: var(--font-family-score);
   font-variant-numeric: tabular-nums;
   font-size: 2rem;
@@ -199,7 +199,7 @@ h2 {
 .trend-chart__readout-value {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2xs, 2px);
+  gap: var(--space-2xs);
   font-weight: var(--font-weight-bold);
   font-variant-numeric: tabular-nums;
 }
@@ -431,7 +431,7 @@ h2 {
 // component only (Angular view encapsulation), so every OTHER screen's
 // `.status-badge` is unaffected.
 .status-badge {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: var(--space-xs) var(--space-md);
 }
 
@@ -440,7 +440,7 @@ h2 {
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }
@@ -450,7 +450,7 @@ h2 {
   color: var(--color-text-muted);
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2xs, 2px);
+  gap: var(--space-2xs);
 }
 
 // 035: the ending-type label — same caption size as the player badges;
@@ -460,16 +460,16 @@ h2 {
   font-size: var(--font-size-caption);
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2xs, 2px);
+  gap: var(--space-2xs);
   white-space: nowrap;
 }
 
 .event-row__ending--winner {
-  color: var(--color-brand-primary);
+  color: var(--color-positive);
 }
 
 .event-row__ending--error {
-  color: var(--color-danger);
+  color: var(--color-negative);
 }
 
 // forces the expanded panel onto its own line within the wrapping flex row

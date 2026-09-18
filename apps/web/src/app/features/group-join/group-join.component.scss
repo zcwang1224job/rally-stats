@@ -1,5 +1,6 @@
+@use '../../../styles/layout';
+
 :host {
-  display: block;
-  padding: var(--space-md);
+  @include layout.page(narrow);
   text-align: center;
 }

@@ -261,8 +261,8 @@ export class MatchHistoryComponent {
     }
     const winPercent = r.win_rate * 100;
     return (
-      `conic-gradient(var(--color-brand-accent) 0 ${winPercent}%, ` +
-      `var(--color-danger) ${winPercent}% 100%)`
+      `conic-gradient(var(--color-positive) 0 ${winPercent}%, ` +
+      `var(--color-negative) ${winPercent}% 100%)`
     );
   });
 

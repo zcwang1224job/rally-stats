@@ -1,12 +1,8 @@
+@use '../../../../styles/layout';
 @use '../../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-}
-
-.page-title {
-  margin: 0 0 var(--space-md);
+  @include layout.page(wide);
 }
 
 .filters-panel {
@@ -128,7 +124,7 @@
 .tier-badge {
   display: inline-flex;
   padding: var(--space-xs) var(--space-sm);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-brand-primary) 12%, white);
   color: var(--color-brand-primary);
   font-weight: var(--font-weight-bold);
@@ -145,11 +141,11 @@
 }
 
 .hero-card__record-wins {
-  color: var(--color-brand-accent);
+  color: var(--color-positive);
 }
 
 .hero-card__record-losses {
-  color: var(--color-danger);
+  color: var(--color-negative);
 }
 
 .hero-card__record-sep {
@@ -168,7 +164,6 @@
 
   h2 {
     margin: 0 0 var(--space-md);
-    font-size: var(--font-size-body);
   }
 }
 
@@ -277,11 +272,11 @@
 }
 
 .match-card--win {
-  border-left-color: var(--color-brand-accent);
+  border-left-color: var(--color-positive);
 }
 
 .match-card--loss {
-  border-left-color: var(--color-danger);
+  border-left-color: var(--color-negative);
 }
 
 .match-card__meta {
@@ -339,7 +334,7 @@
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }

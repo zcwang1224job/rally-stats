@@ -56,7 +56,7 @@
 
   &:hover,
   &:focus-visible {
-    border-color: var(--color-brand-accent);
+    border-color: var(--color-text-muted);
   }
 
   // A strong insight is set apart by weight, not by a second colour.
@@ -76,12 +76,12 @@
 // Colour only reinforces what the icon's shape and the word already say.
 .insight[data-tone='strength'] .insight__icon,
 .insight[data-tone='improved'] .insight__icon {
-  color: var(--color-brand-accent);
+  color: var(--color-positive);
 }
 
 .insight[data-tone='weakness'] .insight__icon,
 .insight[data-tone='declined'] .insight__icon {
-  color: var(--color-danger);
+  color: var(--color-negative);
 }
 
 .insight__sentence {

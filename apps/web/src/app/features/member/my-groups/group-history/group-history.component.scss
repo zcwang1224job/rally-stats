@@ -1,17 +1,11 @@
+@use '../../../../../styles/layout';
 @use '../../../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-}
-
-.page-title {
-  margin: 0 0 var(--space-md);
+  @include layout.page(wide);
 }
 
 .section-title {
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
   margin: var(--space-lg) 0 var(--space-sm);
 }
 
@@ -119,7 +113,7 @@
 .tier-badge {
   display: inline-flex;
   padding: var(--space-xs) var(--space-sm);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-brand-primary) 12%, white);
   color: var(--color-brand-primary);
   font-weight: var(--font-weight-bold);
@@ -136,11 +130,11 @@
 }
 
 .hero-card__record-wins {
-  color: var(--color-brand-accent);
+  color: var(--color-positive);
 }
 
 .hero-card__record-losses {
-  color: var(--color-danger);
+  color: var(--color-negative);
 }
 
 .hero-card__record-sep {
@@ -159,7 +153,6 @@
 
   h3 {
     margin: 0 0 var(--space-md);
-    font-size: var(--font-size-body);
   }
 }
 
@@ -180,7 +173,6 @@
 
   h3 {
     margin: 0 0 var(--space-md);
-    font-size: var(--font-size-body);
   }
 }
 
@@ -293,7 +285,6 @@
 
   h3 {
     margin: 0 0 var(--space-md);
-    font-size: var(--font-size-body);
   }
 }
 
@@ -329,7 +320,7 @@
 .ranking-row__bar-track {
   height: 6px;
   min-width: 40px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--color-surface-alt);
   overflow: hidden;
 }
@@ -459,7 +450,7 @@ a.tap-target {
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }

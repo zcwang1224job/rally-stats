@@ -1,12 +1,6 @@
-:host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 420px;
-  margin: 0 auto;
-  text-align: center;
-}
+@use '../../../../styles/layout';
 
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+:host {
+  @include layout.page(narrow);
+  text-align: center;
 }

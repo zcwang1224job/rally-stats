@@ -10,6 +10,7 @@
 // commented here.
 :host {
   --scoreboard-bg: var(--color-ink);
+  --color-focus-ring: var(--color-ink-text); // dark board: light focus ring
   --scoreboard-team-a-bg: var(--color-team-a-bg);
   --scoreboard-team-a-border: var(--color-team-a-border);
   --scoreboard-team-b-bg: var(--color-team-b-bg);
@@ -212,7 +213,7 @@ h1 {
   align-items: center;
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-lg);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-ink) 45%, transparent);
   font-family: var(--font-family-base);
   font-size: 1.5rem;

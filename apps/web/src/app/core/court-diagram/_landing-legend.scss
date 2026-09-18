@@ -27,13 +27,13 @@
 
   &--scored {
     border-radius: 50%;
-    background: var(--color-brand-primary);
+    background: var(--color-positive);
   }
 
   &--lost {
     transform: rotate(45deg);
     background: var(--color-surface);
-    border: 2px solid var(--color-danger);
+    border: 2px solid var(--color-negative);
   }
 }
 

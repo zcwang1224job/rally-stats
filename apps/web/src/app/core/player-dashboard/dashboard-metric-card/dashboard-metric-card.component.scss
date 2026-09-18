@@ -78,11 +78,11 @@
   font-weight: var(--font-weight-bold);
 
   &[data-verdict='improved'] .metric__verdict-icon {
-    color: var(--color-brand-accent);
+    color: var(--color-positive);
   }
 
   &[data-verdict='declined'] .metric__verdict-icon {
-    color: var(--color-danger);
+    color: var(--color-negative);
   }
 
   &[data-verdict='unchanged'] .metric__verdict-icon,
@@ -115,7 +115,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }

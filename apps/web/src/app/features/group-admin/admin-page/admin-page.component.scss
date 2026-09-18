@@ -1,28 +1,12 @@
+@use '../../../../styles/layout';
 @use '../../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 720px;
-  margin: 0 auto;
-
-  // Desktop / tablet-landscape: wide enough that stacking every court's
-  // control block and both link cards in a single column wastes the
-  // available width (research.md #2's second breakpoint).
-  @media (min-width: breakpoints.$breakpoint-desktop) {
-    max-width: 960px;
-  }
-}
-
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+  @include layout.page(wide);
 }
 
 h2 {
   margin-top: 0;
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
 }
 
 .group-number {

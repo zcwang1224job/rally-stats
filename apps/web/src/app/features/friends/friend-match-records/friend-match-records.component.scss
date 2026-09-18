@@ -1,15 +1,7 @@
-:host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 640px;
-  margin: 0 auto;
-}
+@use '../../../../styles/layout';
 
-.page-title {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
-  margin-bottom: var(--space-md);
-  overflow-wrap: break-word;
+:host {
+  @include layout.page(default);
 }
 
 // 精簡版彙總統計（research.md #1）：僅總場次/勝/敗/勝率，無 donut 圖表。
@@ -34,13 +26,13 @@
 }
 
 .stats-summary__wins {
-  color: var(--color-brand-accent);
+  color: var(--color-positive);
   font-weight: var(--font-weight-black);
   font-size: var(--font-size-heading);
 }
 
 .stats-summary__losses {
-  color: var(--color-danger);
+  color: var(--color-negative);
   font-weight: var(--font-weight-black);
   font-size: var(--font-size-heading);
 }
@@ -78,11 +70,11 @@
 }
 
 .match-card--win {
-  border-left-color: var(--color-brand-accent);
+  border-left-color: var(--color-positive);
 }
 
 .match-card--loss {
-  border-left-color: var(--color-danger);
+  border-left-color: var(--color-negative);
 }
 
 .match-card__meta {
@@ -138,7 +130,7 @@
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }

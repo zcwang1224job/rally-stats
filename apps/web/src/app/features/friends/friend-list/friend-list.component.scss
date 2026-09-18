@@ -1,25 +1,8 @@
+@use '../../../../styles/layout';
 @use '../../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-
-  h1 {
-    margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-bold);
-  }
+  @include layout.page(default);
 }
 
 .filters-panel {

@@ -1,19 +1,8 @@
+@use '../../../styles/layout';
 @use '../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 720px;
-  margin: 0 auto;
-
-  @media (min-width: breakpoints.$breakpoint-desktop) {
-    max-width: 960px;
-  }
-}
-
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+  @include layout.page(wide);
 }
 
 .group-number {

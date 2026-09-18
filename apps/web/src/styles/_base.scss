@@ -3,6 +3,60 @@
 // mixins), applied directly in component templates alongside a
 // component's own co-located .component.scss.
 
+// Heading scale — one size per level app-wide, so a page title or section
+// title reads the same on every page instead of each component restating
+// (or forgetting to restate) it. A component only overrides these for a
+// deliberate exception (home's display title, a dialog's heading).
+h1 {
+  margin: var(--space-md) 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+h2 {
+  font-size: var(--font-size-subheading);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+}
+
+h3 {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+}
+
+// Keyboard focus — every interactive element gets the same visible ring
+// (constitution VII). :where() keeps this at zero specificity so a
+// component can still tune the offset or radius for its own shape.
+:where(a, button, summary, select, [role='button'], [role='tab'], [tabindex]):focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+// Page title row with a trailing action (e.g. an "add" icon button).
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0;
+
+  h1 {
+    margin: 0;
+  }
+}
+
+// A row of buttons that ends a card, form step or dialog: end-aligned,
+// secondary action first and the primary action last (rightmost).
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -18,6 +72,7 @@
   font-family: var(--font-family-base);
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
+  text-decoration: none; // an <a class="btn"> must not look like a text link
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   transition:
@@ -31,11 +86,6 @@
       background: var(--color-brand-primary-hover);
       box-shadow: var(--shadow-md);
     }
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--color-ink);
-    outline-offset: 2px;
   }
 
   &:active {

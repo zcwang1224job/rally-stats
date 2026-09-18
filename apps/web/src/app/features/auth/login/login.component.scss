@@ -1,14 +1,7 @@
-:host {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: var(--space-md);
-}
+@use '../../../../styles/layout';
 
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+:host {
+  @include layout.page(narrow);
 }
 
 .login-options {
@@ -72,7 +65,7 @@ h1 {
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-ink);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }

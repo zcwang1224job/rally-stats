@@ -99,7 +99,7 @@
   }
 
   &:focus-visible {
-    outline: 2px solid var(--color-brand-primary);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 }
@@ -155,15 +155,16 @@
   vertical-align: middle;
   width: calc(100% - 3.5rem);
   height: 6px;
-  border-radius: 3px;
-  background: var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
   overflow: hidden;
 }
 
 .error-breakdown__fill {
   display: block;
   height: 100%;
-  background: var(--color-brand-primary);
+  border-radius: inherit;
+  background: var(--color-series-1);
 }
 
 .visually-hidden {
