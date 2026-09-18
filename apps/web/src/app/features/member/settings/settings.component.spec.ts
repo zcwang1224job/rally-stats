@@ -152,7 +152,7 @@ describe('SettingsComponent', () => {
     const { fixture } = setup();
 
     const basicTab = fixture.nativeElement.querySelector('.settings-tab[data-section="basic"]');
-    expect(basicTab.classList.contains('settings-tab--active')).toBe(true);
+    expect(basicTab.getAttribute('aria-selected')).toBe('true');
     expect(fixture.nativeElement.querySelector('input[formControlName="nickname"]')).not.toBeNull();
   });
 

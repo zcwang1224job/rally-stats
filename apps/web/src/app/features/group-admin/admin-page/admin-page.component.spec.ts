@@ -132,7 +132,7 @@ describe('AdminPageComponent', () => {
 
     const buttons = navButtons(fixture);
     expect(buttons.length).toBe(4);
-    expect(buttons[0].classList.contains('is-active')).toBe(true);
+    expect(buttons[0].getAttribute('aria-current')).toBe('page');
     expect(fixture.nativeElement.querySelector('.links-section')).not.toBeNull();
   });
 

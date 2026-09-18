@@ -1,13 +1,12 @@
 <main class="settings-page">
   <h1>{{ 'member.settingsLink' | translate }}</h1>
 
-  <nav class="settings-tabs" role="tablist">
+  <nav class="settings-tabs tabs" role="tablist">
     <button
       type="button"
       role="tab"
-      class="settings-tab"
+      class="tabs__tab settings-tab"
       data-section="basic"
-      [class.settings-tab--active]="activeSection() === 'basic'"
       [attr.aria-selected]="activeSection() === 'basic'"
       (click)="setActiveSection('basic')"
     >
@@ -16,9 +15,8 @@
     <button
       type="button"
       role="tab"
-      class="settings-tab"
+      class="tabs__tab settings-tab"
       data-section="accountDetails"
-      [class.settings-tab--active]="activeSection() === 'accountDetails'"
       [attr.aria-selected]="activeSection() === 'accountDetails'"
       (click)="setActiveSection('accountDetails')"
     >
@@ -27,9 +25,8 @@
     <button
       type="button"
       role="tab"
-      class="settings-tab"
+      class="tabs__tab settings-tab"
       data-section="security"
-      [class.settings-tab--active]="activeSection() === 'security'"
       [attr.aria-selected]="activeSection() === 'security'"
       (click)="setActiveSection('security')"
     >
@@ -38,9 +35,8 @@
     <button
       type="button"
       role="tab"
-      class="settings-tab"
+      class="tabs__tab settings-tab"
       data-section="privacy"
-      [class.settings-tab--active]="activeSection() === 'privacy'"
       [attr.aria-selected]="activeSection() === 'privacy'"
       (click)="setActiveSection('privacy')"
     >

@@ -20,32 +20,31 @@
   }
 
   <div class="member-shell">
-    <nav class="member-nav">
+    <nav class="member-nav tabs tabs--sidebar">
       <button
         type="button"
-        class="tap-target"
-        [class.is-active]="activeTab() === 'schedule'"
+        class="tabs__tab"
+        [attr.aria-current]="activeTab() === 'schedule' ? 'page' : null"
         (click)="setTab('schedule')"
       >
         {{ 'groupMemberView.nav.schedule' | translate }}
       </button>
       <button
         type="button"
-        class="tap-target"
-        [class.is-active]="activeTab() === 'standings'"
+        class="tabs__tab"
+        [attr.aria-current]="activeTab() === 'standings' ? 'page' : null"
         (click)="setTab('standings')"
       >
         {{ 'groupMemberView.nav.standings' | translate }}
       </button>
       <button
         type="button"
-        class="tap-target"
-        [class.is-active]="activeTab() === 'match-records'"
+        class="tabs__tab"
+        [attr.aria-current]="activeTab() === 'match-records' ? 'page' : null"
         (click)="setTab('match-records')"
       >
         {{ 'groupMemberView.nav.matchRecords' | translate }}
       </button>
-      <app-leave-group [groupId]="groupId" />
     </nav>
 
     <div class="member-content">
@@ -62,4 +61,6 @@
       }
     </div>
   </div>
+
+  <app-leave-group [groupId]="groupId" />
 }

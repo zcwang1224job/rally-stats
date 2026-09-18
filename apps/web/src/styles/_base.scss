@@ -127,6 +127,78 @@ h3 {
   }
 }
 
+// A destructive action that isn't the page's main action (log out, leave a
+// group, remove a friend from a list row): red text and border on the
+// surface, so one of these per row doesn't flood the page with solid red.
+.btn--danger-outline {
+  background: var(--color-surface);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  box-shadow: none;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--color-danger) 8%, white);
+      box-shadow: none;
+    }
+  }
+}
+
+// A secondary button that toggles on (compare with a friend, pick a player
+// to swap, assign to team A/B): tinted brand fill + ring while pressed.
+// The pressed state lives in aria-pressed, so assistive tech gets it too;
+// templates add a ✓ or similar where color would otherwise be the only cue.
+.btn--secondary[aria-pressed='true'],
+.btn--secondary.is-selected {
+  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
+  border-color: var(--color-brand-primary);
+  color: var(--color-brand-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--color-brand-primary) 22%, white);
+      border-color: var(--color-brand-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
+    }
+  }
+}
+
+// One option in a small "pick one" group inside a card (sort by, time
+// range, which player). Pressed = solid ink + bold — a fill *and* weight
+// change, never color alone.
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out;
+
+  @media (hover: hover) {
+    &:hover {
+      border-color: var(--color-text-muted);
+    }
+  }
+
+  &[aria-pressed='true'] {
+    background: var(--color-ink);
+    border-color: var(--color-ink);
+    color: var(--color-ink-text);
+    font-weight: var(--font-weight-bold);
+  }
+}
+
 // Square, icon-only variant — same touch-target/hover/active behavior as
 // `.btn`, just without the text label pushing its width out. The icon
 // itself carries no meaning on its own; every use MUST pair it with an
@@ -227,6 +299,73 @@ dialog.dialog--xl {
     &:hover {
       background: var(--color-surface-alt);
       color: var(--color-text-primary);
+    }
+  }
+}
+
+// Section tabs (settings sections, a group's admin/member views). A
+// horizontally scrolling strip, with an edge fade hinting at more;
+// `.tabs--sidebar` turns it into a 200px left column from the tablet
+// breakpoint up. The selected tab is marked by `aria-selected="true"`
+// (role="tab") or `aria-current="page"` — the attribute drives the style,
+// so the state is never conveyed by color alone.
+.tabs {
+  display: flex;
+  gap: var(--space-xs);
+  padding-bottom: var(--space-xs);
+  overflow-x: auto;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black var(--space-md),
+    black calc(100% - var(--space-md)),
+    transparent 100%
+  );
+}
+
+.tabs__tab {
+  flex: 0 0 auto;
+  min-height: var(--touch-target-min);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out,
+    color 0.15s ease-out;
+
+  @media (hover: hover) {
+    &:hover {
+      border-color: var(--color-text-muted);
+    }
+  }
+
+  &[aria-selected='true'],
+  &[aria-current='page'] {
+    background: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+    color: var(--color-brand-primary-contrast);
+  }
+}
+
+@media (min-width: breakpoints.$breakpoint-tablet) {
+  .tabs--sidebar {
+    flex: 0 0 200px;
+    flex-direction: column;
+    padding-bottom: 0;
+    overflow-x: visible;
+    mask-image: none;
+
+    .tabs__tab {
+      width: 100%;
+      text-align: left;
     }
   }
 }

@@ -215,8 +215,7 @@
       @for (p of players(); track p.roster_entry_id) {
         <button
           type="button"
-          class="landing-players__button"
-          [class.landing-players__button--active]="p.roster_entry_id === player.roster_entry_id"
+          class="chip landing-players__button"
           [attr.aria-pressed]="p.roster_entry_id === player.roster_entry_id"
           (click)="selectPlayer(p.roster_entry_id)"
         >

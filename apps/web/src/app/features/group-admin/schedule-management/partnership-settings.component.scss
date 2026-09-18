@@ -22,16 +22,6 @@ h2 {
   gap: var(--space-sm);
 }
 
-// 點選第一位參與者後，MUST 讓使用者看得出「目前選到誰」——比照
-// .status-badge 既有慣例（constitution VII），顏色變化只是輔助，實際的
-// 區分依據是按鈕文字前綴的勾選符號（見 template）與 aria-pressed。
-.pair-list .btn.is-selected {
-  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
-  border-color: var(--color-brand-primary);
-  color: var(--color-brand-primary);
-  font-weight: var(--font-weight-bold);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
-}
 
 // 拆散一組搭檔屬於可逆操作（隨時可以重新配對），不比照真正的破壞性操作
 // 加二次確認（憲章原則 V）；視覺上調得比主要的「點兩人互換」按鈕更輕，
