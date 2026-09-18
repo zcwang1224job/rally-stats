@@ -31,6 +31,28 @@
   <!-- 034 US5: rendered only once it has loaded. A refusal (not friends /
        sharing off) already shows as the page's single alert above, so the
        dashboard never adds a second message for the same reason. -->
+  <!-- 036 US4: my numbers next to theirs — asked for, never automatic. There
+       is no in-group comparison anywhere on this page (FR-037). -->
+  <p class="compare-toggle">
+    <button
+      type="button"
+      class="btn btn--secondary"
+      [attr.aria-pressed]="comparing()"
+      (click)="toggleComparison()"
+      data-compare-toggle
+    >
+      {{ 'friendComparison.toggle' | translate }}
+    </button>
+  </p>
+  @if (comparing()) {
+    <app-friend-comparison
+      [comparison]="comparison()"
+      [friendNickname]="nickname()"
+      [loading]="comparisonLoading()"
+      [failed]="comparisonFailed()"
+    />
+  }
+
   @if (dashboard(); as d) {
     <!-- 036 FR-037: the friend's whole summary, 待加強 included — it says
          nothing the dashboard below does not already show, and it is gated

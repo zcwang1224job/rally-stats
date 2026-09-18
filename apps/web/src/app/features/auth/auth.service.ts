@@ -5,6 +5,7 @@ import {
   BenchmarkGroupsResponse,
   GroupBenchmarkResponse,
 } from '../../core/api/group-benchmark.models';
+import { MatchComparisonResponse } from '../../core/api/match-comparison.models';
 import { MemberMatchDashboardResponse } from '../../core/api/player-dashboard.models';
 import {
   MatchRecordDetailResponse,
@@ -277,6 +278,15 @@ export class AuthService {
   getFriendMatchDashboard(memberId: string): Observable<MemberMatchDashboardResponse> {
     return this.api.get<MemberMatchDashboardResponse>(
       `/members/${memberId}/match-dashboard`,
+      this.authHeader(),
+    );
+  }
+
+  /** 036-match-insights-benchmarks US4: the friend's numbers next to mine.
+   * Same 023 gate as every other look at a friend's records. */
+  getFriendMatchComparison(memberId: string): Observable<MatchComparisonResponse> {
+    return this.api.get<MatchComparisonResponse>(
+      `/members/${memberId}/match-comparison`,
       this.authHeader(),
     );
   }

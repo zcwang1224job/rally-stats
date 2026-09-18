@@ -11,6 +11,7 @@ import {
   DashboardMetricKey,
   MemberMatchDashboardResponse,
 } from '../../../core/api/player-dashboard.models';
+import { MatchComparisonResponse } from '../../../core/api/match-comparison.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import {
   MatchupRecordsComponent,
@@ -20,6 +21,7 @@ import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
 import { AuthService } from '../../auth/auth.service';
+import { FriendComparisonComponent } from './friend-comparison/friend-comparison.component';
 
 /** 023-view-friend-match-records US1/US2: a deliberately thin sibling of
  * `member/match-history/match-history.component` — same list/pagination/
@@ -41,6 +43,7 @@ import { AuthService } from '../../auth/auth.service';
     PlayerDashboardComponent,
     PlayerInsightsComponent,
     MatchupRecordsComponent,
+    FriendComparisonComponent,
   ],
   templateUrl: './friend-match-records.component.html',
   styleUrl: './friend-match-records.component.scss',
@@ -86,6 +89,37 @@ export class FriendMatchRecordsComponent {
     row.setAttribute('tabindex', '-1');
     row.focus({ preventScroll: true });
   }
+
+  // ---- 036 US4: "compare with me" -------------------------------------------
+  /** Off until asked for, and fetched at most once per visit: most looks at a
+   * friend's records are not a comparison. */
+  readonly comparing = signal(false);
+  readonly comparison = signal<MatchComparisonResponse | null>(null);
+  readonly comparisonLoading = signal(false);
+  readonly comparisonFailed = signal(false);
+  private comparisonRequested = false;
+
+  toggleComparison(): void {
+    this.comparing.update((on) => !on);
+    if (!this.comparing() || this.comparisonRequested) {
+      return;
+    }
+    this.comparisonRequested = true;
+    this.comparisonLoading.set(true);
+    this.auth.getFriendMatchComparison(this.memberId).subscribe({
+      next: (response) => {
+        this.comparison.set(response);
+        this.comparisonLoading.set(false);
+      },
+      error: () => {
+        // A refusal shows up as the page's own alert on the next records
+        // request; here it is simply "could not compare".
+        this.comparisonLoading.set(false);
+        this.comparisonFailed.set(true);
+      },
+    });
+  }
+
   readonly pageNumbers = computed(() => {
     const totalPages = this.records()?.total_pages ?? 1;
     return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -116,6 +150,8 @@ export class FriendMatchRecordsComponent {
         // Refused now (unfriended / sharing turned off since the page
         // opened): nothing of theirs may stay on screen (023 FR-007).
         this.dashboard.set(null);
+        this.comparison.set(null);
+        this.comparing.set(false);
         this.errorKey.set(error.i18nKey);
       },
     });

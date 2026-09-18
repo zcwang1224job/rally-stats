@@ -142,3 +142,15 @@
     outline-offset: 2px;
   }
 }
+
+// 036 US4
+.compare-toggle {
+  margin: 0 0 var(--space-md);
+
+  // Pressed is said by the border and weight as well as the fill.
+  [aria-pressed='true'] {
+    border-width: 2px;
+    font-weight: var(--font-weight-bold);
+  }
+}
+
