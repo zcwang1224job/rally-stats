@@ -365,3 +365,31 @@ describe('PlayerDashboardComponent — winners & errors (035 US3)', () => {
     expect(rows(root)[0]).toEqual({ kind: 'out', count: '6', percent: '60%' });
   });
 });
+
+describe('PlayerDashboardComponent — focusMetric (036 FR-010)', () => {
+  it('gives every metric card an anchor', () => {
+    const root: HTMLElement = setup(dashboardFixture()).nativeElement;
+    const card = root.querySelector<HTMLElement>('#metric-endgame')!;
+    expect(card.dataset['metric']).toBe('endgame');
+    expect(card.getAttribute('tabindex')).toBe('-1');
+  });
+
+  it('opens the collapsed group the metric lives in and moves focus to its card', () => {
+    const fixture = setup(dashboardFixture());
+    const root: HTMLElement = fixture.nativeElement;
+    document.body.appendChild(root); // focus() needs an attached element
+    expect(group(root, 'ending').open).toBe(false);
+
+    fixture.componentInstance.focusMetric('winner_share');
+
+    expect(group(root, 'ending').open).toBe(true);
+    expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+    expect(group(root, 'clutch').open).toBe(false); // only the one it needs
+    root.remove();
+  });
+
+  it('ignores a key it cannot find rather than throwing', () => {
+    const fixture = setup(EMPTY_DASHBOARD);
+    expect(() => fixture.componentInstance.focusMetric('team_serve')).not.toThrow();
+  });
+});

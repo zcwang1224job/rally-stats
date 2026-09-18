@@ -32,6 +32,12 @@
        sharing off) already shows as the page's single alert above, so the
        dashboard never adds a second message for the same reason. -->
   @if (dashboard(); as d) {
+    <!-- 036 FR-037: the friend's whole summary, 待加強 included — it says
+         nothing the dashboard below does not already show, and it is gated
+         by the same 023 setting. It can never carry an in-group sentence:
+         those only come from the group-benchmark endpoint, which this page
+         never calls. -->
+    <app-player-insights [insights]="d.insights" (metricPicked)="focusMetric($event)" />
     <app-player-dashboard [dashboard]="d" />
   }
 

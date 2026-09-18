@@ -7,10 +7,14 @@ import {
   MatchRecordDetailResponse,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
-import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
+import {
+  DashboardMetricKey,
+  MemberMatchDashboardResponse,
+} from '../../../core/api/player-dashboard.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
+import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
 import { AuthService } from '../../auth/auth.service';
 
 /** 023-view-friend-match-records US1/US2: a deliberately thin sibling of
@@ -31,6 +35,7 @@ import { AuthService } from '../../auth/auth.service';
     MatchRecordDetailDialogComponent,
     NicknameComponent,
     PlayerDashboardComponent,
+    PlayerInsightsComponent,
   ],
   templateUrl: './friend-match-records.component.html',
   styleUrl: './friend-match-records.component.scss',
@@ -52,6 +57,13 @@ export class FriendMatchRecordsComponent {
   /** 034 US5: the friend's technique dashboard — same privacy gate as the
    * records, checked by the server on its own request. */
   readonly dashboard = signal<MemberMatchDashboardResponse | null>(null);
+
+  /** 036 FR-037 / FR-010: the friend's summary jumps to the friend's cards. */
+  private readonly dashboardRef = viewChild(PlayerDashboardComponent);
+
+  focusMetric(key: DashboardMetricKey): void {
+    this.dashboardRef()?.focusMetric(key);
+  }
   readonly pageNumbers = computed(() => {
     const totalPages = this.records()?.total_pages ?? 1;
     return Array.from({ length: totalPages }, (_, i) => i + 1);

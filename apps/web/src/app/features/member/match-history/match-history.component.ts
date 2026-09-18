@@ -11,10 +11,14 @@ import {
   MemberMatchRecordFilters,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
-import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
+import {
+  DashboardMetricKey,
+  MemberMatchDashboardResponse,
+} from '../../../core/api/player-dashboard.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
+import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
@@ -48,6 +52,7 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
     NicknameComponent,
     AddFriendButtonComponent,
     PlayerDashboardComponent,
+    PlayerInsightsComponent,
   ],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
@@ -68,6 +73,14 @@ export class MatchHistoryComponent {
 
   private readonly detailDialogRef =
     viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');
+  /** 036 FR-010: an insight sentence jumps to the card it is about. Optional —
+   * the dashboard only exists once the records have loaded. */
+  private readonly dashboardRef = viewChild(PlayerDashboardComponent);
+
+  focusMetric(key: DashboardMetricKey): void {
+    this.dashboardRef()?.focusMetric(key);
+  }
+
   readonly detail = signal<MatchRecordDetailResponse | null>(null);
   readonly detailLoading = signal(false);
   readonly detailLoadError = signal(false);

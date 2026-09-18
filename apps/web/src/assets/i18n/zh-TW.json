@@ -811,6 +811,71 @@
       }
     }
   },
+  "playerInsights": {
+    "title": "優缺點摘要",
+    "loading": "正在整理你的優缺點…",
+    "list": {
+      "strength": "強項",
+      "weakness": "待加強",
+      "recent": "最近變化",
+      "matchup": "對戰組合"
+    },
+    "listEmpty": {
+      "strength": "目前沒有特別突出的項目",
+      "weakness": "目前沒有明顯落後的項目",
+      "recent": "最近的表現和整體差不多",
+      "matchup": "還沒有特別突出的搭檔或對手"
+    },
+    "tone": {
+      "strength": "強項",
+      "weakness": "待加強",
+      "matchup": "對戰組合"
+    },
+    "status": {
+      "insufficientData": "資料還不夠：累積幾場有逐分紀錄的比賽之後，這裡會指出你的強項與最值得加強的地方。",
+      "balanced": "目前各項表現均衡，沒有特別突出或落後的項目。"
+    },
+    "benchmarkPending": "正在加入團內比較…",
+    "benchmarkOmittedByFilters": "已套用篩選條件，摘要暫不含團內比較（兩者的比賽範圍不同）。",
+    "benchmarkIncluded": "已納入「{{group}}」的團內比較。",
+    "evidence": {
+      "points": "{{numerator}}／{{denominator}} 分 · 依據 {{matches}} 場",
+      "recent": "最近 {{matches}} 場有此資料",
+      "matchup": "{{wins}} 勝 {{losses}} 敗 · 共 {{matches}} 場",
+      "benchmark": "第 {{rank}} 名／共 {{pool}} 人"
+    },
+    "rule": {
+      "rate_vs_overall": {
+        "strength": "{{metric}} {{value}}，高於你在這些比賽的應有水準 {{baseline}}（多 {{diff}} 個百分點）",
+        "weakness": "{{metric}} {{value}}，低於你在這些比賽的應有水準 {{baseline}}（少 {{diff}} 個百分點）"
+      },
+      "deuce_vs_even": {
+        "strength": "平分延長時你拿下 {{value}} 的分數，高於五五波",
+        "weakness": "平分延長時你拿下 {{value}} 的分數，低於五五波"
+      },
+      "error_share_high": {
+        "weakness": "你的失分有 {{value}} 來自自己的失誤",
+        "weaknessDominant": "你的失分有 {{value}} 來自自己的失誤，其中 {{dominantShare}} 是{{dominant}}"
+      },
+      "winner_share_high": {
+        "strength": "你的得分有 {{value}} 是自己主動拿下的"
+      },
+      "recent_change": {
+        "improved": "{{metric}}最近是 {{recentValue}}，整體是 {{allValue}}",
+        "declined": "{{metric}}最近是 {{recentValue}}，整體是 {{allValue}}"
+      },
+      "partner_above_overall": {
+        "matchup": "和 {{nickname}} 搭檔的勝率 {{winRate}}，高於你的雙打整體勝率 {{baseline}}"
+      },
+      "opponent_below_overall": {
+        "matchup": "對上 {{nickname}} 的勝率 {{winRate}}，低於你的整體勝率 {{baseline}}"
+      },
+      "benchmark_quartile": {
+        "strength": "{{metric}} {{mine}}，優於「{{group}}」的團內平均 {{groupAverage}}，排第 {{rank}}／{{pool}}",
+        "weakness": "{{metric}} {{mine}}，不及「{{group}}」的團內平均 {{groupAverage}}，排第 {{rank}}／{{pool}}"
+      }
+    }
+  },
   "matchRecordDetail": {
     "title": "比賽詳情",
     "close": "關閉",

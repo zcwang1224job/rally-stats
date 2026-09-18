@@ -122,6 +122,18 @@
     </div>
   </section>
 
+  <!-- 036 US1: the conclusions first, the numbers behind them right below.
+       Rides on the dashboard response, so it follows the same filters and
+       shares its loading state; when that request fails the dashboard says
+       so and this simply stays out of the way (FR-007). -->
+  @if (!dashboardFailed()) {
+    <app-player-insights
+      [insights]="dashboard()?.insights ?? null"
+      [loading]="dashboardLoading()"
+      (metricPicked)="focusMetric($event)"
+    />
+  }
+
   <!-- 034: its own request, so a dashboard that fails or is still loading
        never holds back the record list above and below it. -->
   <app-player-dashboard

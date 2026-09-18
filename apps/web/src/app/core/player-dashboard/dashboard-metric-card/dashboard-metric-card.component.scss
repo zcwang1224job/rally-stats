@@ -119,3 +119,11 @@
     outline-offset: 2px;
   }
 }
+
+// 036: the card an insight sentence jumps to takes focus programmatically
+// (tabindex="-1"). Show where the reader landed — :focus, not :focus-visible,
+// because the jump follows a pointer click as often as a key press.
+.metric:focus {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}

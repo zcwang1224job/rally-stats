@@ -4,7 +4,11 @@ import { Observable, of, throwError } from 'rxjs';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
-import { dashboardFixture } from '../../../core/player-dashboard/dashboard-fixtures';
+import {
+  dashboardFixture,
+  insightFixture,
+  insightsFixture,
+} from '../../../core/player-dashboard/dashboard-fixtures';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import { MatchHistoryComponent } from './match-history.component';
@@ -226,6 +230,53 @@ describe('MatchHistoryComponent', () => {
       expect(root.querySelectorAll('.match-card').length).toBe(1);
       expect(root.querySelector('app-player-dashboard [data-state="failed"]')).not.toBeNull();
       expect(root.querySelector('app-player-dashboard [data-metric]')).toBeNull();
+      // 036: the summary rides on the same request — it stays out of the way.
+      expect(root.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US1 (T014)
+  describe('strengths and weaknesses summary', () => {
+    it('sits above the dashboard and shows what the dashboard response carries', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({
+              weaknesses: [insightFixture({ list: 'weakness', metric_key: 'team_receive' })],
+            }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+
+      const summary = root.querySelector('app-player-insights')!;
+      const dashboard = root.querySelector('app-player-dashboard')!;
+      expect(summary.compareDocumentPosition(dashboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(summary.querySelector('[data-list="weakness"] [data-sentence]')?.textContent).toContain(
+        'playerInsights.rule.rate_vs_overall.weakness',
+      );
+    });
+
+    it('jumps to the metric card an insight is about', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({
+              strengths: [insightFixture({ metric_key: 'winner_share' })],
+            }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      const group = root.querySelector<HTMLDetailsElement>('[data-group="ending"]')!;
+      expect(group.open).toBe(false);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(group.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
     });
   });
 });

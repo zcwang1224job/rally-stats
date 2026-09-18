@@ -1,6 +1,8 @@
 @let m = metric();
 
-<article class="metric" [attr.data-metric]="m.key">
+<!-- 036: id + tabindex so an insight sentence can land here (FR-010) —
+     PlayerDashboardComponent.focusMetric() scrolls to it and moves focus. -->
+<article class="metric" [attr.data-metric]="m.key" [attr.id]="'metric-' + m.key" tabindex="-1">
   <h4 class="metric__label">{{ labelKey() | translate }}</h4>
 
   @if (m.all; as all) {

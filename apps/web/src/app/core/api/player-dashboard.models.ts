@@ -112,4 +112,58 @@ export interface MemberMatchDashboardResponse {
   landing: DashboardLanding | null;
   // 035: null when not one of the member's errors was ever recorded.
   error_breakdown: DashboardErrorBreakdown | null;
+  // 036: follows the same filters as `metrics`.
+  insights: DashboardInsights;
+}
+
+// 036-match-insights-benchmarks US1. The backend decides WHICH insights and
+// in what order and sends a rule code plus the numbers behind it; the wording
+// lives in the locale files (playerInsights.rule.<rule>.*). Same eight codes,
+// same order, as specs/036-…/data-model.md 規則表 and the backend's
+// `InsightRule` — each end has a test pinning it to that list.
+export const INSIGHT_RULES = [
+  'rate_vs_overall',
+  'deuce_vs_even',
+  'error_share_high',
+  'winner_share_high',
+  'recent_change',
+  'partner_above_overall',
+  'opponent_below_overall',
+  'benchmark_quartile',
+] as const;
+export type InsightRule = (typeof INSIGHT_RULES)[number];
+export type InsightList = 'strength' | 'weakness' | 'recent' | 'matchup';
+export type InsightLevel = 'strong' | 'mild';
+export type InsightSource = 'benchmark' | 'self' | 'trend' | 'matchup';
+export type InsightStatus = 'ok' | 'insufficient_data' | 'balanced';
+
+export interface DashboardInsightPlayer {
+  key: string;
+  nickname: string;
+  member_id: string | null;
+}
+
+export interface DashboardInsight {
+  list: InsightList;
+  rule: InsightRule;
+  level: InsightLevel;
+  source: InsightSource;
+  metric_key: DashboardMetricKey | null;
+  player: DashboardInsightPlayer | null;
+  // Every number here is one the dashboard (or the partner/opponent table)
+  // also shows — quoted, never recomputed.
+  params: Record<string, number | string | null>;
+}
+
+export interface DashboardInsights {
+  // insufficient_data: no rule had enough to go on. balanced: some did, and
+  // nothing stood out. Either way the four lists are empty.
+  status: InsightStatus;
+  // Only the group-benchmark response sets this (its insights merge in the
+  // in-group source); always null on the dashboard responses.
+  benchmark_group_name: string | null;
+  strengths: DashboardInsight[];
+  weaknesses: DashboardInsight[];
+  recent: DashboardInsight[];
+  matchups: DashboardInsight[];
 }

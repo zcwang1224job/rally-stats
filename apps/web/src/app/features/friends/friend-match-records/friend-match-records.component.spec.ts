@@ -7,7 +7,11 @@ import {
   MatchRecordDetailResponse,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
-import { dashboardFixture } from '../../../core/player-dashboard/dashboard-fixtures';
+import {
+  dashboardFixture,
+  insightFixture,
+  insightsFixture,
+} from '../../../core/player-dashboard/dashboard-fixtures';
 import { AuthService } from '../../auth/auth.service';
 import { FriendMatchRecordsComponent } from './friend-match-records.component';
 
@@ -303,6 +307,58 @@ describe('FriendMatchRecordsComponent', () => {
 
       expect(fixture.componentInstance.dashboard()).toBeNull();
       expect(fixture.nativeElement.querySelector('app-player-dashboard')).toBeNull();
+      // 036: the summary lives and dies with the dashboard it rides on.
+      expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US1 (T015, FR-037)
+  describe('strengths and weaknesses summary', () => {
+    const withSummary = () =>
+      of(
+        dashboardFixture({
+          insights: insightsFixture({
+            weaknesses: [insightFixture({ list: 'weakness', metric_key: 'winner_share' })],
+          }),
+        }),
+      );
+
+    it("shows the friend's whole summary, things to work on included, above their dashboard", () => {
+      const { fixture } = setup({ getFriendMatchDashboard: withSummary });
+      const root: HTMLElement = fixture.nativeElement;
+
+      const summary = root.querySelector('app-player-insights')!;
+      const dashboard = root.querySelector('app-player-dashboard')!;
+      expect(summary.compareDocumentPosition(dashboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(summary.querySelector('[data-list="weakness"] [data-sentence]')).not.toBeNull();
+    });
+
+    it("jumps to the friend's metric card", () => {
+      const { fixture } = setup({ getFriendMatchDashboard: withSummary });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(root.querySelector<HTMLDetailsElement>('[data-group="ending"]')!.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
+    });
+
+    it('shows nothing of the summary when the dashboard is refused', () => {
+      const { fixture } = setup({
+        getFriendMatchDashboard: () =>
+          throwError(
+            () =>
+              ({
+                errorCode: 'MATCH_RECORDS_PRIVATE',
+                i18nKey: 'errors.MATCH_RECORDS_PRIVATE',
+                detail: null,
+                status: 403,
+              }) satisfies ApiError,
+          ),
+      });
+      expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
     });
   });
 });
