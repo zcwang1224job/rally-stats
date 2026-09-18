@@ -20,6 +20,8 @@ import {
   setScoreSwapPreference,
 } from '../../../core/score-swap-preference';
 import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
+import { PendingPoint, PendingPointAction } from '../../shot-placement/pending-point';
+import { ScoreTapGuard } from '../../shot-placement/score-tap-guard';
 import {
   ShotPlacementConfirmed,
   ShotPlacementPickerComponent,
@@ -79,18 +81,29 @@ export class AllCourtsCourtBlockComponent implements OnInit {
     setScoreSwapPreference(this.courtId(), next);
   }
 
+  /** One score request at a time, plus a short cooldown after each one —
+   * see ScoreTapGuard. Shared by the plain +1/−1 buttons, the detailed-mode
+   * "+" and the picker's "cancel score". */
+  private readonly scoreGuard = new ScoreTapGuard();
+
   score(side: Team, delta: 1 | -1): void {
     if (this.connectionState() !== 'connected') {
       return; // FR-023
     }
     const matchId = this.state()?.current_match?.match_id;
-    if (!matchId) {
+    if (!matchId || !this.scoreGuard.tryAcquire()) {
       return;
     }
     this.courtControl
       .scoreAllCourts(this.token(), this.courtId(), matchId, side, delta)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.changed.emit());
+      .subscribe({
+        next: () => {
+          this.scoreGuard.release();
+          this.changed.emit();
+        },
+        error: () => this.scoreGuard.release(),
+      });
   }
 
   /** 032-score-then-record: which side the currently-open picker is
@@ -109,170 +122,195 @@ export class AllCourtsCourtBlockComponent implements OnInit {
    * `pendingServingTeam` — the picker's `servingScore` input, whose
    * parity says which service court was the serve's legal target. */
   readonly pendingServingScore = signal<number | null>(null);
-  // Captured once, right when the point is scored — onShotPlacementConfirmed()
-  // and onShotPlacementCancelled() below use these rather than re-deriving
-  // "the current match" from state()/displayState() at the time the scorer
-  // eventually acts, since a match-ending point can mean the court has
-  // already moved on to a different match by then.
-  private pendingMatchId: string | null = null;
-  private pendingScoreEventId: string | null = null;
-  // 032-cancel-score: whether the point that opened the picker was the
-  // match-DECIDING one (result.status !== 'in_progress') — onShotPlacementCancelled()
-  // below needs undoMatchCompletionAllCourts() instead of the plain -1 for
-  // that point.
-  private pendingMatchCompleted = false;
+  // The point the picker is recording detail for — captured once, right
+  // when "+" is tapped: onShotPlacementConfirmed()/onShotPlacementCancelled()
+  // below target it rather than re-deriving "the current match" from
+  // state()/displayState() when the scorer eventually acts, since a
+  // match-ending point can mean the court has already moved on to a
+  // different match by then.
+  private pendingPoint: PendingPoint | null = null;
+  private pickerOpen = false;
   // Surfaced inline when undoMatchCompletionAllCourts() refuses — round
   // already advanced, or the next match on this court already got scored.
   readonly cancelScoreErrorKey = signal<string | null>(null);
 
-  /** Applies the point immediately (a plain +1, same as simple mode — match
-   * pace never waits on the detail dialog below), then opens the shared
-   * picker to record supplementary detail (landing spot, exact players)
-   * for that already-scored point, pinned to its score_event_id.
+  /** Applies the point (a plain +1, same as simple mode — match pace never
+   * waits on the detail dialog below) and opens the shared picker in the
+   * SAME tap, before the request returns — see ScoreboardComponent's
+   * identical method for the full rationale.
    *
-   * 032-freeze-while-picker-open: the backend PUBLISHES match.ended (over
-   * the realtime websocket) synchronously, from inside the very same
-   * request this method's own HTTP call is waiting on — so that push can,
-   * and often does, reach this client BEFORE the HTTP response for this
-   * same "+1" does. The parent (all-courts-control-panel) subscribes to
-   * that push directly and refetches ALL courts on it, which would update
-   * this block's `state` input before the response below even arrives if
-   * freezing waited until then — making @if's condition false and
-   * shotPlacementPicker() undefined by the time open() runs, so the picker
-   * would never even appear. Freezing on the state captured HERE, before
-   * the request is even sent, closes that race. */
+   * 032-freeze-while-picker-open: the parent (all-courts-control-panel)
+   * refetches ALL courts on a match.ended push, which would update this
+   * block's `state` input while the picker is up — making @if's condition
+   * false and tearing the picker down. Freezing on the state captured
+   * HERE, before the request is even sent, closes that race. */
   scoreThenOpenPicker(side: Team): void {
     if (this.connectionState() !== 'connected') {
       return;
     }
     const current = this.state();
     const currentMatch = current?.current_match;
-    if (!current || !currentMatch) {
+    if (!current || !currentMatch || !this.scoreGuard.tryAcquire()) {
       return;
     }
-    const matchId = currentMatch.match_id;
+    const point = new PendingPoint(currentMatch.match_id, side);
+    this.pendingPoint = point;
+    this.pendingScoringSide.set(side);
+    this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
+    this.pendingServingScore.set(
+      !currentMatch.serve
+        ? null
+        : currentMatch.serve.server_team === 'A'
+          ? currentMatch.score_a
+          : currentMatch.score_b,
+    );
+    this.cancelScoreErrorKey.set(null);
     this.frozenState.set(current);
+    this.pickerOpen = true;
+    this.shotPlacementPicker()?.open();
 
     this.courtControl
-      .scoreAllCourts(this.token(), this.courtId(), matchId, side, 1)
+      .scoreAllCourts(this.token(), this.courtId(), point.matchId, side, 1)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (result) => {
-          if (!result.applied) {
-            this.frozenState.set(null); // nothing to protect — release right away
+          this.scoreGuard.release();
+          if (!result.applied || !result.score_event_id) {
+            this.abandonPoint(point);
             this.changed.emit();
             return;
           }
-          // Freeze the backdrop on this exact patched match/score while the
-          // picker is open — changed.emit() below still refetches
+          // Keep the backdrop on this exact patched match/score while the
+          // picker is still up — changed.emit() below still refetches
           // immediately for every other court.
-          this.frozenState.set({
-            ...current,
-            current_match: {
-              ...currentMatch,
-              score_a: result.score_a,
-              score_b: result.score_b,
-              serve: result.serve,
-            },
-          });
+          if (this.pickerOpen && this.pendingPoint === point) {
+            this.frozenState.set({
+              ...current,
+              current_match: {
+                ...currentMatch,
+                score_a: result.score_a,
+                score_b: result.score_b,
+                serve: result.serve,
+              },
+            });
+          }
           this.changed.emit();
-          if (result.score_event_id) {
-            this.pendingMatchId = matchId;
-            this.pendingScoreEventId = result.score_event_id;
-            this.pendingScoringSide.set(side);
-            this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
-            this.pendingServingScore.set(
-              !currentMatch.serve
-                ? null
-                : currentMatch.serve.server_team === 'A'
-                  ? currentMatch.score_a
-                  : currentMatch.score_b,
-            );
-            this.pendingMatchCompleted = result.status !== 'in_progress';
-            this.cancelScoreErrorKey.set(null);
-            this.shotPlacementPicker()?.open();
-          } else {
-            this.frozenState.set(null);
+          const queued = point.resolve(result.score_event_id, result.status !== 'in_progress');
+          if (queued) {
+            this.runPickerAction(point, queued);
           }
         },
-        error: () => this.frozenState.set(null),
+        error: () => {
+          this.scoreGuard.release();
+          this.abandonPoint(point);
+        },
       });
+  }
+
+  /** The point never got applied: drop it, and close its picker if the
+   * scorer is still in it. */
+  private abandonPoint(point: PendingPoint): void {
+    if (this.pendingPoint !== point) {
+      return;
+    }
+    this.pendingPoint = null;
+    if (this.pickerOpen) {
+      this.shotPlacementPicker()?.skip();
+    }
+    this.pickerOpen = false;
+    this.frozenState.set(null);
   }
 
   /** Bound to the picker's `(closed)` output — see ScoreboardComponent's
    * identical method for the full rationale. */
   onShotPlacementClosed(): void {
+    this.pickerOpen = false;
     this.frozenState.set(null);
   }
 
-  onShotPlacementConfirmed(event: ShotPlacementConfirmed): void {
-    const matchId = this.pendingMatchId;
-    const scoreEventId = this.pendingScoreEventId;
-    if (this.connectionState() !== 'connected' || !matchId || !scoreEventId) {
-      return;
-    }
-    this.courtControl
-      .recordShotPlacementAllCourts(
-        this.token(),
-        this.courtId(),
-        matchId,
-        scoreEventId,
-        event.rosterEntryId,
-        event.losingRosterEntryId,
-        event.landingX,
-        event.landingY,
-        event.endingType,
-      )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.pendingMatchId = null;
-        this.pendingScoreEventId = null;
-        this.changed.emit();
-      });
+  onShotPlacementConfirmed(detail: ShotPlacementConfirmed): void {
+    this.requestPickerAction({ kind: 'confirm', detail });
   }
 
   /** 032-cancel-score: the scorer decided the point itself shouldn't have
-   * been awarded (e.g. the wrong team's "+" was pressed) — undoes it. A
-   * point that just completed the match needs undoMatchCompletionAllCourts()
-   * instead of the plain -1 this block's own "-1" button uses: see
-   * ScoreboardComponent's identical method for the full rationale. */
+   * been awarded (e.g. the wrong team's "+" was pressed) — undoes it. */
   onShotPlacementCancelled(): void {
-    const matchId = this.pendingMatchId;
-    if (this.connectionState() !== 'connected' || !matchId) {
+    this.requestPickerAction({ kind: 'cancel' });
+  }
+
+  private requestPickerAction(action: PendingPointAction): void {
+    const point = this.pendingPoint;
+    if (point && point.request(action)) {
+      this.runPickerAction(point, action);
+    }
+  }
+
+  private runPickerAction(point: PendingPoint, action: PendingPointAction): void {
+    const scoreEventId = point.scoreEventId;
+    if (this.connectionState() !== 'connected' || scoreEventId === null) {
       return;
     }
-    const side = this.pendingScoringSide();
-    this.cancelScoreErrorKey.set(null);
-
-    if (this.pendingMatchCompleted) {
+    if (action.kind === 'confirm') {
       this.courtControl
-        .undoMatchCompletionAllCourts(this.token(), this.courtId(), matchId, side)
+        .recordShotPlacementAllCourts(
+          this.token(),
+          this.courtId(),
+          point.matchId,
+          scoreEventId,
+          action.detail.rosterEntryId,
+          action.detail.losingRosterEntryId,
+          action.detail.landingX,
+          action.detail.landingY,
+          action.detail.endingType,
+        )
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => {
+          this.clearPendingPoint(point);
+          this.changed.emit();
+        });
+      return;
+    }
+
+    this.cancelScoreErrorKey.set(null);
+    // A point that just completed the match needs
+    // undoMatchCompletionAllCourts() instead of the plain -1 this block's
+    // own "-1" button uses: see ScoreboardComponent's identical method for
+    // the full rationale.
+    if (point.matchCompleted) {
+      this.courtControl
+        .undoMatchCompletionAllCourts(this.token(), this.courtId(), point.matchId, point.side)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           next: () => {
-            this.pendingMatchId = null;
-            this.pendingScoreEventId = null;
-            this.pendingMatchCompleted = false;
+            this.clearPendingPoint(point);
             this.changed.emit();
           },
           error: (error: ApiError) => {
-            this.pendingMatchId = null;
-            this.pendingScoreEventId = null;
-            this.pendingMatchCompleted = false;
+            this.clearPendingPoint(point);
             this.cancelScoreErrorKey.set(error.i18nKey);
           },
         });
       return;
     }
 
+    this.scoreGuard.hold();
     this.courtControl
-      .scoreAllCourts(this.token(), this.courtId(), matchId, side, -1)
+      .scoreAllCourts(this.token(), this.courtId(), point.matchId, point.side, -1)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.pendingMatchId = null;
-        this.pendingScoreEventId = null;
-        this.changed.emit();
+      .subscribe({
+        next: () => {
+          this.scoreGuard.release();
+          this.clearPendingPoint(point);
+          this.changed.emit();
+        },
+        error: () => this.scoreGuard.release(),
       });
+  }
+
+  private clearPendingPoint(point: PendingPoint): void {
+    if (this.pendingPoint === point) {
+      this.pendingPoint = null;
+    }
   }
 
   openEndMatchDialog(): void {
