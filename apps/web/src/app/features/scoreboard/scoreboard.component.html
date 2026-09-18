@@ -151,6 +151,7 @@
         </button>
         <app-confirm-dialog
           #endMatchDialog
+          variant="primary"
           [title]="'controlPanel.endMatchConfirmTitle' | translate"
           [body]="'controlPanel.endMatchConfirmBody' | translate"
           (confirmed)="confirmEndMatch()"

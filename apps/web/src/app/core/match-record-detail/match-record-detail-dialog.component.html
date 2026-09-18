@@ -1,11 +1,11 @@
-<dialog #dialog class="match-detail-dialog">
+<dialog #dialog class="dialog dialog--lg match-detail-dialog">
   <button
     type="button"
-    class="dialog-close"
+    class="dialog__close"
     (click)="close()"
     [attr.aria-label]="'matchRecordDetail.close' | translate"
   >
-    ✕
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
   </button>
 
   @if (loading()) {

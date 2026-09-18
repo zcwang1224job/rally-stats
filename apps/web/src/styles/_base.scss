@@ -1,3 +1,5 @@
+@use 'breakpoints';
+
 // Shared base classes for the "運動簡約風" visual language
 // (contracts/design-system.md). These are global classes (not SCSS
 // mixins), applied directly in component templates alongside a
@@ -137,6 +139,95 @@ h3 {
   svg {
     width: 1.25rem;
     height: 1.25rem;
+  }
+}
+
+// Modal shell for every native <dialog> in the app — one width scale, one
+// radius, one close button, one footer. Sizes: --sm (a yes/no question),
+// default (a short form), --lg / --xl (content-heavy: match detail, shot
+// placement), which go full-screen on a phone instead of leaving a narrow
+// card with a sliver of backdrop around it.
+dialog.dialog {
+  --dialog-width: 480px;
+
+  box-sizing: border-box;
+  width: min(100% - 2 * var(--space-md), var(--dialog-width));
+  max-width: none;
+  max-height: calc(100dvh - 2 * var(--space-lg));
+  overflow-y: auto;
+  padding: var(--space-lg);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-md);
+
+  &::backdrop {
+    background: var(--color-backdrop);
+  }
+
+  // The dialog's own title: one size whatever heading level it uses.
+  > h1,
+  > h2,
+  .dialog__title {
+    margin: 0 0 var(--space-md);
+    font-size: var(--font-size-heading);
+  }
+
+  > .actions {
+    margin-top: var(--space-lg);
+  }
+}
+
+dialog.dialog--sm {
+  --dialog-width: 400px;
+}
+
+dialog.dialog--lg {
+  --dialog-width: 560px;
+}
+
+dialog.dialog--xl {
+  --dialog-width: 640px;
+}
+
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
+  dialog.dialog--lg,
+  dialog.dialog--xl {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+  }
+}
+
+// "Leave this modal" — floats to the top-right corner beside the title.
+.dialog__close {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  margin: calc(var(--space-sm) * -1) calc(var(--space-sm) * -1) 0 var(--space-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+
+  svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      background: var(--color-surface-alt);
+      color: var(--color-text-primary);
+    }
   }
 }
 

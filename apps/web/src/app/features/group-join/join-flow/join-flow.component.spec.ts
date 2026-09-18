@@ -128,7 +128,7 @@ describe('JoinFlowComponent: cancel out of the join dialog', () => {
     });
 
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
-    const closeButton = dialog.querySelector('.dialog-close') as HTMLButtonElement | null;
+    const closeButton = dialog.querySelector('.dialog__close') as HTMLButtonElement | null;
     expect(closeButton).not.toBeNull();
 
     closeButton?.click();
@@ -139,14 +139,14 @@ describe('JoinFlowComponent: cancel out of the join dialog', () => {
     const fixture = setup({ hasPassword: true, isLoggedIn: false });
 
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
-    expect(dialog.querySelector('.dialog-close')).not.toBeNull();
+    expect(dialog.querySelector('.dialog__close')).not.toBeNull();
   });
 
   it('does not show a ✕ close button on the confirm step', () => {
     const fixture = setup({ hasPassword: false, isLoggedIn: true, nickname: '小明' });
 
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
-    expect(dialog.querySelector('.dialog-close')).toBeNull();
+    expect(dialog.querySelector('.dialog__close')).toBeNull();
   });
 
   it('does not show a ✕ close button on the done step', () => {
@@ -158,7 +158,7 @@ describe('JoinFlowComponent: cancel out of the join dialog', () => {
     });
 
     const dialog = fixture.nativeElement.querySelector('dialog.join-dialog');
-    expect(dialog.querySelector('.dialog-close')).toBeNull();
+    expect(dialog.querySelector('.dialog__close')).toBeNull();
   });
 });
 

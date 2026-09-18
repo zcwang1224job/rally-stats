@@ -569,6 +569,7 @@
 
 <app-confirm-dialog
   #nextRoundDialog
+  variant="primary"
   [title]="
     (hasUnfinishedMatches()
       ? 'scheduleManagement.nextRoundConfirmTitle'
@@ -586,6 +587,7 @@
 
 <app-confirm-dialog
   #endRoundDialog
+  variant="primary"
   [title]="'scheduleManagement.endRoundConfirmTitle' | translate"
   [body]="'scheduleManagement.endRoundConfirmBody' | translate"
   (confirmed)="confirmEndRound()"
