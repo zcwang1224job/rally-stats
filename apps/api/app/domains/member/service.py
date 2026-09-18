@@ -45,7 +45,7 @@ from app.domains.group.service import (
     resolve_guest_binding_target,
     verify_ever_group_member,
 )
-from app.domains.member import player_dashboard
+from app.domains.member import insights, player_dashboard
 from app.domains.member.models import (
     EmailVerificationToken,
     Member,
@@ -1478,9 +1478,10 @@ async def build_member_match_dashboard(
     Query count is constant in the number of matches (Decision 7)."""
     filtered = await _filtered_member_matches(session, member_id, filters)
     inputs = await load_match_stat_inputs(session, [item.match for item in filtered])
-    result = player_dashboard.aggregate(
-        [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
-    )
+    samples = [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
+    result = player_dashboard.aggregate(samples)
+    # 036: read off the finished result, same matches, no further query.
+    found = insights.derive(samples, result)
     # 035: the two breakdown halves live as separate fields on the pure
     # result (each independently None) but travel as one nested object.
     payload = asdict(result)
@@ -1491,7 +1492,33 @@ async def build_member_match_dashboard(
         if breakdown_all is not None
         else None
     )
+    payload["insights"] = _insights_payload(found)
     return MemberMatchDashboardResponse.model_validate(payload)
+
+
+def _insights_payload(found: insights.InsightsResult) -> dict[str, object]:
+    """The pure result calls the field `bucket` (a dataclass field named
+    `list` would shadow the builtin); the contract calls it `list`."""
+
+    def one(item: insights.Insight) -> dict[str, object]:
+        return {
+            "list": item.bucket,
+            "rule": item.rule,
+            "level": item.level,
+            "source": item.source,
+            "metric_key": item.metric_key,
+            "player": asdict(item.player) if item.player is not None else None,
+            "params": item.params,
+        }
+
+    return {
+        "status": found.status,
+        "benchmark_group_name": found.benchmark_group_name,
+        "strengths": [one(item) for item in found.strengths],
+        "weaknesses": [one(item) for item in found.weaknesses],
+        "recent": [one(item) for item in found.recent],
+        "matchups": [one(item) for item in found.matchups],
+    }
 
 
 async def get_member_group_history(

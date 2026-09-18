@@ -85,7 +85,7 @@ InsightsResult
 
 | `rule` | 來源 | 適用指標 | 基準 | 候選條件（輕微／明顯） | 最低樣本 |
 |---|---|---|---|---|---|
-| `rate_vs_overall` | self | `team_serve` `team_receive` `own_serve` `own_receive` `endgame` `when_tied` | 逐場加權的全場得分率：Σ(該場此指標的分母 × 該場 `points_for ÷ (points_for + points_against)`) ÷ Σ該場此指標的分母（不得合併相除，FR-011） | 偏離 ≥ 0.05／≥ 0.10 | 分母 ≥ 30 分且 `matches_used` ≥ 3 |
+| `rate_vs_overall` | self | `team_serve` `team_receive` `own_serve` `own_receive` `endgame` | 發球類：Σ(該場此指標的分母 × `(points_for − 1) ÷ (played − 1)`) ÷ Σ分母；接發球類同式但用 `points_for ÷ (played − 1)`；`endgame`：該指標所涵蓋比賽的 Σ`points_for` ÷ Σ`played`（FR-011；`insights.expected_rate()`） | 偏離 ≥ 0.05／≥ 0.10 | 分母 ≥ 30 分且 `matches_used` ≥ 3 |
 | `deuce_vs_even` | self | `deuce` | 0.50 | 同上 | 同上 |
 | `error_share_high` | self | `error_share_of_lost` | — | ≥ 0.60／≥ 0.70 → weakness | 分母 ≥ 20 分 |
 | `winner_share_high` | self | `winner_share` | — | ≥ 0.50／≥ 0.60 → strength | 分母 ≥ 20 分 |
@@ -94,7 +94,7 @@ InsightsResult
 | `opponent_below_overall` | matchup | — | `overall_win_rate` | 勝率低於 ≥ 0.15／≥ 0.30 | 交手 ≥ 5 場 |
 | `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | `q = ceil(pool_size ÷ 4)`；`rank ≤ q` → strength；`rank_from_bottom ≤ q` → weakness；兩者皆成立 → 不產生；第 1 名或倒數第 1 名**且** `pool_size ≥ 8` 為明顯，其餘輕微 | `pool_size` ≥ 4 |
 
-- **明訂排除**（FR-012）：`when_leading`、`when_trailing`、`match_point_conversion` 不進 `rate_vs_overall`；`match_points_saved`（`better_when` 為空）不進任何規則。
+- **明訂排除**（FR-012）：`when_leading`、`when_tied`、`when_trailing`、`match_point_conversion` 不進 `rate_vs_overall`；`match_points_saved`（`better_when` 為空）不進任何規則。
 - **成對指標**（FR-016）：`(team_serve, team_receive)`、`(own_serve, own_receive)` 每組只留偏離絕對值較大者；相同留 weakness。
 - **同一指標多來源**（Edge Cases）：strength／weakness 清單中同一個 `metric_key` 只留 `source` 優先序最高者（benchmark > self）。`recent` 是獨立清單，不去重。
 - **排序**（FR-015）：`level`（strong 先）→ `source`（benchmark 先）→ 樣本數（同一來源內比較：self 取 `denominator`、benchmark 取 `mine.matches_used`，大者先）→ `_METRICS` 的固定順序。

@@ -417,6 +417,52 @@ class DashboardErrorBreakdown(BaseModel):
     recent: ErrorsByType | None
 
 
+# 036-match-insights-benchmarks US1 (member/insights.py): a rule code plus the
+# numbers behind it — never a sentence (Constitution VIII); the frontend owns
+# the wording. The Literal sets mirror `insights.py`; a unit test compares them.
+InsightRule = Literal[
+    "rate_vs_overall",
+    "deuce_vs_even",
+    "error_share_high",
+    "winner_share_high",
+    "recent_change",
+    "partner_above_overall",
+    "opponent_below_overall",
+    "benchmark_quartile",
+]
+
+
+class DashboardInsightPlayer(BaseModel):
+    key: str
+    nickname: str
+    member_id: str | None
+
+
+class DashboardInsight(BaseModel):
+    rule: InsightRule
+    level: Literal["strong", "mild"]
+    source: Literal["benchmark", "self", "trend", "matchup"]
+    metric_key: str | None
+    player: DashboardInsightPlayer | None
+    params: dict[str, float | int | str | None]
+    # Declared last: a field called `list` shadows the builtin for every
+    # annotation below it in this class body.
+    list: Literal["strength", "weakness", "recent", "matchup"]
+
+
+class DashboardInsights(BaseModel):
+    # insufficient_data: no rule had enough to go on; balanced: some did and
+    # nothing stood out. Either way all four lists are empty.
+    status: Literal["ok", "insufficient_data", "balanced"] = "insufficient_data"
+    # Set only by the group-benchmark endpoint, whose insights merge in the
+    # in-group source; always None on the dashboard endpoints (FR-037).
+    benchmark_group_name: str | None = None
+    strengths: list[DashboardInsight] = []
+    weaknesses: list[DashboardInsight] = []
+    recent: list[DashboardInsight] = []
+    matchups: list[DashboardInsight] = []
+
+
 class MemberMatchDashboardResponse(BaseModel):
     total_matches: int
     recent_window: int
@@ -427,3 +473,5 @@ class MemberMatchDashboardResponse(BaseModel):
     landing: DashboardLanding | None
     # 035: None when not one of the member's errors was ever recorded.
     error_breakdown: DashboardErrorBreakdown | None = None
+    # 036: follows the same filters as `metrics` (FR-019).
+    insights: DashboardInsights = DashboardInsights()
