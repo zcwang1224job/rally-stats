@@ -524,7 +524,8 @@
       "disabled": {
         "winner": "The landing is out of bounds, so it can't be a winner",
         "out": "The landing is in bounds, so it isn't out",
-        "serve_fault": "The scoring side was serving, so it can't be a serve fault"
+        "serve_fault": "The scoring side was serving, so it can't be a serve fault",
+        "serveFaultLanding": "It landed on the scoring side's own half, so only the opponent's serve fault or another fault explains it"
       }
     }
   },

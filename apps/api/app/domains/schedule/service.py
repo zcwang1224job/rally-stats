@@ -2547,6 +2547,14 @@ _SINGLES_SIDELINE_INSET = 0.46 / 6.1
 _SHORT_SERVICE_LINE_INSET = 4.72 / 13.4
 _LONG_SERVICE_LINE_INSET = 0.76 / 13.4
 
+# A landing that got past the check above while on the CREDITED side's own
+# half is a serve-fault landing — the credited side never returned it, so
+# its own winner can't have landed there, the loser netting it would have
+# left it on the loser's side, and it is in bounds. Only the loser's serve
+# fault or some other fault explains it. Mirrors the picker's
+# SERVE_FAULT_LANDING_CONTRADICTS.
+_SERVE_FAULT_LANDING_CONTRADICTS = ("winner", "out", "net")
+
 
 def _is_serve_fault_zone(
     landing_x: float,
@@ -2670,10 +2678,12 @@ async def attach_shot_placement(
     detail — how the rally ended. The picker pre-selects it from the landing
     where the landing leaves no doubt, but nothing is inferred HERE: what the
     request says is what gets stored, so a scorer who deliberately cleared
-    the selection really does store "not recorded". Only two combinations
-    are refused, the same spirit as the landing-vs-credited-side check —
-    data that contradicts itself, never the scorer's judgement: a winner
-    lands IN the court, a shot hit out lands OUT of it. 'net',
+    the selection really does store "not recorded". Only combinations that
+    contradict themselves are refused, the same spirit as the
+    landing-vs-credited-side check — never the scorer's judgement: a winner
+    lands IN the court, a shot hit out lands OUT of it, and a serve-fault
+    landing (on the credited side's own half) admits only 'serve_fault' or
+    'other_error' (_SERVE_FAULT_LANDING_CONTRADICTS). Otherwise 'net',
     'serve_fault' and 'other_error' say nothing about where the shuttle came
     down, and without a landing there is nothing to contradict. The check
     runs after the older landing check so that one keeps answering first.
@@ -2762,6 +2772,11 @@ async def attach_shot_placement(
                 )
             ):
                 raise ApiError("SCORING_PLAYER_WRONG_TEAM_FOR_LANDING", status_code=422)
+            if (
+                score_event.side == landing_side
+                and ending_type in _SERVE_FAULT_LANDING_CONTRADICTS
+            ):
+                raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
         if (ending_type == "winner" and not in_bounds) or (
             ending_type == "out" and in_bounds
         ):

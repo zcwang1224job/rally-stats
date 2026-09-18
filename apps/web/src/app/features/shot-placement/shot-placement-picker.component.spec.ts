@@ -805,6 +805,32 @@ describe('ShotPlacementPickerComponent', () => {
       expect(pressed(fixture)).toEqual(['serve_fault']);
     });
 
+    it('leaves only the loser\'s faults open for a serve-fault landing — A never returned it', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'B');
+
+      tap(courtAreaEl, 140, 75); // x=0.45, A's own half
+      fixture.detectChanges();
+
+      expect(disabled(fixture)).toEqual(['winner', 'out', 'net']);
+      chip(fixture, 'other_error').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBe('other_error');
+    });
+
+    it('drops a hand-picked "net" once the landing moves onto a serve-fault spot', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'B');
+
+      tap(courtAreaEl, 200, 75); // B's half
+      fixture.detectChanges();
+      chip(fixture, 'net').click();
+      fixture.detectChanges();
+
+      tap(courtAreaEl, 140, 75); // A's short serve-fault band
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBe('serve_fault');
+    });
+
     it('auto-fills nothing for an in-bounds landing on the loser\'s half and disables only "out" (c, SC-006)', () => {
       const { fixture, courtAreaEl } = setup(participants, 'A');
 
@@ -848,8 +874,12 @@ describe('ShotPlacementPickerComponent', () => {
       'judges (%s, x=%d, y=%d) in-bounds=%s exactly like the backend (c2)',
       (mode, x, y, inBounds) => {
         // The credited side is whichever makes an in-bounds point land on
-        // the LOSER's half (x=0.5 is B's half), so nothing else interferes.
-        const { fixture } = setup(mode === 'singles' ? singlesParticipants : participants, 'A');
+        // the LOSER's half (x=0.5 is B's half), so nothing else interferes —
+        // the same choice as the backend's copy of this table.
+        const { fixture } = setup(
+          mode === 'singles' ? singlesParticipants : participants,
+          x < 0.5 ? 'B' : 'A',
+        );
 
         fixture.componentInstance.selectedPoint.set({ x, y });
         fixture.detectChanges();

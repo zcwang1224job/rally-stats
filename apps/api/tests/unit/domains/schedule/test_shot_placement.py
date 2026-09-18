@@ -897,3 +897,35 @@ async def test_wrong_service_court_is_not_checked_when_the_server_is_unknown(
         await attach_shot_placement(db_session, court, match_id, event_id, None, None, 0.8, 0.3)
 
     assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"
+
+
+# --- a serve-fault landing admits only the loser's faults --------------------
+# x=0.45 is A's short serve-fault band; A was credited, so A never returned
+# it — only B's serve fault or some other B fault explains the point.
+
+
+@pytest.mark.parametrize("ending", ["winner", "out", "net"])
+async def test_serve_fault_landing_refuses_endings_it_contradicts(
+    db_session: AsyncSession, ending: str
+) -> None:
+    court, match_id, event_id = await _new_point(db_session, side="A")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, 0.45, 0.5, ending_type=ending
+        )
+
+    assert excinfo.value.error_code == "ENDING_TYPE_CONTRADICTS_LANDING"
+
+
+@pytest.mark.parametrize("ending", ["serve_fault", "other_error", None])
+async def test_serve_fault_landing_keeps_the_loser_fault_endings(
+    db_session: AsyncSession, ending: str | None
+) -> None:
+    court, match_id, event_id = await _new_point(db_session, side="A")
+
+    await attach_shot_placement(
+        db_session, court, match_id, event_id, None, None, 0.45, 0.5, ending_type=ending
+    )
+
+    assert await _stored_ending(db_session, event_id) == ending

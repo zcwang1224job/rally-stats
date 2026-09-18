@@ -136,7 +136,9 @@
                 ? null
                 : landingConflict()
                   ? ('shotPlacement.landingConflict' | translate)
-                  : ('shotPlacement.ending.disabled.' + kind | translate)
+                  : isServeFault()
+                    ? ('shotPlacement.ending.disabled.serveFaultLanding' | translate)
+                    : ('shotPlacement.ending.disabled.' + kind | translate)
             "
             (click)="pickEndingType(kind)"
           >

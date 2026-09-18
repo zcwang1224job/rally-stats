@@ -78,6 +78,13 @@ const SINGLES_SIDELINE_INSET = 0.46 / 6.1;
 const SHORT_SERVICE_LINE_INSET = 4.72 / 13.4;
 const LONG_SERVICE_LINE_INSET = 0.76 / 13.4;
 
+// A serve-fault landing sits on the CREDITED side's own half, so the credited
+// side never returned it: its own winner can't have landed there, the loser
+// netting it would have left it on the loser's side, and it is in bounds.
+// Only the loser's fault — the serve itself, or some other fault — explains
+// it. Mirrors service.py's _SERVE_FAULT_LANDING_CONTRADICTS.
+const SERVE_FAULT_LANDING_CONTRADICTS: readonly EndingType[] = ['winner', 'out', 'net'];
+
 // A precise tap on a phone screen is hard when a fingertip covers the exact
 // spot being aimed at — holding past this threshold (without releasing)
 // reveals a magnified, offset view of the court around the finger so the
@@ -275,6 +282,9 @@ export class ShotPlacementPickerComponent {
   readonly disabledEndingTypes = computed<readonly EndingType[]>(() => {
     if (this.landingConflict()) {
       return this.endingTypes;
+    }
+    if (this.isServeFault()) {
+      return SERVE_FAULT_LANDING_CONTRADICTS;
     }
     const side = this.landingSide();
     const byLanding: EndingType[] = side === null ? [] : side === 'out' ? ['winner'] : ['out'];
