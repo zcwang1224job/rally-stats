@@ -1,13 +1,7 @@
-:host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 480px;
-  margin: 0 auto;
-}
+@use '../../../../styles/layout';
 
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+:host {
+  @include layout.page(narrow);
 }
 
 // Groups the form's 10 fields into named sections instead of one long flat
@@ -19,8 +13,6 @@ h1 {
   gap: var(--space-md);
 
   h2 {
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-bold);
     margin: 0;
   }
 }

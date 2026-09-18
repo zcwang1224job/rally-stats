@@ -5,7 +5,7 @@ dialog {
   max-width: min(90vw, 400px);
 
   &::backdrop {
-    background: rgb(0 0 0 / 50%);
+    background: var(--color-backdrop);
   }
 }
 

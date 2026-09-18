@@ -5,6 +5,7 @@
   position: sticky;
   top: 0;
   z-index: 20;
+  --color-focus-ring: var(--color-ink-text); // navy bar: light focus ring
 }
 
 // A navy chrome bar (vs. the previous plain white-on-border header) reads

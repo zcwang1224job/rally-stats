@@ -11,7 +11,7 @@
   </p>
   @for (court of s.courts; track court.court_id) {
     <section class="court card">
-      <h3>{{ court.name }}</h3>
+      <h2>{{ court.name }}</h2>
       @if (court.current_match; as match) {
         <div class="score-board">
           <span class="score">{{ match.score_a }}</span>
@@ -40,7 +40,7 @@
 
   @if (roundMatches(); as rm) {
     <section class="round-matches">
-      <h3>{{ 'groupMemberView.schedule.allMatchesTitle' | translate }}</h3>
+      <h2>{{ 'groupMemberView.schedule.allMatchesTitle' | translate }}</h2>
       @if (rm.matches.length === 0) {
         <p>{{ 'scheduleManagement.noRoundMatchesYet' | translate }}</p>
       } @else {
@@ -65,7 +65,7 @@
   }
 
   <section class="card">
-    <h3>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h3>
+    <h2>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h2>
     <ul class="roster-list">
       @for (member of s.roster; track member.roster_entry_id) {
         <li class="card friend-row">

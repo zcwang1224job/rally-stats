@@ -1,6 +1,7 @@
+@use '../../../../styles/layout';
+
 :host {
-  display: block;
-  padding: var(--space-md);
+  @include layout.page(default);
 }
 
 .list-actions {

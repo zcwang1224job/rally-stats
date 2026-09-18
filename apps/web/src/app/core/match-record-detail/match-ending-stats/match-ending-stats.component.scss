@@ -32,11 +32,11 @@
 }
 
 .ending-kind--winner .ending-kind__icon {
-  color: var(--color-brand-primary);
+  color: var(--color-positive);
 }
 
 .ending-kind--error .ending-kind__icon {
-  color: var(--color-danger);
+  color: var(--color-negative);
 }
 
 .ending-breakdown {

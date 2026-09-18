@@ -1,8 +1,6 @@
+@use '../../../../styles/layout';
+
 :host {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: var(--space-md);
+  @include layout.page(narrow);
   text-align: center;
 }

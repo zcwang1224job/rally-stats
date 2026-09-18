@@ -105,7 +105,7 @@
   margin-left: -8px;
   margin-top: -8px;
   border-radius: 50%;
-  background: var(--color-brand-primary);
+  background: var(--color-positive);
   border: 2px solid var(--color-surface);
   pointer-events: none;
 }
@@ -126,14 +126,14 @@
 
 .court-marker--scored {
   border-radius: 50%;
-  background: var(--color-brand-primary);
+  background: var(--color-positive);
   border: 2px solid var(--color-surface);
 }
 
 .court-marker--lost {
   transform: rotate(45deg);
   background: var(--color-surface);
-  border: 2px solid var(--color-danger);
+  border: 2px solid var(--color-negative);
 }
 
 // 034: see `dense` on the component. 8px keeps the marker at the minimum

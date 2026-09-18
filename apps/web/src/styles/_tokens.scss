@@ -30,6 +30,24 @@
   --color-danger: #dc2626;
   --color-danger-contrast: #ffffff;
 
+  // Semantic data colors — what a stat *means*, not which brand hue it
+  // borrows. "Won / better / improved" and "lost / worse / my error" read
+  // the same on every chart, bar and badge; a plain magnitude (a share, a
+  // count, a win-rate bar that isn't a verdict) takes the neutral series
+  // color. Brand orange stays reserved for brand + interactive affordances,
+  // so it never has to mean "good" in one chart and "error" in the next.
+  --color-positive: var(--color-brand-accent);
+  --color-negative: var(--color-danger);
+  --color-series-1: #4a5b86;
+
+  // Keyboard focus ring — one color app-wide (constitution VII). Chrome that
+  // sits on --color-ink overrides it to a light value on its own host.
+  --color-focus-ring: var(--color-ink);
+
+  // Modal backdrop — tinted from --color-ink like every shadow, rather than
+  // a flat black.
+  --color-backdrop: rgb(16 25 46 / 55%);
+
   // Match-team colors — the one red/blue pair used to tell "team A" from
   // "team B" on the scoreboard, control-panel, all-courts, and
   // court-control screens. Single source of truth so the four components
@@ -80,13 +98,16 @@
     ui-monospace, 'SF Mono', 'Segoe UI Mono', Consolas, 'Roboto Mono',
     monospace;
   --font-size-display: 3rem; // scoreboard score (FR-004: readable at a distance)
-  --font-size-heading: 1.5rem;
+  --font-size-heading: 1.5rem; // page title (h1)
+  --font-size-subheading: 1.125rem; // section title (h2)
   --font-size-body: 1rem;
   --font-size-caption: 0.875rem;
   --font-weight-bold: 700;
   --font-weight-black: 800;
 
-  // Spacing scale (4px grid).
+  // Spacing scale (4px grid; 2xs is the one half-step, for tightly
+  // stacked label/value pairs).
+  --space-2xs: 0.125rem;
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
   --space-md: 1rem;
@@ -97,6 +118,7 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
+  --radius-pill: 999px; // fully rounded chips, bar tracks, count badges
 
   // Touch target minimum (WCAG 2.5.5, research.md #3).
   --touch-target-min: 44px;
