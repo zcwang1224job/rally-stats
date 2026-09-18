@@ -23,12 +23,14 @@ from app.domains.member.player_identity import parse_player_key
 from app.domains.member.schemas import (
     AddEmailRequest,
     AddEmailResponse,
+    BenchmarkGroupsResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
+    GroupBenchmarkResponse,
     LoginRecordsResponse,
     LoginRequest,
     LoginResponse,
@@ -374,6 +376,37 @@ async def search_member(
     """FR-020: per-IP rate limit, mirroring `/groups/reauth`. Errors:
     `MEMBER_NOT_FOUND`, `CANNOT_SEARCH_SELF`."""
     return await service.search_member(session, user_number, member.id)
+
+
+@router.get("/members/me/benchmark-groups", response_model=BenchmarkGroupsResponse)
+async def get_benchmark_groups(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BenchmarkGroupsResponse:
+    """036-match-insights-benchmarks US3 (FR-027): the groups this member
+    can compare within — every group they ever held a roster row in, whatever
+    its or their status — with their completed-match count in each, most
+    first. Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`."""
+    return await service.list_benchmark_groups(session, member.id)
+
+
+@router.get("/members/me/group-benchmark", response_model=GroupBenchmarkResponse)
+async def get_group_benchmark(
+    group_id: Annotated[uuid.UUID, Query()],
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GroupBenchmarkResponse:
+    """036-match-insights-benchmarks US3: per dashboard metric, the group's
+    average, the number of players behind it, and this member's rank — always
+    over ALL of the group's completed matches; this endpoint takes no filter
+    (FR-028, FR-032), and any other query parameter is ignored.
+
+    The response carries nothing about any other player (FR-032): see
+    `GroupBenchmarkMetric`. Authorization is 014's "ever a formal member",
+    checked on every request (FR-038). Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `GROUP_MEMBERSHIP_NEVER_HELD` (403 — also for a
+    group that does not exist)."""
+    return await service.build_group_benchmark(session, member.id, group_id)
 
 
 @router.get("/members/me/groups", response_model=MyGroupsResponse)

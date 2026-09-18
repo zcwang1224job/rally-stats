@@ -1,6 +1,7 @@
 """Member domain service layer: auth, verification, profile, and search.
 Per specs/006-member-friends/plan.md."""
 
+import asyncio
 import base64
 import hashlib
 import re
@@ -26,6 +27,7 @@ from app.domains.group import match_stats
 from app.domains.group.models import Group
 from app.domains.group.schemas import (
     MatchRecordDetailResponse,
+    MatchRecordSummary,
     MatchupHighlights,
     MatchupRecord,
     MemberMatchRecordsResponse,
@@ -43,11 +45,12 @@ from app.domains.group.service import (
     build_match_record_detail,
     get_completed_match_or_404,
     get_group_by_id,
+    load_group_completed_matches,
     load_match_stat_inputs,
     resolve_guest_binding_target,
     verify_ever_group_member,
 )
-from app.domains.member import insights, matchups, player_dashboard
+from app.domains.member import group_benchmark, insights, matchups, player_dashboard
 from app.domains.member.models import (
     EmailVerificationToken,
     Member,
@@ -60,6 +63,13 @@ from app.domains.member.oauth_providers import Provider, get_provider_config
 from app.domains.member.player_identity import PlayerRef, player_key
 from app.domains.member.schemas import (
     SUPPORTED_LANGUAGES,
+    BenchmarkGroupOption,
+    BenchmarkGroupsResponse,
+    DashboardInsights,
+    DashboardMetricValue,
+    GroupBenchmarkGroup,
+    GroupBenchmarkMetric,
+    GroupBenchmarkResponse,
     LoginRecordsResponse,
     LoginRecordSummary,
     MemberGroupHistoryResponse,
@@ -1466,52 +1476,76 @@ async def build_member_match_records(
     )
 
 
-def _dashboard_sample(item: FilteredMatch, inputs: MatchStatInputs) -> player_dashboard.MatchSample:
-    """One match's contribution, derived by the SAME pure functions — under
-    the same "complete record, consistent with the final score" rule — that
-    `build_match_record_detail()` uses, so the dashboard can never show a
-    number the match's own detail dialog would disagree with (FR-003). A
+@dataclass(frozen=True)
+class _MatchDerivations:
+    """036 US3: everything `match_stats` derives from ONE match, for both
+    teams and every participant — computed once however many players' samples
+    are then read off it. None of it depends on whose point of view it is."""
+
+    participants: list[match_stats.Participant]
+    clutch: match_stats.ClutchResult | None
+    serve: match_stats.ServeStatsResult | None
+    landings: dict[uuid.UUID, match_stats.PlayerLandingResult] | None
+    ending: match_stats.EndingStatsResult | None
+
+
+def _match_derivations(
+    match: Match, summary: MatchRecordSummary, inputs: MatchStatInputs
+) -> _MatchDerivations:
+    """The SAME pure functions — under the same "complete record, consistent
+    with the final score" rule — that `build_match_record_detail()` uses, so
+    no number can disagree with the match's own detail dialog (034 FR-003). A
     match that fails the rule still counts for the final-score metrics."""
-    match = item.match
     participants = [
         match_stats.Participant(uuid.UUID(p.roster_entry_id), p.team)
-        for p in item.summary.team_a + item.summary.team_b
+        for p in summary.team_a + summary.team_b
     ]
     points = (
         match_stats.effective_points(inputs.raw_events, match.score_a, match.score_b)
         if inputs.completeness == "complete"
         else None
     )
-    mine_is_a = item.my_team == "A"
+    if points is None:
+        return _MatchDerivations(participants, None, None, None, None)
+    return _MatchDerivations(
+        participants=participants,
+        clutch=match_stats.clutch_stats(points, match.target_score, match.cap_score),
+        serve=match_stats.serve_stats(points, inputs.snapshots, participants),
+        landings=match_stats.player_landings(points, inputs.placements, participants),
+        # 035: the same placements again, read for their ending this time.
+        ending=match_stats.ending_stats(points, inputs.placements, participants),
+    )
+
+
+def _sample_from(
+    derived: _MatchDerivations, match: Match, my_team: Literal["A", "B"], my_entry_id: uuid.UUID
+) -> player_dashboard.MatchSample:
+    """One player's view of a match: which side is "mine", which roster entry
+    is "me". The only place a point of view enters (036 FR-029 — the group
+    benchmark gives every player of a group exactly this treatment)."""
+    mine_is_a = my_team == "A"
     return player_dashboard.build_sample(
         ended_at=cast(datetime, match.ended_at),  # always set for completed matches
-        won=item.won,
+        won=match.winner_team == my_team,
         points_for=match.score_a if mine_is_a else match.score_b,
         points_against=match.score_b if mine_is_a else match.score_a,
-        my_team=item.my_team,
-        my_entry_id=item.my_entry_id,
-        is_doubles=len(participants) > 2,
-        clutch=(
-            match_stats.clutch_stats(points, match.target_score, match.cap_score)
-            if points is not None
-            else None
-        ),
-        serve=(
-            match_stats.serve_stats(points, inputs.snapshots, participants)
-            if points is not None
-            else None
-        ),
-        landings=(
-            match_stats.player_landings(points, inputs.placements, participants)
-            if points is not None
-            else None
-        ),
-        # 035: the same placements again, read for their ending this time.
-        ending=(
-            match_stats.ending_stats(points, inputs.placements, participants)
-            if points is not None
-            else None
-        ),
+        my_team=my_team,
+        my_entry_id=my_entry_id,
+        is_doubles=len(derived.participants) > 2,
+        clutch=derived.clutch,
+        serve=derived.serve,
+        landings=derived.landings,
+        ending=derived.ending,
+    )
+
+
+def _dashboard_sample(item: FilteredMatch, inputs: MatchStatInputs) -> player_dashboard.MatchSample:
+    """One match's contribution to MY dashboard."""
+    return _sample_from(
+        _match_derivations(item.match, item.summary, inputs),
+        item.match,
+        item.my_team,
+        item.my_entry_id,
     )
 
 
@@ -1569,6 +1603,170 @@ def _insights_payload(found: insights.InsightsResult) -> dict[str, object]:
         "recent": [one(item) for item in found.recent],
         "matchups": [one(item) for item in found.matchups],
     }
+
+
+async def list_benchmark_groups(
+    session: AsyncSession, member_id: uuid.UUID
+) -> BenchmarkGroupsResponse:
+    """036-match-insights-benchmarks US3 (FR-027): the groups this member can
+    compare within, busiest first — the first one is the page's default.
+
+    The predicate is `verify_ever_group_member()`'s own (a roster row of mine,
+    any status), so every group listed here is one `build_group_benchmark()`
+    will open. That is the same set as 014's 我的團: a group's creator always
+    gets a roster row when the group is created. Guest-era participation is
+    excluded naturally (`member_id IS NULL`). Three queries."""
+    roster_result = await session.execute(
+        select(RosterEntry.group_id, RosterEntry.status)
+        .where(RosterEntry.member_id == member_id)
+        .order_by(RosterEntry.joined_at.desc())
+    )
+    member_status: dict[uuid.UUID, str] = {}
+    for group_id, status in roster_result.all():
+        member_status.setdefault(group_id, status)  # newest stint wins
+    if not member_status:
+        return BenchmarkGroupsResponse(groups=[])
+
+    played_result = await session.execute(
+        select(Match.group_id, func.count(func.distinct(Match.id)))
+        .join(MatchParticipant, MatchParticipant.match_id == Match.id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(
+            Match.status == "completed",
+            RosterEntry.member_id == member_id,
+            Match.group_id.in_(list(member_status)),
+        )
+        .group_by(Match.group_id)
+    )
+    played = {group_id: count for group_id, count in played_result.all()}
+
+    groups_result = await session.execute(
+        select(Group.id, Group.group_number, Group.name, Group.status, Group.created_at).where(
+            Group.id.in_(list(member_status))
+        )
+    )
+    rows = sorted(
+        groups_result.all(),
+        key=lambda row: (-played.get(row.id, 0), -row.created_at.timestamp(), str(row.id)),
+    )
+    return BenchmarkGroupsResponse(
+        groups=[
+            BenchmarkGroupOption(
+                group_id=str(row.id),
+                group_number=row.group_number,
+                name=row.name,
+                status=row.status,
+                member_status=member_status[row.id],
+                my_completed_matches=played.get(row.id, 0),
+            )
+            for row in rows
+        ]
+    )
+
+
+def _group_benchmark_in_thread(
+    me_key: str,
+    group_name: str,
+    loaded: Sequence[tuple[Match, MatchRecordSummary]],
+    inputs: dict[uuid.UUID, MatchStatInputs],
+    my_matches: Sequence[FilteredMatch],
+    my_inputs: dict[uuid.UUID, MatchStatInputs],
+) -> tuple[group_benchmark.BenchmarkResult, insights.InsightsResult, int]:
+    """Everything after the queries: pure, CPU-bound, and for a big group
+    seconds long — so it runs off the event loop (`asyncio.to_thread`). It
+    only reads attributes the queries already loaded; nothing here can trigger
+    a lazy load."""
+    samples_by_player: dict[str, list[player_dashboard.MatchSample]] = defaultdict(list)
+    for match, summary in loaded:
+        # Once per match, however many players' samples are read off it.
+        derived = _match_derivations(match, summary, inputs[match.id])
+        for participant in summary.team_a + summary.team_b:
+            samples_by_player[_player_ref(participant).key].append(
+                # The same function, the same way, for every player (FR-029).
+                _sample_from(
+                    derived, match, participant.team, uuid.UUID(participant.roster_entry_id)
+                )
+            )
+    # Other players' values exist only here, between these two lines and
+    # `group_benchmark.build()`, which keeps none of them (FR-032).
+    players = [
+        group_benchmark.PlayerValues(key, player_dashboard.overall_values(samples))
+        for key, samples in samples_by_player.items()
+    ]
+    benchmark = group_benchmark.build(me_key, players)
+
+    # The summary the page swaps in: my UNFILTERED cross-group dashboard with
+    # this group's standing merged in by the one `derive()` (FR-033).
+    my_samples = [_dashboard_sample(item, my_inputs[item.match.id]) for item in my_matches]
+    found = insights.derive(
+        my_samples,
+        player_dashboard.aggregate(my_samples),
+        matchups.build(_matchup_inputs(my_matches)),
+        insights.BenchmarkContext(group_name, benchmark),
+    )
+    return benchmark, found, len(samples_by_player.get(me_key, []))
+
+
+async def build_group_benchmark(
+    session: AsyncSession, member_id: uuid.UUID, group_id: uuid.UUID
+) -> GroupBenchmarkResponse:
+    """036-match-insights-benchmarks US3: for each dashboard metric, this
+    group's average, how many players it is an average of, and my rank — over
+    ALL of the group's completed matches, never a filtered subset (FR-028).
+
+    Who is compared: everyone who played a completed match here, member or
+    guest, whatever their status today — a member's several stints merged,
+    each guest roster row on its own (`player_identity`). Deliberately wider
+    than 018's standings (active members only): that is a live leaderboard,
+    this is a statistical baseline, and a disbanded group has no active
+    members at all.
+
+    Anonymous by shape: see `GroupBenchmarkMetric`.
+
+    Query count is constant in the number of matches: the group's matches and
+    their participants (2), their point logs (3 per 500 matches), and my own
+    unfiltered dashboard's fixed set.
+
+    Errors: `GROUP_MEMBERSHIP_NEVER_HELD` (403) — also for a group that does
+    not exist, which is indistinguishable from one I never joined."""
+    await verify_ever_group_member(session, group_id, member_id)
+    group = await session.get(Group, group_id)
+    if group is None:  # unreachable: a roster row of mine references it
+        raise ApiError("GROUP_MEMBERSHIP_NEVER_HELD", status_code=403)
+
+    loaded = await load_group_completed_matches(session, group_id)
+    inputs = await load_match_stat_inputs(session, [match for match, _ in loaded])
+    my_matches = await _filtered_member_matches(session, member_id, MemberMatchFilters())
+    my_inputs = await load_match_stat_inputs(session, [item.match for item in my_matches])
+
+    benchmark, found, my_match_count = await asyncio.to_thread(
+        _group_benchmark_in_thread,
+        f"m:{member_id}",  # my key: I am always a member here (player_identity)
+        group.name,
+        loaded,
+        inputs,
+        my_matches,
+        my_inputs,
+    )
+    return GroupBenchmarkResponse(
+        group=GroupBenchmarkGroup(group_id=str(group.id), name=group.name),
+        total_matches=len(loaded),
+        my_matches=my_match_count,
+        metrics=[
+            GroupBenchmarkMetric(
+                key=metric.key,
+                kind=metric.kind,
+                better_when=metric.better_when,
+                mine=DashboardMetricValue(**asdict(metric.mine)) if metric.mine else None,
+                status=metric.status,
+                group_average=metric.group_average,
+                pool_size=metric.pool_size,
+                rank=metric.rank,
+            )
+            for metric in benchmark.metrics
+        ],
+        insights=DashboardInsights.model_validate(_insights_payload(found)),
+    )
 
 
 async def get_member_group_history(

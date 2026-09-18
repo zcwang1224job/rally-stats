@@ -92,7 +92,7 @@ InsightsResult
 | `recent_change` | trend | 所有 `better_when` 非空、`verdict ∈ {improved, declined}` 的指標 | 「全部」的值 | `rate`：差 ≥ 0.05／0.10；`average`／`ratio`：相對變化 ≥ 15%／30%；「全部」的值為 0 時相對變化無定義 → 不產生候選 | 沿用 034（`recent.matches_used` ≥ 3） |
 | `partner_above_overall` | matchup | — | `doubles_win_rate` | 勝率高出 ≥ 0.15／≥ 0.30 | 一起出賽 ≥ 5 場 |
 | `opponent_below_overall` | matchup | — | `overall_win_rate` | 勝率低於 ≥ 0.15／≥ 0.30 | 交手 ≥ 5 場 |
-| `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | `q = ceil(pool_size ÷ 4)`；`rank ≤ q` → strength；`rank_from_bottom ≤ q` → weakness；兩者皆成立 → 不產生；第 1 名或倒數第 1 名**且** `pool_size ≥ 8` 為明顯，其餘輕微 | `pool_size` ≥ 4 |
+| `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | `q = pool_size // 4`（無條件捨去；`pool_size ≥ 4` 故 q ≥ 1）；`rank ≤ q` → strength；`rank_from_bottom ≤ q` → weakness；兩者皆成立 → 不產生；第 1 名或倒數第 1 名**且** `pool_size ≥ 8` 為明顯，其餘輕微 | `pool_size` ≥ 4 |
 
 - **明訂排除**（FR-012）：`when_leading`、`when_tied`、`when_trailing`、`match_point_conversion` 不進 `rate_vs_overall`；`match_points_saved`（`better_when` 為空）不進任何規則。
 - **成對指標**（FR-016）：`(team_serve, team_receive)`、`(own_serve, own_receive)` 每組只留偏離絕對值較大者；相同留 weakness。
@@ -130,7 +130,7 @@ BenchmarkMetric
 BenchmarkResult   metrics: list[BenchmarkMetric]   # 23 項，順序同 _METRICS
 ```
 
-`build(me_key, players: list[PlayerValues]) -> BenchmarkResult`。常數：`MIN_MATCHES_PER_PLAYER = 5`、`MIN_POOL = 3`、`QUARTILE_MIN_POOL = 4`。
+`build(me_key, players: list[PlayerValues]) -> BenchmarkResult`。常數：`MIN_MATCHES_PER_PLAYER = 5`、`MIN_POOL = 3`、（四分之一的人數門檻 `QUARTILE_MIN_POOL = 4`／`QUARTILE_STRONG_MIN_POOL = 8` 屬於摘要規則，定義在 `insights.py`）。
 
 - **達門檻**：該球員該指標的 `matches_used ≥ 5` 且 `value` 不為 `None`。
 - **`group_average`**：達門檻者 `value` 的算術平均（每人權重相同），四捨五入規則與 034 相同（`rate` 4 位、其餘 2 位）。

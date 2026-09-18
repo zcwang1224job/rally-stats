@@ -8,11 +8,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domains.member import insights, matchups
+from app.domains.member import group_benchmark, insights, matchups
 from app.domains.member.insights import Insight, InsightsResult
 from app.domains.member.player_dashboard import (
     EndingSample,
     MatchSample,
+    MetricValue,
     PointLogSample,
     Ratio,
     ServeSample,
@@ -657,6 +658,142 @@ def test_nothing_notable_about_anyone_is_balanced_not_insufficient() -> None:
     )
     assert result.matchups == []
     assert result.status == "balanced"
+
+
+# --- US3 (FR-033): where I stand in a group ---------------------------------
+
+
+def _pool(
+    key: str, mine: float, others: list[float], matches: int = 10
+) -> insights.BenchmarkContext:
+    """A group benchmark where I have `mine` for `key` and the others have
+    `others` — built by the real `group_benchmark.build()`."""
+
+    def value(number: float) -> MetricValue:
+        return MetricValue(value=number, numerator=0, denominator=100, matches_used=matches)
+
+    players = [group_benchmark.PlayerValues("m:me", {key: value(mine)})] + [
+        group_benchmark.PlayerValues(f"m:{index}", {key: value(number)})
+        for index, number in enumerate(others)
+    ]
+    return insights.BenchmarkContext("週三羽球", group_benchmark.build("m:me", players))
+
+
+def derive_in_group(
+    context: insights.BenchmarkContext, samples: list[MatchSample] | None = None
+) -> InsightsResult:
+    samples = samples or []
+    return insights.derive(samples, aggregate(samples), None, context)
+
+
+@pytest.mark.parametrize(("others", "expected"), [(2, 0), (3, 1)])
+def test_quartile_sentences_need_four_players(others: int, expected: int) -> None:
+    result = derive_in_group(_pool("team_serve", 0.9, [0.5] * others))
+    assert len(result.strengths) == expected
+
+
+def test_first_of_four_is_a_mild_strength_with_the_groups_numbers() -> None:
+    result = derive_in_group(_pool("team_serve", 0.62, [0.5, 0.48, 0.46]))
+    strength = only(result.strengths)
+    assert (strength.rule, strength.source, strength.bucket) == (
+        "benchmark_quartile",
+        "benchmark",
+        "strength",
+    )
+    assert strength.level == "mild"  # a group of four is never "strong"
+    assert strength.metric_key == "team_serve"
+    assert strength.params == {
+        "mine": 0.62,
+        "group_average": 0.515,
+        "diff": 0.105,
+        "rank": 1,
+        "pool_size": 4,
+        "kind": "rate",
+    }
+    assert result.benchmark_group_name == "週三羽球"
+    assert result.status == "ok"
+
+
+@pytest.mark.parametrize(
+    ("pool", "top", "bottom"),
+    # q = pool // 4: never more than a quarter of the group
+    [(5, {1}, {5}), (8, {1, 2}, {7, 8}), (9, {1, 2}, {8, 9})],
+)
+def test_the_quartile_cut(pool: int, top: set[int], bottom: set[int]) -> None:
+    ladder = [round(0.9 - 0.05 * step, 2) for step in range(pool)]  # rank 1 … rank `pool`
+    for rank in range(1, pool + 1):
+        mine = ladder[rank - 1]
+        others = ladder[: rank - 1] + ladder[rank:]
+        result = derive_in_group(_pool("team_serve", mine, others))
+        assert bool(result.strengths) == (rank in top), (pool, rank)
+        assert bool(result.weaknesses) == (rank in bottom), (pool, rank)
+
+
+def test_strong_needs_first_or_last_place_in_a_group_of_eight() -> None:
+    ladder = [round(0.9 - 0.05 * step, 2) for step in range(8)]
+    first = derive_in_group(_pool("team_serve", ladder[0], ladder[1:]))
+    second = derive_in_group(_pool("team_serve", ladder[1], ladder[:1] + ladder[2:]))
+    last = derive_in_group(_pool("team_serve", ladder[7], ladder[:7]))
+    assert only(first.strengths).level == "strong"
+    assert only(second.strengths).level == "mild"
+    assert only(last.weaknesses).level == "strong"
+
+
+def test_two_players_tied_for_last_are_both_flagged() -> None:
+    result = derive_in_group(_pool("team_serve", 0.2, [0.9, 0.8, 0.2]))
+    assert only(result.weaknesses).params["rank"] == 3
+
+
+def test_everyone_equal_says_nothing() -> None:
+    result = derive_in_group(_pool("team_serve", 0.5, [0.5, 0.5, 0.5]))
+    assert result.strengths == [] and result.weaknesses == []
+    assert result.status == "balanced"
+
+
+def test_lower_is_better_metrics_rank_the_right_way_round() -> None:
+    result = derive_in_group(_pool("errors_per_match", 1.0, [4.0, 5.0, 6.0]))
+    strength = only(result.strengths)
+    assert strength.params["rank"] == 1 and strength.params["kind"] == "average"
+
+
+def test_metrics_without_a_rank_are_skipped() -> None:
+    assert derive_in_group(_pool("match_points_saved", 9.0, [1.0, 1.0, 1.0])).strengths == []
+    thin = derive_in_group(_pool("team_serve", 0.9, [0.5, 0.5, 0.5], matches=4))
+    assert thin.strengths == []
+
+
+def test_score_state_metrics_may_speak_through_the_group(  # FR-012 only bars SELF-contrast
+) -> None:
+    result = derive_in_group(_pool("when_trailing", 0.30, [0.5, 0.5, 0.5]))
+    assert only(result.weaknesses).metric_key == "when_trailing"
+
+
+def test_the_group_wins_over_a_self_contrast_on_the_same_metric() -> None:
+    # On my own, endgame (0.70 vs. a 0.50 baseline) is a strong strength…
+    samples = [sample(i, log_=log(endgame=(70, 100))) for i in range(3)]
+    assert only(derive(samples).strengths).source == "self"
+    # …but in this group 0.70 is the worst of four: that is what gets said.
+    result = derive_in_group(_pool("endgame", 0.70, [0.9, 0.85, 0.8]), samples)
+    assert result.strengths == []
+    weakness = only(result.weaknesses)
+    assert (weakness.source, weakness.metric_key) == ("benchmark", "endgame")
+
+
+def test_group_sentences_come_before_my_own_at_the_same_level() -> None:
+    samples = [sample(i, log_=log(endgame=(56, 100))) for i in range(3)]  # mild, self
+    result = derive_in_group(_pool("team_serve", 0.62, [0.5, 0.48, 0.46]), samples)  # mild, group
+    assert [(i.source, i.metric_key) for i in result.strengths] == [
+        ("benchmark", "team_serve"),
+        ("self", "endgame"),
+    ]
+
+
+def test_recent_changes_are_untouched_by_the_group() -> None:
+    samples = history(recent_margin=2, old_margin=10)
+    alone = derive(samples).recent
+    in_group = derive_in_group(_pool("avg_loss_margin", 6.0, [9.0, 9.5, 10.0]), samples)
+    assert in_group.recent == alone
+    assert only(in_group.strengths).metric_key == "avg_loss_margin"  # and still said here
 
 
 # --- the Literal sets are the ones the response schema declares ----------

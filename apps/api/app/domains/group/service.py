@@ -1571,6 +1571,28 @@ class MatchStatInputs:
     placements: dict[uuid.UUID, match_stats.Placement]
 
 
+async def load_group_completed_matches(
+    session: AsyncSession, group_id: uuid.UUID
+) -> list[tuple[Match, MatchRecordSummary]]:
+    """036-match-insights-benchmarks US3: every completed match of a group
+    with its participants — no filters, no pagination, newest first. Abandoned
+    matches never produce a result and are not here (Constitution III).
+
+    Public on purpose: `member.service.build_group_benchmark()` needs exactly
+    what `build_group_match_records()` loads, and should not reach into this
+    module's private helpers to get it. Two queries whatever the match count
+    (matches, then all their participants at once). Authorization is the
+    caller's job — this only loads."""
+    result = await session.execute(
+        _completed_matches_query()
+        .where(Match.group_id == group_id)
+        .order_by(Match.ended_at.desc(), Match.round_number.desc())
+    )
+    matches = list(result.scalars())
+    summaries = await _build_match_record_summaries(session, matches)
+    return list(zip(matches, summaries, strict=True))
+
+
 _STAT_INPUT_BATCH = 500
 
 

@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.domains.group.match_stats import ERROR_TYPES
+from app.domains.member.group_benchmark import BenchmarkResult
 from app.domains.member.matchups import MatchupRecord, MatchupResult
 from app.domains.member.player_dashboard import (
     DashboardResult,
@@ -82,6 +83,12 @@ RELATIVE_CHANGE_STRONG = 0.30
 MATCHUP_MIN_MATCHES = 5
 MATCHUP_GAP_MILD = 0.15
 MATCHUP_GAP_STRONG = 0.30
+
+# FR-033: "the top / bottom quarter" is never more than a quarter of the
+# group — 1 of 4..7, 2 of 8..11 — so it needs four players; and being first of
+# four is not the same news as being first of eight.
+QUARTILE_MIN_POOL = 4
+QUARTILE_STRONG_MIN_POOL = 8
 
 MAX_STRENGTHS = 3
 MAX_WEAKNESSES = 3
@@ -369,6 +376,58 @@ def _ranked(found: list[Insight]) -> list[Insight]:
     )
 
 
+@dataclass(frozen=True)
+class BenchmarkContext:
+    """The group I chose to compare with. Only ever built by the
+    group-benchmark endpoint; the dashboard endpoints pass None, which is why
+    a friend's page can never show an in-group sentence (FR-037)."""
+
+    group_name: str
+    result: BenchmarkResult
+
+
+def _benchmark_insights(context: BenchmarkContext) -> tuple[list[Insight], bool]:
+    found: list[Insight] = []
+    judged = False
+    for metric in context.result.metrics:
+        if (
+            metric.status != "ok"
+            or metric.pool_size < QUARTILE_MIN_POOL
+            or metric.mine is None
+            or metric.mine.value is None
+            or metric.group_average is None
+            or metric.rank is None
+            or metric.rank_from_bottom is None
+        ):
+            continue
+        judged = True
+        cut = metric.pool_size // 4
+        top, bottom = metric.rank <= cut, metric.rank_from_bottom <= cut
+        if top == bottom:  # neither — or both: everyone is level, nothing to say
+            continue
+        edge = metric.rank == 1 if top else metric.rank_from_bottom == 1
+        found.append(
+            Insight(
+                bucket="strength" if top else "weakness",
+                rule="benchmark_quartile",
+                level="strong" if edge and metric.pool_size >= QUARTILE_STRONG_MIN_POOL else "mild",
+                source="benchmark",
+                metric_key=metric.key,
+                player=None,
+                params={
+                    "mine": metric.mine.value,
+                    "group_average": metric.group_average,
+                    "diff": round(metric.mine.value - metric.group_average, 4),
+                    "rank": metric.rank,
+                    "pool_size": metric.pool_size,
+                    "kind": metric.kind,
+                },
+                sample_size=metric.mine.matches_used,
+            )
+        )
+    return found, judged
+
+
 def _matchup_insights(found: MatchupResult) -> tuple[list[Insight], bool]:
     """FR-025: at most one partner (well above my doubles win rate) and one
     opponent (well below my overall one) — the widest gap of each, the
@@ -419,6 +478,7 @@ def derive(
     samples: Sequence[MatchSample],
     dashboard: DashboardResult,
     matchups: MatchupResult | None = None,
+    benchmark: BenchmarkContext | None = None,
 ) -> InsightsResult:
     metrics = {metric.key: metric for metric in dashboard.metrics}
 
@@ -427,17 +487,29 @@ def derive(
     recent, recent_judged = _recent_insights(dashboard.metrics)
     notable, matchup_judged = _matchup_insights(matchups) if matchups else ([], False)
 
-    contrasts = _ranked(rate + endings)
+    in_group, group_judged = _benchmark_insights(benchmark) if benchmark else ([], False)
+
+    # One sentence per metric: where the group has something to say about a
+    # metric, that replaces my own contrast on it, in whichever list it was
+    # (Edge Cases「同一指標有多個來源」). `recent` is a list of its own.
+    spoken_for = {insight.metric_key for insight in in_group}
+    own = [insight for insight in rate + endings if insight.metric_key not in spoken_for]
+    contrasts = _ranked(in_group + own)
     strengths = [i for i in contrasts if i.bucket == "strength"][:MAX_STRENGTHS]
     weaknesses = [i for i in contrasts if i.bucket == "weakness"][:MAX_WEAKNESSES]
 
     status: InsightStatus
     if strengths or weaknesses or recent or notable:
         status = "ok"
-    elif rate_judged or ending_judged or recent_judged or matchup_judged:
+    elif rate_judged or ending_judged or recent_judged or matchup_judged or group_judged:
         status = "balanced"
     else:
         status = "insufficient_data"
     return InsightsResult(
-        status=status, strengths=strengths, weaknesses=weaknesses, recent=recent, matchups=notable
+        status=status,
+        strengths=strengths,
+        weaknesses=weaknesses,
+        recent=recent,
+        matchups=notable,
+        benchmark_group_name=benchmark.group_name if benchmark else None,
     )

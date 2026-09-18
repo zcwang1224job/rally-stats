@@ -644,3 +644,17 @@ def aggregate(
         error_breakdown_all=_error_breakdown(samples),
         error_breakdown_recent=_error_breakdown(recent_samples) if has_comparison else None,
     )
+
+
+def overall_values(samples: Sequence[MatchSample]) -> dict[str, MetricValue]:
+    """036-match-insights-benchmarks US3/US4: every metric's "all" value and
+    nothing else — no comparison, no trend, no landings. Goes through the same
+    `_metric_value()` as `aggregate()`, so for the same samples the two can
+    never disagree (FR-029). Metrics without any data are left out."""
+    values: dict[str, MetricValue] = {}
+    for spec in _METRICS:
+        value = _metric_value(spec, samples)
+        if value is not None:
+            values[spec.key] = value
+    return values
+
