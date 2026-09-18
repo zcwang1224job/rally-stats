@@ -105,6 +105,10 @@ export class AllCourtsCourtBlockComponent implements OnInit {
    * which uses it to stop treating an own-serve win as a possible "serve
    * fault". */
   readonly pendingServingTeam = signal<Team | null>(null);
+  /** The serving team's own score before this point, captured with
+   * `pendingServingTeam` — the picker's `servingScore` input, whose
+   * parity says which service court was the serve's legal target. */
+  readonly pendingServingScore = signal<number | null>(null);
   // Captured once, right when the point is scored — onShotPlacementConfirmed()
   // and onShotPlacementCancelled() below use these rather than re-deriving
   // "the current match" from state()/displayState() at the time the scorer
@@ -177,6 +181,13 @@ export class AllCourtsCourtBlockComponent implements OnInit {
             this.pendingScoreEventId = result.score_event_id;
             this.pendingScoringSide.set(side);
             this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
+            this.pendingServingScore.set(
+              !currentMatch.serve
+                ? null
+                : currentMatch.serve.server_team === 'A'
+                  ? currentMatch.score_a
+                  : currentMatch.score_b,
+            );
             this.pendingMatchCompleted = result.status !== 'in_progress';
             this.cancelScoreErrorKey.set(null);
             this.shotPlacementPicker()?.open();

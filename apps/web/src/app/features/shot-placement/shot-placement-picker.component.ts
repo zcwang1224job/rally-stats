@@ -111,6 +111,12 @@ export class ShotPlacementPickerComponent {
    * pre-existing, ungated behavior in that case rather than assuming an
    * answer it doesn't have. */
   readonly servingTeam = input<Team | null>(null);
+  /** The serving team's own score BEFORE this point, captured alongside
+   * `servingTeam`. Its parity says which service court the serve came
+   * from (even: right, odd: left), and so which of the receiver's two
+   * courts was the legal, diagonal target — see `isServeFaultZone`.
+   * `null` when unknown; the left/right check is then skipped. */
+  readonly servingScore = input<number | null>(null);
   readonly confirmed = output<ShotPlacementConfirmed>();
   /** 032-cancel-score: the caller applies the matching -1 correction — this
    * component never touches the score itself, only requests it. */
@@ -205,7 +211,7 @@ export class ShotPlacementPickerComponent {
     if (serving !== null && serving === this.scoringTeam()) {
       return false;
     }
-    return this.isServeFaultZone(point.x, this.scoringTeam());
+    return this.isServeFaultZone(point.x, point.y, this.scoringTeam());
   });
 
   /** True once an in-bounds landing contradicts the already-credited side —
@@ -285,18 +291,34 @@ export class ShotPlacementPickerComponent {
     () => this.manualEndingType() === undefined && this.autoEndingType() !== null,
   );
 
-  private isServeFaultZone(x: number, side: Team): boolean {
+  /** Whether an in-bounds landing on `side`'s (the receiver's) half is
+   * outside the serve's legal target: short of the short service line,
+   * past the doubles long service line, or — when the server's score is
+   * known — in the wrong one of the receiver's two service courts. A serve
+   * goes diagonally, and each side's right court is diagonal to the other
+   * side's right court, so the target is the receiver's right court when
+   * the server's score is even and its left court when odd. Teams face
+   * each other, so A's right court is the bottom half (y > 0.5) and B's
+   * the top half (y < 0.5) — the same convention as the station pills
+   * (ControlPanelComponent.serveRosterId). The center line itself counts
+   * as in, for both courts. Mirrors service.py's _is_serve_fault_zone(). */
+  private isServeFaultZone(x: number, y: number, side: Team): boolean {
     const isDoubles = !this.isSinglesMatch();
-    if (side === 'A') {
-      if (x > SHORT_SERVICE_LINE_INSET && x < 0.5) {
-        return true;
-      }
-      return isDoubles && x < LONG_SERVICE_LINE_INSET;
-    }
-    if (x < 1 - SHORT_SERVICE_LINE_INSET && x > 0.5) {
+    const depthFault =
+      side === 'A'
+        ? (x > SHORT_SERVICE_LINE_INSET && x < 0.5) || (isDoubles && x < LONG_SERVICE_LINE_INSET)
+        : (x < 1 - SHORT_SERVICE_LINE_INSET && x > 0.5) ||
+          (isDoubles && x > 1 - LONG_SERVICE_LINE_INSET);
+    if (depthFault) {
       return true;
     }
-    return isDoubles && x > 1 - LONG_SERVICE_LINE_INSET;
+    const serverScore = this.servingScore();
+    if (serverScore === null || this.servingTeam() === null) {
+      return false;
+    }
+    const targetIsRightCourt = serverScore % 2 === 0;
+    const targetIsBottom = targetIsRightCourt === (side === 'A');
+    return targetIsBottom ? y < 0.5 : y > 0.5;
   }
 
   readonly scoringPlayers = computed(() =>

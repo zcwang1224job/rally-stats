@@ -57,6 +57,7 @@ function setup(
   participantsList: ParticipantSummary[] = participants,
   scoringTeam: Team = 'A',
   servingTeam: Team | null = null,
+  servingScore: number | null = null,
 ) {
   TestBed.configureTestingModule({
     imports: [ShotPlacementPickerComponent],
@@ -66,6 +67,7 @@ function setup(
   fixture.componentRef.setInput('participants', participantsList);
   fixture.componentRef.setInput('scoringTeam', scoringTeam);
   fixture.componentRef.setInput('servingTeam', servingTeam);
+  fixture.componentRef.setInput('servingScore', servingScore);
   fixture.detectChanges();
   const courtAreaEl: HTMLDivElement = fixture.nativeElement.querySelector('.court-area');
   const courtEl: HTMLDivElement = fixture.nativeElement.querySelector('.court');
@@ -396,6 +398,44 @@ describe('ShotPlacementPickerComponent', () => {
 
     expect(nicknames(scoringButtons(fixture))).toEqual(['陳甲', '劉乙']);
     expect(fixture.nativeElement.querySelector('.status-badge')).not.toBeNull();
+  });
+
+  // A serve must land in the DIAGONAL service court: server's score even ->
+  // receiver's right court, odd -> left. A's right court is the bottom half
+  // (y > 0.5), B's the top half — the station pills' convention. Landings
+  // below sit deep in the receiver's half (past the short service line), so
+  // only the left/right court decides. Same table as the backend's
+  // test_serve_landing_in_the_wrong_service_court_is_a_serve_fault.
+  it.each([
+    // [scoring (receiver), serving, server score, x, y, is fault]
+    ['B', 'A', 1, 0.8, 0.3, true], // odd -> B's left = bottom; top is wrong
+    ['B', 'A', 1, 0.8, 0.7, false],
+    ['B', 'A', 2, 0.8, 0.7, true], // even -> B's right = top; bottom is wrong
+    ['B', 'A', 2, 0.8, 0.3, false],
+    ['A', 'B', 1, 0.2, 0.7, true], // odd -> A's left = top; bottom is wrong
+    ['A', 'B', 1, 0.2, 0.3, false],
+    ['B', 'A', 1, 0.8, 0.5, false], // the center line is in, for both courts
+  ] as const)(
+    'receiver %s, server %s at %d: a landing at (%d, %d) is a serve fault = %s',
+    (scoring, serving, servingScore, x, y, isFault) => {
+      const { fixture } = setup(participants, scoring, serving, servingScore);
+
+      fixture.componentInstance.selectedPoint.set({ x, y });
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.isServeFault()).toBe(isFault);
+      expect(fixture.componentInstance.landingConflict()).toBe(!isFault);
+      expect(fixture.componentInstance.endingType()).toBe(isFault ? 'serve_fault' : null);
+    },
+  );
+
+  it('skips the service-court check while the server\'s score is unknown', () => {
+    const { fixture } = setup(participants, 'B', 'A', null);
+
+    fixture.componentInstance.selectedPoint.set({ x: 0.8, y: 0.3 });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.landingConflict()).toBe(true);
   });
 
   it('still conflicts for the identical deep landing in a singles match (no long-fault zone)', () => {

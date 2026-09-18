@@ -773,7 +773,7 @@ async def test_older_landing_check_still_answers_first(db_session: AsyncSession)
 
 
 # --- a serve fault always favors the RECEIVER --------------------------------
-# A match's first point has no known server (see _serving_team_for_point()),
+# A match's first point has no known server (see _serve_before_point()),
 # so each case below scores an opening point by A first: A then serves the
 # second rally.
 
@@ -835,3 +835,65 @@ async def test_serving_side_is_read_across_an_undone_point(db_session: AsyncSess
         )
 
     assert excinfo.value.error_code == "ENDING_TYPE_CONTRADICTS_SERVE"
+
+
+# --- a serve must land in the DIAGONAL service court --------------------------
+# Server's score even -> serves from its right court -> target is the
+# receiver's right court; odd -> both left. A's right court is the bottom
+# half (y > 0.5), B's the top half (y < 0.5) — teams face each other.
+# `opening` is scored first so the server of the tested rally is known;
+# the landings sit deep enough to clear the short service line, so only the
+# left/right court decides.
+
+
+@pytest.mark.parametrize(
+    ("opening", "receiver", "x", "y", "is_fault"),
+    [
+        # A served at 1 (odd, left) -> target B's left = bottom
+        (["A"], "B", 0.8, 0.3, True),
+        (["A"], "B", 0.8, 0.7, False),
+        # A served at 2 (even, right) -> target B's right = top
+        (["A", "A"], "B", 0.8, 0.7, True),
+        (["A", "A"], "B", 0.8, 0.3, False),
+        # B served at 1 (odd, left) -> target A's left = top
+        (["B"], "A", 0.2, 0.7, True),
+        (["B"], "A", 0.2, 0.3, False),
+        # The center line is in, for both courts.
+        (["A"], "B", 0.8, 0.5, False),
+    ],
+)
+async def test_serve_landing_in_the_wrong_service_court_is_a_serve_fault(
+    db_session: AsyncSession,
+    opening: list[Team],
+    receiver: Team,
+    x: float,
+    y: float,
+    is_fault: bool,
+) -> None:
+    court, match_id, _ = await _new_point(db_session, side=opening[0])
+    for side in opening[1:]:
+        await _score_and_get_event_id(db_session, court, match_id, side)
+    event_id = await _score_and_get_event_id(db_session, court, match_id, receiver)
+
+    if is_fault:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, x, y, ending_type="serve_fault"
+        )
+        assert await _stored_ending(db_session, event_id) == "serve_fault"
+    else:
+        with pytest.raises(ApiError) as excinfo:
+            await attach_shot_placement(db_session, court, match_id, event_id, None, None, x, y)
+        assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"
+
+
+async def test_wrong_service_court_is_not_checked_when_the_server_is_unknown(
+    db_session: AsyncSession,
+) -> None:
+    """A match's first point: no known server, so no known target court — a
+    deep landing on the credited side's own half stays a contradiction."""
+    court, match_id, event_id = await _new_point(db_session, side="B")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(db_session, court, match_id, event_id, None, None, 0.8, 0.3)
+
+    assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"
