@@ -402,8 +402,15 @@ def _benchmark_insights(context: BenchmarkContext) -> tuple[list[Insight], bool]
             continue
         judged = True
         cut = metric.pool_size // 4
-        top, bottom = metric.rank <= cut, metric.rank_from_bottom <= cut
-        if top == bottom:  # neither — or both: everyone is level, nothing to say
+        # Ties count against the quarter: "in the top quarter" means no more
+        # than a quarter of the group is level with me or better. On a metric
+        # most players max out (match-point conversion: nearly everyone at
+        # 100%), five of seven share first place — and none of them stands
+        # out. Ranks alone would have called all five a strength.
+        level_or_better = metric.pool_size - metric.rank_from_bottom + 1
+        level_or_worse = metric.pool_size - metric.rank + 1
+        top, bottom = level_or_better <= cut, level_or_worse <= cut
+        if not top and not bottom:
             continue
         edge = metric.rank == 1 if top else metric.rank_from_bottom == 1
         found.append(

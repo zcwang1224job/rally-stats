@@ -52,12 +52,18 @@
           <!-- One template, two wrappers: a button when the page can act on
                the click, a plain row when it cannot (friend's page). -->
           <ng-template #cells>
-            <span class="matchup__name"><app-nickname [value]="record.nickname" /></span>
-            @if (record.low_sample) {
-              <span class="matchup__flag" data-low-sample>
-                {{ 'member.matchHistory.matchups.lowSample' | translate }}
-              </span>
-            }
+            <!-- Name and flag share ONE grid cell: a row with the flag must
+                 not have more cells than a row without it, or the phone
+                 layout (three columns) wraps the figures onto a line of
+                 their own. -->
+            <span class="matchup__who">
+              <span class="matchup__name"><app-nickname [value]="record.nickname" /></span>
+              @if (record.low_sample) {
+                <span class="matchup__flag" data-low-sample>
+                  {{ 'member.matchHistory.matchups.lowSample' | translate }}
+                </span>
+              }
+            </span>
             <span class="matchup__bar-track" aria-hidden="true">
               <span class="matchup__bar-fill" [style.width.%]="record.win_rate * 100"></span>
             </span>

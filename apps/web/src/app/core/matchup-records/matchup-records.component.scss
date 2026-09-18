@@ -83,7 +83,7 @@
 // the figures wrap under the name — never a horizontal scroll (SC-010).
 .matchup {
   display: grid;
-  grid-template-columns: minmax(4rem, auto) auto 1fr auto auto auto;
+  grid-template-columns: minmax(4rem, auto) 1fr auto auto auto;
   align-items: center;
   gap: var(--space-sm);
   width: 100%;
@@ -111,7 +111,15 @@
   }
 }
 
+.matchup__who {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
 .matchup__name {
+  min-width: 0;
   overflow: hidden;
   font-weight: var(--font-weight-bold);
   text-overflow: ellipsis;

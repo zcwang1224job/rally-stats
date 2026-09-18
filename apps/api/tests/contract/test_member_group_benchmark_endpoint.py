@@ -161,6 +161,26 @@ async def test_group_benchmark_shape(client: AsyncClient, db_session: AsyncSessi
     assert from_group and all(i["rule"] == "benchmark_quartile" for i in from_group)
 
 
+def _benchmark_text(body: dict[str, object]) -> str:
+    """Everything the group comparison itself produced: the group, the 23
+    metrics, and any sentence whose source is the group. `insights` also holds
+    the viewer's OWN sentences (strengths, recent changes, partners/opponents)
+    — the same ones their dashboard response carries — which are not the
+    benchmark's and are checked separately below."""
+    insights = body["insights"]
+    assert isinstance(insights, dict)
+    from_group = [
+        item
+        for name in ("strengths", "weaknesses", "recent", "matchups")
+        for item in insights[name]
+        if item["source"] == "benchmark"
+    ]
+    return json.dumps(
+        {"group": body["group"], "metrics": body["metrics"], "from_group": from_group},
+        ensure_ascii=False,
+    )
+
+
 async def test_nothing_about_any_other_player_leaves_the_server(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -175,13 +195,61 @@ async def test_nothing_about_any_other_player_leaves_the_server(
     )
 
     assert response.status_code == 200
-    text = json.dumps(response.json(), ensure_ascii=False)
+    text = _benchmark_text(response.json())
     for nickname in OTHER_NICKNAMES:
         assert nickname not in text
     assert str(other_member.id) not in text
     for entry in others:
         assert str(entry.id) not in text
-    assert "rank_from_bottom" not in text  # an internal of the insight rules
+    assert "rank_from_bottom" not in json.dumps(response.json())  # an insight-rule internal
+
+
+async def test_my_own_partner_sentences_are_the_dashboards_and_nothing_more(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The merged summary keeps MY partner/opponent sentences — my own record
+    with people from my own match list, exactly as `/match-dashboard` already
+    sends them. They are the only place another player's name may appear, and
+    they say nothing the group computed about that player."""
+    me = await _register(db_session, "bm-own@example.com")
+    group = await make_group(db_session, "BM Own", match_mode="doubles")
+    mine = await make_entry(db_session, group, "我", me.id)
+    good = await make_entry(db_session, group, "祕密好搭檔")
+    poor = await make_entry(db_session, group, "祕密壞搭檔")
+    rivals = [
+        (await make_entry(db_session, group, "祕密對手甲")).id,
+        (await make_entry(db_session, group, "祕密對手乙")).id,
+    ]
+    for age in range(6):
+        await make_played_match(
+            db_session,
+            group,
+            team_a=[mine.id, good.id],
+            team_b=rivals,
+            sides="A" * 21,
+            ended_at=NOW - timedelta(days=age),
+        )
+        await make_played_match(
+            db_session,
+            group,
+            team_a=[mine.id, poor.id],
+            team_b=rivals,
+            sides="B" * 21,
+            ended_at=NOW - timedelta(days=20 + age),
+        )
+    headers = await _login(client, "bm-own@example.com")
+
+    benchmark = (
+        await client.get(f"/members/me/group-benchmark?group_id={group.id}", headers=headers)
+    ).json()
+    dashboard = (await client.get("/members/me/match-dashboard", headers=headers)).json()
+
+    named = benchmark["insights"]["matchups"]
+    assert [item["player"]["nickname"] for item in named] == ["祕密好搭檔"]
+    assert named == dashboard["insights"]["matchups"]  # nothing new: the dashboard says the same
+    assert set(named[0]["params"]) == {"win_rate", "matches", "wins", "losses", "baseline", "diff"}
+    # …and the comparison itself still names nobody.
+    assert "祕密" not in _benchmark_text(benchmark)
 
 
 @pytest.mark.parametrize("my_status", ["left", "kicked"])

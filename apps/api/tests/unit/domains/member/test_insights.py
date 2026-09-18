@@ -739,9 +739,17 @@ def test_strong_needs_first_or_last_place_in_a_group_of_eight() -> None:
     assert only(last.weaknesses).level == "strong"
 
 
-def test_two_players_tied_for_last_are_both_flagged() -> None:
-    result = derive_in_group(_pool("team_serve", 0.2, [0.9, 0.8, 0.2]))
-    assert only(result.weaknesses).params["rank"] == 3
+def test_a_tie_that_overflows_the_quarter_flags_nobody() -> None:
+    # Two of four tied for last: that is the bottom HALF, not the bottom quarter.
+    tied_last = derive_in_group(_pool("team_serve", 0.2, [0.9, 0.8, 0.2]))
+    assert tied_last.weaknesses == []
+    # Five of seven share first place (think match-point conversion, where
+    # nearly everyone is at 100%): none of them stands out.
+    crowded_top = derive_in_group(_pool("team_serve", 1.0, [1.0, 1.0, 1.0, 1.0, 0.9, 0.8]))
+    assert crowded_top.strengths == []
+    # …but two tied for first of eight fit the quarter exactly, and both count.
+    fits = derive_in_group(_pool("team_serve", 0.9, [0.9, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]))
+    assert only(fits.strengths).params["rank"] == 1
 
 
 def test_everyone_equal_says_nothing() -> None:

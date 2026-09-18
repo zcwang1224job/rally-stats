@@ -92,7 +92,7 @@ InsightsResult
 | `recent_change` | trend | 所有 `better_when` 非空、`verdict ∈ {improved, declined}` 的指標 | 「全部」的值 | `rate`：差 ≥ 0.05／0.10；`average`／`ratio`：相對變化 ≥ 15%／30%；「全部」的值為 0 時相對變化無定義 → 不產生候選 | 沿用 034（`recent.matches_used` ≥ 3） |
 | `partner_above_overall` | matchup | — | `doubles_win_rate` | 勝率高出 ≥ 0.15／≥ 0.30 | 一起出賽 ≥ 5 場 |
 | `opponent_below_overall` | matchup | — | `overall_win_rate` | 勝率低於 ≥ 0.15／≥ 0.30 | 交手 ≥ 5 場 |
-| `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | `q = pool_size // 4`（無條件捨去；`pool_size ≥ 4` 故 q ≥ 1）；`rank ≤ q` → strength；`rank_from_bottom ≤ q` → weakness；兩者皆成立 → 不產生；第 1 名或倒數第 1 名**且** `pool_size ≥ 8` 為明顯，其餘輕微 | `pool_size` ≥ 4 |
+| `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | `q = pool_size // 4`（無條件捨去；`pool_size ≥ 4` 故 q ≥ 1）；`pool_size − rank_from_bottom + 1`（同名次或更好的人數）`≤ q` → strength；`pool_size − rank + 1`（同名次或更差的人數）`≤ q` → weakness；並列因此佔用名額；第 1 名或倒數第 1 名**且** `pool_size ≥ 8` 為明顯，其餘輕微 | `pool_size` ≥ 4 |
 
 - **明訂排除**（FR-012）：`when_leading`、`when_tied`、`when_trailing`、`match_point_conversion` 不進 `rate_vs_overall`；`match_points_saved`（`better_when` 為空）不進任何規則。
 - **成對指標**（FR-016）：`(team_serve, team_receive)`、`(own_serve, own_receive)` 每組只留偏離絕對值較大者；相同留 weakness。
