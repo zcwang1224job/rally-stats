@@ -1457,6 +1457,12 @@ def _dashboard_sample(item: FilteredMatch, inputs: MatchStatInputs) -> player_da
             if points is not None
             else None
         ),
+        # 035: the same placements again, read for their ending this time.
+        ending=(
+            match_stats.ending_stats(points, inputs.placements, participants)
+            if points is not None
+            else None
+        ),
     )
 
 
@@ -1475,7 +1481,17 @@ async def build_member_match_dashboard(
     result = player_dashboard.aggregate(
         [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
     )
-    return MemberMatchDashboardResponse.model_validate(asdict(result))
+    # 035: the two breakdown halves live as separate fields on the pure
+    # result (each independently None) but travel as one nested object.
+    payload = asdict(result)
+    breakdown_all = payload.pop("error_breakdown_all")
+    breakdown_recent = payload.pop("error_breakdown_recent")
+    payload["error_breakdown"] = (
+        {"all": breakdown_all, "recent": breakdown_recent}
+        if breakdown_all is not None
+        else None
+    )
+    return MemberMatchDashboardResponse.model_validate(payload)
 
 
 async def get_member_group_history(

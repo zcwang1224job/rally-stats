@@ -11,7 +11,7 @@ from app.domains.friend.models import FriendRequest
 from app.domains.member.models import Member
 from app.domains.member.service import register
 from app.domains.notification.models import Notification
-from tests.unit.domains._match_history import make_entry, make_group, make_played_match
+from tests.unit.domains._match_history import Shot, make_entry, make_group, make_played_match
 
 pytestmark = pytest.mark.asyncio
 
@@ -34,6 +34,12 @@ METRIC_KEYS = [
     "avg_points_against",
     "avg_win_margin",
     "avg_loss_margin",
+    # 035-point-ending-type: five more, appended — the first 18 never move.
+    "winner_share",
+    "winners_per_match",
+    "errors_per_match",
+    "error_share_of_lost",
+    "winner_error_ratio",
 ]
 EMPTY = {
     "total_matches": 0,
@@ -42,6 +48,7 @@ EMPTY = {
     "metrics": [],
     "trends": [],
     "landing": None,
+    "error_breakdown": None,
 }
 
 
@@ -142,6 +149,11 @@ async def test_response_shape_with_matches(client: AsyncClient, db_session: Asyn
     assert serve["value"] == round(serve["numerator"] / serve["denominator"], 4)
     assert by_key["own_serve"]["all"]["matches_used"] == 1  # the doubles match only
     assert by_key["points_scored"]["all"] is None  # nobody recorded players
+    # 035: matches, but not one recorded ending — the five new metrics are
+    # there with `all: null`, and there is no breakdown.
+    for key in METRIC_KEYS[18:]:
+        assert by_key[key]["all"] is None, key
+    assert body["error_breakdown"] is None
 
 
 async def test_filters_match_the_match_list_and_page_is_ignored(
@@ -319,3 +331,98 @@ async def test_me_is_not_swallowed_by_the_member_id_route(
     response = await client.get("/members/me/match-dashboard", headers=headers)
 
     assert response.status_code == 200  # a 422 here would mean the routes are in the wrong order
+
+
+# ---------------------------------------------------------------- 035 ending metrics (T027)
+
+
+async def test_ending_metrics_and_error_breakdown_with_recorded_endings(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    member = await _register(db_session, "dash-ending@example.com")
+    group = await make_group(db_session, "Endings", match_mode="singles")
+    me = await make_entry(db_session, group, "我", member.id)
+    rival = await make_entry(db_session, group, "對手")
+    await make_played_match(
+        db_session, group, team_a=[me.id], team_b=[rival.id], sides="A" * 21,
+        shots={
+            0: Shot(scorer=me.id, loser=rival.id, ending="winner"),
+            1: Shot(scorer=me.id, loser=rival.id, ending="winner"),
+            2: Shot(scorer=me.id, loser=rival.id, ending="net"),
+            3: Shot(scorer=me.id, loser=rival.id),  # detail without an ending
+        },
+    )
+    await make_played_match(
+        db_session, group, team_a=[me.id], team_b=[rival.id], sides="B" * 21,
+        shots={
+            0: Shot(scorer=rival.id, loser=me.id, ending="out"),
+            1: Shot(scorer=rival.id, loser=me.id, ending="out"),
+            2: Shot(scorer=rival.id, loser=me.id, ending="winner"),
+        },
+    )
+    headers = await _login(client, "dash-ending@example.com")
+
+    response = await client.get("/members/me/match-dashboard", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == set(EMPTY)
+    by_key = {metric["key"]: metric for metric in body["metrics"]}
+    assert set(by_key) == set(METRIC_KEYS)
+    winner_share = by_key["winner_share"]
+    assert (winner_share["kind"], winner_share["better_when"]) == ("rate", "higher")
+    assert winner_share["all"] == {
+        "value": round(2 / 3, 4), "numerator": 2, "denominator": 3, "matches_used": 2,
+    }
+    assert by_key["winners_per_match"]["all"] == {
+        "value": 1.0, "numerator": 2, "denominator": 2, "matches_used": 2,
+    }
+    errors = by_key["errors_per_match"]
+    assert errors["better_when"] == "lower"
+    assert errors["all"] == {"value": 1.0, "numerator": 2, "denominator": 2, "matches_used": 2}
+    assert by_key["error_share_of_lost"]["all"] == {
+        "value": round(2 / 3, 4), "numerator": 2, "denominator": 3, "matches_used": 2,
+    }
+    ratio = by_key["winner_error_ratio"]
+    assert ratio["kind"] == "ratio"
+    assert ratio["all"] == {"value": 1.0, "numerator": 2, "denominator": 2, "matches_used": 2}
+    assert body["error_breakdown"] == {
+        "all": {"out": 2, "net": 0, "serve_fault": 0, "other_error": 0},
+        "recent": None,
+    }
+
+
+async def test_friend_view_carries_the_ending_fields_and_rejections_do_not(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    viewer = await _register(db_session, "dash-viewer-ending@example.com")
+    owner = await _register(db_session, "dash-owner-ending@example.com")
+    await _befriend(db_session, viewer, owner)
+    group = await make_group(db_session, "Endings F", match_mode="singles")
+    me = await make_entry(db_session, group, "我", owner.id)
+    rival = await make_entry(db_session, group, "對手")
+    await make_played_match(
+        db_session, group, team_a=[me.id], team_b=[rival.id], sides="A" * 21,
+        shots={0: Shot(scorer=me.id, loser=rival.id, ending="winner"),
+               1: Shot(scorer=me.id, loser=rival.id, ending="serve_fault")},
+    )
+
+    as_friend = await client.get(
+        f"/members/{owner.id}/match-dashboard",
+        headers=await _login(client, "dash-viewer-ending@example.com"),
+    )
+
+    assert as_friend.status_code == 200
+    body = as_friend.json()
+    assert [m["key"] for m in body["metrics"]] == METRIC_KEYS
+    assert body["error_breakdown"] is None  # the owner's only recorded points were won
+    assert next(m for m in body["metrics"] if m["key"] == "winner_share")["all"]["numerator"] == 1
+
+    stranger = await _register(db_session, "dash-stranger-ending@example.com")
+    rejected = await client.get(
+        f"/members/{owner.id}/match-dashboard",
+        headers=await _login(client, "dash-stranger-ending@example.com"),
+    )
+    assert rejected.status_code == 403
+    assert "error_breakdown" not in rejected.json() and "metrics" not in rejected.json()
+    assert stranger.id != owner.id

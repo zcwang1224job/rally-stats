@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 
 from app.domains.group.schemas import (
+    ErrorsByType,
     FinalStandingRow,
     MatchRecordSummary,
     OpponentRecord,
@@ -407,10 +408,22 @@ class DashboardLanding(BaseModel):
     recent_matches_used: int
 
 
+class DashboardErrorBreakdown(BaseModel):
+    """035-point-ending-type: the member's own errors by kind. `recent` is
+    None whenever there is no comparison (total_matches <= recent_window),
+    mirroring every metric's `recent`."""
+
+    all: ErrorsByType
+    recent: ErrorsByType | None
+
+
 class MemberMatchDashboardResponse(BaseModel):
     total_matches: int
     recent_window: int
     has_comparison: bool
-    metrics: list[DashboardMetric]  # [] iff total_matches == 0, else all 18
+    # [] iff total_matches == 0, else all 23 (034's 18 + 035's 5, appended).
+    metrics: list[DashboardMetric]
     trends: list[DashboardTrend]
     landing: DashboardLanding | None
+    # 035: None when not one of the member's errors was ever recorded.
+    error_breakdown: DashboardErrorBreakdown | None = None

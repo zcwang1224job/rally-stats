@@ -170,7 +170,7 @@ async def test_each_metric_counts_only_the_matches_that_have_its_data(
     )
 
     assert dashboard.total_matches == 6
-    assert len(dashboard.metrics) == 18
+    assert len(dashboard.metrics) == 23
     assert _used(dashboard, "avg_points_for") == 6  # the partial one still counts here
     assert _used(dashboard, "when_tied") == 5  # everything but the partial log
     assert _used(dashboard, "endgame") == 4  # ... and but the 7-point match
@@ -341,3 +341,140 @@ async def test_landings_are_turned_so_my_side_is_always_the_left(
         )
         plotted += len(mine.scored)
     assert len(landing.scored) == plotted == 2
+
+
+# ---------------------------------------------------------------- 035 ending metrics (T026)
+
+
+async def test_ending_metrics_of_one_match_are_my_row_of_its_detail(
+    db_session: AsyncSession,
+) -> None:
+    """FR-024: the dashboard's five ending metrics for a single match are
+    exactly my PlayerEndingStat in that match's own detail."""
+    setup = await _Doubles.create(db_session)
+    match = await make_played_match(
+        db_session, setup.group, team_a=setup.theirs, team_b=setup.mine,
+        sides=COMEBACK.replace("A", "x").replace("B", "A").replace("x", "B"),  # B wins 21:19
+        shots={
+            0: Shot(scorer=setup.opp1.id, loser=setup.me.id, ending="winner"),
+            1: Shot(scorer=setup.opp1.id, loser=setup.me.id, ending="net"),
+            2: Shot(scorer=setup.opp2.id, loser=setup.partner.id, ending="out"),
+            5: Shot(scorer=setup.me.id, loser=setup.opp2.id, ending="winner"),
+            6: Shot(scorer=setup.me.id, loser=setup.opp2.id, ending="winner"),
+            7: Shot(scorer=setup.me.id, loser=setup.opp1.id, ending="serve_fault"),
+            8: Shot(scorer=setup.me.id, loser=None, ending=None),  # unrecorded
+        },
+    )
+
+    dashboard = await build_member_match_dashboard(
+        db_session, setup.member.id, MemberMatchFilters()
+    )
+    detail = await build_match_record_detail(db_session, match)
+
+    assert detail.ending_stats is not None
+    mine = next(p for p in detail.ending_stats.players if p.roster_entry_id == str(setup.me.id))
+    assert (mine.winners, mine.opponent_errors, mine.beaten_by_winners, mine.own_errors) == (
+        2, 1, 1, 1,
+    )
+
+    def pair(key: str) -> tuple[int, int]:
+        value = _metric(dashboard, key).all
+        assert value is not None, key
+        return value.numerator, value.denominator
+
+    assert pair("winner_share") == (mine.winners, mine.winners + mine.opponent_errors) == (2, 3)
+    assert pair("winners_per_match") == (mine.winners, 1)
+    assert pair("errors_per_match") == (mine.own_errors, 1)
+    assert pair("error_share_of_lost") == (
+        mine.own_errors, mine.own_errors + mine.beaten_by_winners,
+    ) == (1, 2)
+    assert pair("winner_error_ratio") == (mine.winners, mine.own_errors) == (2, 1)
+    assert dashboard.error_breakdown is not None
+    assert dashboard.error_breakdown.all.model_dump() == {
+        "out": 0, "net": 1, "serve_fault": 0, "other_error": 0,
+    }
+    assert dashboard.error_breakdown.recent is None  # a single match: nothing to compare
+
+
+async def test_ending_metrics_count_only_matches_where_my_points_have_an_ending(
+    db_session: AsyncSession,
+) -> None:
+    setup = await _Doubles.create(db_session)
+    common = {"team_a": setup.mine, "team_b": setup.theirs}
+    # Mine recorded.
+    await make_played_match(
+        db_session, setup.group, sides=COMEBACK, **common,
+        shots={5: Shot(scorer=setup.me.id, loser=setup.opp1.id, ending="winner")},
+    )
+    # Only my partner's point recorded: nothing about me.
+    await make_played_match(
+        db_session, setup.group, sides=COMEBACK, **common,
+        shots={5: Shot(scorer=setup.partner.id, loser=setup.opp1.id, ending="winner")},
+    )
+    # Detail recorded but every ending skipped.
+    await make_played_match(
+        db_session, setup.group, sides=COMEBACK, **common,
+        shots={5: Shot(scorer=setup.me.id, loser=setup.opp1.id, landing=(0.8, 0.5))},
+    )
+    # Simple scoring.
+    await make_played_match(db_session, setup.group, sides="A" * 21, **common)
+
+    dashboard = await build_member_match_dashboard(
+        db_session, setup.member.id, MemberMatchFilters()
+    )
+
+    assert dashboard.total_matches == 4
+    assert _used(dashboard, "winners_per_match") == 1
+    assert _used(dashboard, "winner_share") == 1
+    assert _used(dashboard, "points_scored") == 3  # players recorded, ending or not
+    assert _used(dashboard, "avg_points_for") == 4
+    assert dashboard.error_breakdown is None  # my one recorded point was a winner
+
+
+async def test_error_breakdown_has_both_ranges_past_ten_matches(db_session: AsyncSession) -> None:
+    setup = await _Doubles.create(db_session)
+    common = {"team_a": setup.mine, "team_b": setup.theirs}
+    for index in range(12):
+        kind = "net" if index < 6 else "out"  # oldest six: net; newest six: out
+        await make_played_match(
+            db_session, setup.group, sides=COMEBACK, ended_at=NOW - timedelta(days=12 - index),
+            shots={0: Shot(scorer=setup.opp1.id, loser=setup.me.id, ending=kind)}, **common,
+        )
+
+    dashboard = await build_member_match_dashboard(
+        db_session, setup.member.id, MemberMatchFilters()
+    )
+
+    assert dashboard.has_comparison is True
+    assert dashboard.error_breakdown is not None
+    assert dashboard.error_breakdown.all.model_dump() == {
+        "out": 6, "net": 6, "serve_fault": 0, "other_error": 0,
+    }
+    assert dashboard.error_breakdown.recent is not None
+    assert dashboard.error_breakdown.recent.model_dump() == {
+        "out": 6, "net": 4, "serve_fault": 0, "other_error": 0,
+    }
+    assert _metric(dashboard, "errors_per_match").verdict == "unchanged"  # one per match throughout
+
+
+async def test_ending_metrics_add_no_query(db_session: AsyncSession) -> None:
+    """The placements are already loaded for the landings (034); reading
+    their ending is free."""
+    setup = await _Doubles.create(db_session)
+    common = {"team_a": setup.mine, "team_b": setup.theirs}
+    await make_played_match(db_session, setup.group, sides="A" * 21, **common)
+    with count_selects(db_session) as plain:
+        await build_member_match_dashboard(db_session, setup.member.id, MemberMatchFilters())
+
+    for _ in range(3):
+        await make_played_match(
+            db_session, setup.group, sides=COMEBACK, **common,
+            shots={0: Shot(scorer=setup.opp1.id, loser=setup.me.id, ending="net")},
+        )
+    with count_selects(db_session) as with_endings:
+        dashboard = await build_member_match_dashboard(
+            db_session, setup.member.id, MemberMatchFilters()
+        )
+
+    assert dashboard.error_breakdown is not None
+    assert len(plain) == len(with_endings)

@@ -26,7 +26,9 @@ from datetime import datetime
 from typing import Literal
 
 from app.domains.group.match_stats import (
+    ERROR_TYPES,
     ClutchResult,
+    EndingStatsResult,
     PhaseCounts,
     PlayerLandingResult,
     ServeStatsResult,
@@ -83,9 +85,23 @@ class PlayerSample:
 
 
 @dataclass(frozen=True)
+class EndingSample:
+    """035-point-ending-type: my own split of a match's points — needs at
+    least one of MY points (won or lost) to carry an ending (FR-020). The
+    `*_unrecorded` buckets are deliberately absent: a rate's denominator
+    only ever holds points whose ending was recorded."""
+
+    winners: int
+    opponent_errors: int
+    beaten_by_winners: int
+    own_errors: int
+    own_errors_by_type: dict[str, int]
+
+
+@dataclass(frozen=True)
 class MatchSample:
     """Everything one match contributes. The final-score metrics are always
-    available; the three optional blocks depend on what was recorded."""
+    available; the four optional blocks depend on what was recorded."""
 
     ended_at: datetime
     won: bool
@@ -94,6 +110,7 @@ class MatchSample:
     point_log: PointLogSample | None
     serve: ServeSample | None
     player: PlayerSample | None
+    ending: EndingSample | None = None
 
 
 @dataclass(frozen=True)
@@ -150,6 +167,19 @@ class LandingResult:
 
 
 @dataclass(frozen=True)
+class ErrorBreakdown:
+    """035: my own errors by kind, summed over a range of matches."""
+
+    out: int
+    net: int
+    serve_fault: int
+    other_error: int
+
+    def as_dict(self) -> dict[str, int]:
+        return {kind: getattr(self, kind) for kind in ERROR_TYPES}
+
+
+@dataclass(frozen=True)
 class DashboardResult:
     total_matches: int
     recent_window: int
@@ -157,6 +187,10 @@ class DashboardResult:
     metrics: list[MetricResult]
     trends: list[TrendSeries]
     landing: LandingResult | None
+    # 035: None when not one of my errors was ever recorded; `recent` None
+    # as well whenever there is no comparison (has_comparison False).
+    error_breakdown_all: "ErrorBreakdown | None" = None
+    error_breakdown_recent: "ErrorBreakdown | None" = None
 
 
 # (numerator, denominator) this match adds to a metric, or None when the
@@ -215,6 +249,17 @@ def _from_player(pick: Callable[[PlayerSample], int]) -> _Contribution:
     return _per_match(lambda s: pick(s.player) if s.player is not None else None)
 
 
+def _from_ending(pick: Callable[[EndingSample], tuple[int, int]]) -> _Contribution:
+    """035: a (numerator, denominator) pair read off the ending sample —
+    used for rates and the ratio alike, so the denominator is whatever the
+    metric says it is (recorded points, or own errors), never a match count."""
+    return lambda s: pick(s.ending) if s.ending is not None else None
+
+
+def _from_ending_per_match(pick: Callable[[EndingSample], int]) -> _Contribution:
+    return _per_match(lambda s: pick(s.ending) if s.ending is not None else None)
+
+
 # The order here IS the order of `DashboardResult.metrics` (data-model.md
 # 指標目錄) — the frontend groups by key but keeps this order within a group.
 _METRICS: tuple[_MetricSpec, ...] = (
@@ -255,6 +300,30 @@ _METRICS: tuple[_MetricSpec, ...] = (
         "lower",
         _per_match(lambda s: s.points_against - s.points_for if not s.won else None),
     ),
+    # 035-point-ending-type (data-model.md 新增指標): appended, never
+    # reordered — the frontend's DASHBOARD_METRIC_KEYS is the same list. A
+    # rate's denominator only holds points whose ending was recorded.
+    _MetricSpec(
+        "winner_share",
+        "rate",
+        "higher",
+        _from_ending(lambda v: (v.winners, v.winners + v.opponent_errors)),
+    ),
+    _MetricSpec(
+        "winners_per_match", "average", "higher", _from_ending_per_match(lambda v: v.winners)
+    ),
+    _MetricSpec(
+        "errors_per_match", "average", "lower", _from_ending_per_match(lambda v: v.own_errors)
+    ),
+    _MetricSpec(
+        "error_share_of_lost",
+        "rate",
+        "lower",
+        _from_ending(lambda v: (v.own_errors, v.own_errors + v.beaten_by_winners)),
+    ),
+    _MetricSpec(
+        "winner_error_ratio", "ratio", "higher", _from_ending(lambda v: (v.winners, v.own_errors))
+    ),
 )
 
 
@@ -288,10 +357,12 @@ def build_sample(
     clutch: ClutchResult | None,
     serve: ServeStatsResult | None,
     landings: dict[uuid.UUID, PlayerLandingResult] | None,
+    ending: EndingStatsResult | None,
 ) -> MatchSample:
     """One match, from the dashboard owner's side. Each of `clutch` / `serve`
-    / `landings` is None when the match has no usable data of that kind —
-    the caller decides that with the same rules the match detail uses."""
+    / `landings` / `ending` is None when the match has no usable data of
+    that kind — the caller decides that with the same rules the match
+    detail uses."""
     point_log: PointLogSample | None = None
     if clutch is not None:
         mine = clutch.match_points[my_team]
@@ -338,6 +409,27 @@ def build_sample(
             lost_landings=[normalize_landing(x, y, my_team) for x, y in own.lost],
         )
 
+    # 035 FR-020: unlike the player block, this is about ME — a match where
+    # only my partner's points carry an ending says nothing about mine.
+    ending_sample: EndingSample | None = None
+    if ending is not None:
+        own_ending = ending.players.get(my_entry_id)
+        if own_ending is not None and (
+            own_ending.winners
+            + own_ending.opponent_errors
+            + own_ending.beaten_by_winners
+            + own_ending.own_errors
+        ):
+            ending_sample = EndingSample(
+                winners=own_ending.winners,
+                opponent_errors=own_ending.opponent_errors,
+                beaten_by_winners=own_ending.beaten_by_winners,
+                own_errors=own_ending.own_errors,
+                own_errors_by_type={
+                    str(kind): count for kind, count in own_ending.own_errors_by_type.items()
+                },
+            )
+
     return MatchSample(
         ended_at=ended_at,
         won=won,
@@ -346,6 +438,7 @@ def build_sample(
         point_log=point_log,
         serve=serve_sample,
         player=player,
+        ending=ending_sample,
     )
 
 
@@ -462,6 +555,25 @@ def _landing(
     )
 
 
+def _error_breakdown(samples: Sequence[MatchSample]) -> ErrorBreakdown | None:
+    """035: my own errors by kind over `samples`; None when there is not a
+    single one — four zeros are not a breakdown."""
+    counts = dict.fromkeys(ERROR_TYPES, 0)
+    for sample in samples:
+        if sample.ending is None:
+            continue
+        for kind in ERROR_TYPES:
+            counts[kind] += sample.ending.own_errors_by_type.get(kind, 0)
+    if not any(counts.values()):
+        return None
+    return ErrorBreakdown(
+        out=counts["out"],
+        net=counts["net"],
+        serve_fault=counts["serve_fault"],
+        other_error=counts["other_error"],
+    )
+
+
 def aggregate(
     samples_newest_first: Sequence[MatchSample],
     *,
@@ -508,4 +620,6 @@ def aggregate(
         metrics=metrics,
         trends=trends,
         landing=_landing(samples, recent_window),
+        error_breakdown_all=_error_breakdown(samples),
+        error_breakdown_recent=_error_breakdown(recent_samples) if has_comparison else None,
     )
