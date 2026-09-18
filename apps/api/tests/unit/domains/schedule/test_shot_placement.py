@@ -770,3 +770,68 @@ async def test_older_landing_check_still_answers_first(db_session: AsyncSession)
         )
 
     assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"
+
+
+# --- a serve fault always favors the RECEIVER --------------------------------
+# A match's first point has no known server (see _serving_team_for_point()),
+# so each case below scores an opening point by A first: A then serves the
+# second rally.
+
+
+async def test_serving_side_that_scores_cannot_record_a_serve_fault(
+    db_session: AsyncSession,
+) -> None:
+    court, match_id, _ = await _new_point(db_session, side="A")
+    event_id = await _score_and_get_event_id(db_session, court, match_id, "A")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, None, None,
+            ending_type="serve_fault",
+        )
+
+    assert excinfo.value.error_code == "ENDING_TYPE_CONTRADICTS_SERVE"
+
+
+async def test_serving_side_gets_no_serve_fault_landing_exemption(
+    db_session: AsyncSession,
+) -> None:
+    """x=0.45 is A's short serve-fault band, but A served this rally — A
+    can't have won on its own fault, so this is A failing to return it."""
+    court, match_id, _ = await _new_point(db_session, side="A")
+    event_id = await _score_and_get_event_id(db_session, court, match_id, "A")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(db_session, court, match_id, event_id, None, None, 0.45, 0.5)
+
+    assert excinfo.value.error_code == "SCORING_PLAYER_WRONG_TEAM_FOR_LANDING"
+
+
+async def test_receiving_side_that_scores_can_record_a_serve_fault(
+    db_session: AsyncSession,
+) -> None:
+    court, match_id, _ = await _new_point(db_session, side="A")
+    event_id = await _score_and_get_event_id(db_session, court, match_id, "B")
+
+    await attach_shot_placement(
+        db_session, court, match_id, event_id, None, None, 0.55, 0.5, ending_type="serve_fault"
+    )
+
+    assert await _stored_ending(db_session, event_id) == "serve_fault"
+
+
+async def test_serving_side_is_read_across_an_undone_point(db_session: AsyncSession) -> None:
+    """A 1:0, B 1:1, B's point undone (back to 1:0, A serving again), A 2:0 —
+    A served that last rally even though B scored the one right before it."""
+    court, match_id, _ = await _new_point(db_session, side="A")
+    await apply_score_delta(db_session, court, match_id, "B", 1)
+    await apply_score_delta(db_session, court, match_id, "B", -1)
+    event_id = await _score_and_get_event_id(db_session, court, match_id, "A")
+
+    with pytest.raises(ApiError) as excinfo:
+        await attach_shot_placement(
+            db_session, court, match_id, event_id, None, None, None, None,
+            ending_type="serve_fault",
+        )
+
+    assert excinfo.value.error_code == "ENDING_TYPE_CONTRADICTS_SERVE"

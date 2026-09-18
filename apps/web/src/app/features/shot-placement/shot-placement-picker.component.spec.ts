@@ -900,6 +900,32 @@ describe('ShotPlacementPickerComponent', () => {
       expect(fixture.componentInstance.endingType()).toBe('out');
     });
 
+    it('disables "serve_fault" when the credited side was serving, even with no landing', () => {
+      const { fixture } = setup(participants, 'A', 'A');
+
+      expect(disabled(fixture)).toEqual(['serve_fault']);
+      chip(fixture, 'serve_fault').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBeNull();
+    });
+
+    it('disables "serve_fault" alongside "out" for a serving side\'s in-bounds landing on the loser\'s half', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+      tap(courtAreaEl, 160, 75); // x=0.55, B's half — the reported case
+      fixture.detectChanges();
+
+      expect(disabled(fixture)).toEqual(['out', 'serve_fault']);
+    });
+
+    it('keeps "serve_fault" available when the credited side was receiving, or the server is unknown', () => {
+      for (const serving of ['B', null] as const) {
+        TestBed.resetTestingModule();
+        const { fixture } = setup(participants, 'A', serving);
+        expect(disabled(fixture)).toEqual([]);
+      }
+    });
+
     it('confirm() emits the effective kind, or null when nothing is selected (h)', () => {
       const { fixture, courtAreaEl } = setup(participants, 'A');
       const confirmedSpy = vi.fn();
@@ -1039,7 +1065,7 @@ describe('ShotPlacementPickerComponent', () => {
       expect(pressed(fixture)).toEqual([]);
     });
 
-    it('still lets "out" auto-fill and no chip stays disabled once the landing moves back out of conflict', () => {
+    it('re-enables the chips once the landing moves back out of conflict (only "serve_fault" stays off: A served)', () => {
       const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
 
       tap(courtAreaEl, 100, 75); // conflict
@@ -1050,7 +1076,7 @@ describe('ShotPlacementPickerComponent', () => {
       fixture.detectChanges();
 
       expect(fixture.componentInstance.landingConflict()).toBe(false);
-      expect(disabled(fixture)).toEqual(['out']);
+      expect(disabled(fixture)).toEqual(['out', 'serve_fault']);
     });
   });
 });

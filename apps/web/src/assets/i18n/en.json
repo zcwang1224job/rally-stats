@@ -523,7 +523,8 @@
       "other_error": "Other error",
       "disabled": {
         "winner": "The landing is out of bounds, so it can't be a winner",
-        "out": "The landing is in bounds, so it isn't out"
+        "out": "The landing is in bounds, so it isn't out",
+        "serve_fault": "The scoring side was serving, so it can't be a serve fault"
       }
     }
   },

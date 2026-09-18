@@ -35,6 +35,7 @@
 |---|---|---|
 | （Pydantic 422） | `ending_type` 不在值域內 | 422 |
 | `ENDING_TYPE_CONTRADICTS_LANDING` | 同時提供了落點，且 `winner` 配界外落點、或 `out` 配界內落點 | 422 |
+| `ENDING_TYPE_CONTRADICTS_SERVE` | `serve_fault`，但被記分的一方正是這一分的發球方（發球失誤一定是接發方得分）。比賽第一分無從得知發球方，不檢查 | 422 |
 
 界內／界外沿用該函式既有的判定（單打用較窄的邊線）。`net`／`serve_fault`／`other_error` 與落點沒有必然關係，不檢查；沒有落點時一律不檢查。
 

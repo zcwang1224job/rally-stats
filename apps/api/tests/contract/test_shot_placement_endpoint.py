@@ -361,7 +361,10 @@ async def test_each_of_the_five_ending_types_is_accepted_on_its_own(
     kinds = ["winner", "out", "net", "serve_fault", "other_error"]
 
     for kind in kinds:
-        score_event_id = await _score_by_token(client, token, match_id, "A")
+        # A has served since its opening point, and a serve fault always
+        # favors the receiver — so that one point goes to B.
+        side = "B" if kind == "serve_fault" else "A"
+        score_event_id = await _score_by_token(client, token, match_id, side)
         response = await client.post(
             f"/courts/by-token/{token}/matches/{match_id}/shot-placement",
             json={"score_event_id": score_event_id, "ending_type": kind},

@@ -255,7 +255,12 @@ export class ShotPlacementPickerComponent {
    * favors the RECEIVER — see `isServeFault`'s doc comment) — no ending
    * type is a valid explanation for a landing that contradicts who was
    * credited, so every chip is disabled until the landing itself is fixed,
-   * matching the emptied player pools below. */
+   * matching the emptied player pools below.
+   *
+   * 'serve_fault' is also disabled whenever the credited side was the one
+   * serving, landing or not — a fault always hands the point to the
+   * RECEIVER (same gate as `isServeFault`, and the server's
+   * ENDING_TYPE_CONTRADICTS_SERVE). */
   readonly endingTypes = ENDING_TYPES;
   readonly manualEndingType = signal<EndingType | null | undefined>(undefined);
   readonly autoEndingType = computed<EndingType | null>(() =>
@@ -266,7 +271,8 @@ export class ShotPlacementPickerComponent {
       return this.endingTypes;
     }
     const side = this.landingSide();
-    return side === null ? [] : side === 'out' ? ['winner'] : ['out'];
+    const byLanding: EndingType[] = side === null ? [] : side === 'out' ? ['winner'] : ['out'];
+    return this.servingTeam() === this.scoringTeam() ? [...byLanding, 'serve_fault'] : byLanding;
   });
   readonly endingType = computed<EndingType | null>(() => {
     const manual = this.manualEndingType();

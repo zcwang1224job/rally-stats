@@ -2554,6 +2554,36 @@ def _is_serve_fault_zone(landing_x: float, side: str, is_doubles: bool) -> bool:
     return is_doubles and landing_x > 1 - _LONG_SERVICE_LINE_INSET
 
 
+async def _serving_team_for_point(session: AsyncSession, score_event: ScoreEvent) -> str | None:
+    """Who served the rally that `score_event` (a +1) credited. Its own
+    ScoreServeRecord can't tell — that snapshot is taken AFTER the point, and
+    the winner always serves next, so its server_team is always the scorer.
+    The team that served this rally is the one serving at the PRE-point
+    score, i.e. the server_team of the latest earlier +1 that produced that
+    exact score — the same match-by-score lookup apply_score_delta()'s -1
+    uses to restore the serve state, so undone points in between don't
+    confuse it. None for a match's first point (the pre-match serve
+    assignment isn't persisted) — callers then skip any serve-based check,
+    the same fallback the picker uses when it has no `servingTeam`."""
+    before_a = score_event.score_a - (1 if score_event.side == "A" else 0)
+    before_b = score_event.score_b - (1 if score_event.side == "B" else 0)
+    return (
+        await session.execute(
+            select(ScoreServeRecord.server_team)
+            .join(ScoreEvent, ScoreServeRecord.score_event_id == ScoreEvent.id)
+            .where(
+                ScoreServeRecord.match_id == score_event.match_id,
+                ScoreEvent.score_a == before_a,
+                ScoreEvent.score_b == before_b,
+                ScoreEvent.created_at <= score_event.created_at,
+                ScoreEvent.id != score_event.id,
+            )
+            .order_by(ScoreEvent.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def attach_shot_placement(
     session: AsyncSession,
     court: Court,
@@ -2619,7 +2649,15 @@ async def attach_shot_placement(
     Being refused is costlier than it looks — the callers drop a failed
     request silently, losing the whole row — which is why the picker's own
     in/out judgement is pinned to this one by a shared vector table
-    (035 data-model.md)."""
+    (035 data-model.md).
+
+    Both serve-fault readings need the credited side to have been
+    RECEIVING (_serving_team_for_point()): a fault always hands the point to
+    the receiver, so when the credited side itself served, 'serve_fault' is
+    refused (ENDING_TYPE_CONTRADICTS_SERVE) and a landing in its own
+    serve-fault band is the plain landing contradiction again — the same
+    gate as the picker's `isServeFault`. When the server is unknown (a
+    match's first point) neither applies, as before."""
     match = await _fetch_match_for_court(session, court, match_id)
 
     if not match.detailed_scoring_enabled:
@@ -2675,6 +2713,10 @@ async def attach_shot_placement(
     if team is not None and losing_team is not None and team == losing_team:
         raise ApiError("SCORING_AND_LOSING_PLAYER_SAME_TEAM", status_code=422)
 
+    credited_side_served = (
+        await _serving_team_for_point(session, score_event)
+    ) == score_event.side
+
     if landing_x is not None and landing_y is not None:
         y_min, y_max = (
             (_SINGLES_SIDELINE_INSET, 1 - _SINGLES_SIDELINE_INSET) if is_singles else (0.0, 1.0)
@@ -2682,14 +2724,18 @@ async def attach_shot_placement(
         in_bounds = 0 <= landing_x <= 1 and y_min <= landing_y <= y_max
         if in_bounds:
             landing_side = "A" if landing_x < 0.5 else "B"
-            if score_event.side == landing_side and not _is_serve_fault_zone(
-                landing_x, landing_side, not is_singles
+            if score_event.side == landing_side and (
+                credited_side_served
+                or not _is_serve_fault_zone(landing_x, landing_side, not is_singles)
             ):
                 raise ApiError("SCORING_PLAYER_WRONG_TEAM_FOR_LANDING", status_code=422)
         if (ending_type == "winner" and not in_bounds) or (
             ending_type == "out" and in_bounds
         ):
             raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
+
+    if ending_type == "serve_fault" and credited_side_served:
+        raise ApiError("ENDING_TYPE_CONTRADICTS_SERVE", status_code=422)
 
     session.add(
         ShotPlacementRecord(
