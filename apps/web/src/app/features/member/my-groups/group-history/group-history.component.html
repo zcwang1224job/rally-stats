@@ -122,7 +122,7 @@
         <p class="chart-empty">{{ 'member.matchHistory.opponentRanking.empty' | translate }}</p>
       } @else {
         <ol class="ranking-list">
-          @for (opponent of h.my_stats.opponent_records; track opponent.nickname; let i = $index) {
+          @for (opponent of h.my_stats.opponent_records; track $index; let i = $index) {
             <li class="ranking-row">
               <span class="ranking-row__rank">{{ rankBadge(i) }}</span>
               <span class="ranking-row__name"><app-nickname [value]="opponent.nickname" /></span>

@@ -35,7 +35,39 @@ const recordsResponse: MemberMatchRecordsResponse = {
   total_losses: 0,
   win_rate: 1,
   round_win_rates: [{ round_number: 1, wins: 1, losses: 0, win_rate: 1 }],
-  opponent_records: [{ nickname: '小華', wins: 1, losses: 0, matches: 1, win_rate: 1 }],
+  opponent_records: [
+    {
+      player_key: 'm:m2',
+      member_id: 'm2',
+      nickname: '小華',
+      wins: 1,
+      losses: 0,
+      matches: 1,
+      win_rate: 1,
+      avg_margin: 6,
+      low_sample: true,
+    },
+  ],
+  partner_records: [
+    {
+      player_key: 'r:p1',
+      member_id: null,
+      nickname: '阿哲',
+      wins: 4,
+      losses: 2,
+      matches: 6,
+      win_rate: 0.6667,
+      avg_margin: 2.5,
+      low_sample: false,
+    },
+  ],
+  matchup_highlights: {
+    most_played_partner: 'r:p1',
+    best_partner: 'r:p1',
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 6,
   page: 1,
   total_pages: 1,
 };
@@ -52,6 +84,7 @@ function setup(
     selfMemberId?: string | null;
     dashboard?: Observable<MemberMatchDashboardResponse>;
     dashboardCalls?: unknown[][];
+    recordCalls?: unknown[][];
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -61,7 +94,10 @@ function setup(
       {
         provide: AuthService,
         useValue: {
-          getMatchRecords: () => of(options.records ?? recordsResponse),
+          getMatchRecords: (...args: unknown[]) => {
+            options.recordCalls?.push(args);
+            return of(options.records ?? recordsResponse);
+          },
           getMatchDashboard: (...args: unknown[]) => {
             options.dashboardCalls?.push(args);
             return options.dashboard ?? of(dashboardFixture());
@@ -232,6 +268,137 @@ describe('MatchHistoryComponent', () => {
       expect(root.querySelector('app-player-dashboard [data-metric]')).toBeNull();
       // 036: the summary rides on the same request — it stays out of the way.
       expect(root.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US2 (T027)
+  describe('partners and opponents', () => {
+    it('replaces the opponent ranking with a partner table and an opponent table', () => {
+      const root: HTMLElement = setup([]).nativeElement;
+
+      expect(root.querySelector('.opponent-ranking')).toBeNull();
+      const tables = root.querySelectorAll('app-matchup-records');
+      expect(tables.length).toBe(2);
+      expect(tables[0].querySelector('[data-role="partner"] [data-player="r:p1"]')).not.toBeNull();
+      expect(tables[1].querySelector('[data-role="opponent"] [data-player="m:m2"]')).not.toBeNull();
+      // Partner highlights map to the partner table, never to the opponent one.
+      expect(tables[0].querySelector('[data-highlights]')).not.toBeNull();
+      expect(tables[1].querySelector('[data-highlights]')).toBeNull();
+    });
+
+    it('says singles has no partner instead of showing an empty table', () => {
+      const fixture = setup([]);
+      fixture.componentInstance.records.set({
+        ...fixture.componentInstance.records()!,
+        partner_records: [],
+        doubles_matches: 0,
+      });
+      fixture.detectChanges();
+
+      const partners = (fixture.nativeElement as HTMLElement).querySelector('[data-role="partner"]')!;
+      expect(partners.querySelector('[data-empty]')?.textContent).toContain(
+        'member.matchHistory.matchups.noDoubles',
+      );
+    });
+
+    it('a click on a partner narrows BOTH requests to that exact player, from page 1', () => {
+      const dashboardCalls: unknown[][] = [];
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { dashboardCalls, recordCalls });
+      fixture.componentInstance.goToPage(3);
+      const root: HTMLElement = fixture.nativeElement;
+
+      root.querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!.click();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, { partner_key: 'r:p1' }]);
+      expect(dashboardCalls.at(-1)).toEqual([{ partner_key: 'r:p1' }]);
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(true);
+      const chip = root.querySelector('[data-picked-player]')!;
+      expect(chip.textContent).toContain('member.matchHistory.matchups.activePartner');
+    });
+
+    it('an opponent click sends opponent_key, and replaces an earlier partner pick', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+      const root: HTMLElement = fixture.nativeElement;
+      root.querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!.click();
+      fixture.detectChanges();
+
+      root.querySelector<HTMLButtonElement>('[data-role="opponent"] [data-player="m:m2"] button')!.click();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, { opponent_key: 'm:m2' }]);
+      expect(root.querySelector('[data-picked-player]')!.textContent).toContain(
+        'member.matchHistory.matchups.activeOpponent',
+      );
+    });
+
+    it('the chip clears only the picked player; the form filters stay', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+      const root: HTMLElement = fixture.nativeElement;
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      root.querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!.click();
+      fixture.detectChanges();
+      expect(recordCalls.at(-1)).toEqual([1, { result: 'win', partner_key: 'r:p1' }]);
+
+      root.querySelector<HTMLButtonElement>('[data-picked-player] button')!.click();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, { result: 'win' }]);
+      expect(root.querySelector('[data-picked-player]')).toBeNull();
+    });
+
+    it('"clear filters" clears the picked player along with the form', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!
+        .click();
+      fixture.detectChanges();
+
+      fixture.componentInstance.clearFilters();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, {}]);
+      expect(fixture.componentInstance.pickedPlayer()).toBeNull();
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
+    });
+
+    it('has no active filter on a plain first load (undefined values are not filters)', () => {
+      expect(setup([]).componentInstance.hasActiveFilters()).toBe(false);
+    });
+
+    it('a matchup sentence in the summary leads to that player\'s row', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({
+              matchups: [
+                insightFixture({
+                  list: 'matchup',
+                  rule: 'partner_above_overall',
+                  metric_key: null,
+                  player: { key: 'r:p1', nickname: '阿哲', member_id: null },
+                  params: { win_rate: 0.67, matches: 6, wins: 4, losses: 2, baseline: 0.4, diff: 0.27 },
+                }),
+              ],
+            }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      const details = root.querySelector<HTMLDetailsElement>('[data-role="partner"]')!;
+      details.open = false;
+
+      root.querySelector<HTMLButtonElement>('app-player-insights [data-list="matchup"] .insight')!.click();
+
+      expect(details.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#matchup-partner-r\\:p1 button'));
+      root.remove();
     });
   });
 

@@ -12,6 +12,10 @@ import {
   MemberMatchDashboardResponse,
 } from '../../../core/api/player-dashboard.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
+import {
+  MatchupRecordsComponent,
+  MatchupRole,
+} from '../../../core/matchup-records/matchup-records.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
@@ -36,6 +40,7 @@ import { AuthService } from '../../auth/auth.service';
     NicknameComponent,
     PlayerDashboardComponent,
     PlayerInsightsComponent,
+    MatchupRecordsComponent,
   ],
   templateUrl: './friend-match-records.component.html',
   styleUrl: './friend-match-records.component.scss',
@@ -63,6 +68,23 @@ export class FriendMatchRecordsComponent {
 
   focusMetric(key: DashboardMetricKey): void {
     this.dashboardRef()?.focusMetric(key);
+  }
+
+  /** 036 FR-010: a matchup sentence leads to that player's row. The rows are
+   * not clickable here (no filters on this page), so the row itself is the
+   * landing place. */
+  focusMatchup(target: { key: string; role: MatchupRole }): void {
+    const row = document.getElementById(`matchup-${target.role}-${target.key}`);
+    if (!row) {
+      return;
+    }
+    const details = row.closest('details');
+    if (details) {
+      details.open = true;
+    }
+    row.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    row.setAttribute('tabindex', '-1');
+    row.focus({ preventScroll: true });
   }
   readonly pageNumbers = computed(() => {
     const totalPages = this.records()?.total_pages ?? 1;

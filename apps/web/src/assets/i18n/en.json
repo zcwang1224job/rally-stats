@@ -284,6 +284,31 @@
       "opponentRanking": {
         "title": "Opponent Records",
         "empty": "No opponent data yet"
+      },
+      "matchups": {
+        "partnerTitle": "Partners",
+        "opponentTitle": "Opponents",
+        "empty": "Nobody to list yet",
+        "noDoubles": "Singles has no partner. Once you play doubles, your record with each partner shows up here.",
+        "lowSample": "few matches",
+        "record": "{{matches}} played · {{wins}} won, {{losses}} lost",
+        "margin": "Avg. margin",
+        "sort": {
+          "label": "Sort by",
+          "matches": "Matches",
+          "win_rate": "Win rate",
+          "avg_margin": "Avg. margin"
+        },
+        "highlights": {
+          "partnerMost": "Most played with",
+          "partnerStandout": "Best win rate together",
+          "opponentMost": "Most faced",
+          "opponentStandout": "Lowest win rate against",
+          "figure": "{{matches}} matches · {{rate}} won"
+        },
+        "activePartner": "Only matches partnered with {{nickname}}",
+        "activeOpponent": "Only matches against {{nickname}}",
+        "clear": "Clear this filter"
       }
     },
     "nicknameSectionTitle": "Nickname",
@@ -1105,6 +1130,7 @@
     "INVITE_ALREADY_PENDING": "An invite has already been sent to this friend and is awaiting a response",
     "GROUP_INVITE_NOT_FOUND": "Group invite not found",
     "GROUP_INVITE_NOT_PENDING": "This invite has already been handled",
-    "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records"
+    "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records",
+    "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again."
   }
 }

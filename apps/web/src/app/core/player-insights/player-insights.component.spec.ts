@@ -194,7 +194,7 @@ describe('PlayerInsightsComponent — every sentence leads somewhere (FR-010)', 
         ],
       }),
     );
-    const players: string[] = [];
+    const players: { key: string; role: string }[] = [];
     const metrics: string[] = [];
     fixture.componentInstance.playerPicked.subscribe((key) => players.push(key));
     fixture.componentInstance.metricPicked.subscribe((key) => metrics.push(key));
@@ -203,7 +203,7 @@ describe('PlayerInsightsComponent — every sentence leads somewhere (FR-010)', 
       .querySelector<HTMLButtonElement>('[data-list="matchup"] .insight')!
       .click();
 
-    expect(players).toEqual(['r:9']);
+    expect(players).toEqual([{ key: 'r:9', role: 'opponent' }]);
     expect(metrics).toEqual([]);
   });
 

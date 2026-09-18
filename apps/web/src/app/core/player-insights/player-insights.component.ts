@@ -55,7 +55,9 @@ export class PlayerInsightsComponent {
   readonly benchmarkOmittedByFilters = input(false);
 
   readonly metricPicked = output<DashboardMetricKey>();
-  readonly playerPicked = output<string>();
+  /** `role` says which table the sentence is about — one player can be in
+   * both. */
+  readonly playerPicked = output<{ key: string; role: 'partner' | 'opponent' }>();
 
   readonly sections = computed<InsightSection[]>(() => {
     const found = this.insights();
@@ -159,7 +161,10 @@ export class PlayerInsightsComponent {
 
   pick(insight: DashboardInsight): void {
     if (insight.player) {
-      this.playerPicked.emit(insight.player.key);
+      this.playerPicked.emit({
+        key: insight.player.key,
+        role: insight.rule === 'partner_above_overall' ? 'partner' : 'opponent',
+      });
     } else if (insight.metric_key) {
       this.metricPicked.emit(insight.metric_key);
     }

@@ -38,6 +38,14 @@ const oneMatch: MemberMatchRecordsResponse = {
   win_rate: 1,
   round_win_rates: [],
   opponent_records: [],
+  partner_records: [],
+  matchup_highlights: {
+    most_played_partner: null,
+    best_partner: null,
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 0,
   page: 1,
   total_pages: 1,
 };
@@ -50,6 +58,14 @@ const emptyRecords: MemberMatchRecordsResponse = {
   win_rate: 0,
   round_win_rates: [],
   opponent_records: [],
+  partner_records: [],
+  matchup_highlights: {
+    most_played_partner: null,
+    best_partner: null,
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 0,
   page: 1,
   total_pages: 1,
 };
@@ -309,6 +325,76 @@ describe('FriendMatchRecordsComponent', () => {
       expect(fixture.nativeElement.querySelector('app-player-dashboard')).toBeNull();
       // 036: the summary lives and dies with the dashboard it rides on.
       expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US2 (T028, FR-037)
+  describe('partners and opponents', () => {
+    const withRows = (): MemberMatchRecordsResponse => ({
+      ...oneMatch,
+      doubles_matches: 6,
+      partner_records: [
+        {
+          player_key: 'm:p1',
+          member_id: 'p1',
+          nickname: '阿哲',
+          wins: 4,
+          losses: 2,
+          matches: 6,
+          win_rate: 0.6667,
+          avg_margin: 2.5,
+          low_sample: false,
+        },
+      ],
+    });
+
+    it("shows the friend's tables, with rows that cannot be clicked", () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('app-matchup-records').length).toBe(2);
+      expect(root.querySelector('[data-role="partner"] [data-player="m:p1"]')).not.toBeNull();
+      expect(root.querySelector('app-matchup-records button.matchup--button')).toBeNull();
+    });
+
+    it('still has no filter form of its own', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      expect(fixture.nativeElement.querySelector('form')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-picked-player]')).toBeNull();
+    });
+
+    it("a matchup sentence leads to that player's row", () => {
+      const { fixture } = setup({
+        getFriendMatchRecords: () => of(withRows()),
+        getFriendMatchDashboard: () =>
+          of(
+            dashboardFixture({
+              insights: insightsFixture({
+                matchups: [
+                  insightFixture({
+                    list: 'matchup',
+                    rule: 'partner_above_overall',
+                    metric_key: null,
+                    player: { key: 'm:p1', nickname: '阿哲', member_id: 'p1' },
+                    params: { win_rate: 0.67, matches: 6, wins: 4, losses: 2, baseline: 0.4, diff: 0.27 },
+                  }),
+                ],
+              }),
+            }),
+          ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights [data-list="matchup"] .insight')!.click();
+
+      expect(document.activeElement).toBe(root.querySelector('#matchup-partner-m\\:p1'));
+      root.remove();
+    });
+
+    it('shows no tables for a friend without any match', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(emptyRecords) });
+      expect(fixture.nativeElement.querySelector('app-matchup-records')).toBeNull();
     });
   });
 

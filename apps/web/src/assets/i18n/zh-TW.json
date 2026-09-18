@@ -284,6 +284,31 @@
       "opponentRanking": {
         "title": "對戰對象戰績排行",
         "empty": "尚無對戰對象資料"
+      },
+      "matchups": {
+        "partnerTitle": "搭檔戰績",
+        "opponentTitle": "對手戰績",
+        "empty": "目前沒有可以列出的對象",
+        "noDoubles": "單打比賽沒有搭檔；打過雙打之後，這裡會列出你和每位搭檔的戰績。",
+        "lowSample": "場數少",
+        "record": "{{matches}} 場 · {{wins}} 勝 {{losses}} 敗",
+        "margin": "平均分差",
+        "sort": {
+          "label": "排序",
+          "matches": "場數",
+          "win_rate": "勝率",
+          "avg_margin": "平均分差"
+        },
+        "highlights": {
+          "partnerMost": "最常一起出賽",
+          "partnerStandout": "勝率最高的搭檔",
+          "opponentMost": "最常交手",
+          "opponentStandout": "勝率最低的對手",
+          "figure": "{{matches}} 場 · 勝率 {{rate}}"
+        },
+        "activePartner": "只看與 {{nickname}} 搭檔的比賽",
+        "activeOpponent": "只看對上 {{nickname}} 的比賽",
+        "clear": "清除這個條件"
       }
     },
     "nicknameSectionTitle": "暱稱",
@@ -1105,6 +1130,7 @@
     "INVITE_ALREADY_PENDING": "已對此好友送出過邀請，正在等待回覆中",
     "GROUP_INVITE_NOT_FOUND": "找不到此組團邀請",
     "GROUP_INVITE_NOT_PENDING": "此邀請已被處理過",
-    "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄"
+    "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄",
+    "INVALID_PLAYER_KEY": "球員識別碼格式不正確，請重新整理後再試一次"
   }
 }

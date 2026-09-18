@@ -8,6 +8,7 @@ import {
   MatchRecordDetailResponse,
   MatchRecordResultFilter,
   MatchRecordScoreComparison,
+  MatchupRecord,
   MemberMatchRecordFilters,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
@@ -16,6 +17,10 @@ import {
   MemberMatchDashboardResponse,
 } from '../../../core/api/player-dashboard.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
+import {
+  MatchupRecordsComponent,
+  MatchupRole,
+} from '../../../core/matchup-records/matchup-records.component';
 import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
@@ -36,8 +41,6 @@ interface PerformanceTier {
   labelKey: string;
 }
 
-const RANK_MEDALS = ['🥇', '🥈', '🥉'];
-
 /** US5 (FR-017~020): 會員頁面「對戰紀錄」——跨團已完成比賽 + 彙總勝負
  * 統計，僅登入會員可見（路由層由既有 member 功能區塊之登入檢查涵蓋）。
  * 篩選（對手/隊友暱稱、勝負、日期、輪次、比分）交由後端計算，所有統計卡
@@ -53,6 +56,7 @@ const RANK_MEDALS = ['🥇', '🥈', '🥉'];
     AddFriendButtonComponent,
     PlayerDashboardComponent,
     PlayerInsightsComponent,
+    MatchupRecordsComponent,
   ],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
@@ -119,9 +123,42 @@ export class MatchHistoryComponent {
   /** The landing court draws singles lines only when every match is one. */
   readonly singlesOnly = computed(() => this.appliedFilters().match_mode === 'singles');
   private dashboardFiltersKey: string | null = null;
-  readonly hasActiveFilters = computed(
-    () => Object.keys(this.appliedFilters()).length > 0,
+  /** `load()` always builds the full filter object, most of it `undefined` —
+   * so count values, not keys (counting keys made this true after the very
+   * first load). 036 relies on it: in-group sentences only join the summary
+   * while no filter is active (FR-034). */
+  readonly hasActiveFilters = computed(() =>
+    Object.values(this.appliedFilters()).some((value) => value !== undefined),
   );
+
+  /** 036 US2: the partner or opponent whose row was clicked. Sent as an exact
+   * `partner_key` / `opponent_key`, alongside whatever the form holds — the
+   * two kinds of filter combine and clear independently. */
+  readonly pickedPlayer = signal<{ role: MatchupRole; record: MatchupRecord } | null>(null);
+
+  pickPlayer(role: MatchupRole, record: MatchupRecord): void {
+    this.pickedPlayer.set({ role, record });
+    this.applyFilters();
+  }
+
+  clearPickedPlayer(): void {
+    this.pickedPlayer.set(null);
+    this.applyFilters();
+  }
+
+  /** FR-010: a matchup sentence in the summary leads to that player's row. */
+  focusMatchup(target: { key: string; role: MatchupRole }): void {
+    const row = document.getElementById(`matchup-${target.role}-${target.key}`);
+    if (!row) {
+      return;
+    }
+    const details = row.closest('details');
+    if (details) {
+      details.open = true;
+    }
+    row.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    (row.querySelector('button') ?? row).focus?.({ preventScroll: true });
+  }
 
   /** Win/loss donut's CSS conic-gradient stops. Falls back to a flat muted
    * ring when there's nothing to show yet, so an empty result never
@@ -205,6 +242,7 @@ export class MatchHistoryComponent {
   }
 
   clearFilters(): void {
+    this.pickedPlayer.set(null);
     this.filterForm.reset({
       opponent1: '',
       opponent2: '',
@@ -246,6 +284,8 @@ export class MatchHistoryComponent {
         | undefined,
       opponent_score: raw.opponent_score ? Number(raw.opponent_score) : undefined,
       match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
+      partner_key: this.pickedKey('partner'),
+      opponent_key: this.pickedKey('opponent'),
     };
     this.appliedFilters.set(filters);
     this.loadDashboard(filters);
@@ -256,6 +296,11 @@ export class MatchHistoryComponent {
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
+  }
+
+  private pickedKey(role: MatchupRole): string | undefined {
+    const picked = this.pickedPlayer();
+    return picked?.role === role ? picked.record.player_key : undefined;
   }
 
   /** The dashboard reads every match's point log, so it is fetched when the
@@ -318,12 +363,6 @@ export class MatchHistoryComponent {
 
   inviteCandidateFor(memberId: string): InviteCandidateStatus | undefined {
     return this.inviteCandidates().get(memberId);
-  }
-
-  /** Medal for the top 3 rows of the opponent leaderboard, plain rank
-   * number below that. */
-  rankBadge(index: number): string {
-    return RANK_MEDALS[index] ?? String(index + 1);
   }
 
   /** 016-match-score-timeline: opens the match detail dialog via

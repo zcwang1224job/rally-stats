@@ -37,8 +37,33 @@
          by the same 023 setting. It can never carry an in-group sentence:
          those only come from the group-benchmark endpoint, which this page
          never calls. -->
-    <app-player-insights [insights]="d.insights" (metricPicked)="focusMetric($event)" />
+    <app-player-insights
+      [insights]="d.insights"
+      (metricPicked)="focusMetric($event)"
+      (playerPicked)="focusMatchup($event)"
+    />
     <app-player-dashboard [dashboard]="d" />
+  }
+
+  <!-- 036 FR-037: the friend's partners and opponents — already in the
+       records response. Not clickable: this page deliberately has no
+       filters, so there is nothing for a click to narrow. -->
+  @if (r.total_matches > 0) {
+    <app-matchup-records
+      role="partner"
+      [records]="r.partner_records"
+      [mostPlayedKey]="r.matchup_highlights.most_played_partner"
+      [standoutKey]="r.matchup_highlights.best_partner"
+      [emptyKey]="r.doubles_matches === 0 ? 'member.matchHistory.matchups.noDoubles' : null"
+      [clickable]="false"
+    />
+    <app-matchup-records
+      role="opponent"
+      [records]="r.opponent_records"
+      [mostPlayedKey]="r.matchup_highlights.most_faced_opponent"
+      [standoutKey]="r.matchup_highlights.toughest_opponent"
+      [clickable]="false"
+    />
   }
 
   @if (r.matches.length === 0) {
