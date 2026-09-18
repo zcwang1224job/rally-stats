@@ -109,10 +109,10 @@
 
 - [X] T031 [P] 於 `apps/api/scripts/seed_dashboard_demo.py` 為示範資料帶入得分方式：界外落點 → `out`、界內落在失分方半場 → 依機率 `winner`／`net`、約兩成的分數刻意不記；仍只允許 `rally_stats_test`
 - [X] T032 [P] 語系檔一致性：`zh-TW.json` 與 `en.json` 的 `shotPlacement.ending.*`、`matchRecordDetail.ending.*`、`playerDashboard.errorBreakdown.*` 與 5 個新指標的鍵集合完全相同、模板無寫死的中英文字串 in `apps/web/src/assets/i18n/`
-- [ ] T033 後端品質關卡：`ruff check app/ tests/`、`mypy app/`、`python -m pytest tests/` 全數通過 in `apps/api/`（完整測試約 15–25 分鐘；MUST 在同一個回合內等它跑完——worktree 會在回合結束後被清掉）
-- [ ] T034 前端品質關卡：`npm run lint`、`npx tsc --noEmit -p tsconfig.app.json`、`npm test -- --watch=false` 全數通過 in `apps/web/`（`admin-page.component.spec.ts` 既有的 1 則 `NG04002` unhandled error 與本功能無關）
-- [ ] T035 實際畫面與效能驗證（quickstart.md 情境 9、10；SC-002、SC-010、SC-011）：以 worktree 後端（:8001，`rally_stats_test`）＋`ng serve`（:4300）＋無頭 Chrome 走一次計分流程——390px 寬下選定得分方式前後確認按鈕皆在可視範圍內、無水平溢出；連記 10 分所需的**點擊次數**對照上線前（驗證 SC-001／SC-003：不記得分方式時次數相同；界外與發球失誤區的分數額外點擊為 0；其餘最多 1）；300 場會員的儀表板 < 3 秒且查詢次數不變。結果記錄於 `specs/035-point-ending-type/quickstart.md`；結束後 TRUNCATE 測試資料庫
-- [ ] T036 撰寫 PR 說明於 `specs/035-point-ending-type/pr-description.md`（本機沒有 `gh`）：功能摘要、migration 與部署順序——**必須先跑 `alembic upgrade head` 再部署後端**，並明列順序反了的影響範圍（所有比賽詳情、整個儀表板、詳細計分的 `-1` 會一起壞，因為容器不會自動跑 migration）與回滾順序（先退後端，再 `alembic downgrade -1`）、授權邊界（不新增端點；得分方式與落點同屬補記細節、非管理員專屬操作；儀表板沿用 `require_verified_member`）、驗證結果
+- [X] T033 後端品質關卡：`ruff check app/ tests/`、`mypy app/`、`python -m pytest tests/` 全數通過 in `apps/api/`（完整測試約 15–25 分鐘；MUST 在同一個回合內等它跑完——worktree 會在回合結束後被清掉）
+- [X] T034 前端品質關卡：`npm run lint`、`npx tsc --noEmit -p tsconfig.app.json`、`npm test -- --watch=false` 全數通過 in `apps/web/`（`admin-page.component.spec.ts` 既有的 1 則 `NG04002` unhandled error 與本功能無關）
+- [X] T035 實際畫面與效能驗證（quickstart.md 情境 9、10；SC-002、SC-010、SC-011）：以 worktree 後端（:8001，`rally_stats_test`）＋`ng serve`（:4300）＋無頭 Chrome 走一次計分流程——390px 寬下選定得分方式前後確認按鈕皆在可視範圍內、無水平溢出；連記 10 分所需的**點擊次數**對照上線前（驗證 SC-001／SC-003：不記得分方式時次數相同；界外與發球失誤區的分數額外點擊為 0；其餘最多 1）；300 場會員的儀表板 < 3 秒且查詢次數不變。結果記錄於 `specs/035-point-ending-type/quickstart.md`；結束後 TRUNCATE 測試資料庫
+- [X] T036 撰寫 PR 說明於 `specs/035-point-ending-type/pr-description.md`（本機沒有 `gh`）：功能摘要、migration 與部署順序——**必須先跑 `alembic upgrade head` 再部署後端**，並明列順序反了的影響範圍（所有比賽詳情、整個儀表板、詳細計分的 `-1` 會一起壞，因為容器不會自動跑 migration）與回滾順序（先退後端，再 `alembic downgrade -1`）、授權邊界（不新增端點；得分方式與落點同屬補記細節、非管理員專屬操作；儀表板沿用 `require_verified_member`）、驗證結果
 - [ ] T037 人工驗收（**由使用者執行**，無法自動化——無頭瀏覽器量不到人的操作時間）：依 quickstart.md 情境 10，以碼表在上線前後的版本各連記 10 分（每分都點落點＋兩位球員），確認總時間增幅 ≤ 10%（SC-002）；結果記錄於 `specs/035-point-ending-type/quickstart.md` 情境 10 之下
 
 ---

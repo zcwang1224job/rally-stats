@@ -267,7 +267,11 @@ h2 {
   }
 }
 
-.ending-chip--selected {
+// `.btn.ending-chip--selected` (+ the hover form): outranks the global
+// `.btn--secondary:hover:not(:disabled)` rule, which would otherwise repaint
+// a hovered selected chip grey while leaving its text white.
+.btn.ending-chip--selected,
+.btn.ending-chip--selected:hover:not(:disabled) {
   background: var(--color-brand-primary);
   color: var(--color-brand-primary-contrast);
   border-color: var(--color-brand-primary);

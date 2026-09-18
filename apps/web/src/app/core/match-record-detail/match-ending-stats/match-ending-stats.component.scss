@@ -1,7 +1,13 @@
 @use '../derived-blocks';
 
+// `min-width: 0`: the host sits in a flex column (match-derived-stats) whose
+// items default to `min-width: auto` — without this the wide player table
+// would stretch the section past the viewport instead of scrolling inside
+// `.ending-table-scroll`.
 :host {
   display: block;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ending-coverage {
@@ -43,13 +49,20 @@
 // the block instead of squeezing the headers into unreadable stacks.
 .ending-table-scroll {
   margin-top: var(--space-sm);
+  max-width: 100%;
   overflow-x: auto;
 }
 
 .ending-table {
-  min-width: 480px;
+  min-width: 440px;
 
-  thead th {
+  thead th,
+  tbody th {
+    white-space: nowrap;
+  }
+
+  // "得 11／失 0" is one short phrase; never one word per line.
+  .derived-table__names {
     white-space: nowrap;
   }
 
