@@ -13,7 +13,7 @@
     }
 
     @if (r.notifications.length === 0) {
-      <p>{{ 'notifications.list.empty' | translate }}</p>
+      <p class="empty-state card">{{ 'notifications.list.empty' | translate }}</p>
     } @else {
       <ul class="notification-list">
         @for (notification of r.notifications; track notification.notification_id) {
@@ -66,6 +66,6 @@
       <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />
     }
   } @else {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   }
 </main>

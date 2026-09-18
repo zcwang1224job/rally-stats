@@ -9,7 +9,7 @@
   </button>
 
   @if (loading()) {
-    <p>{{ 'matchRecordDetail.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'matchRecordDetail.loading' | translate }}</p>
   } @else if (loadError()) {
     <p role="alert">{{ 'matchRecordDetail.loadError' | translate }}</p>
   } @else if (detail(); as d) {

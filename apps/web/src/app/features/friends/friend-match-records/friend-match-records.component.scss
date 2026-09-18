@@ -46,12 +46,6 @@
   font-weight: var(--font-weight-bold);
 }
 
-.empty-state {
-  color: var(--color-text-muted);
-  padding: var(--space-lg) 0;
-  text-align: center;
-}
-
 // 沿用既有 match-history.component.scss 的對戰卡片/分頁樣式慣例。
 .record-list {
   list-style: none;

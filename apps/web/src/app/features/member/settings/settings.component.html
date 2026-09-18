@@ -118,10 +118,7 @@
       }
 
       @if (!loginRecordsLoading() && loginRecords().length === 0) {
-        <p class="empty-state">
-          <span class="empty-state__icon" aria-hidden="true">🕐</span>
-          {{ 'member.settings.accountDetails.empty' | translate }}
-        </p>
+        <p class="empty-state">{{ 'member.settings.accountDetails.empty' | translate }}</p>
       }
 
       @if (loginRecords().length > 0) {

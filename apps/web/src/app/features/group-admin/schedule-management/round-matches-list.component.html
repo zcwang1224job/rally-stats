@@ -5,7 +5,7 @@
 @if (expanded()) {
   <div class="round-matches">
     @if (loading()) {
-      <p>{{ 'common.loading' | translate }}</p>
+      <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
     } @else if (errorKey(); as key) {
       <p role="alert">{{ key | translate }}</p>
     } @else {

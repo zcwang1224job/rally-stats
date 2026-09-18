@@ -130,20 +130,6 @@ h2 {
   font-size: var(--font-size-caption);
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xl) 0;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.empty-state__icon {
-  font-size: 1.5rem;
-}
-
 // --- 隱私設定：開關列 --------------------------------------------------------
 //
 // `.toggle-switch` is a native <label><input type="checkbox">…</label> —

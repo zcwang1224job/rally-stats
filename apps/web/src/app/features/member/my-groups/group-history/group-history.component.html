@@ -1,7 +1,5 @@
 @if (history(); as h) {
   <h1 class="page-title">{{ h.group_name }}</h1>
-} @else {
-  <h1 class="page-title">{{ 'common.loading' | translate }}</h1>
 }
 
 @if (errorKey()) {
@@ -248,7 +246,7 @@
   </section>
 
   @if (h.matches.length === 0) {
-    <p>{{ 'memberGroupHistory.empty' | translate }}</p>
+    <p class="empty-state card">{{ 'memberGroupHistory.empty' | translate }}</p>
   } @else {
     <ul class="record-list">
       @for (match of h.matches; track match.match_id) {
@@ -283,7 +281,7 @@
     <app-pagination [page]="page()" [totalPages]="h.total_pages" (pageChange)="goToPage($event)" />
   }
 } @else {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 }
 
 <a class="tap-target" routerLink="/member/my-groups">{{ 'memberGroupHistory.backToMyGroups' | translate }}</a>

@@ -231,6 +231,58 @@ dialog.dialog--xl {
   }
 }
 
+// "Nothing here yet" for a list or section. On its own inside a card; as
+// `empty-state card` when it stands in for a whole page-level list. Any
+// follow-up action (e.g. "clear filters") goes inside it.
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  margin: 0;
+  padding: var(--space-xl) var(--space-md);
+  color: var(--color-text-muted);
+  text-align: center;
+
+  p {
+    margin: 0;
+  }
+}
+
+// "Loading…" — pair with role="status" so it's announced.
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-lg) 0;
+  color: var(--color-text-muted);
+
+  &::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-text-muted);
+    border-radius: 50%;
+    animation: loading-spin 0.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    &::before {
+      animation: none;
+    }
+  }
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

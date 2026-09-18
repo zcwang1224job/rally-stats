@@ -2,7 +2,7 @@
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (records(); as r) {
   @if (r.matches.length === 0) {
-    <p>{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
+    <p class="empty-state card">{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
   } @else {
     <ul class="record-list">
       @for (match of r.matches; track match.match_id) {
@@ -43,7 +43,7 @@
     <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />
   }
 } @else {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 }
 
 <app-match-record-detail-dialog

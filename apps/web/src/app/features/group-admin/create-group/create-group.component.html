@@ -1,5 +1,5 @@
 @if (checkingGuestGroup()) {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 } @else if (blockedByActiveGuestGroup()) {
   <section class="card">
     <p role="alert">{{ 'errors.ALREADY_ACTIVE_IN_ANOTHER_GROUP' | translate }}</p>

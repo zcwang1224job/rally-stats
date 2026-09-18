@@ -46,7 +46,7 @@
   }
 
   @if (loading()) {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (items().length === 0) {
     <div class="empty-state card">
       <p>{{ 'friends.emptyList' | translate }}</p>
