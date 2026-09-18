@@ -11,7 +11,12 @@ import {
   viewChild,
 } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
-import { ParticipantSummary, Team } from '../../core/api/court-live-state.models';
+import {
+  ENDING_TYPES,
+  EndingType,
+  ParticipantSummary,
+  Team,
+} from '../../core/api/court-live-state.models';
 import { CourtDiagramComponent } from '../../core/court-diagram/court-diagram.component';
 
 /** 032-optional-shot-placement-detail: every field is independently
@@ -22,6 +27,10 @@ export interface ShotPlacementConfirmed {
   losingRosterEntryId: string | null;
   landingX: number | null;
   landingY: number | null;
+  /** 035-point-ending-type: the effective kind — auto-filled from the
+   * landing or hand-picked (see `endingType` below) — or null when the
+   * scorer left it unrecorded. */
+  endingType: EndingType | null;
 }
 
 /** 031-shot-placement-scoring: shared "tap the court, pick the scoring
@@ -69,6 +78,13 @@ const SINGLES_SIDELINE_INSET = 0.46 / 6.1;
 const SHORT_SERVICE_LINE_INSET = 4.72 / 13.4;
 const LONG_SERVICE_LINE_INSET = 0.76 / 13.4;
 
+// A serve-fault landing sits on the CREDITED side's own half, so the credited
+// side never returned it: its own winner can't have landed there, the loser
+// netting it would have left it on the loser's side, and it is in bounds.
+// Only the loser's fault — the serve itself, or some other fault — explains
+// it. Mirrors service.py's _SERVE_FAULT_LANDING_CONTRADICTS.
+const SERVE_FAULT_LANDING_CONTRADICTS: readonly EndingType[] = ['winner', 'out', 'net'];
+
 // A precise tap on a phone screen is hard when a fingertip covers the exact
 // spot being aimed at — holding past this threshold (without releasing)
 // reveals a magnified, offset view of the court around the finger so the
@@ -102,6 +118,12 @@ export class ShotPlacementPickerComponent {
    * pre-existing, ungated behavior in that case rather than assuming an
    * answer it doesn't have. */
   readonly servingTeam = input<Team | null>(null);
+  /** The serving team's own score BEFORE this point, captured alongside
+   * `servingTeam`. Its parity says which service court the serve came
+   * from (even: right, odd: left), and so which of the receiver's two
+   * courts was the legal, diagonal target — see `isServeFaultZone`.
+   * `null` when unknown; the left/right check is then skipped. */
+  readonly servingScore = input<number | null>(null);
   readonly confirmed = output<ShotPlacementConfirmed>();
   /** 032-cancel-score: the caller applies the matching -1 correction — this
    * component never touches the score itself, only requests it. */
@@ -196,7 +218,7 @@ export class ShotPlacementPickerComponent {
     if (serving !== null && serving === this.scoringTeam()) {
       return false;
     }
-    return this.isServeFaultZone(point.x, this.scoringTeam());
+    return this.isServeFaultZone(point.x, point.y, this.scoringTeam());
   });
 
   /** True once an in-bounds landing contradicts the already-credited side —
@@ -217,18 +239,96 @@ export class ShotPlacementPickerComponent {
    * contradicting the side that was already credited the point. */
   readonly canConfirm = computed(() => !this.landingConflict());
 
-  private isServeFaultZone(x: number, side: Team): boolean {
-    const isDoubles = !this.isSinglesMatch();
-    if (side === 'A') {
-      if (x > SHORT_SERVICE_LINE_INSET && x < 0.5) {
-        return true;
-      }
-      return isDoubles && x < LONG_SERVICE_LINE_INSET;
+  /** 035-point-ending-type: how the rally ended, one chip row under the
+   * court. Two layers, hand-picked over auto-filled:
+   *
+   * - `manualEndingType` is what the scorer tapped. `undefined` = never
+   *   touched (the auto-fill decides); `null` = tapped the pressed chip
+   *   again to unselect — an explicit "not recorded" that the auto-fill
+   *   MUST NOT quietly override afterwards (FR-009). A hand-pick survives
+   *   re-tapping the landing, except when the new landing makes it
+   *   self-contradicting (the effect in the constructor clears it back to
+   *   `undefined`, so the auto-fill takes over again).
+   * - `autoEndingType` follows the landing where it leaves no doubt:
+   *   out of bounds → 'out'; a serve-fault landing → 'serve_fault'. An
+   *   in-bounds landing on the loser's half is deliberately NOT read as
+   *   'winner' — it looks the same as a net shot dropping on the hitter's
+   *   own side (spec edge case), so that one stays a real tap (SC-006).
+   *
+   * `disabledEndingTypes` mirrors attach_shot_placement()'s contradiction
+   * check (service.py, ENDING_TYPE_CONTRADICTS_LANDING) so a value the
+   * server would refuse can't be picked here in the first place — the
+   * callers drop a failed request silently, which would lose the whole
+   * row. The in/out judgement itself is `landingSide()`, pinned to the
+   * backend's by a shared boundary-vector table (035 data-model.md).
+   *
+   * `landingConflict()` takes priority over the plain in/out rule: e.g. A
+   * serving and A already credited the point, with the landing on A's OWN
+   * half, can never be explained by a serve fault either (a fault always
+   * favors the RECEIVER — see `isServeFault`'s doc comment) — no ending
+   * type is a valid explanation for a landing that contradicts who was
+   * credited, so every chip is disabled until the landing itself is fixed,
+   * matching the emptied player pools below.
+   *
+   * 'serve_fault' is also disabled whenever the credited side was the one
+   * serving, landing or not — a fault always hands the point to the
+   * RECEIVER (same gate as `isServeFault`, and the server's
+   * ENDING_TYPE_CONTRADICTS_SERVE). */
+  readonly endingTypes = ENDING_TYPES;
+  readonly manualEndingType = signal<EndingType | null | undefined>(undefined);
+  readonly autoEndingType = computed<EndingType | null>(() =>
+    this.landingSide() === 'out' ? 'out' : this.isServeFault() ? 'serve_fault' : null,
+  );
+  readonly disabledEndingTypes = computed<readonly EndingType[]>(() => {
+    if (this.landingConflict()) {
+      return this.endingTypes;
     }
-    if (x < 1 - SHORT_SERVICE_LINE_INSET && x > 0.5) {
+    if (this.isServeFault()) {
+      return SERVE_FAULT_LANDING_CONTRADICTS;
+    }
+    const side = this.landingSide();
+    const byLanding: EndingType[] = side === null ? [] : side === 'out' ? ['winner'] : ['out'];
+    return this.servingTeam() === this.scoringTeam() ? [...byLanding, 'serve_fault'] : byLanding;
+  });
+  readonly endingType = computed<EndingType | null>(() => {
+    const manual = this.manualEndingType();
+    return manual === undefined ? this.autoEndingType() : manual;
+  });
+  /** True while the pressed chip came from the auto-fill rather than the
+   * scorer's own tap — the template shows a short hint then, so it's
+   * clear the value can still be changed. */
+  readonly endingTypeIsAuto = computed(
+    () => this.manualEndingType() === undefined && this.autoEndingType() !== null,
+  );
+
+  /** Whether an in-bounds landing on `side`'s (the receiver's) half is
+   * outside the serve's legal target: short of the short service line,
+   * past the doubles long service line, or — when the server's score is
+   * known — in the wrong one of the receiver's two service courts. A serve
+   * goes diagonally, and each side's right court is diagonal to the other
+   * side's right court, so the target is the receiver's right court when
+   * the server's score is even and its left court when odd. Teams face
+   * each other, so A's right court is the bottom half (y > 0.5) and B's
+   * the top half (y < 0.5) — the same convention as the station pills
+   * (ControlPanelComponent.serveRosterId). The center line itself counts
+   * as in, for both courts. Mirrors service.py's _is_serve_fault_zone(). */
+  private isServeFaultZone(x: number, y: number, side: Team): boolean {
+    const isDoubles = !this.isSinglesMatch();
+    const depthFault =
+      side === 'A'
+        ? (x > SHORT_SERVICE_LINE_INSET && x < 0.5) || (isDoubles && x < LONG_SERVICE_LINE_INSET)
+        : (x < 1 - SHORT_SERVICE_LINE_INSET && x > 0.5) ||
+          (isDoubles && x > 1 - LONG_SERVICE_LINE_INSET);
+    if (depthFault) {
       return true;
     }
-    return isDoubles && x > 1 - LONG_SERVICE_LINE_INSET;
+    const serverScore = this.servingScore();
+    if (serverScore === null || this.servingTeam() === null) {
+      return false;
+    }
+    const targetIsRightCourt = serverScore % 2 === 0;
+    const targetIsBottom = targetIsRightCourt === (side === 'A');
+    return targetIsBottom ? y < 0.5 : y > 0.5;
   }
 
   readonly scoringPlayers = computed(() =>
@@ -318,6 +418,17 @@ export class ShotPlacementPickerComponent {
       }
     });
 
+    // 035: a hand-picked ending that the new landing contradicts (e.g.
+    // 'winner' picked, then the landing moved out of bounds) is cleared
+    // back to "never touched", so the auto-fill decides again — never
+    // left standing as a pick the server would refuse.
+    effect(() => {
+      const manual = this.manualEndingType();
+      if (manual != null && this.disabledEndingTypes().includes(manual)) {
+        this.manualEndingType.set(undefined);
+      }
+    });
+
     if (typeof window !== 'undefined') {
       window.addEventListener('resize', this.handleWindowResize);
       inject(DestroyRef).onDestroy(() => {
@@ -336,6 +447,7 @@ export class ShotPlacementPickerComponent {
     this.selectedPoint.set(null);
     this.selectedRosterEntryId.set(null);
     this.selectedLosingRosterEntryId.set(null);
+    this.manualEndingType.set(undefined);
     this.magnifierVisible.set(false);
     this.useTabs.set(false);
     this.activeTab.set('landing');
@@ -450,6 +562,17 @@ export class ShotPlacementPickerComponent {
     this.selectedLosingRosterEntryId.set(rosterEntryId);
   }
 
+  /** 035: tap a chip to pick it; tap the pressed one again to unselect
+   * (an explicit null — see `manualEndingType`). Disabled chips stay
+   * focusable (`aria-disabled`, not `disabled`) so their reason can be
+   * read out, hence the guard here rather than in the browser. */
+  pickEndingType(kind: EndingType): void {
+    if (this.disabledEndingTypes().includes(kind)) {
+      return;
+    }
+    this.manualEndingType.set(this.endingType() === kind ? null : kind);
+  }
+
   /** 032-optional-shot-placement-detail: sends whatever the scorer actually
    * picked — none of the three fields is required — the `[disabled]`
    * binding (canConfirm()) already keeps this from firing while the
@@ -465,6 +588,7 @@ export class ShotPlacementPickerComponent {
       losingRosterEntryId: this.selectedLosingRosterEntryId(),
       landingX: point?.x ?? null,
       landingY: point?.y ?? null,
+      endingType: this.endingType(),
     });
     this.closeIfSupported();
   }

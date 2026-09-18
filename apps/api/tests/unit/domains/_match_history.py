@@ -35,6 +35,7 @@ class Shot:
     scorer: uuid.UUID | None = None
     loser: uuid.UUID | None = None
     landing: tuple[float, float] | None = None
+    ending: str | None = None  # 035: winner / out / net / serve_fault / other_error
 
 
 async def make_group(
@@ -169,6 +170,7 @@ async def make_played_match(
                     team=side,
                     landing_x=shot.landing[0] if shot.landing else None,
                     landing_y=shot.landing[1] if shot.landing else None,
+                    ending_type=shot.ending,
                 )
             )
     await session.commit()

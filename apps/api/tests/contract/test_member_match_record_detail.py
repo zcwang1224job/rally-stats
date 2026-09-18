@@ -291,3 +291,71 @@ async def test_locked_until_email_verified(
 
     assert response.status_code == 403
     assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
+
+
+async def test_ending_stats_are_included_via_member_endpoint(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """035: same builder, so the member endpoint carries `ending_stats` and
+    per-point `ending_type` without any per-endpoint change."""
+    created, court, access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token,
+            "matchdetail-ending@example.com", detailed_scoring_enabled=True,
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    state = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+    participants = state.json()["current_match"]["participants"]
+    team_a_id = next(p["roster_entry_id"] for p in participants if p["team"] == "A")
+    team_b_id = next(p["roster_entry_id"] for p in participants if p["team"] == "B")
+    score_url = f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score"
+    detail_url = (
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement"
+    )
+
+    for kind in ("winner", "out"):
+        scored = await client.post(score_url, json={"side": "A", "delta": 1})
+        await client.post(
+            detail_url,
+            json={
+                "score_event_id": scored.json()["score_event_id"],
+                "roster_entry_id": team_a_id,
+                "losing_roster_entry_id": team_b_id,
+                "ending_type": kind,
+            },
+        )
+    await client.post(score_url, json={"side": "A", "delta": 1})
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [e["detail"]["ending_type"] if e["detail"] else None for e in body["events"]] == [
+        "winner", "out", None,
+    ]
+    ending = body["ending_stats"]
+    assert (ending["recorded_points"], ending["total_points"]) == (2, 3)
+    assert ending["teams"][0]["winners"] == 1
+    assert ending["teams"][1]["errors_by_type"]["out"] == 1
+    players_by_id = {p["roster_entry_id"]: p for p in ending["players"]}
+    stats_by_id = {s["roster_entry_id"]: s for s in body["player_stats"]}
+    assert (players_by_id[team_a_id]["winners"], players_by_id[team_a_id]["opponent_errors"]) == (
+        1, 1,
+    )
+    team_b_player = players_by_id[team_b_id]
+    assert (team_b_player["beaten_by_winners"], team_b_player["own_errors"]) == (1, 1)
+    for entry_id, player in players_by_id.items():
+        assert (
+            player["winners"] + player["opponent_errors"] + player["scored_unrecorded"]
+            == stats_by_id[entry_id]["scored_count"]
+        )
+        assert (
+            player["beaten_by_winners"] + player["own_errors"] + player["lost_unrecorded"]
+            == stats_by_id[entry_id]["fault_count"]
+        )
+    # Nothing but nicknames identifies anyone (same visibility as before).
+    assert set(ending["players"][0]) & {"member_id", "email"} == set()

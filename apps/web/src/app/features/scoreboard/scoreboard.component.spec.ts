@@ -8,6 +8,7 @@ import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { AuthService } from '../auth/auth.service';
+import { SCORE_TAP_COOLDOWN_MS } from '../shot-placement/score-tap-guard';
 import { ScoreboardComponent } from './scoreboard.component';
 
 const courtInfo = {
@@ -426,6 +427,31 @@ describe('ScoreboardComponent', () => {
     expect(fixture.componentInstance.pendingScoringSide()).toBe('A');
   });
 
+  it('passes the picker\'s ending type through to recordShotPlacement as the last argument (035)', () => {
+    const scoreSpy = vi.fn().mockReturnValue(
+      of({
+        applied: true, match_id: 'm1', status: 'in_progress', score_a: 21, score_b: 10,
+        winner_team: null, score_event_id: 'ev1',
+      }),
+    );
+    const recordSpy = vi.fn().mockReturnValue(of({ recorded: true }));
+    const fixture = setup(detailedMatchState, true, {
+      score: scoreSpy,
+      recordShotPlacement: recordSpy,
+    });
+
+    fixture.nativeElement.querySelector('.buttons--a button').click();
+    fixture.componentInstance.onShotPlacementConfirmed({
+      rosterEntryId: 'p1',
+      losingRosterEntryId: 'p2',
+      landingX: 1.1,
+      landingY: 0.5,
+      endingType: 'out',
+    });
+
+    expect(recordSpy).toHaveBeenCalledWith('tok', 'm1', 'ev1', 'p1', 'p2', 1.1, 0.5, 'out');
+  });
+
   it('keeps the shot-placement picker mounted through a match.ended refresh that clears current_match (regression)', () => {
     const matchEndedSubject = new Subject<{ data: unknown }>();
     const scoreSpy = vi.fn().mockReturnValue(
@@ -467,9 +493,10 @@ describe('ScoreboardComponent', () => {
   });
 
   it('opens the picker even when match.ended arrives before this point\'s own HTTP response (regression: realtime race)', () => {
-    // The backend publishes match.ended synchronously, from inside the
-    // request that's about to answer this same "+1" — so the realtime push
-    // can genuinely win the race and reach this client first. A synchronous
+    // The realtime push and this "+1"'s own HTTP response travel separately
+    // (the backend now sends Ably events right after the response, but the
+    // two still race over the network), so the push can reach this client
+    // first. A synchronous
     // of(...) for score() (as other tests use) can never reproduce that
     // ordering, since its subscribe callback always runs before any code
     // after .click() — a deferred Subject is what actually lets the
@@ -509,6 +536,115 @@ describe('ScoreboardComponent', () => {
     expect(openSpy).toHaveBeenCalledTimes(1);
     expect(fixture.nativeElement.querySelector('app-shot-placement-picker')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.waiting-message')).toBeNull();
+  });
+
+  // The picker opens in the same tap as "+", before the score request
+  // returns; what the scorer does before the point's score_event_id is known
+  // waits for it (PendingPoint).
+  describe('picker opens before the score request returns', () => {
+    const applied = {
+      applied: true, match_id: 'm1', status: 'in_progress', score_a: 21, score_b: 10,
+      winner_team: null, score_event_id: 'ev1',
+    };
+
+    function pendingSetup(extra: Partial<CourtControlService> = {}) {
+      const response = new Subject<unknown>();
+      const scoreSpy = vi.fn().mockReturnValueOnce(response).mockReturnValue(of(applied));
+      const fixture = setup(detailedMatchState, true, { score: scoreSpy, ...extra });
+      const picker = fixture.componentInstance.shotPlacementPicker()!;
+      const openSpy = vi.spyOn(picker, 'open');
+      fixture.nativeElement.querySelector('.buttons--a button').click();
+      fixture.detectChanges();
+      return { fixture, response, scoreSpy, picker, openSpy };
+    }
+
+    it('opens the picker the moment "+" is tapped', () => {
+      const { openSpy, scoreSpy } = pendingSetup();
+
+      expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+      expect(openSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('holds a confirm made before the response and sends it once the point lands', () => {
+      const recordSpy = vi.fn().mockReturnValue(of({ recorded: true }));
+      const { fixture, response } = pendingSetup({ recordShotPlacement: recordSpy });
+
+      fixture.componentInstance.onShotPlacementConfirmed({
+        rosterEntryId: 'p1', losingRosterEntryId: 'p2', landingX: 0.8, landingY: 0.5,
+        endingType: 'winner',
+      });
+      expect(recordSpy).not.toHaveBeenCalled();
+
+      response.next(applied);
+
+      expect(recordSpy).toHaveBeenCalledWith('tok', 'm1', 'ev1', 'p1', 'p2', 0.8, 0.5, 'winner');
+    });
+
+    it('holds a cancel made before the response and undoes the point once it lands', () => {
+      const { picker, response, scoreSpy } = pendingSetup();
+
+      picker.cancelScore();
+      expect(scoreSpy).toHaveBeenCalledTimes(1);
+
+      response.next(applied);
+
+      expect(scoreSpy).toHaveBeenLastCalledWith('tok', 'm1', 'A', -1);
+    });
+
+    it('closes the picker when the point turns out not to be applied', () => {
+      const { fixture, picker, response } = pendingSetup();
+      const skipSpy = vi.spyOn(picker, 'skip');
+
+      response.next({ ...applied, applied: false, score_event_id: null });
+      fixture.detectChanges();
+
+      expect(skipSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes the picker when the score request fails', () => {
+      const { picker, response } = pendingSetup();
+      const skipSpy = vi.spyOn(picker, 'skip');
+
+      response.error(new Error('offline'));
+
+      expect(skipSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('rapid taps', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('drops a second tap while the first score request is still out', () => {
+      const response = new Subject<unknown>();
+      const scoreSpy = vi.fn().mockReturnValue(response);
+      const fixture = setup(scoringMatchState, true, { score: scoreSpy });
+      const plusOne: HTMLButtonElement = fixture.nativeElement.querySelector('.buttons--a button');
+      const minusOne: HTMLButtonElement =
+        fixture.nativeElement.querySelectorAll('.buttons--a button')[1];
+
+      plusOne.click();
+      plusOne.click();
+      minusOne.click();
+
+      expect(scoreSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('drops taps during the short cooldown after a response, then accepts them again', () => {
+      vi.useFakeTimers();
+      const scoreSpy = vi.fn().mockReturnValue(
+        of({ applied: true, match_id: 'm1', status: 'in_progress', score_a: 2, score_b: 2, winner_team: null }),
+      );
+      const fixture = setup(scoringMatchState, true, { score: scoreSpy });
+      const plusOne: HTMLButtonElement = fixture.nativeElement.querySelector('.buttons--a button');
+
+      plusOne.click();
+      plusOne.click();
+      expect(scoreSpy).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(SCORE_TAP_COOLDOWN_MS);
+      plusOne.click();
+      expect(scoreSpy).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('reveals the post-match state once the picker actually closes', () => {

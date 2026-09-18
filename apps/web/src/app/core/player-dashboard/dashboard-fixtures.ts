@@ -18,9 +18,18 @@ const KIND: Partial<Record<DashboardMetricKey, DashboardMetricKind>> = {
   avg_points_against: 'average',
   avg_win_margin: 'average',
   avg_loss_margin: 'average',
+  winners_per_match: 'average',
+  errors_per_match: 'average',
+  winner_error_ratio: 'ratio',
 };
 
-const LOWER_IS_BETTER: DashboardMetricKey[] = ['points_lost', 'avg_points_against', 'avg_loss_margin'];
+const LOWER_IS_BETTER: DashboardMetricKey[] = [
+  'points_lost',
+  'avg_points_against',
+  'avg_loss_margin',
+  'errors_per_match',
+  'error_share_of_lost',
+];
 
 export function metricFixture(
   key: DashboardMetricKey,
@@ -49,6 +58,7 @@ export function dashboardFixture(
     metrics: DASHBOARD_METRIC_KEYS.map((key) => metricFixture(key, metricOverrides[key])),
     trends: [],
     landing: null,
+    error_breakdown: null,
     ...overrides,
   };
 }
@@ -60,4 +70,5 @@ export const EMPTY_DASHBOARD: MemberMatchDashboardResponse = {
   metrics: [],
   trends: [],
   landing: null,
+  error_breakdown: null,
 };

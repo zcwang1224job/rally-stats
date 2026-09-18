@@ -179,13 +179,13 @@
                 class="card event-row"
                 [class.event-row--a]="event.side === 'A'"
                 [class.event-row--b]="event.side === 'B'"
-                [class.event-row--clickable]="event.detail"
-                [attr.role]="event.detail ? 'button' : null"
-                [attr.tabindex]="event.detail ? 0 : null"
-                [attr.aria-expanded]="event.detail ? expandedEventIndex() === $index : null"
-                (click)="event.detail && toggleExpand($index)"
-                (keydown.enter)="event.detail && toggleExpand($index)"
-                (keydown.space)="event.detail && toggleExpand($index)"
+                [class.event-row--clickable]="isExpandable(event.detail)"
+                [attr.role]="isExpandable(event.detail) ? 'button' : null"
+                [attr.tabindex]="isExpandable(event.detail) ? 0 : null"
+                [attr.aria-expanded]="isExpandable(event.detail) ? expandedEventIndex() === $index : null"
+                (click)="isExpandable(event.detail) && toggleExpand($index)"
+                (keydown.enter)="isExpandable(event.detail) && toggleExpand($index)"
+                (keydown.space)="isExpandable(event.detail) && toggleExpand($index)"
               >
                 <span
                   class="status-badge"
@@ -215,6 +215,20 @@
                     <span class="event-row__player event-row__player--losing">
                       {{ 'matchRecordDetail.eventList.losingPlayerPrefix' | translate }}
                       <app-nickname [value]="eventDetail.losing_nickname" />
+                    </span>
+                  }
+                  <!-- 035: how the rally ended. An icon + text tells a winner
+                       from an error (FR-014); a null ending renders nothing, so a
+                       pre-035 row looks exactly as it always did. -->
+                  @if (eventDetail.ending_type; as ending) {
+                    <span
+                      class="event-row__ending"
+                      [class.event-row__ending--winner]="ending === 'winner'"
+                      [class.event-row__ending--error]="ending !== 'winner'"
+                      [attr.data-ending]="ending"
+                    >
+                      <span aria-hidden="true">{{ ending === 'winner' ? '★' : '✕' }}</span>
+                      {{ 'matchRecordDetail.ending.label.' + ending | translate }}
                     </span>
                   }
                   @if (expandedEventIndex() === $index) {

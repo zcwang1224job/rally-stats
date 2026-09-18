@@ -1,6 +1,10 @@
 import { Component, ElementRef, computed, effect, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
-import { MatchRecordDetailResponse, ScoreEventSummary } from '../api/group-member-view.models';
+import {
+  MatchRecordDetailResponse,
+  ScoreEventSummary,
+  ShotPlacementDetail,
+} from '../api/group-member-view.models';
 import { CourtDiagramComponent } from '../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../nickname/nickname.component';
 import { MatchDerivedStatsComponent } from './match-derived-stats/match-derived-stats.component';
@@ -203,6 +207,19 @@ export class MatchRecordDetailDialogComponent {
     this.expandedEventIndex.set(null);
     this.hoveredIndex.set(null);
   });
+
+  /** 035: a row is expandable when there is something to expand INTO —
+   * a landing, or a recorded player (whose expansion says "landing not
+   * recorded"). A row carrying only an ending type shows its label
+   * inline and nothing else, so it gets no clickable affordance. */
+  isExpandable(detail: ShotPlacementDetail | null): boolean {
+    return (
+      detail !== null &&
+      (detail.landing_x !== null ||
+        detail.scoring_roster_entry_id !== null ||
+        detail.losing_roster_entry_id !== null)
+    );
+  }
 
   toggleExpand(index: number): void {
     this.expandedEventIndex.set(this.expandedEventIndex() === index ? null : index);

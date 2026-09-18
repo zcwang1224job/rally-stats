@@ -1,0 +1,116 @@
+@if (endingStats(); as ending) {
+  <p class="derived-note ending-coverage" data-fact="coverage">
+    {{
+      'matchRecordDetail.ending.coverage'
+        | translate: { recorded: ending.recorded_points, total: ending.total_points }
+    }}
+  </p>
+
+  <!-- Team summary: winners hit and errors given away, with the errors'
+       make-up. An icon + text tells the two kinds apart (FR-014). -->
+  <dl class="derived-facts">
+    @for (team of ending.teams; track team.team) {
+      <dt [attr.data-fact]="'team-' + team.team">
+        <span
+          class="derived-facts__team team-label"
+          [class.team-label--a]="team.team === 'A'"
+          [class.team-label--b]="team.team === 'B'"
+          >{{ teamLabelKey(team.team) | translate }}</span
+        >
+      </dt>
+      <dd [attr.data-fact-row]="'team-' + team.team">
+        <span class="ending-kind ending-kind--winner">
+          <span class="ending-kind__icon" aria-hidden="true">★</span>
+          {{ 'matchRecordDetail.ending.teamWinners' | translate: { count: team.winners } }}
+        </span>
+        <span class="ending-kind ending-kind--error">
+          <span class="ending-kind__icon" aria-hidden="true">✕</span>
+          {{ 'matchRecordDetail.ending.teamErrors' | translate: { count: team.errors } }}
+        </span>
+        <span class="ending-breakdown">
+          {{
+            'matchRecordDetail.ending.errorsBreakdown'
+              | translate
+                : {
+                    out: team.errors_by_type.out,
+                    net: team.errors_by_type.net,
+                    serveFault: team.errors_by_type.serve_fault,
+                    other: team.errors_by_type.other_error
+                  }
+          }}
+        </span>
+      </dd>
+    }
+  </dl>
+
+  <!-- Player split: three columns under "scored", three under "lost". The
+       totals the columns add up to sit in the header so the table reads
+       against the familiar scored/fault numbers above it. -->
+  <div class="ending-table-scroll">
+    <table class="derived-table ending-table" data-table="players">
+      <caption class="visually-hidden">
+        {{ 'matchRecordDetail.ending.playersCaption' | translate }}
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col" rowspan="2">{{ 'matchRecordDetail.ending.player' | translate }}</th>
+          <th scope="colgroup" colspan="3" class="ending-table__group">
+            {{ 'matchRecordDetail.ending.scoredGroup' | translate }}
+          </th>
+          <th scope="colgroup" colspan="3" class="ending-table__group">
+            {{ 'matchRecordDetail.ending.lostGroup' | translate }}
+          </th>
+        </tr>
+        <tr>
+          <th scope="col">
+            <span class="ending-kind__icon" aria-hidden="true">★</span>
+            {{ 'matchRecordDetail.ending.winners' | translate }}
+          </th>
+          <th scope="col">
+            <span class="ending-kind__icon" aria-hidden="true">✕</span>
+            {{ 'matchRecordDetail.ending.opponentErrors' | translate }}
+          </th>
+          <th scope="col">{{ 'matchRecordDetail.ending.unrecorded' | translate }}</th>
+          <th scope="col">
+            <span class="ending-kind__icon" aria-hidden="true">★</span>
+            {{ 'matchRecordDetail.ending.beatenByWinners' | translate }}
+          </th>
+          <th scope="col">
+            <span class="ending-kind__icon" aria-hidden="true">✕</span>
+            {{ 'matchRecordDetail.ending.ownErrors' | translate }}
+          </th>
+          <th scope="col">{{ 'matchRecordDetail.ending.unrecorded' | translate }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of playerRows(); track row.roster_entry_id) {
+          <tr [attr.data-player]="row.roster_entry_id">
+            <th scope="row">
+              <span
+                class="team-label"
+                [class.team-label--a]="row.team === 'A'"
+                [class.team-label--b]="row.team === 'B'"
+                >{{ row.nickname }}</span
+              >
+              <span class="derived-table__names">
+                {{
+                  'matchRecordDetail.ending.playerTotals'
+                    | translate: { scored: row.scored_total, lost: row.lost_total }
+                }}
+              </span>
+            </th>
+            <td>{{ row.winners }}</td>
+            <td>{{ row.opponent_errors }}</td>
+            <td class="ending-table__muted">{{ row.scored_unrecorded }}</td>
+            <td>{{ row.beaten_by_winners }}</td>
+            <td>{{ row.own_errors }}</td>
+            <td class="ending-table__muted">{{ row.lost_unrecorded }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="derived-note">{{ 'matchRecordDetail.ending.note' | translate }}</p>
+} @else {
+  <p class="derived-empty">{{ 'matchRecordDetail.ending.empty' | translate }}</p>
+}

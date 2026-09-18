@@ -55,7 +55,7 @@ function landing(scored: number, lost: number, recentScored: number): DashboardL
 }
 
 describe('PlayerDashboardComponent — states', () => {
-  it('shows one empty state, not eighteen blank cards (FR-024)', () => {
+  it('shows one empty state, not twenty-three blank cards (FR-024)', () => {
     const root: HTMLElement = setup(EMPTY_DASHBOARD).nativeElement;
 
     expect(root.querySelector('[data-state="empty"]')?.textContent).toContain('playerDashboard.empty');
@@ -72,7 +72,7 @@ describe('PlayerDashboardComponent — states', () => {
 });
 
 describe('PlayerDashboardComponent — metrics (US2)', () => {
-  it('puts all eighteen metrics into three groups, first group open (FR-007)', () => {
+  it('puts all twenty-three metrics into four groups, first group open (FR-007)', () => {
     const root: HTMLElement = setup(dashboardFixture()).nativeElement;
 
     expect(cardKeys(root, 'serve')).toEqual(['team_serve', 'team_receive', 'own_serve', 'own_receive']);
@@ -94,9 +94,25 @@ describe('PlayerDashboardComponent — metrics (US2)', () => {
       'avg_win_margin',
       'avg_loss_margin',
     ]);
-    expect(root.querySelectorAll('[data-metric]').length).toBe(18);
+    // 035: the fourth group, after scoring, in the backend's order.
+    expect(cardKeys(root, 'ending')).toEqual([
+      'winner_share',
+      'winners_per_match',
+      'errors_per_match',
+      'error_share_of_lost',
+      'winner_error_ratio',
+    ]);
+    expect(Array.from(root.querySelectorAll('details')).map((d) => d.dataset['group'])).toEqual([
+      'serve',
+      'clutch',
+      'scoring',
+      'ending',
+      'landing',
+    ]);
+    expect(root.querySelectorAll('[data-metric]').length).toBe(23);
     expect(Array.from(root.querySelectorAll('details')).map((d) => (d as HTMLDetailsElement).open)).toEqual([
       true,
+      false,
       false,
       false,
       false,
@@ -199,7 +215,7 @@ describe('PlayerDashboardComponent — landing (US4)', () => {
   it('switches to the recent range by taking the prefix of each array', () => {
     const fixture = setup(dashboardFixture({ landing: landing(5, 3, 2) }));
     const root: HTMLElement = fixture.nativeElement;
-    const [all, recent] = Array.from(root.querySelectorAll<HTMLButtonElement>('.landing-range__button'));
+    const [all, recent] = Array.from(root.querySelectorAll<HTMLButtonElement>('.dashboard-range__button'));
     expect(all.getAttribute('aria-pressed')).toBe('true');
 
     recent.click();
@@ -209,7 +225,7 @@ describe('PlayerDashboardComponent — landing (US4)', () => {
     expect(root.querySelectorAll('.court-marker--scored').length).toBe(2);
     expect(root.querySelectorAll('.court-marker--lost').length).toBe(0);
     expect(fixture.componentInstance.landingView()?.scoredTotal).toBe(3);
-    expect(fixture.componentInstance.landingMatchTotal()).toBe(10);
+    expect(fixture.componentInstance.rangeMatchTotal()).toBe(10);
   });
 
   it('offers no range switch when there is nothing to compare with', () => {
@@ -217,7 +233,7 @@ describe('PlayerDashboardComponent — landing (US4)', () => {
       dashboardFixture({ landing: landing(5, 3, 5), has_comparison: false, total_matches: 6 }),
     ).nativeElement;
 
-    expect(root.querySelector('.landing-range')).toBeNull();
+    expect(root.querySelector('.dashboard-range')).toBeNull();
     expect(root.querySelectorAll('.court-marker--scored').length).toBe(5);
   });
 
@@ -253,5 +269,99 @@ describe('PlayerDashboardComponent — landing (US4)', () => {
       singlesCourt: true,
     }).nativeElement;
     expect(singles.querySelectorAll('.out-of-play-band').length).toBe(2);
+  });
+});
+
+describe('PlayerDashboardComponent — winners & errors (035 US3)', () => {
+  const breakdown = {
+    all: { out: 6, net: 3, serve_fault: 1, other_error: 0 },
+    recent: { out: 1, net: 3, serve_fault: 0, other_error: 0 },
+  };
+
+  function rows(root: HTMLElement): { kind: string; count: string; percent: string }[] {
+    return Array.from(root.querySelectorAll<HTMLTableRowElement>('[data-error-breakdown] tr')).map(
+      (tr) => ({
+        kind: tr.dataset['errorKind']!,
+        count: tr.querySelector('.error-breakdown__count')!.textContent!.trim(),
+        percent: tr.querySelector('.error-breakdown__percent')!.textContent!.trim(),
+      }),
+    );
+  }
+
+  it('lists the four error kinds in a fixed order with count and share, under the ending cards', () => {
+    const root: HTMLElement = setup(dashboardFixture({ error_breakdown: breakdown })).nativeElement;
+
+    const ending = group(root, 'ending');
+    expect(ending.querySelector('[data-error-breakdown]')).not.toBeNull();
+    expect(rows(root)).toEqual([
+      { kind: 'out', count: '6', percent: '60%' },
+      { kind: 'net', count: '3', percent: '30%' },
+      { kind: 'serve_fault', count: '1', percent: '10%' },
+      { kind: 'other_error', count: '0', percent: '0%' },
+    ]);
+    expect(ending.querySelector('[data-error-breakdown-total]')?.textContent).toContain(
+      'playerDashboard.errorBreakdown.total',
+    );
+    // The breakdown sits below the cards, not among them.
+    const cards = ending.querySelector('.dashboard-group__cards')!;
+    const table = ending.querySelector('[data-error-breakdown]')!;
+    expect(cards.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows one notice instead of four zero rows when no error was ever recorded', () => {
+    const root: HTMLElement = setup(dashboardFixture({ error_breakdown: null })).nativeElement;
+
+    expect(group(root, 'ending').querySelector('[data-error-breakdown]')).toBeNull();
+    expect(group(root, 'ending').querySelector('[data-state="error-breakdown-empty"]')?.textContent).toContain(
+      'playerDashboard.errorBreakdown.empty',
+    );
+    expect(cardKeys(root, 'ending').length).toBe(5); // the cards are still there
+  });
+
+  it('has exactly one range switch, above the groups, and none inside the landing group', () => {
+    const root: HTMLElement = setup(
+      dashboardFixture({ landing: landing(5, 3, 2), error_breakdown: breakdown }),
+    ).nativeElement;
+
+    expect(root.querySelectorAll('.dashboard-range').length).toBe(1);
+    expect(root.querySelectorAll('.dashboard-range__button').length).toBe(2);
+    expect(group(root, 'landing').querySelector('.dashboard-range')).toBeNull();
+    expect(root.querySelector('.landing-range')).toBeNull();
+    const range = root.querySelector('.dashboard-range')!;
+    const firstGroup = root.querySelector('details')!;
+    expect(range.compareDocumentPosition(firstGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Still only the first group open.
+    expect(Array.from(root.querySelectorAll('details')).map((d) => (d as HTMLDetailsElement).open)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+
+  it('one switch changes the landing markers and the error breakdown together', () => {
+    const fixture = setup(dashboardFixture({ landing: landing(5, 3, 2), error_breakdown: breakdown }));
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelectorAll('.court-marker--scored').length).toBe(5);
+    expect(rows(root)[0]).toEqual({ kind: 'out', count: '6', percent: '60%' });
+
+    const [, recent] = Array.from(root.querySelectorAll<HTMLButtonElement>('.dashboard-range__button'));
+    recent.click();
+    fixture.detectChanges();
+
+    expect(root.querySelectorAll('.court-marker--scored').length).toBe(2);
+    expect(rows(root)[0]).toEqual({ kind: 'out', count: '1', percent: '25%' });
+    expect(rows(root)[1]).toEqual({ kind: 'net', count: '3', percent: '75%' });
+    expect(fixture.componentInstance.errorBreakdownView()?.total).toBe(4);
+  });
+
+  it('shows the whole range when there is nothing to compare, even if recent is present', () => {
+    const root: HTMLElement = setup(
+      dashboardFixture({ error_breakdown: { ...breakdown, recent: null }, has_comparison: false, total_matches: 6 }),
+    ).nativeElement;
+
+    expect(root.querySelector('.dashboard-range')).toBeNull();
+    expect(rows(root)[0]).toEqual({ kind: 'out', count: '6', percent: '60%' });
   });
 });

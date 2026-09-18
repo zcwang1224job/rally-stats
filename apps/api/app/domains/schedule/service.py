@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import cast, get_args
 
 from sqlalchemy import delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -40,6 +40,7 @@ from app.domains.schedule.models import (
 from app.domains.schedule.schemas import (
     CourtLiveState,
     CourtScheduleStatus,
+    EndingType,
     MatchDetailResponse,
     MatchLiveDetail,
     MatchSummary,
@@ -2539,18 +2540,87 @@ _SINGLES_SIDELINE_INSET = 0.46 / 6.1
 #   - long, DOUBLES ONLY (past the doubles long service line): 0.76/13.4
 #     from each baseline. Singles serves are legal all the way to the
 #     baseline, so there is no long-fault band for singles.
+#   - the wrong service court: a serve goes diagonally, and each side's
+#     right court is diagonal to the other side's right court, so the target
+#     is the receiver's right court when the server's score is even and its
+#     left court when odd. Only checked when the server's score is known.
 _SHORT_SERVICE_LINE_INSET = 4.72 / 13.4
 _LONG_SERVICE_LINE_INSET = 0.76 / 13.4
 
+# A landing that got past the check above while on the CREDITED side's own
+# half is a serve-fault landing — the credited side never returned it, so
+# its own winner can't have landed there, the loser netting it would have
+# left it on the loser's side, and it is in bounds. Only the loser's serve
+# fault or some other fault explains it. Mirrors the picker's
+# SERVE_FAULT_LANDING_CONTRADICTS.
+_SERVE_FAULT_LANDING_CONTRADICTS = ("winner", "out", "net")
 
-def _is_serve_fault_zone(landing_x: float, side: str, is_doubles: bool) -> bool:
+
+def _is_serve_fault_zone(
+    landing_x: float,
+    landing_y: float,
+    side: str,
+    is_doubles: bool,
+    server_score: int | None,
+) -> bool:
+    """Whether an in-bounds landing on `side`'s (the receiver's) half is
+    outside the serve's legal target. Teams face each other, so A's right
+    court is the bottom half of the diagram (y > 0.5) and B's the top half
+    (y < 0.5) — the station convention the scoreboard draws. The center
+    line itself counts as in, for both courts. Mirrors the picker's
+    isServeFaultZone()."""
     if side == "A":
         if _SHORT_SERVICE_LINE_INSET < landing_x < 0.5:
             return True
-        return is_doubles and landing_x < _LONG_SERVICE_LINE_INSET
-    if 0.5 < landing_x < 1 - _SHORT_SERVICE_LINE_INSET:
-        return True
-    return is_doubles and landing_x > 1 - _LONG_SERVICE_LINE_INSET
+        if is_doubles and landing_x < _LONG_SERVICE_LINE_INSET:
+            return True
+    else:
+        if 0.5 < landing_x < 1 - _SHORT_SERVICE_LINE_INSET:
+            return True
+        if is_doubles and landing_x > 1 - _LONG_SERVICE_LINE_INSET:
+            return True
+    if server_score is None:
+        return False
+    target_is_right_court = server_score % 2 == 0
+    target_is_bottom = target_is_right_court == (side == "A")
+    return landing_y < 0.5 if target_is_bottom else landing_y > 0.5
+
+
+async def _serve_before_point(
+    session: AsyncSession, score_event: ScoreEvent
+) -> tuple[str, int] | None:
+    """(serving team, that team's own score) going into the rally that
+    `score_event` (a +1) credited — the score's parity says which service
+    court the serve came from. Its own ScoreServeRecord can't tell — that
+    snapshot is taken AFTER the point, and the winner always serves next, so
+    its server_team is always the scorer. The team that served this rally
+    is the one serving at the PRE-point
+    score, i.e. the server_team of the latest earlier +1 that produced that
+    exact score — the same match-by-score lookup apply_score_delta()'s -1
+    uses to restore the serve state, so undone points in between don't
+    confuse it. None for a match's first point (the pre-match serve
+    assignment isn't persisted) — callers then skip any serve-based check,
+    the same fallback the picker uses when it has no `servingTeam`."""
+    before_a = score_event.score_a - (1 if score_event.side == "A" else 0)
+    before_b = score_event.score_b - (1 if score_event.side == "B" else 0)
+    server_team = (
+        await session.execute(
+            select(ScoreServeRecord.server_team)
+            .join(ScoreEvent, ScoreServeRecord.score_event_id == ScoreEvent.id)
+            .where(
+                ScoreServeRecord.match_id == score_event.match_id,
+                ScoreEvent.score_a == before_a,
+                ScoreEvent.score_b == before_b,
+                ScoreEvent.created_at <= score_event.created_at,
+                ScoreEvent.id != score_event.id,
+            )
+            .order_by(ScoreEvent.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if server_team is None:
+        return None
+    return server_team, before_a if server_team == "A" else before_b
 
 
 async def attach_shot_placement(
@@ -2562,6 +2632,8 @@ async def attach_shot_placement(
     losing_roster_entry_id: uuid.UUID | None,
     landing_x: float | None,
     landing_y: float | None,
+    *,
+    ending_type: str | None = None,
 ) -> None:
     """032-score-then-record: records landing/player detail for a `+1`
     that's already been applied via a plain apply_score_delta() call —
@@ -2600,11 +2672,40 @@ async def attach_shot_placement(
     width for singles) — derived from how many roster entries are actually
     on this match (2 -> singles, 4 -> doubles) rather than trusting the
     group's current match_mode, since that could have changed since this
-    specific match was created."""
+    specific match was created.
+
+    035-point-ending-type: `ending_type` is a fourth independently optional
+    detail — how the rally ended. The picker pre-selects it from the landing
+    where the landing leaves no doubt, but nothing is inferred HERE: what the
+    request says is what gets stored, so a scorer who deliberately cleared
+    the selection really does store "not recorded". Only combinations that
+    contradict themselves are refused, the same spirit as the
+    landing-vs-credited-side check — never the scorer's judgement: a winner
+    lands IN the court, a shot hit out lands OUT of it, and a serve-fault
+    landing (on the credited side's own half) admits only 'serve_fault' or
+    'other_error' (_SERVE_FAULT_LANDING_CONTRADICTS). Otherwise 'net',
+    'serve_fault' and 'other_error' say nothing about where the shuttle came
+    down, and without a landing there is nothing to contradict. The check
+    runs after the older landing check so that one keeps answering first.
+    Being refused is costlier than it looks — the callers drop a failed
+    request silently, losing the whole row — which is why the picker's own
+    in/out judgement is pinned to this one by a shared vector table
+    (035 data-model.md).
+
+    Both serve-fault readings need the credited side to have been
+    RECEIVING (_serve_before_point()): a fault always hands the point to
+    the receiver, so when the credited side itself served, 'serve_fault' is
+    refused (ENDING_TYPE_CONTRADICTS_SERVE) and a landing in its own
+    serve-fault band is the plain landing contradiction again — the same
+    gate as the picker's `isServeFault`. When the server is unknown (a
+    match's first point) neither applies, as before."""
     match = await _fetch_match_for_court(session, court, match_id)
 
     if not match.detailed_scoring_enabled:
         raise ApiError("DETAILED_SCORING_NOT_ENABLED", status_code=422)
+
+    if ending_type is not None and ending_type not in get_args(EndingType):
+        raise ApiError("INVALID_ENDING_TYPE", status_code=422)
 
     if (landing_x is None) != (landing_y is None):
         raise ApiError("INVALID_LANDING_COORDINATES", status_code=422)
@@ -2653,6 +2754,10 @@ async def attach_shot_placement(
     if team is not None and losing_team is not None and team == losing_team:
         raise ApiError("SCORING_AND_LOSING_PLAYER_SAME_TEAM", status_code=422)
 
+    serve = await _serve_before_point(session, score_event)
+    credited_side_served = serve is not None and serve[0] == score_event.side
+    server_score = serve[1] if serve is not None else None
+
     if landing_x is not None and landing_y is not None:
         y_min, y_max = (
             (_SINGLES_SIDELINE_INSET, 1 - _SINGLES_SIDELINE_INSET) if is_singles else (0.0, 1.0)
@@ -2660,10 +2765,25 @@ async def attach_shot_placement(
         in_bounds = 0 <= landing_x <= 1 and y_min <= landing_y <= y_max
         if in_bounds:
             landing_side = "A" if landing_x < 0.5 else "B"
-            if score_event.side == landing_side and not _is_serve_fault_zone(
-                landing_x, landing_side, not is_singles
+            if score_event.side == landing_side and (
+                credited_side_served
+                or not _is_serve_fault_zone(
+                    landing_x, landing_y, landing_side, not is_singles, server_score
+                )
             ):
                 raise ApiError("SCORING_PLAYER_WRONG_TEAM_FOR_LANDING", status_code=422)
+            if (
+                score_event.side == landing_side
+                and ending_type in _SERVE_FAULT_LANDING_CONTRADICTS
+            ):
+                raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
+        if (ending_type == "winner" and not in_bounds) or (
+            ending_type == "out" and in_bounds
+        ):
+            raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
+
+    if ending_type == "serve_fault" and credited_side_served:
+        raise ApiError("ENDING_TYPE_CONTRADICTS_SERVE", status_code=422)
 
     session.add(
         ShotPlacementRecord(
@@ -2675,6 +2795,7 @@ async def attach_shot_placement(
             team=cast(Team, score_event.side),
             landing_x=landing_x,
             landing_y=landing_y,
+            ending_type=ending_type,
         )
     )
     await session.commit()

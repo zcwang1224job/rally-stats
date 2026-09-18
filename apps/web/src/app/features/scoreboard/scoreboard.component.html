@@ -133,6 +133,7 @@
           [participants]="match.participants"
           [scoringTeam]="pendingScoringSide()"
           [servingTeam]="pendingServingTeam()"
+          [servingScore]="pendingServingScore()"
           (confirmed)="onShotPlacementConfirmed($event)"
           (scoreCancelled)="onShotPlacementCancelled()"
           (closed)="onShotPlacementClosed()"

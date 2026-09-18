@@ -332,3 +332,182 @@ async def test_record_shot_placement_allows_omitting_players_and_landing(
 
     assert response.status_code == 200
     assert response.json() == {"recorded": True}
+
+
+# ---------------------------------------------------------------- 035 ending_type (T009)
+
+
+async def _stored_ending_types(session: AsyncSession, match_id: str) -> list[str | None]:
+    rows = await session.execute(
+        text(
+            "SELECT ending_type FROM shot_placement_records WHERE match_id = :id "
+            "ORDER BY created_at"
+        ),
+        {"id": match_id},
+    )
+    return [row[0] for row in rows]
+
+
+async def test_each_of_the_five_ending_types_is_accepted_on_its_own(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """The exact five values the frontend's ENDING_TYPES lists, in its order —
+    this is the check between the two sides. Nothing but the ending is sent
+    (FR-010)."""
+    _created, court, match_id, _a, _b = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Types"
+    )
+    token = court["control_panel_token"]
+    kinds = ["winner", "out", "net", "serve_fault", "other_error"]
+
+    for kind in kinds:
+        # A has served since its opening point, and a serve fault always
+        # favors the receiver — so that one point goes to B.
+        side = "B" if kind == "serve_fault" else "A"
+        score_event_id = await _score_by_token(client, token, match_id, side)
+        response = await client.post(
+            f"/courts/by-token/{token}/matches/{match_id}/shot-placement",
+            json={"score_event_id": score_event_id, "ending_type": kind},
+        )
+        assert response.status_code == 200, (kind, response.text)
+
+    assert await _stored_ending_types(db_session, match_id) == kinds
+
+
+async def test_request_without_ending_type_behaves_as_before(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, match_id, team_a_ids, team_b_ids = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Omitted"
+    )
+    token = court["control_panel_token"]
+    score_event_id = await _score_by_token(client, token, match_id, "A")
+
+    response = await client.post(
+        f"/courts/by-token/{token}/matches/{match_id}/shot-placement",
+        json={
+            "score_event_id": score_event_id,
+            "roster_entry_id": team_a_ids[0],
+            "losing_roster_entry_id": team_b_ids[0],
+            "landing_x": 0.62,
+            "landing_y": 0.18,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"recorded": True}
+    assert await _stored_ending_types(db_session, match_id) == [None]
+
+
+async def test_rejects_an_ending_type_outside_the_five(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, match_id, _a, _b = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Unknown"
+    )
+    token = court["control_panel_token"]
+    score_event_id = await _score_by_token(client, token, match_id, "A")
+
+    response = await client.post(
+        f"/courts/by-token/{token}/matches/{match_id}/shot-placement",
+        json={"score_event_id": score_event_id, "ending_type": "smash"},
+    )
+
+    assert response.status_code == 422
+    assert await _stored_ending_types(db_session, match_id) == []
+
+
+async def test_rejects_a_winner_that_landed_out_of_bounds(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, match_id, _a, _b = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Contradiction"
+    )
+    token = court["control_panel_token"]
+    score_event_id = await _score_by_token(client, token, match_id, "A")
+
+    response = await client.post(
+        f"/courts/by-token/{token}/matches/{match_id}/shot-placement",
+        json={
+            "score_event_id": score_event_id,
+            "landing_x": 1.1,
+            "landing_y": 0.5,
+            "ending_type": "winner",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error_code"] == "ENDING_TYPE_CONTRADICTS_LANDING"
+    assert await _stored_ending_types(db_session, match_id) == []
+
+
+async def test_a_recorded_ending_type_cannot_be_changed_afterwards(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, match_id, _a, _b = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Immutable"
+    )
+    token = court["control_panel_token"]
+    score_event_id = await _score_by_token(client, token, match_id, "A")
+    url = f"/courts/by-token/{token}/matches/{match_id}/shot-placement"
+    await client.post(url, json={"score_event_id": score_event_id, "ending_type": "net"})
+
+    again = await client.post(url, json={"score_event_id": score_event_id, "ending_type": "out"})
+
+    assert again.status_code == 422
+    assert again.json()["error_code"] == "SHOT_PLACEMENT_ALREADY_RECORDED"
+    assert await _stored_ending_types(db_session, match_id) == ["net"]
+
+
+async def test_admin_and_all_courts_endpoints_take_the_ending_type_too(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """All three endpoints share one request schema and one service function;
+    this pins that none of them forgot to pass the new field through."""
+    created, court, match_id, _a, _b = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Three Doors"
+    )
+    admin_headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    admin_view = (
+        await client.get(f"/groups/{created['group_id']}/admin", headers=admin_headers)
+    ).json()
+    all_courts_token = admin_view["all_courts_control_panel_token"]
+    panel_token = court["control_panel_token"]
+
+    first = await _score_by_token(client, panel_token, match_id, "A")
+    by_admin = await client.post(
+        f"/groups/{created['group_id']}/courts/{court['court_id']}/matches/{match_id}"
+        "/shot-placement",
+        headers=admin_headers,
+        json={"score_event_id": first, "ending_type": "out"},
+    )
+    second = await _score_by_token(client, panel_token, match_id, "B")
+    by_all_courts = await client.post(
+        f"/groups/by-all-courts-token/{all_courts_token}/courts/{court['court_id']}"
+        f"/matches/{match_id}/shot-placement",
+        json={"score_event_id": second, "ending_type": "serve_fault"},
+    )
+
+    assert (by_admin.status_code, by_all_courts.status_code) == (200, 200)
+    assert await _stored_ending_types(db_session, match_id) == ["out", "serve_fault"]
+
+
+async def test_minus_one_withdraws_the_ending_type_with_the_point(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    _created, court, match_id, _a, _b = await _create_group_with_detailed_match(
+        client, db_session, valid_turnstile_token, "Ending Withdrawn"
+    )
+    token = court["control_panel_token"]
+    score_event_id = await _score_by_token(client, token, match_id, "A")
+    await client.post(
+        f"/courts/by-token/{token}/matches/{match_id}/shot-placement",
+        json={"score_event_id": score_event_id, "ending_type": "winner"},
+    )
+
+    undo = await client.post(
+        f"/courts/by-token/{token}/matches/{match_id}/score", json={"side": "A", "delta": -1}
+    )
+
+    assert undo.status_code == 200
+    assert await _stored_ending_types(db_session, match_id) == []

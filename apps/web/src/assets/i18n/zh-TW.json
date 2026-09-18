@@ -512,7 +512,22 @@
     "tabPlayers": "得失分選手",
     "skip": "跳過",
     "cancelScore": "取消得分",
-    "confirm": "確認記錄"
+    "confirm": "確認記錄",
+    "ending": {
+      "label": "這一分怎麼結束的",
+      "autoHint": "已依落點自動帶入，可再改",
+      "winner": "主動得分",
+      "out": "對手出界",
+      "net": "對手掛網",
+      "serve_fault": "發球失誤",
+      "other_error": "其他失誤",
+      "disabled": {
+        "winner": "落點在界外，不可能是主動得分",
+        "out": "落點在界內，不是出界",
+        "serve_fault": "得分的一方是發球方，不可能是發球失誤",
+        "serveFaultLanding": "落點在得分方自己的半場，只可能是對手發球失誤或其他失誤"
+      }
+    }
   },
   "scheduleManagement": {
     "sectionTitle": "場地控制",
@@ -620,7 +635,8 @@
       "serve": "發球與接發球",
       "clutch": "關鍵分",
       "scoring": "得失分與分差",
-      "landing": "落點分布"
+      "landing": "落點分布",
+      "ending": "主動得分與失誤"
     },
     "fraction": {
       "perMatch": "共 {{total}}（{{matches}} 場）"
@@ -651,9 +667,6 @@
     },
     "landing": {
       "empty": "沒有落點紀錄——需要在開啟詳細計分的比賽中，由計分員標示羽球落點",
-      "rangeLabel": "落點範圍",
-      "rangeAll": "全部",
-      "rangeRecent": "最近 {{window}} 場",
       "legendScored": "得分落點（圓形）",
       "legendLost": "失分落點（菱形）",
       "courtLabel": "跨場落點分布：{{scored}} 個得分落點、{{lost}} 個失分落點",
@@ -752,6 +765,49 @@
         "label": "輸球時平均分差",
         "hint": "只計輸的比賽，越低越好——輸得越來越接近也是進步",
         "empty": "這個範圍內沒有輸的比賽"
+      },
+      "winner_share": {
+        "label": "主動得分比例",
+        "hint": "自己打下來的分 ÷ 有記錄得分方式的得分，越高越好",
+        "empty": "這個範圍內沒有得分方式紀錄"
+      },
+      "winners_per_match": {
+        "label": "每場主動得分",
+        "hint": "只計有記錄得分方式的比賽，越高越好",
+        "empty": "這個範圍內沒有得分方式紀錄"
+      },
+      "errors_per_match": {
+        "label": "每場失誤",
+        "hint": "自己送給對手的分，越低越好",
+        "empty": "這個範圍內沒有得分方式紀錄"
+      },
+      "error_share_of_lost": {
+        "label": "失誤佔失分比例",
+        "hint": "自己失誤 ÷ 有記錄得分方式的失分，越低越好",
+        "empty": "這個範圍內沒有得分方式紀錄"
+      },
+      "winner_error_ratio": {
+        "label": "主動得分／失誤比",
+        "hint": "主動得分 ÷ 自己失誤，越高越好；沒有失誤時無法計算",
+        "empty": "這個範圍內沒有得分方式紀錄"
+      }
+    },
+    "range": {
+      "label": "統計範圍",
+      "all": "全部",
+      "recent": "最近 {{window}} 場",
+      "note": "套用於失誤組成與落點分布"
+    },
+    "errorBreakdown": {
+      "title": "失誤組成",
+      "caption": "自己的失誤依類型計數與佔比",
+      "total": "共 {{total}} 次失誤（{{matches}} 場）",
+      "empty": "這個範圍內沒有失誤紀錄",
+      "kind": {
+        "out": "出界",
+        "net": "掛網",
+        "serve_fault": "發球失誤",
+        "other_error": "其他"
       }
     }
   },
@@ -811,6 +867,32 @@
       "whenTied": "平手時",
       "whenTrailing": "落後時",
       "note": "每一分依「開打前」的比分歸類；關鍵分的得失以整隊計算。"
+    },
+    "ending": {
+      "title": "得分方式",
+      "empty": "此比賽沒有得分方式紀錄",
+      "coverage": "已記錄 {{recorded}}／共 {{total}} 分",
+      "teamWinners": "主動得分 {{count}}",
+      "teamErrors": "失誤 {{count}}",
+      "errorsBreakdown": "失誤組成：出界 {{out}}・掛網 {{net}}・發球失誤 {{serveFault}}・其他 {{other}}",
+      "playersCaption": "各球員得分與失分的組成",
+      "player": "球員",
+      "scoredGroup": "得分",
+      "lostGroup": "失分",
+      "winners": "主動得分",
+      "opponentErrors": "對手失誤",
+      "unrecorded": "未記錄",
+      "beatenByWinners": "被主動得分",
+      "ownErrors": "自己失誤",
+      "playerTotals": "得 {{scored}}／失 {{lost}}",
+      "note": "主動得分歸得分球員；失誤歸失分球員。未記錄的分數不計入任何比例。",
+      "label": {
+        "winner": "主動得分",
+        "out": "對手出界",
+        "net": "對手掛網",
+        "serve_fault": "發球失誤",
+        "other_error": "其他失誤"
+      }
     },
     "derived": {
       "teamA": "A 隊",

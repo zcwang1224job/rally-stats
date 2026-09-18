@@ -123,6 +123,7 @@ async def _add_shot_placement(
     losing_roster_entry_id: uuid.UUID | None = None,
     landing_x: float | None = None,
     landing_y: float | None = None,
+    ending_type: str | None = None,
 ) -> ShotPlacementRecord:
     record = ShotPlacementRecord(
         score_event_id=event.id,
@@ -133,6 +134,7 @@ async def _add_shot_placement(
         team=team,
         landing_x=landing_x,
         landing_y=landing_y,
+        ending_type=ending_type,
     )
     session.add(record)
     await session.commit()
@@ -894,3 +896,117 @@ async def test_partial_record_has_no_clutch_stats(db_session: AsyncSession) -> N
 
     assert detail.record_completeness == "partial"
     assert detail.clutch_stats is None
+
+
+# ---------------------------------------------------------------- 035 ending_stats (T017)
+
+
+async def test_a_row_carrying_only_an_ending_type_is_a_detail(db_session: AsyncSession) -> None:
+    """035 research.md Decision 4: the "all fields NULL = no detail" rule now
+    spans five fields — an ending on its own is something the scorer
+    recorded, so it must reach the event list."""
+    group = await _make_group(db_session)
+    a = await _make_entry(db_session, group, "小明")
+    b = await _make_entry(db_session, group, "小美")
+    match = await _make_match(db_session, group, score_a=1, score_b=0, team_a=[a.id], team_b=[b.id])
+    start = match.started_at
+    assert start is not None
+    event = await _add_event(
+        db_session, match, side="A", delta=1, score_a=1, score_b=0,
+        created_at=start + timedelta(seconds=5),
+    )
+    await _add_shot_placement(db_session, event, team="A", ending_type="net")
+
+    detail = await build_match_record_detail(db_session, match)
+
+    [summary] = detail.events
+    assert summary.detail is not None
+    assert summary.detail.ending_type == "net"
+    assert summary.detail.scoring_roster_entry_id is None
+    assert summary.detail.landing_x is None
+
+
+async def test_ending_stats_split_each_player_and_team(db_session: AsyncSession) -> None:
+    match, [a1, a2, b1, b2], events = await _doubles_two_one(db_session, with_serve_records=False)
+    # A A B: a winner by a1 over b1, an unrecorded point by a2, and b1
+    # scoring off a2's serve fault.
+    await _add_shot_placement(
+        db_session, events[0], team="A",
+        roster_entry_id=a1.id, losing_roster_entry_id=b1.id, ending_type="winner",
+    )
+    await _add_shot_placement(db_session, events[1], team="A", roster_entry_id=a2.id)
+    await _add_shot_placement(
+        db_session, events[2], team="B",
+        roster_entry_id=b1.id, losing_roster_entry_id=a2.id, ending_type="serve_fault",
+    )
+
+    detail = await build_match_record_detail(db_session, match)
+
+    ending = detail.ending_stats
+    assert ending is not None
+    assert (ending.recorded_points, ending.total_points) == (2, 3)
+    assert [t.team for t in ending.teams] == ["A", "B"]
+    team_a, team_b = ending.teams
+    assert (team_a.winners, team_a.errors) == (1, 1)
+    assert team_a.errors_by_type.model_dump() == {
+        "out": 0, "net": 0, "serve_fault": 1, "other_error": 0
+    }
+    assert (team_b.winners, team_b.errors) == (0, 0)
+    assert [p.nickname for p in ending.players] == ["甲", "乙", "丙", "丁"]
+    by_name = {p.nickname: p for p in ending.players}
+    assert (by_name["甲"].winners, by_name["甲"].opponent_errors) == (1, 0)
+    assert (by_name["乙"].scored_unrecorded, by_name["乙"].own_errors) == (1, 1)
+    assert (by_name["丙"].opponent_errors, by_name["丙"].beaten_by_winners) == (1, 1)
+    assert by_name["丁"].model_dump(exclude={"roster_entry_id", "nickname", "team"}) == {
+        "winners": 0, "opponent_errors": 0, "scored_unrecorded": 0,
+        "beaten_by_winners": 0, "own_errors": 0, "lost_unrecorded": 0,
+    }
+    # FR-015: each triple adds up to 032's player_stats.
+    stats = {s.roster_entry_id: s for s in detail.player_stats}
+    for player in ending.players:
+        assert player.winners + player.opponent_errors + player.scored_unrecorded == (
+            stats[player.roster_entry_id].scored_count
+        )
+        assert player.beaten_by_winners + player.own_errors + player.lost_unrecorded == (
+            stats[player.roster_entry_id].fault_count
+        )
+
+
+async def test_ending_stats_is_none_when_no_point_recorded_an_ending(
+    db_session: AsyncSession,
+) -> None:
+    match, [a1, _a2, b1, _b2], events = await _doubles_two_one(db_session, with_serve_records=False)
+    await _add_shot_placement(
+        db_session, events[0], team="A",
+        roster_entry_id=a1.id, losing_roster_entry_id=b1.id, landing_x=0.82, landing_y=0.2,
+    )
+
+    detail = await build_match_record_detail(db_session, match)
+
+    assert detail.record_completeness == "complete"
+    assert detail.landing_distribution != []  # the rest of the detail is untouched
+    assert detail.ending_stats is None
+
+
+async def test_partial_record_keeps_per_point_ending_types_but_no_ending_stats(
+    db_session: AsyncSession,
+) -> None:
+    group = await _make_group(db_session)
+    a = await _make_entry(db_session, group, "小明")
+    b = await _make_entry(db_session, group, "小美")
+    match = await _make_match(db_session, group, score_a=6, score_b=3, team_a=[a.id], team_b=[b.id])
+    start = match.started_at
+    assert start is not None
+    event = await _add_event(
+        db_session, match, side="A", delta=1, score_a=6, score_b=3,
+        created_at=start + timedelta(seconds=300),
+    )
+    await _add_shot_placement(db_session, event, team="A", roster_entry_id=a.id, ending_type="out")
+
+    detail = await build_match_record_detail(db_session, match)
+
+    assert detail.record_completeness == "partial"
+    assert detail.ending_stats is None
+    [summary] = detail.events
+    assert summary.detail is not None
+    assert summary.detail.ending_type == "out"

@@ -23,6 +23,12 @@ export const DASHBOARD_METRIC_KEYS = [
   'avg_points_against',
   'avg_win_margin',
   'avg_loss_margin',
+  // 035-point-ending-type: appended, never reordered (mirrors _METRICS).
+  'winner_share',
+  'winners_per_match',
+  'errors_per_match',
+  'error_share_of_lost',
+  'winner_error_ratio',
 ] as const;
 
 export type DashboardMetricKey = (typeof DASHBOARD_METRIC_KEYS)[number];
@@ -83,11 +89,27 @@ export interface DashboardLanding {
   recent_matches_used: number;
 }
 
+// 035-point-ending-type: the member's own errors by kind.
+export interface DashboardErrorsByType {
+  out: number;
+  net: number;
+  serve_fault: number;
+  other_error: number;
+}
+
+export interface DashboardErrorBreakdown {
+  all: DashboardErrorsByType;
+  // null whenever there is no comparison (total_matches <= recent_window).
+  recent: DashboardErrorsByType | null;
+}
+
 export interface MemberMatchDashboardResponse {
   total_matches: number;
   recent_window: number;
   has_comparison: boolean;
-  metrics: DashboardMetric[]; // [] iff total_matches === 0, otherwise all 18
+  metrics: DashboardMetric[]; // [] iff total_matches === 0, otherwise all 23
   trends: DashboardTrend[]; // only metrics with enough matches for a trend
   landing: DashboardLanding | null;
+  // 035: null when not one of the member's errors was ever recorded.
+  error_breakdown: DashboardErrorBreakdown | null;
 }

@@ -36,6 +36,7 @@ const noData: MatchRecordDetailResponse = {
   tempo_stats: null,
   landing_distribution: [],
   clutch_stats: null,
+  ending_stats: null,
 };
 
 const doublesServe: ServeStats = {
@@ -107,19 +108,21 @@ function section(root: HTMLElement, name: string): HTMLElement {
 }
 
 describe('MatchDerivedStatsComponent — layout (FR-003/FR-009)', () => {
-  it('renders five collapsible sections, all collapsed by default', () => {
+  it('renders six collapsible sections, all collapsed by default', () => {
     const root: HTMLElement = setup().nativeElement;
 
     const sections = Array.from(root.querySelectorAll('details'));
-    // 034: the clutch block sits right after the momentum summary it builds on.
+    // 034: the clutch block sits right after the momentum summary it builds on;
+    // 035: the winners-vs-errors block follows it.
     expect(sections.map((s) => s.dataset['section'])).toEqual([
       'serve',
       'momentum',
       'clutch',
+      'ending',
       'tempo',
       'landing',
     ]);
-    expect(sections.map((s) => s.open)).toEqual([false, false, false, false, false]);
+    expect(sections.map((s) => s.open)).toEqual([false, false, false, false, false, false]);
   });
 
   it('shows an independent no-data notice per section, and no numbers', () => {
@@ -130,6 +133,9 @@ describe('MatchDerivedStatsComponent — layout (FR-003/FR-009)', () => {
     }
     expect(section(root, 'clutch').querySelector('app-match-clutch-stats')?.textContent).toContain(
       'matchRecordDetail.clutch.empty',
+    );
+    expect(section(root, 'ending').querySelector('app-match-ending-stats')?.textContent).toContain(
+      'matchRecordDetail.ending.empty',
     );
     expect(root.querySelector('table')).toBeNull();
     expect(root.querySelector('app-court-diagram')).toBeNull();

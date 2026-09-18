@@ -10,15 +10,19 @@ from datetime import UTC, datetime, timedelta
 
 from app.domains.group.match_stats import (
     ClutchResult,
+    EndingStatsResult,
     MatchPointResult,
     PhaseCounts,
+    PlayerEndingResult,
     PlayerLandingResult,
     ServeCounts,
     ServeStatsResult,
     StateCounts,
+    TeamEndingResult,
 )
 from app.domains.member.player_dashboard import (
     DashboardResult,
+    EndingSample,
     MatchSample,
     MetricResult,
     PlayerSample,
@@ -53,6 +57,12 @@ METRIC_KEYS = [
     "avg_points_against",
     "avg_win_margin",
     "avg_loss_margin",
+    # 035-point-ending-type: appended, never reordered.
+    "winner_share",
+    "winners_per_match",
+    "errors_per_match",
+    "error_share_of_lost",
+    "winner_error_ratio",
 ]
 
 
@@ -100,6 +110,7 @@ def _build(**overrides: object) -> MatchSample:
         "clutch": _clutch(),
         "serve": _serve(),
         "landings": None,
+        "ending": None,
     }
     arguments.update(overrides)
     return build_sample(**arguments)  # type: ignore[arg-type]
@@ -196,6 +207,7 @@ def _sample(
     point_log: PointLogSample | None = None,
     serve: ServeSample | None = None,
     player: PlayerSample | None = None,
+    ending: EndingSample | None = None,
 ) -> MatchSample:
     return MatchSample(
         ended_at=T0 - timedelta(days=days_ago),
@@ -205,6 +217,7 @@ def _sample(
         point_log=point_log,
         serve=serve,
         player=player,
+        ending=ending,
     )
 
 
@@ -212,13 +225,13 @@ def _metric(result: DashboardResult, key: str) -> MetricResult:
     return next(metric for metric in result.metrics if metric.key == key)
 
 
-def test_no_matches_is_one_empty_state_not_eighteen_blank_metrics() -> None:
+def test_no_matches_is_one_empty_state_not_twenty_three_blank_metrics() -> None:
     result = aggregate([])
     assert (result.total_matches, result.has_comparison) == (0, False)
     assert result.metrics == [] and result.trends == [] and result.landing is None
 
 
-def test_all_eighteen_metrics_come_back_in_a_fixed_order() -> None:
+def test_all_twenty_three_metrics_come_back_in_a_fixed_order() -> None:
     result = aggregate([_sample()])
     assert [metric.key for metric in result.metrics] == METRIC_KEYS
     assert _metric(result, "team_serve").kind == "rate"
@@ -552,3 +565,199 @@ def test_ten_matches_or_fewer_report_the_recent_range_as_the_whole() -> None:
 def test_no_plotted_point_anywhere_means_no_landing_block() -> None:
     assert aggregate([_landed(0, [], scored_total=5)]).landing is None  # players, no coordinates
     assert aggregate([_sample()]).landing is None
+
+
+# ---------------------------------------------------------------- 035 ending metrics (T023)
+
+
+def _by_type(**counts: int) -> dict:
+    return {"out": 0, "net": 0, "serve_fault": 0, "other_error": 0, **counts}
+
+
+def _player_ending(
+    pid: uuid.UUID,
+    team: str,
+    winners: int = 0,
+    opponent_errors: int = 0,
+    scored_unrecorded: int = 0,
+    beaten_by_winners: int = 0,
+    own_errors: int = 0,
+    lost_unrecorded: int = 0,
+    **by_type: int,
+) -> PlayerEndingResult:
+    return PlayerEndingResult(
+        pid, team, winners, opponent_errors, scored_unrecorded,  # type: ignore[arg-type]
+        beaten_by_winners, own_errors, lost_unrecorded, _by_type(**by_type),
+    )
+
+
+def _ending_result(players: dict[uuid.UUID, PlayerEndingResult]) -> EndingStatsResult:
+    return EndingStatsResult(
+        recorded_points=10,
+        total_points=12,
+        teams={
+            "A": TeamEndingResult("A", 3, 2, _by_type(out=2)),
+            "B": TeamEndingResult("B", 4, 1, _by_type(net=1)),
+        },
+        players=players,
+    )
+
+
+def test_build_sample_ending_needs_one_of_my_own_points_recorded() -> None:
+    """FR-020: "at least one of MY points" — unlike the player block, a match
+    where only my partner's points carry an ending is None for me."""
+    nobody = {pid: _player_ending(pid, "B") for pid in (ME, PARTNER)}
+    assert _build(ending=None).ending is None
+    assert _build(ending=_ending_result(nobody)).ending is None
+
+    partner_only = dict(nobody)
+    partner_only[PARTNER] = _player_ending(PARTNER, "B", winners=3)
+    assert _build(ending=_ending_result(partner_only)).ending is None
+
+    mine = dict(nobody)
+    mine[ME] = _player_ending(
+        ME, "B", winners=5, opponent_errors=2, scored_unrecorded=1,
+        beaten_by_winners=3, own_errors=4, lost_unrecorded=2, out=2, net=1, other_error=1,
+    )
+    ending = _build(ending=_ending_result(mine)).ending
+    assert ending == EndingSample(
+        winners=5, opponent_errors=2, beaten_by_winners=3, own_errors=4,
+        own_errors_by_type={"out": 2, "net": 1, "serve_fault": 0, "other_error": 1},
+    )
+
+    # A lost point counts as "mine" too.
+    lost_only = dict(nobody)
+    lost_only[ME] = _player_ending(ME, "B", own_errors=1, net=1)
+    ending = _build(ending=_ending_result(lost_only)).ending
+    assert ending is not None and ending.own_errors == 1
+
+
+def _ending(
+    winners: int = 0, opponent_errors: int = 0, beaten: int = 0, own: int = 0, **by_type: int
+) -> EndingSample:
+    if own and not by_type:
+        by_type = {"other_error": own}
+    return EndingSample(winners, opponent_errors, beaten, own, _by_type(**by_type))
+
+
+def test_the_five_ending_metrics_follow_the_existing_eighteen() -> None:
+    result = aggregate([_sample()])
+    assert [metric.key for metric in result.metrics][:18] == METRIC_KEYS[:18]
+    assert [metric.key for metric in result.metrics][18:] == METRIC_KEYS[18:]
+    kinds = {m.key: (m.kind, m.better_when) for m in result.metrics}
+    assert kinds["winner_share"] == ("rate", "higher")
+    assert kinds["winners_per_match"] == ("average", "higher")
+    assert kinds["errors_per_match"] == ("average", "lower")
+    assert kinds["error_share_of_lost"] == ("rate", "lower")
+    assert kinds["winner_error_ratio"] == ("ratio", "higher")
+
+
+def test_winner_share_counts_only_points_with_a_recorded_ending() -> None:
+    # 6 winners, 2 opponent errors; the unrecorded points never reach the sample.
+    samples = [_sample(0, ending=_ending(winners=4, opponent_errors=1)),
+               _sample(1, ending=_ending(winners=2, opponent_errors=1))]
+    share = _metric(aggregate(samples), "winner_share").all
+    assert share is not None
+    assert (share.numerator, share.denominator, share.matches_used) == (6, 8, 2)
+    assert share.value == 0.75
+
+
+def test_per_match_ending_metrics_divide_by_matches_used() -> None:
+    samples = [
+        _sample(0, ending=_ending(winners=4, own=2)),
+        _sample(1, ending=_ending(winners=2, own=6)),
+        _sample(2),  # no ending data: not counted
+    ]
+    result = aggregate(samples)
+    winners = _metric(result, "winners_per_match").all
+    errors = _metric(result, "errors_per_match").all
+    assert winners is not None and errors is not None
+    assert (winners.numerator, winners.denominator, winners.value) == (6, 2, 3.0)
+    assert (errors.numerator, errors.denominator, errors.value) == (8, 2, 4.0)
+    assert winners.matches_used == 2
+
+
+def test_error_share_of_lost_is_own_errors_over_recorded_points_lost() -> None:
+    samples = [
+        _sample(0, ending=_ending(beaten=3, own=1)),
+        _sample(1, ending=_ending(beaten=1, own=3)),
+    ]
+    share = _metric(aggregate(samples), "error_share_of_lost").all
+    assert share is not None
+    assert (share.numerator, share.denominator, share.value) == (4, 8, 0.5)
+
+
+def test_winner_error_ratio_without_any_error_has_no_value() -> None:
+    result = aggregate([_sample(ending=_ending(winners=5))])
+    ratio = _metric(result, "winner_error_ratio").all
+    assert ratio is not None
+    assert (ratio.value, ratio.numerator, ratio.denominator, ratio.matches_used) == (None, 5, 0, 1)
+
+    with_errors = aggregate([_sample(ending=_ending(winners=6, own=4))])
+    assert _metric(with_errors, "winner_error_ratio").all.value == 1.5  # type: ignore[union-attr]
+
+
+def test_no_match_with_ending_data_leaves_the_five_metrics_none_and_the_rest_alone() -> None:
+    result = aggregate([_sample(day, player=PlayerSample(scored=4, lost=2)) for day in range(3)])
+    for key in METRIC_KEYS[18:]:
+        assert _metric(result, key).all is None, key
+    assert _metric(result, "points_scored").all is not None
+    assert len(result.metrics) == 23
+    assert result.error_breakdown_all is None and result.error_breakdown_recent is None
+
+
+def test_fewer_errors_recently_is_progress_and_more_winners_too() -> None:
+    good = _ending(winners=6, opponent_errors=2, own=2)
+    bad = _ending(winners=3, opponent_errors=5, own=6)
+    recent = [_sample(day, ending=good) for day in range(10)]
+    older = [_sample(day, ending=bad) for day in range(10, 20)]
+    result = aggregate(recent + older)
+    assert _metric(result, "errors_per_match").verdict == "improved"
+    assert _metric(result, "winner_share").verdict == "improved"
+    assert _metric(result, "winners_per_match").verdict == "improved"
+
+    result = aggregate(
+        [_sample(day, ending=bad) for day in range(10)]
+        + [_sample(day, ending=good) for day in range(10, 20)]
+    )
+    assert _metric(result, "errors_per_match").verdict == "declined"
+    assert _metric(result, "winner_share").verdict == "declined"
+
+
+def test_ending_metrics_can_have_a_trend() -> None:
+    samples = [_sample(day, ending=_ending(winners=4, own=2)) for day in range(6)]
+    result = aggregate(samples)
+    assert _trend(result, "winners_per_match") == [4.0, 4.0]
+    assert _trend(result, "winner_error_ratio") == [2.0, 2.0]
+
+
+def test_error_breakdown_sums_own_errors_by_type_over_all_and_recent() -> None:
+    recent = [_sample(day, ending=_ending(own=3, out=2, net=1)) for day in range(10)]
+    older = [
+        _sample(day, ending=_ending(own=2, serve_fault=1, other_error=1)) for day in range(10, 20)
+    ]
+    result = aggregate(recent + older)
+
+    assert result.error_breakdown_all is not None
+    assert result.error_breakdown_all.as_dict() == {
+        "out": 20, "net": 10, "serve_fault": 10, "other_error": 10,
+    }
+    assert sum(result.error_breakdown_all.as_dict().values()) == sum(
+        s.ending.own_errors for s in recent + older if s.ending
+    )
+    assert result.error_breakdown_recent is not None
+    assert result.error_breakdown_recent.as_dict() == {
+        "out": 20, "net": 10, "serve_fault": 0, "other_error": 0,
+    }
+
+
+def test_error_breakdown_has_no_recent_side_with_ten_matches_or_fewer() -> None:
+    result = aggregate([_sample(day, ending=_ending(own=1, net=1)) for day in range(10)])
+    assert result.error_breakdown_all is not None
+    assert result.error_breakdown_recent is None
+
+
+def test_error_breakdown_is_none_without_a_single_error() -> None:
+    result = aggregate([_sample(day, ending=_ending(winners=3)) for day in range(12)])
+    assert _metric(result, "winners_per_match").all is not None
+    assert result.error_breakdown_all is None and result.error_breakdown_recent is None

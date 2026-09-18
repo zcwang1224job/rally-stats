@@ -4,6 +4,7 @@ import { ApiClient } from './api-client';
 import {
   AllCourtsLiveState,
   CourtStateResponse,
+  EndingType,
   ScoreMutationResult,
   ShotPlacementAttachResponse,
   Team,
@@ -37,7 +38,11 @@ export class CourtControlService {
    * what the picker's confirm() calls afterward, pinned to the exact
    * ScoreEvent that "+" created (`scoreEventId`, from that score() call's
    * own response) rather than "the most recent point", so a rapid string
-   * of points can't mismatch which point an answer lands on. */
+   * of points can't mismatch which point an answer lands on.
+   *
+   * 035-point-ending-type: `endingType` is the fourth optional detail —
+   * sent exactly as the picker resolved it (auto-filled or hand-picked),
+   * null when the scorer left it unrecorded. */
   recordShotPlacement(
     token: string,
     matchId: string,
@@ -46,6 +51,7 @@ export class CourtControlService {
     losingRosterEntryId: string | null,
     landingX: number | null,
     landingY: number | null,
+    endingType: EndingType | null,
   ): Observable<ShotPlacementAttachResponse> {
     return this.api.post<ShotPlacementAttachResponse>(
       `/courts/by-token/${token}/matches/${matchId}/shot-placement`,
@@ -55,6 +61,7 @@ export class CourtControlService {
         losing_roster_entry_id: losingRosterEntryId,
         landing_x: landingX,
         landing_y: landingY,
+        ending_type: endingType,
       },
     );
   }
@@ -125,6 +132,7 @@ export class CourtControlService {
     losingRosterEntryId: string | null,
     landingX: number | null,
     landingY: number | null,
+    endingType: EndingType | null,
   ): Observable<ShotPlacementAttachResponse> {
     return this.api.post<ShotPlacementAttachResponse>(
       `/groups/by-all-courts-token/${token}/courts/${courtId}/matches/${matchId}/shot-placement`,
@@ -134,6 +142,7 @@ export class CourtControlService {
         losing_roster_entry_id: losingRosterEntryId,
         landing_x: landingX,
         landing_y: landingY,
+        ending_type: endingType,
       },
     );
   }

@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.domains.schedule.schemas import ParticipantSummary
+from app.domains.schedule.schemas import EndingType, ParticipantSummary
 
 MatchMode = Literal["singles", "doubles"]
 SchedulingMechanism = Literal["fair_rotation", "fixed_partner", "individual_mixed", "manual"]
@@ -533,6 +533,11 @@ class ShotPlacementSummary(BaseModel):
     losing_nickname: str | None = None
     landing_x: float | None = None
     landing_y: float | None = None
+    # 035-point-ending-type: how the rally ended (the five values of
+    # schedule.schemas.EndingType); None = not recorded, including every
+    # point scored before 035. Returned whatever record_completeness is —
+    # it's a per-point fact, not a derivation.
+    ending_type: EndingType | None = None
 
 
 class ScoreEventSummary(BaseModel):
@@ -542,7 +547,7 @@ class ScoreEventSummary(BaseModel):
     score_b: int
     elapsed_seconds: int
     # research.md Decision 2: None for a -1 event, a +1 event with no
-    # ShotPlacementRecord at all, or one whose four fields are all NULL
+    # ShotPlacementRecord at all, or one whose five fields are all NULL
     # (confirmed with nothing picked) — those three cases must render
     # identically (no badge, not expandable), so build_match_record_detail()
     # collapses them to the same None here rather than letting the frontend
@@ -701,6 +706,51 @@ class ClutchStats(BaseModel):
     comeback: ClutchComeback | None  # None: the winner never trailed
 
 
+class ErrorsByType(BaseModel):
+    """035-point-ending-type: one count per error kind — the four
+    non-winner values of EndingType, always all four keys."""
+
+    out: int
+    net: int
+    serve_fault: int
+    other_error: int
+
+
+class TeamEndingStat(BaseModel):
+    team: Literal["A", "B"]
+    winners: int
+    # Errors THIS team committed (= points the other team got by error).
+    errors: int
+    errors_by_type: ErrorsByType
+
+
+class PlayerEndingStat(BaseModel):
+    """Points scored = winners + opponent_errors + scored_unrecorded; points
+    lost = beaten_by_winners + own_errors + lost_unrecorded — each triple
+    adds up to the same player's `player_stats` scored_count/fault_count
+    (FR-015), so the frontend can show the split under the existing
+    totals without a second source of truth."""
+
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+    winners: int
+    opponent_errors: int
+    scored_unrecorded: int
+    beaten_by_winners: int
+    own_errors: int
+    lost_unrecorded: int
+
+
+class EndingStats(BaseModel):
+    # How much of the match the numbers cover: effective points with a
+    # recorded ending, out of all effective points (FR-016).
+    recorded_points: int
+    total_points: int
+    teams: list[TeamEndingStat]  # always [A, B]
+    players: list[PlayerEndingStat]  # every participant, team_a + team_b
+
+
 class MatchRecordDetailResponse(MatchRecordSummary):
     record_completeness: Literal["complete", "partial", "none"]
     events: list[ScoreEventSummary]
@@ -721,6 +771,11 @@ class MatchRecordDetailResponse(MatchRecordSummary):
     # 034-clutch-points-player-dashboard: same "complete record only" rule
     # as the four above.
     clutch_stats: ClutchStats | None = None
+    # 035-point-ending-type: same "complete record only" rule again, and
+    # None as well when not one point of the match recorded an ending
+    # (every pre-035 match). 032's `player_stats` above is unchanged —
+    # this is the split UNDER those totals, not a replacement.
+    ending_stats: EndingStats | None = None
 
 
 class RoundWinRatePoint(BaseModel):

@@ -690,7 +690,8 @@ async def record_shot_placement_by_all_courts_token(
     `SCORE_EVENT_NOT_FOUND`、`SCORE_EVENT_NOT_A_POINT`、
     `SHOT_PLACEMENT_ALREADY_RECORDED`、`PARTICIPANT_NOT_IN_MATCH`、
     `SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、`SCORING_AND_LOSING_PLAYER_SAME_TEAM`、
-    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`。"""
+    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`、
+    `ENDING_TYPE_CONTRADICTS_LANDING`、`ENDING_TYPE_CONTRADICTS_SERVE`（035）。"""
     _group, court = await _all_courts_court(token, court_id, session)
     await attach_shot_placement(
         session,
@@ -703,6 +704,7 @@ async def record_shot_placement_by_all_courts_token(
         else None,
         payload.landing_x,
         payload.landing_y,
+        ending_type=payload.ending_type,
     )
     return ShotPlacementAttachResponse()
 

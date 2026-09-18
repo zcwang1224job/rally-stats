@@ -96,6 +96,56 @@
           </div>
         </div>
       }
+
+      <!-- landingConflict() also shown here (not only on the players tab
+           below) — this IS the landing tab, and the fix (re-tapping the
+           court) happens here, so the scorer must not have to switch tabs
+           first to learn why nothing can be confirmed (see the class doc
+           comment on `landingConflict`). -->
+      @if (landingConflict()) {
+        <p class="hint hint--warning" data-landing-conflict>
+          {{ 'shotPlacement.landingConflict' | translate }}
+        </p>
+      }
+
+      <!-- 035-point-ending-type: how the rally ended — one row of chips
+           right under the court (it belongs with the landing, which is
+           what pre-selects it). Auto-filled where the landing leaves no
+           doubt, one tap otherwise, never required (FR-013). A chip the
+           landing contradicts is aria-disabled with its reason (kept
+           focusable), see disabledEndingTypes() in component.ts. The row
+           scrolls sideways on a narrow screen instead of wrapping, so it
+           never pushes the actions below out of view (SC-011). -->
+      <p class="hint ending-hint">
+        {{ 'shotPlacement.ending.label' | translate }}
+        @if (endingTypeIsAuto()) {
+          <span class="ending-auto-hint">{{ 'shotPlacement.ending.autoHint' | translate }}</span>
+        }
+      </p>
+      <div class="ending-chips" role="group" [attr.aria-label]="'shotPlacement.ending.label' | translate">
+        @for (kind of endingTypes; track kind) {
+          <button
+            type="button"
+            class="btn btn--secondary ending-chip"
+            [class.ending-chip--selected]="endingType() === kind"
+            [class.ending-chip--winner]="kind === 'winner'"
+            [attr.aria-pressed]="endingType() === kind"
+            [attr.aria-disabled]="disabledEndingTypes().includes(kind)"
+            [attr.title]="
+              !disabledEndingTypes().includes(kind)
+                ? null
+                : landingConflict()
+                  ? ('shotPlacement.landingConflict' | translate)
+                  : isServeFault()
+                    ? ('shotPlacement.ending.disabled.serveFaultLanding' | translate)
+                    : ('shotPlacement.ending.disabled.' + kind | translate)
+            "
+            (click)="pickEndingType(kind)"
+          >
+            {{ 'shotPlacement.ending.' + kind | translate }}
+          </button>
+        }
+      </div>
     </section>
 
     <!-- 032-score-then-record: the scoring team is already fixed

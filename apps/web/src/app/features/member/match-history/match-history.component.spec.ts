@@ -186,7 +186,7 @@ describe('MatchHistoryComponent', () => {
       const fixture = setup([], { dashboardCalls });
 
       expect(dashboardCalls).toEqual([[{}]]);
-      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(18);
+      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(23);
     });
 
     it('is fetched again when the filters change, never for a page flip', () => {

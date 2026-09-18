@@ -3,6 +3,7 @@
 // arrive as JSON object keys (i.e. strings) — index with String(roundNumber).
 
 import { ParticipantSummary, Team } from '../../features/group-admin/schedule-management/schedule.models';
+import { EndingType } from './court-live-state.models';
 
 // A per-round *tally*, not a single outcome: singles fair_rotation's full
 // round-robin can complete several matches for one Member within the same
@@ -92,6 +93,10 @@ export interface ShotPlacementDetail {
   losing_nickname: string | null;
   landing_x: number | null;
   landing_y: number | null;
+  // 035-point-ending-type: how the rally ended; null = not recorded
+  // (every pre-035 point included). Present whatever record_completeness
+  // is — a per-point fact, not a derivation.
+  ending_type: EndingType | null;
 }
 
 // 016-match-score-timeline: one +1/-1 scoring action, with its time
@@ -104,7 +109,7 @@ export interface ScoreEventSummary {
   score_b: number;
   elapsed_seconds: number;
   // research.md (032) Decision 2: null for a -1 event, a +1 event with no
-  // ShotPlacementRecord at all, or one whose four fields are all null.
+  // ShotPlacementRecord at all, or one whose five fields are all null.
   detail: ShotPlacementDetail | null;
 }
 
@@ -245,6 +250,45 @@ export interface ClutchStats {
   comeback: ClutchComeback | null; // null: the winner never trailed
 }
 
+// 035-point-ending-type: the per-match split of points into winners and
+// errors. Mirrors group/schemas.py's EndingStats.
+export interface ErrorsByType {
+  out: number;
+  net: number;
+  serve_fault: number;
+  other_error: number;
+}
+
+export interface TeamEndingStat {
+  team: Team;
+  winners: number;
+  // Errors THIS team committed (= points the other team got by error).
+  errors: number;
+  errors_by_type: ErrorsByType;
+}
+
+// winners + opponent_errors + scored_unrecorded = this player's
+// player_stats.scored_count; the lost triple likewise = fault_count.
+export interface PlayerEndingStat {
+  roster_entry_id: string;
+  nickname: string;
+  team: Team;
+  winners: number;
+  opponent_errors: number;
+  scored_unrecorded: number;
+  beaten_by_winners: number;
+  own_errors: number;
+  lost_unrecorded: number;
+}
+
+export interface EndingStats {
+  // Coverage: effective points with a recorded ending, out of all.
+  recorded_points: number;
+  total_points: number;
+  teams: TeamEndingStat[]; // always [A, B]
+  players: PlayerEndingStat[]; // every participant, team_a + team_b
+}
+
 // `record_completeness` distinguishes three states purely derived from
 // the events themselves (research.md #3, no deploy-timestamp dependency):
 // "complete" (first event is the match's real first point), "partial"
@@ -266,6 +310,9 @@ export interface MatchRecordDetailResponse extends MatchRecordSummary {
   landing_distribution: PlayerLandingDistribution[];
   // 034: same "complete record only" rule as the four above.
   clutch_stats: ClutchStats | null;
+  // 035: same rule again, and null as well when not one point of the
+  // match recorded an ending (every pre-035 match).
+  ending_stats: EndingStats | null;
 }
 
 export interface RoundWinRatePoint {

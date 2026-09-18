@@ -1,6 +1,7 @@
 import { Component, computed, input, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import {
+  DashboardErrorsByType,
   DashboardMetric,
   DashboardMetricKey,
   DashboardTrend,
@@ -10,8 +11,11 @@ import { CourtDiagramComponent, CourtMarker } from '../court-diagram/court-diagr
 import { DashboardMetricCardComponent } from './dashboard-metric-card/dashboard-metric-card.component';
 import { DashboardTrendChartComponent } from './dashboard-trend-chart/dashboard-trend-chart.component';
 
-type MetricGroup = 'serve' | 'clutch' | 'scoring';
-type LandingRange = 'all' | 'recent';
+type MetricGroup = 'serve' | 'clutch' | 'scoring' | 'ending';
+type Range = 'all' | 'recent';
+
+// 035: the error kinds in their fixed display order (same as the picker).
+const ERROR_KINDS: (keyof DashboardErrorsByType)[] = ['out', 'net', 'serve_fault', 'other_error'];
 
 // Exhaustive on purpose: a metric key added to the models without a home
 // here is a compile error, not a card that silently never renders.
@@ -34,9 +38,15 @@ const GROUP_OF: Record<DashboardMetricKey, MetricGroup> = {
   avg_points_against: 'scoring',
   avg_win_margin: 'scoring',
   avg_loss_margin: 'scoring',
+  // 035-point-ending-type
+  winner_share: 'ending',
+  winners_per_match: 'ending',
+  errors_per_match: 'ending',
+  error_share_of_lost: 'ending',
+  winner_error_ratio: 'ending',
 };
 
-const GROUPS: MetricGroup[] = ['serve', 'clutch', 'scoring'];
+const GROUPS: MetricGroup[] = ['serve', 'clutch', 'scoring', 'ending'];
 
 // Past this many markers they overlap too much to count one by one, so the
 // court switches to its dense style (research.md Decision 11).
@@ -49,8 +59,13 @@ const DENSE_ABOVE = 150;
  * whether a change is progress, arrives computed; the only data work here
  * is slicing the newest-first landing arrays to their recent prefix.
  *
- * Four native `<details>` groups, the first open, so the host page's own
- * content stays within reach on a phone (FR-007). */
+ * Five native `<details>` groups, the first open, so the host page's own
+ * content stays within reach on a phone (FR-007).
+ *
+ * 035-point-ending-type: one dashboard-level "all / recent N" switch
+ * (`range`) drives BOTH the landing map and the error breakdown — the
+ * two range-dependent pictures — so they can never show different
+ * windows side by side (035 research.md Decision 7). */
 @Component({
   selector: 'app-player-dashboard',
   imports: [
@@ -74,7 +89,12 @@ export class PlayerDashboardComponent {
   readonly groups = GROUPS;
 
   readonly metricsByGroup = computed<Record<MetricGroup, DashboardMetric[]>>(() => {
-    const grouped: Record<MetricGroup, DashboardMetric[]> = { serve: [], clutch: [], scoring: [] };
+    const grouped: Record<MetricGroup, DashboardMetric[]> = {
+      serve: [],
+      clutch: [],
+      scoring: [],
+      ending: [],
+    };
     for (const metric of this.dashboard()?.metrics ?? []) {
       // `?.`: a key from a newer backend is skipped rather than crashing.
       grouped[GROUP_OF[metric.key]]?.push(metric);
@@ -111,16 +131,53 @@ export class PlayerDashboardComponent {
     return `playerDashboard.metric.${key}.label`;
   }
 
-  // ---- landing (US4)
+  // ---- range (034 US4 landing, 035 error breakdown)
 
-  readonly landingRange = signal<LandingRange>('all');
-  readonly showScored = signal(true);
-  readonly showLost = signal(true);
+  readonly range = signal<Range>('all');
 
   /** "Recent" only exists when there is something to compare with. */
-  readonly effectiveRange = computed<LandingRange>(() =>
-    this.dashboard()?.has_comparison ? this.landingRange() : 'all',
+  readonly effectiveRange = computed<Range>(() =>
+    this.dashboard()?.has_comparison ? this.range() : 'all',
   );
+
+  /** "of M" next to a range-dependent block: the range's own match count. */
+  readonly rangeMatchTotal = computed(() => {
+    const dashboard = this.dashboard();
+    if (!dashboard) {
+      return 0;
+    }
+    return this.effectiveRange() === 'recent'
+      ? Math.min(dashboard.recent_window, dashboard.total_matches)
+      : dashboard.total_matches;
+  });
+
+  // ---- error breakdown (035 US3)
+
+  /** Four rows in a fixed order, each with its share of the range's own
+   * errors; null when nothing was recorded. `recent` is null only when
+   * there is no comparison, in which case the range is 'all' anyway. */
+  readonly errorBreakdownView = computed(() => {
+    const breakdown = this.dashboard()?.error_breakdown;
+    if (!breakdown) {
+      return null;
+    }
+    const counts =
+      this.effectiveRange() === 'recent' && breakdown.recent ? breakdown.recent : breakdown.all;
+    const total = ERROR_KINDS.reduce((sum, kind) => sum + counts[kind], 0);
+    return {
+      total,
+      rows: ERROR_KINDS.map((kind) => ({
+        kind,
+        count: counts[kind],
+        share: total > 0 ? counts[kind] / total : 0,
+      })),
+    };
+  });
+
+  // ---- landing (US4)
+
+  readonly showScored = signal(true);
+  readonly showLost = signal(true);
 
   readonly landingView = computed(() => {
     const landing = this.dashboard()?.landing;
@@ -149,15 +206,4 @@ export class PlayerDashboardComponent {
   });
 
   readonly dense = computed(() => this.markers().length > DENSE_ABOVE);
-
-  /** "of M" next to the landing block: the range's own match count. */
-  readonly landingMatchTotal = computed(() => {
-    const dashboard = this.dashboard();
-    if (!dashboard) {
-      return 0;
-    }
-    return this.effectiveRange() === 'recent'
-      ? Math.min(dashboard.recent_window, dashboard.total_matches)
-      : dashboard.total_matches;
-  });
 }
