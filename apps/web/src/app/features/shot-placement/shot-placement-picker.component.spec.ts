@@ -976,5 +976,81 @@ describe('ShotPlacementPickerComponent', () => {
       expect(chips(fixture).length).toBe(ENDING_TYPES.length);
       expect(fixture.nativeElement.querySelectorAll('.players-section .ending-chip').length).toBe(0);
     });
+
+    // --- landingConflict: no ending type explains a landing that
+    // contradicts who was credited the point (not even "serve_fault" when
+    // the credited side was itself serving — a fault always favors the
+    // RECEIVER, never the server) -------------------------------------
+
+    it('disables every chip when the credited side was serving and the landing lands on its own half', () => {
+      // A serves and A is credited the point, but the landing is on A's own
+      // half — official rules say A failed to return it, and it can't be a
+      // serve fault either (A was serving, not receiving), so this is a
+      // genuine contradiction, not a fault (component.ts's isServeFault()).
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+      tap(courtAreaEl, 100, 75); // x=0.25, A's own half
+
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.landingConflict()).toBe(true);
+      expect(fixture.componentInstance.isServeFault()).toBe(false);
+      expect(disabled(fixture)).toEqual([...ENDING_TYPES]);
+      expect(pressed(fixture)).toEqual([]);
+      expect(fixture.componentInstance.endingType()).toBeNull();
+      expect(confirmButton(fixture).disabled).toBe(true);
+    });
+
+    it('shows the landing-conflict warning on the landing tab itself, not only on the players tab', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+      tap(courtAreaEl, 100, 75);
+      fixture.detectChanges();
+
+      const landingSection = fixture.nativeElement.querySelector('.landing-section')!;
+      expect(landingSection.querySelector('[data-landing-conflict]')).not.toBeNull();
+      expect(landingSection.textContent).toContain('shotPlacement.landingConflict');
+    });
+
+    it('a chip disabled by a landing conflict cannot be picked either', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+      tap(courtAreaEl, 100, 75);
+      fixture.detectChanges();
+      chip(fixture, 'net').click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBeNull();
+    });
+
+    it('clears a hand-picked kind once the landing changes into a conflict, same as the player picks', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+      tap(courtAreaEl, 200, 75); // B's half — consistent with A credited
+      fixture.detectChanges();
+      chip(fixture, 'winner').click();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.endingType()).toBe('winner');
+
+      tap(courtAreaEl, 100, 75); // now A's own half — a conflict
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.endingType()).toBeNull();
+      expect(pressed(fixture)).toEqual([]);
+    });
+
+    it('still lets "out" auto-fill and no chip stays disabled once the landing moves back out of conflict', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
+
+      tap(courtAreaEl, 100, 75); // conflict
+      fixture.detectChanges();
+      expect(disabled(fixture)).toEqual([...ENDING_TYPES]);
+
+      tap(courtAreaEl, 200, 75); // B's half — consistent again
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.landingConflict()).toBe(false);
+      expect(disabled(fixture)).toEqual(['out']);
+    });
   });
 });

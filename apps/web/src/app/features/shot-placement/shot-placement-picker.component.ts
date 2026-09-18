@@ -247,13 +247,24 @@ export class ShotPlacementPickerComponent {
    * server would refuse can't be picked here in the first place — the
    * callers drop a failed request silently, which would lose the whole
    * row. The in/out judgement itself is `landingSide()`, pinned to the
-   * backend's by a shared boundary-vector table (035 data-model.md). */
+   * backend's by a shared boundary-vector table (035 data-model.md).
+   *
+   * `landingConflict()` takes priority over the plain in/out rule: e.g. A
+   * serving and A already credited the point, with the landing on A's OWN
+   * half, can never be explained by a serve fault either (a fault always
+   * favors the RECEIVER — see `isServeFault`'s doc comment) — no ending
+   * type is a valid explanation for a landing that contradicts who was
+   * credited, so every chip is disabled until the landing itself is fixed,
+   * matching the emptied player pools below. */
   readonly endingTypes = ENDING_TYPES;
   readonly manualEndingType = signal<EndingType | null | undefined>(undefined);
   readonly autoEndingType = computed<EndingType | null>(() =>
     this.landingSide() === 'out' ? 'out' : this.isServeFault() ? 'serve_fault' : null,
   );
   readonly disabledEndingTypes = computed<readonly EndingType[]>(() => {
+    if (this.landingConflict()) {
+      return this.endingTypes;
+    }
     const side = this.landingSide();
     return side === null ? [] : side === 'out' ? ['winner'] : ['out'];
   });
