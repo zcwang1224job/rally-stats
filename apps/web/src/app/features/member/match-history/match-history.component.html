@@ -96,6 +96,24 @@
   </form>
 </section>
 
+<!-- 036 US2: the player whose row was clicked. Outside the records block so
+     it stays put — and clearable — even when the result is empty. -->
+@if (pickedPlayer(); as picked) {
+  <p class="picked-player" data-picked-player>
+    <span class="picked-player__label">
+      {{
+        (picked.role === 'partner'
+          ? 'member.matchHistory.matchups.activePartner'
+          : 'member.matchHistory.matchups.activeOpponent'
+        ) | translate: { nickname: picked.record.nickname }
+      }}
+    </span>
+    <button type="button" class="btn btn--secondary picked-player__clear" (click)="clearPickedPlayer()">
+      {{ 'member.matchHistory.matchups.clear' | translate }}
+    </button>
+  </p>
+}
+
 @if (errorKey()) {
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (records(); as r) {
@@ -122,6 +140,21 @@
     </div>
   </section>
 
+  <!-- 036 US1: the conclusions first, the numbers behind them right below.
+       Rides on the dashboard response, so it follows the same filters and
+       shares its loading state; when that request fails the dashboard says
+       so and this simply stays out of the way (FR-007). -->
+  @if (!dashboardFailed()) {
+    <app-player-insights
+      [insights]="summaryInsights()"
+      [loading]="dashboardLoading()"
+      [pendingBenchmark]="benchmarkPending()"
+      [benchmarkOmittedByFilters]="benchmarkOmittedByFilters()"
+      (metricPicked)="focusMetric($event)"
+      (playerPicked)="focusMatchup($event)"
+    />
+  }
+
   <!-- 034: its own request, so a dashboard that fails or is still loading
        never holds back the record list above and below it. -->
   <app-player-dashboard
@@ -129,6 +162,18 @@
     [loading]="dashboardLoading()"
     [failed]="dashboardFailed()"
     [singlesCourt]="singlesOnly()"
+  />
+
+  <!-- 036 US3: collapsed and silent until opened — unless a group was chosen
+       on an earlier visit. Deliberately NOT bound to the filters above. -->
+  <app-group-benchmark
+    [groups]="benchmarkGroups()"
+    [selectedGroupId]="benchmarkGroupId()"
+    [benchmark]="benchmark()"
+    [loading]="benchmarkLoading()"
+    [failed]="benchmarkFailed()"
+    (opened)="startBenchmark()"
+    (groupChanged)="selectBenchmarkGroup($event)"
   />
 
   @if (r.total_matches > 0) {
@@ -169,29 +214,24 @@
       }
     </section>
 
-    <section class="card opponent-ranking">
-      <h2>{{ 'member.matchHistory.opponentRanking.title' | translate }}</h2>
-      @if (r.opponent_records.length === 0) {
-        <p class="chart-empty">{{ 'member.matchHistory.opponentRanking.empty' | translate }}</p>
-      } @else {
-        <ol class="ranking-list">
-          @for (opponent of r.opponent_records; track opponent.nickname; let i = $index) {
-            <li class="ranking-row">
-              <span class="ranking-row__rank">{{ rankBadge(i) }}</span>
-              <span class="ranking-row__name"><app-nickname [value]="opponent.nickname" /></span>
-              <div class="ranking-row__bar-track">
-                <div class="ranking-row__bar-fill" [style.width.%]="opponent.win_rate * 100"></div>
-              </div>
-              <span class="ranking-row__record">
-                {{ opponent.wins }}{{ 'member.matchHistory.stats.winShort' | translate }}
-                {{ opponent.losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}
-              </span>
-              <span class="ranking-row__rate">{{ (opponent.win_rate * 100).toFixed(0) }}%</span>
-            </li>
-          }
-        </ol>
-      }
-    </section>
+    <!-- 036 US2: replaces the opponent ranking. Partners first — "who do I
+         play well with" is the question a doubles club asks most. Rows are
+         keyed by who the player is, never by nickname. -->
+    <app-matchup-records
+      role="partner"
+      [records]="r.partner_records"
+      [mostPlayedKey]="r.matchup_highlights.most_played_partner"
+      [standoutKey]="r.matchup_highlights.best_partner"
+      [emptyKey]="r.doubles_matches === 0 ? 'member.matchHistory.matchups.noDoubles' : null"
+      (picked)="pickPlayer('partner', $event)"
+    />
+    <app-matchup-records
+      role="opponent"
+      [records]="r.opponent_records"
+      [mostPlayedKey]="r.matchup_highlights.most_faced_opponent"
+      [standoutKey]="r.matchup_highlights.toughest_opponent"
+      (picked)="pickPlayer('opponent', $event)"
+    />
   }
 
   @if (r.matches.length === 0) {

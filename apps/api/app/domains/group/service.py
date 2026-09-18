@@ -1015,13 +1015,19 @@ async def verify_ever_group_member(
     member call live operations again, a real authorization-boundary bug,
     not this feature's intent (research.md #3).
 
+    `.limit(1)` + `.first()`, NOT `scalar_one_or_none()`: `join_group()`
+    adds a new roster row on every join, so a member who left and came back
+    has several rows here and `scalar_one_or_none()` raised
+    `MultipleResultsFound` — a 500 for exactly the members 014 promises can
+    still read their history (036 research.md Decision 7).
+
     Errors: `GROUP_MEMBERSHIP_NEVER_HELD` (403)."""
     result = await session.execute(
-        select(RosterEntry.id).where(
-            RosterEntry.group_id == group_id, RosterEntry.member_id == member_id
-        )
+        select(RosterEntry.id)
+        .where(RosterEntry.group_id == group_id, RosterEntry.member_id == member_id)
+        .limit(1)
     )
-    if result.scalar_one_or_none() is None:
+    if result.first() is None:
         raise ApiError("GROUP_MEMBERSHIP_NEVER_HELD", status_code=403)
 
 
@@ -1563,6 +1569,28 @@ class MatchStatInputs:
     raw_events: list[match_stats.RawEvent]
     snapshots: dict[uuid.UUID, match_stats.ServeSnapshot]
     placements: dict[uuid.UUID, match_stats.Placement]
+
+
+async def load_group_completed_matches(
+    session: AsyncSession, group_id: uuid.UUID
+) -> list[tuple[Match, MatchRecordSummary]]:
+    """036-match-insights-benchmarks US3: every completed match of a group
+    with its participants — no filters, no pagination, newest first. Abandoned
+    matches never produce a result and are not here (Constitution III).
+
+    Public on purpose: `member.service.build_group_benchmark()` needs exactly
+    what `build_group_match_records()` loads, and should not reach into this
+    module's private helpers to get it. Two queries whatever the match count
+    (matches, then all their participants at once). Authorization is the
+    caller's job — this only loads."""
+    result = await session.execute(
+        _completed_matches_query()
+        .where(Match.group_id == group_id)
+        .order_by(Match.ended_at.desc(), Match.round_number.desc())
+    )
+    matches = list(result.scalars())
+    summaries = await _build_match_record_summaries(session, matches)
+    return list(zip(matches, summaries, strict=True))
 
 
 _STAT_INPUT_BATCH = 500

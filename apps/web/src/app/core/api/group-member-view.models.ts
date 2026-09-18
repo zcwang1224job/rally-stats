@@ -330,6 +330,25 @@ export interface OpponentRecord {
   win_rate: number;
 }
 
+// 036-match-insights-benchmarks US2: a partner or an opponent of one member,
+// keyed by WHO the player is — `m:<member_id>` for a member (across groups and
+// nicknames), `r:<roster_entry_id>` for an unbound guest — never by nickname.
+// Two rows may therefore share a nickname; track them by `player_key`.
+export interface MatchupRecord extends OpponentRecord {
+  player_key: string;
+  member_id: string | null;
+  avg_margin: number; // my score minus theirs, per match; may be negative
+  low_sample: boolean; // fewer than 3 matches: listed, flagged, never singled out
+}
+
+/** Player keys; null when nobody has played enough to be named. */
+export interface MatchupHighlights {
+  most_played_partner: string | null;
+  best_partner: string | null;
+  most_faced_opponent: string | null;
+  toughest_opponent: string | null;
+}
+
 export interface MemberMatchRecordsResponse {
   matches: MemberMatchRecordSummary[];
   total_matches: number;
@@ -337,7 +356,11 @@ export interface MemberMatchRecordsResponse {
   total_losses: number;
   win_rate: number;
   round_win_rates: RoundWinRatePoint[];
-  opponent_records: OpponentRecord[];
+  opponent_records: MatchupRecord[];
+  // 036: like opponent_records, these cover the whole filtered set.
+  partner_records: MatchupRecord[];
+  matchup_highlights: MatchupHighlights;
+  doubles_matches: number; // 0 → "singles has no partner", not an empty table
   page: number;
   total_pages: number;
 }
@@ -359,6 +382,10 @@ export interface MemberMatchRecordFilters {
   opponent_score_cmp?: MatchRecordScoreComparison;
   opponent_score?: number;
   match_mode?: 'singles' | 'doubles';
+  // 036 US2: a click on a partner/opponent row — exact identity, unlike the
+  // nickname-substring filters above.
+  partner_key?: string;
+  opponent_key?: string;
 }
 
 export interface LeaveGroupResponse {

@@ -1,0 +1,96 @@
+<!-- Open by default: the opponent ranking this replaces was always visible,
+     and SC-005's "two clicks to one partner's matches" counts from here. -->
+<details class="matchups card" [attr.data-role]="role()" open>
+  <summary class="matchups__title">{{ titleKey() | translate }}</summary>
+
+  @if (records().length === 0) {
+    <p class="matchups__empty" data-empty>
+      {{ (emptyKey() ?? 'member.matchHistory.matchups.empty') | translate }}
+    </p>
+  } @else {
+    @if (highlights().length > 0) {
+      <ul class="matchups__highlights" data-highlights>
+        @for (highlight of highlights(); track highlight.labelKey) {
+          <li>
+            <span class="matchups__highlight-label">{{ highlight.labelKey | translate }}</span>
+            <app-nickname [value]="highlight.record.nickname" />
+            <span class="matchups__highlight-figure">
+              {{
+                'member.matchHistory.matchups.highlights.figure'
+                  | translate
+                    : {
+                        matches: highlight.record.matches,
+                        rate: percent(highlight.record.win_rate),
+                      }
+              }}
+            </span>
+          </li>
+        }
+      </ul>
+    }
+
+    <div class="matchups__sort" role="group" [attr.aria-label]="'member.matchHistory.matchups.sort.label' | translate">
+      <span class="matchups__sort-label" aria-hidden="true">
+        {{ 'member.matchHistory.matchups.sort.label' | translate }}
+      </span>
+      @for (option of sorts; track option) {
+        <button
+          type="button"
+          class="matchups__sort-button"
+          [attr.data-sort]="option"
+          [attr.aria-pressed]="sort() === option"
+          (click)="sort.set(option)"
+        >
+          {{ 'member.matchHistory.matchups.sort.' + option | translate }}
+        </button>
+      }
+    </div>
+
+    <ol class="matchups__list">
+      @for (record of sorted(); track record.player_key) {
+        <li [attr.id]="rowId(record)" class="matchups__item" [attr.data-player]="record.player_key">
+          <!-- One template, two wrappers: a button when the page can act on
+               the click, a plain row when it cannot (friend's page). -->
+          <ng-template #cells>
+            <!-- Name and flag share ONE grid cell: a row with the flag must
+                 not have more cells than a row without it, or the phone
+                 layout (three columns) wraps the figures onto a line of
+                 their own. -->
+            <span class="matchup__who">
+              <span class="matchup__name"><app-nickname [value]="record.nickname" /></span>
+              @if (record.low_sample) {
+                <span class="matchup__flag" data-low-sample>
+                  {{ 'member.matchHistory.matchups.lowSample' | translate }}
+                </span>
+              }
+            </span>
+            <span class="matchup__bar-track" aria-hidden="true">
+              <span class="matchup__bar-fill" [style.width.%]="record.win_rate * 100"></span>
+            </span>
+            <span class="matchup__record">
+              {{
+                'member.matchHistory.matchups.record'
+                  | translate: { matches: record.matches, wins: record.wins, losses: record.losses }
+              }}
+            </span>
+            <span class="matchup__rate" data-rate>{{ percent(record.win_rate) }}</span>
+            <span class="matchup__margin" data-margin>
+              <span class="matchup__margin-label">
+                {{ 'member.matchHistory.matchups.margin' | translate }}
+              </span>
+              {{ margin(record.avg_margin) }}
+            </span>
+          </ng-template>
+
+          @if (clickable()) {
+            <button type="button" class="matchup matchup--button" (click)="picked.emit(record)">
+              <ng-container [ngTemplateOutlet]="cells" />
+            </button>
+          } @else {
+            <div class="matchup"><ng-container [ngTemplateOutlet]="cells" /></div>
+          }
+        </li>
+      }
+    </ol>
+  }
+</details>

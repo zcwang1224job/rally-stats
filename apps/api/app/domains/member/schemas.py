@@ -417,6 +417,52 @@ class DashboardErrorBreakdown(BaseModel):
     recent: ErrorsByType | None
 
 
+# 036-match-insights-benchmarks US1 (member/insights.py): a rule code plus the
+# numbers behind it — never a sentence (Constitution VIII); the frontend owns
+# the wording. The Literal sets mirror `insights.py`; a unit test compares them.
+InsightRule = Literal[
+    "rate_vs_overall",
+    "deuce_vs_even",
+    "error_share_high",
+    "winner_share_high",
+    "recent_change",
+    "partner_above_overall",
+    "opponent_below_overall",
+    "benchmark_quartile",
+]
+
+
+class DashboardInsightPlayer(BaseModel):
+    key: str
+    nickname: str
+    member_id: str | None
+
+
+class DashboardInsight(BaseModel):
+    rule: InsightRule
+    level: Literal["strong", "mild"]
+    source: Literal["benchmark", "self", "trend", "matchup"]
+    metric_key: str | None
+    player: DashboardInsightPlayer | None
+    params: dict[str, float | int | str | None]
+    # Declared last: a field called `list` shadows the builtin for every
+    # annotation below it in this class body.
+    list: Literal["strength", "weakness", "recent", "matchup"]
+
+
+class DashboardInsights(BaseModel):
+    # insufficient_data: no rule had enough to go on; balanced: some did and
+    # nothing stood out. Either way all four lists are empty.
+    status: Literal["ok", "insufficient_data", "balanced"] = "insufficient_data"
+    # Set only by the group-benchmark endpoint, whose insights merge in the
+    # in-group source; always None on the dashboard endpoints (FR-037).
+    benchmark_group_name: str | None = None
+    strengths: list[DashboardInsight] = []
+    weaknesses: list[DashboardInsight] = []
+    recent: list[DashboardInsight] = []
+    matchups: list[DashboardInsight] = []
+
+
 class MemberMatchDashboardResponse(BaseModel):
     total_matches: int
     recent_window: int
@@ -427,3 +473,92 @@ class MemberMatchDashboardResponse(BaseModel):
     landing: DashboardLanding | None
     # 035: None when not one of the member's errors was ever recorded.
     error_breakdown: DashboardErrorBreakdown | None = None
+    # 036: follows the same filters as `metrics` (FR-019).
+    insights: DashboardInsights = DashboardInsights()
+
+
+# 036-match-insights-benchmarks US3: the in-group comparison
+# (member/group_benchmark.py).
+class BenchmarkGroupOption(BaseModel):
+    group_id: str
+    group_number: int
+    name: str
+    status: str  # the group's own status (active / disbanded)
+    member_status: Literal["active", "left", "kicked"]  # mine, as in 014's 我的團
+    my_completed_matches: int
+
+
+class BenchmarkGroupsResponse(BaseModel):
+    # Most of my matches first; the first one is the default choice (FR-027).
+    groups: list[BenchmarkGroupOption]
+
+
+class GroupBenchmarkGroup(BaseModel):
+    group_id: str
+    name: str
+
+
+class GroupBenchmarkMetric(BaseModel):
+    """ANONYMOUS BY SHAPE (FR-032, Clarifications 2026-09-18): there is no
+    field here that could carry another player's name, key or individual
+    value — so there is nothing for a handler to forget to strip, and Pydantic
+    drops anything that is not declared. Do not add a per-player list to this
+    model without revisiting that decision.
+
+    The pure result's `rank_from_bottom` is deliberately absent: it exists for
+    `insights` only."""
+
+    key: str
+    kind: Literal["rate", "average", "ratio"]
+    better_when: Literal["higher", "lower"] | None
+    mine: DashboardMetricValue | None  # my value over THIS group's matches only
+    status: Literal["ok", "pool_too_small", "self_below_minimum", "no_direction"]
+    group_average: float | None
+    pool_size: int
+    rank: int | None
+
+
+class GroupBenchmarkResponse(BaseModel):
+    group: GroupBenchmarkGroup
+    total_matches: int  # every completed match of the group: the fixed range (FR-028)
+    my_matches: int
+    metrics: list[GroupBenchmarkMetric]  # all 23, dashboard order
+    # My UNFILTERED cross-group summary with the in-group source merged in by
+    # the same `insights.derive()` — the page shows this instead of the
+    # dashboard's own insights while no filter is active (FR-033, FR-034).
+    insights: DashboardInsights
+
+
+# 036-match-insights-benchmarks US4: a friend's numbers next to mine.
+class ComparisonMetric(BaseModel):
+    key: str
+    kind: Literal["rate", "average", "ratio"]
+    better_when: Literal["higher", "lower"] | None
+    friend: DashboardMetricValue | None
+    me: DashboardMetricValue | None
+    # None: no direction, or either side has no value / fewer than 3 matches
+    # behind it — never a verdict on a sample that thin (US4-2).
+    better: Literal["me", "friend", "tie"] | None
+
+
+class HeadToHeadTally(BaseModel):
+    """From the VIEWER's side: `wins` are mine, `avg_margin` mine minus theirs."""
+
+    matches: int
+    wins: int
+    losses: int
+    win_rate: float
+    avg_margin: float
+
+
+class HeadToHeadResponse(BaseModel):
+    as_opponents: HeadToHeadTally | None  # None: never played against each other
+    as_partners: HeadToHeadTally | None  # None: never partnered
+
+
+class MatchComparisonResponse(BaseModel):
+    friend_total_matches: int
+    my_total_matches: int
+    metrics: list[ComparisonMetric]  # all 23, dashboard order, unfiltered
+    head_to_head: HeadToHeadResponse
+

@@ -284,6 +284,31 @@
       "opponentRanking": {
         "title": "Opponent Records",
         "empty": "No opponent data yet"
+      },
+      "matchups": {
+        "partnerTitle": "Partners",
+        "opponentTitle": "Opponents",
+        "empty": "Nobody to list yet",
+        "noDoubles": "Singles has no partner. Once you play doubles, your record with each partner shows up here.",
+        "lowSample": "few matches",
+        "record": "{{matches}} played · {{wins}} won, {{losses}} lost",
+        "margin": "Avg. margin",
+        "sort": {
+          "label": "Sort by",
+          "matches": "Matches",
+          "win_rate": "Win rate",
+          "avg_margin": "Avg. margin"
+        },
+        "highlights": {
+          "partnerMost": "Most played with",
+          "partnerStandout": "Best win rate together",
+          "opponentMost": "Most faced",
+          "opponentStandout": "Lowest win rate against",
+          "figure": "{{matches}} matches · {{rate}} won"
+        },
+        "activePartner": "Only matches partnered with {{nickname}}",
+        "activeOpponent": "Only matches against {{nickname}}",
+        "clear": "Clear this filter"
       }
     },
     "nicknameSectionTitle": "Nickname",
@@ -811,6 +836,117 @@
       }
     }
   },
+  "playerInsights": {
+    "title": "Strengths and weaknesses",
+    "loading": "Working out your strengths and weaknesses…",
+    "list": {
+      "strength": "Strengths",
+      "weakness": "To work on",
+      "recent": "Recent changes",
+      "matchup": "Partners and opponents"
+    },
+    "listEmpty": {
+      "strength": "Nothing stands out as a strength yet",
+      "weakness": "Nothing is clearly lagging",
+      "recent": "Recent form is about the same as overall",
+      "matchup": "No partner or opponent stands out yet"
+    },
+    "tone": {
+      "strength": "Strength",
+      "weakness": "To work on",
+      "matchup": "Matchup"
+    },
+    "status": {
+      "insufficientData": "Not enough data yet: after a few matches with a point-by-point record, this will point out your strengths and what is most worth working on.",
+      "balanced": "Your game is balanced right now: nothing stands out and nothing lags."
+    },
+    "benchmarkPending": "Adding the in-group comparison…",
+    "benchmarkOmittedByFilters": "Filters are active, so the summary leaves out the in-group comparison (the two cover different matches).",
+    "benchmarkIncluded": "Includes the in-group comparison for “{{group}}”.",
+    "evidence": {
+      "points": "{{numerator}}/{{denominator}} points · based on {{matches}} matches",
+      "recent": "{{matches}} recent matches have this data",
+      "matchup": "{{wins}} won, {{losses}} lost · {{matches}} matches",
+      "benchmark": "Rank {{rank}} of {{pool}}"
+    },
+    "rule": {
+      "rate_vs_overall": {
+        "strength": "{{metric}} is {{value}}, above the {{baseline}} your results in these matches would predict ({{diff}} points higher)",
+        "weakness": "{{metric}} is {{value}}, below the {{baseline}} your results in these matches would predict ({{diff}} points lower)"
+      },
+      "deuce_vs_even": {
+        "strength": "In deuce you win {{value}} of the points, better than even",
+        "weakness": "In deuce you win {{value}} of the points, worse than even"
+      },
+      "error_share_high": {
+        "weakness": "{{value}} of the points you lose come from your own errors",
+        "weaknessDominant": "{{value}} of the points you lose come from your own errors, and {{dominantShare}} of those are {{dominant}}"
+      },
+      "winner_share_high": {
+        "strength": "{{value}} of the points you win are winners of your own"
+      },
+      "recent_change": {
+        "improved": "{{metric}} is {{recentValue}} lately, against {{allValue}} overall",
+        "declined": "{{metric}} is {{recentValue}} lately, against {{allValue}} overall"
+      },
+      "partner_above_overall": {
+        "matchup": "With {{nickname}} you win {{winRate}}, above your overall doubles win rate of {{baseline}}"
+      },
+      "opponent_below_overall": {
+        "matchup": "Against {{nickname}} you win {{winRate}}, below your overall win rate of {{baseline}}"
+      },
+      "benchmark_quartile": {
+        "strength": "{{metric}} is {{mine}}, better than the “{{group}}” average of {{groupAverage}} — rank {{rank}} of {{pool}}",
+        "weakness": "{{metric}} is {{mine}}, behind the “{{group}}” average of {{groupAverage}} — rank {{rank}} of {{pool}}"
+      }
+    }
+  },
+  "groupBenchmark": {
+    "title": "Compare within a group",
+    "intro": "Pick a group you have belonged to and see each metric's group average and where you rank. No other player's name or individual number is ever shown.",
+    "pickGroup": "Group",
+    "myMatches": "{{count}} of my matches",
+    "groupStatus": {
+      "left": "left",
+      "kicked": "removed",
+      "disbanded": "disbanded"
+    },
+    "scopeNote": "Always worked out from all {{total}} matches of “{{group}}” ({{mine}} of them yours) — the filters above do not apply here.",
+    "noGroups": "You have not joined any group as a member yet. Once you do, you can compare with the people you play with here.",
+    "columns": {
+      "mine": "Me",
+      "average": "Group average",
+      "rank": "My rank"
+    },
+    "pool": "{{count}} players",
+    "rank": "Rank {{rank}} of {{pool}}",
+    "status": {
+      "poolTooSmall": "Not enough players: only {{count}} have five matches with this data in this group",
+      "selfBelowMinimum": "You have too few matches in this group to be ranked",
+      "noDirection": "No better or worse for this one, so no rank"
+    },
+    "loading": "Working out the group comparison…",
+    "failed": "The group comparison could not be loaded. Everything else is unaffected."
+  },
+  "friendComparison": {
+    "toggle": "Compare with me",
+    "friend": "{{nickname}}",
+    "friendGeneric": "Friend",
+    "me": "Me",
+    "basedOn": "{{used}} matches",
+    "better": "better",
+    "tie": "level",
+    "loading": "Comparing…",
+    "failed": "The comparison could not be loaded. Everything else is unaffected.",
+    "headToHead": {
+      "title": "Our record against and with each other",
+      "asOpponents": "As opponents",
+      "asPartners": "As partners",
+      "tally": "{{matches}} played · I won {{wins}}, lost {{losses}} · avg. margin {{margin}}",
+      "neverOpponents": "Never played against each other",
+      "neverPartners": "Never partnered"
+    }
+  },
   "matchRecordDetail": {
     "title": "Match Details",
     "close": "Close",
@@ -1040,6 +1176,7 @@
     "INVITE_ALREADY_PENDING": "An invite has already been sent to this friend and is awaiting a response",
     "GROUP_INVITE_NOT_FOUND": "Group invite not found",
     "GROUP_INVITE_NOT_PENDING": "This invite has already been handled",
-    "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records"
+    "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records",
+    "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again."
   }
 }

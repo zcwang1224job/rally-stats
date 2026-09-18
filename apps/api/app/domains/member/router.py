@@ -19,18 +19,22 @@ from app.domains.group.schemas import MatchRecordDetailResponse, MemberMatchReco
 from app.domains.member import security, service
 from app.domains.member.models import Member
 from app.domains.member.oauth_providers import Provider
+from app.domains.member.player_identity import parse_player_key
 from app.domains.member.schemas import (
     AddEmailRequest,
     AddEmailResponse,
+    BenchmarkGroupsResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
+    GroupBenchmarkResponse,
     LoginRecordsResponse,
     LoginRequest,
     LoginResponse,
+    MatchComparisonResponse,
     MemberGroupHistoryResponse,
     MemberMatchDashboardResponse,
     MemberPublicResponse,
@@ -375,6 +379,37 @@ async def search_member(
     return await service.search_member(session, user_number, member.id)
 
 
+@router.get("/members/me/benchmark-groups", response_model=BenchmarkGroupsResponse)
+async def get_benchmark_groups(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BenchmarkGroupsResponse:
+    """036-match-insights-benchmarks US3 (FR-027): the groups this member
+    can compare within — every group they ever held a roster row in, whatever
+    its or their status — with their completed-match count in each, most
+    first. Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`."""
+    return await service.list_benchmark_groups(session, member.id)
+
+
+@router.get("/members/me/group-benchmark", response_model=GroupBenchmarkResponse)
+async def get_group_benchmark(
+    group_id: Annotated[uuid.UUID, Query()],
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GroupBenchmarkResponse:
+    """036-match-insights-benchmarks US3: per dashboard metric, the group's
+    average, the number of players behind it, and this member's rank — always
+    over ALL of the group's completed matches; this endpoint takes no filter
+    (FR-028, FR-032), and any other query parameter is ignored.
+
+    The response carries nothing about any other player (FR-032): see
+    `GroupBenchmarkMetric`. Authorization is 014's "ever a formal member",
+    checked on every request (FR-038). Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `GROUP_MEMBERSHIP_NEVER_HELD` (403 — also for a
+    group that does not exist)."""
+    return await service.build_group_benchmark(session, member.id, group_id)
+
+
 @router.get("/members/me/groups", response_model=MyGroupsResponse)
 async def get_my_groups(
     member: Annotated[Member, Depends(security.require_verified_member)],
@@ -480,6 +515,8 @@ async def get_member_match_records(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計。
     `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
@@ -514,6 +551,8 @@ async def get_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 
@@ -532,6 +571,19 @@ async def get_member_match_record_detail(
     return await service.get_member_match_record_detail(session, member.id, match_id)
 
 
+def _checked_player_key(value: str | None) -> str | None:
+    """036 US2: `partner_key` / `opponent_key` are `m:<uuid>` / `r:<uuid>`.
+    Anything else is a client bug, not an empty result. Errors:
+    `INVALID_PLAYER_KEY` (422)."""
+    if value is None:
+        return None
+    try:
+        parse_player_key(value)
+    except ValueError as error:
+        raise ApiError("INVALID_PLAYER_KEY", status_code=422) from error
+    return value
+
+
 def match_filters_query(
     opponent1: Annotated[str | None, Query(max_length=20)] = None,
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
@@ -546,6 +598,8 @@ def match_filters_query(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> service.MemberMatchFilters:
     """034-clutch-points-player-dashboard: the 13 filter query parameters of
     `/members/me/match-records` — same names, same validation, no `page` —
@@ -565,6 +619,8 @@ def match_filters_query(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 
@@ -658,6 +714,22 @@ async def get_viewed_member_match_dashboard(
     return await service.view_member_match_dashboard(session, member.id, member_id, filters)
 
 
+@router.get("/members/{member_id}/match-comparison", response_model=MatchComparisonResponse)
+async def get_viewed_member_match_comparison(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MatchComparisonResponse:
+    """036-match-insights-benchmarks US4: the friend's 23 unfiltered metrics
+    next to the viewer's own, which side is better where that can be said, and
+    the two players' head-to-head record. Read-only; nobody is notified
+    (FR-039). Declared after every `/members/me/...` route, like the other
+    `/{member_id}/...` ones. Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `SELF_VIEW_NOT_SUPPORTED`, `MEMBER_NOT_FOUND`,
+    `FRIENDSHIP_REQUIRED`, `MATCH_RECORDS_PRIVATE`."""
+    return await service.view_member_match_comparison(session, member.id, member_id)
+
+
 @router.get(
     "/members/{member_id}/match-records", response_model=MemberMatchRecordsResponse
 )
@@ -679,6 +751,8 @@ async def get_viewed_member_match_records(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """022-member-personal-settings FR-018/FR-019 (好友檢視他人戰績):
     query 參數與既有 `/members/me/match-records` 完全相同、直接透傳
@@ -703,6 +777,8 @@ async def get_viewed_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 

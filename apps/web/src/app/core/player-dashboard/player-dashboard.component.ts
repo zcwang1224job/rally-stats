@@ -1,4 +1,4 @@
-import { Component, computed, input, signal } from '@angular/core';
+import { Component, ElementRef, computed, inject, input, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import {
   DashboardErrorsByType,
@@ -87,6 +87,26 @@ export class PlayerDashboardComponent {
   readonly singlesCourt = input(false);
 
   readonly groups = GROUPS;
+
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+
+  /** 036 FR-010: bring one metric's card into view — open the group it
+   * lives in, scroll to it, and move focus there so a keyboard or screen
+   * reader user ends up in the same place a sighted one does. An unknown key,
+   * or a dashboard that is not rendered yet, is simply ignored. */
+  focusMetric(key: DashboardMetricKey): void {
+    const root = this.host.nativeElement;
+    const group = root.querySelector<HTMLDetailsElement>(
+      `details[data-group="${GROUP_OF[key]}"]`,
+    );
+    const card = root.querySelector<HTMLElement>(`#metric-${key}`);
+    if (!group || !card) {
+      return;
+    }
+    group.open = true;
+    card.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    card.focus({ preventScroll: true });
+  }
 
   readonly metricsByGroup = computed<Record<MetricGroup, DashboardMetric[]>>(() => {
     const grouped: Record<MetricGroup, DashboardMetric[]> = {

@@ -1,10 +1,19 @@
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
+import {
+  BenchmarkGroupOption,
+  BenchmarkGroupsResponse,
+  GroupBenchmarkResponse,
+} from '../../../core/api/group-benchmark.models';
 import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
-import { dashboardFixture } from '../../../core/player-dashboard/dashboard-fixtures';
+import {
+  dashboardFixture,
+  insightFixture,
+  insightsFixture,
+} from '../../../core/player-dashboard/dashboard-fixtures';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import { MatchHistoryComponent } from './match-history.component';
@@ -31,10 +40,67 @@ const recordsResponse: MemberMatchRecordsResponse = {
   total_losses: 0,
   win_rate: 1,
   round_win_rates: [{ round_number: 1, wins: 1, losses: 0, win_rate: 1 }],
-  opponent_records: [{ nickname: '小華', wins: 1, losses: 0, matches: 1, win_rate: 1 }],
+  opponent_records: [
+    {
+      player_key: 'm:m2',
+      member_id: 'm2',
+      nickname: '小華',
+      wins: 1,
+      losses: 0,
+      matches: 1,
+      win_rate: 1,
+      avg_margin: 6,
+      low_sample: true,
+    },
+  ],
+  partner_records: [
+    {
+      player_key: 'r:p1',
+      member_id: null,
+      nickname: '阿哲',
+      wins: 4,
+      losses: 2,
+      matches: 6,
+      win_rate: 0.6667,
+      avg_margin: 2.5,
+      low_sample: false,
+    },
+  ],
+  matchup_highlights: {
+    most_played_partner: 'r:p1',
+    best_partner: 'r:p1',
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 6,
   page: 1,
   total_pages: 1,
 };
+
+const BENCHMARK_GROUPS: BenchmarkGroupOption[] = [
+  { group_id: 'g-busy', group_number: 1, name: '週三羽球', status: 'active', member_status: 'active', my_completed_matches: 86 },
+  { group_id: 'g-old', group_number: 2, name: '老球友', status: 'active', member_status: 'left', my_completed_matches: 12 },
+];
+
+function benchmarkResponse(groupId: string): GroupBenchmarkResponse {
+  return {
+    group: { group_id: groupId, name: groupId === 'g-busy' ? '週三羽球' : '老球友' },
+    total_matches: 200,
+    my_matches: 86,
+    metrics: [],
+    insights: insightsFixture({
+      benchmark_group_name: '週三羽球',
+      strengths: [
+        insightFixture({
+          rule: 'benchmark_quartile',
+          source: 'benchmark',
+          metric_key: 'team_serve',
+          params: { mine: 0.6, group_average: 0.5, diff: 0.1, rank: 1, pool_size: 12, kind: 'rate' },
+        }),
+      ],
+    }),
+  };
+}
 
 const defaultCandidates: InviteCandidatesResponse = {
   candidates: [{ member_id: 'm2', friendship_status: 'none', invite_eligible: true }],
@@ -48,6 +114,11 @@ function setup(
     selfMemberId?: string | null;
     dashboard?: Observable<MemberMatchDashboardResponse>;
     dashboardCalls?: unknown[][];
+    recordCalls?: unknown[][];
+    benchmarkGroups?: Observable<BenchmarkGroupsResponse>;
+    benchmark?: (groupId: string) => Observable<GroupBenchmarkResponse>;
+    benchmarkCalls?: string[];
+    benchmarkGroupCalls?: unknown[][];
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -57,10 +128,21 @@ function setup(
       {
         provide: AuthService,
         useValue: {
-          getMatchRecords: () => of(options.records ?? recordsResponse),
+          getMatchRecords: (...args: unknown[]) => {
+            options.recordCalls?.push(args);
+            return of(options.records ?? recordsResponse);
+          },
           getMatchDashboard: (...args: unknown[]) => {
             options.dashboardCalls?.push(args);
             return options.dashboard ?? of(dashboardFixture());
+          },
+          getBenchmarkGroups: (...args: unknown[]) => {
+            options.benchmarkGroupCalls?.push(args);
+            return options.benchmarkGroups ?? of({ groups: BENCHMARK_GROUPS });
+          },
+          getGroupBenchmark: (groupId: string) => {
+            options.benchmarkCalls?.push(groupId);
+            return (options.benchmark ?? ((id: string) => of(benchmarkResponse(id))))(groupId);
           },
           getMatchRecordDetail: (...args: unknown[]) => {
             detailCalls.push(args);
@@ -226,6 +308,319 @@ describe('MatchHistoryComponent', () => {
       expect(root.querySelectorAll('.match-card').length).toBe(1);
       expect(root.querySelector('app-player-dashboard [data-state="failed"]')).not.toBeNull();
       expect(root.querySelector('app-player-dashboard [data-metric]')).toBeNull();
+      // 036: the summary rides on the same request — it stays out of the way.
+      expect(root.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US3 (T042)
+  describe('in-group comparison', () => {
+    const SELF = 'self-id';
+    const KEY = `rally-stats:benchmark-group:${SELF}`;
+    const ownSummary = () =>
+      of(
+        dashboardFixture({
+          insights: insightsFixture({
+            strengths: [insightFixture({ metric_key: 'endgame' })],
+          }),
+        }),
+      );
+    const open = (fixture: ReturnType<typeof setup>) => {
+      const details = (fixture.nativeElement as HTMLElement).querySelector<HTMLDetailsElement>(
+        'app-group-benchmark details',
+      )!;
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    };
+    const summaryRules = (fixture: ReturnType<typeof setup>) =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('app-player-insights .insight'),
+      ).map((node) => node.getAttribute('data-rule'));
+
+    afterEach(() => localStorage.clear());
+
+    it('(a) asks for nothing until the block is opened, then uses my busiest group', () => {
+      const benchmarkCalls: string[] = [];
+      const benchmarkGroupCalls: unknown[][] = [];
+      const fixture = setup([], { benchmarkCalls, benchmarkGroupCalls });
+      expect(benchmarkGroupCalls.length).toBe(0);
+      expect(benchmarkCalls.length).toBe(0);
+
+      open(fixture);
+
+      expect(benchmarkGroupCalls.length).toBe(1);
+      expect(benchmarkCalls).toEqual(['g-busy']);
+      expect(localStorage.getItem(KEY)).toBe('g-busy');
+      open(fixture); // opening again is not another request
+      expect(benchmarkGroupCalls.length).toBe(1);
+    });
+
+    it('(b) a group chosen on an earlier visit loads by itself, after the dashboard', () => {
+      localStorage.setItem(KEY, 'g-old');
+      const benchmarkCalls: string[] = [];
+      setup([], { benchmarkCalls });
+      expect(benchmarkCalls).toEqual(['g-old']);
+    });
+
+    it('(c) choosing another group remembers it and asks again', () => {
+      const benchmarkCalls: string[] = [];
+      const fixture = setup([], { benchmarkCalls });
+      open(fixture);
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+        'app-group-benchmark select',
+      )!;
+
+      select.value = 'g-old';
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect(benchmarkCalls).toEqual(['g-busy', 'g-old']);
+      expect(localStorage.getItem(KEY)).toBe('g-old');
+    });
+
+    it('(d) a remembered group that is no longer mine falls back to the default', () => {
+      localStorage.setItem(KEY, 'g-gone');
+      const benchmarkCalls: string[] = [];
+      setup([], { benchmarkCalls });
+      expect(benchmarkCalls).toEqual(['g-busy']);
+      expect(localStorage.getItem(KEY)).toBe('g-busy');
+    });
+
+    it('(e) shows the merged summary while no filter is active, my own under a filter', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const fixture = setup([], { dashboard: ownSummary() });
+      const root: HTMLElement = fixture.nativeElement;
+      fixture.detectChanges();
+      expect(summaryRules(fixture)).toEqual(['benchmark_quartile']);
+      expect(root.querySelector('[data-benchmark-group]')).not.toBeNull();
+
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      fixture.componentInstance.applyFilters();
+      fixture.detectChanges();
+
+      expect(summaryRules(fixture)).toEqual(['rate_vs_overall']);
+      expect(root.querySelector('[data-benchmark-omitted]')).not.toBeNull();
+
+      fixture.componentInstance.clearFilters();
+      fixture.detectChanges();
+      expect(summaryRules(fixture)).toEqual(['benchmark_quartile']);
+      expect(root.querySelector('[data-benchmark-omitted]')).toBeNull();
+    });
+
+    it('(e) says so while the benchmark is on its way', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const pending = new Subject<GroupBenchmarkResponse>();
+      const fixture = setup([], { dashboard: ownSummary(), benchmark: () => pending });
+      fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+      expect(root.querySelector('[data-benchmark-pending]')).not.toBeNull();
+      expect(summaryRules(fixture)).toEqual(['rate_vs_overall']); // mine, meanwhile
+
+      pending.next(benchmarkResponse('g-busy'));
+      fixture.detectChanges();
+      expect(root.querySelector('[data-benchmark-pending]')).toBeNull();
+      expect(summaryRules(fixture)).toEqual(['benchmark_quartile']);
+    });
+
+    it('(f) a failure stays inside its own block', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const fixture = setup([], {
+        dashboard: ownSummary(),
+        benchmark: () => throwError(() => new Error('boom')),
+      });
+      fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelector('app-group-benchmark [data-failed]')).not.toBeNull();
+      expect(summaryRules(fixture)).toEqual(['rate_vs_overall']);
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(23);
+    });
+
+    it('is never bound to the page filters', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const benchmarkCalls: string[] = [];
+      const fixture = setup([], { benchmarkCalls });
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      fixture.componentInstance.applyFilters();
+      expect(benchmarkCalls).toEqual(['g-busy']); // asked once, not again per filter
+    });
+  });
+
+  // 036-match-insights-benchmarks US2 (T027)
+  describe('partners and opponents', () => {
+    it('replaces the opponent ranking with a partner table and an opponent table', () => {
+      const root: HTMLElement = setup([]).nativeElement;
+
+      expect(root.querySelector('.opponent-ranking')).toBeNull();
+      const tables = root.querySelectorAll('app-matchup-records');
+      expect(tables.length).toBe(2);
+      expect(tables[0].querySelector('[data-role="partner"] [data-player="r:p1"]')).not.toBeNull();
+      expect(tables[1].querySelector('[data-role="opponent"] [data-player="m:m2"]')).not.toBeNull();
+      // Partner highlights map to the partner table, never to the opponent one.
+      expect(tables[0].querySelector('[data-highlights]')).not.toBeNull();
+      expect(tables[1].querySelector('[data-highlights]')).toBeNull();
+    });
+
+    it('says singles has no partner instead of showing an empty table', () => {
+      const fixture = setup([]);
+      fixture.componentInstance.records.set({
+        ...fixture.componentInstance.records()!,
+        partner_records: [],
+        doubles_matches: 0,
+      });
+      fixture.detectChanges();
+
+      const partners = (fixture.nativeElement as HTMLElement).querySelector('[data-role="partner"]')!;
+      expect(partners.querySelector('[data-empty]')?.textContent).toContain(
+        'member.matchHistory.matchups.noDoubles',
+      );
+    });
+
+    it('a click on a partner narrows BOTH requests to that exact player, from page 1', () => {
+      const dashboardCalls: unknown[][] = [];
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { dashboardCalls, recordCalls });
+      fixture.componentInstance.goToPage(3);
+      const root: HTMLElement = fixture.nativeElement;
+
+      root.querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!.click();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, { partner_key: 'r:p1' }]);
+      expect(dashboardCalls.at(-1)).toEqual([{ partner_key: 'r:p1' }]);
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(true);
+      const chip = root.querySelector('[data-picked-player]')!;
+      expect(chip.textContent).toContain('member.matchHistory.matchups.activePartner');
+    });
+
+    it('an opponent click sends opponent_key, and replaces an earlier partner pick', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+      const root: HTMLElement = fixture.nativeElement;
+      root.querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!.click();
+      fixture.detectChanges();
+
+      root.querySelector<HTMLButtonElement>('[data-role="opponent"] [data-player="m:m2"] button')!.click();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, { opponent_key: 'm:m2' }]);
+      expect(root.querySelector('[data-picked-player]')!.textContent).toContain(
+        'member.matchHistory.matchups.activeOpponent',
+      );
+    });
+
+    it('the chip clears only the picked player; the form filters stay', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+      const root: HTMLElement = fixture.nativeElement;
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      root.querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!.click();
+      fixture.detectChanges();
+      expect(recordCalls.at(-1)).toEqual([1, { result: 'win', partner_key: 'r:p1' }]);
+
+      root.querySelector<HTMLButtonElement>('[data-picked-player] button')!.click();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, { result: 'win' }]);
+      expect(root.querySelector('[data-picked-player]')).toBeNull();
+    });
+
+    it('"clear filters" clears the picked player along with the form', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLButtonElement>('[data-role="partner"] [data-player="r:p1"] button')!
+        .click();
+      fixture.detectChanges();
+
+      fixture.componentInstance.clearFilters();
+      fixture.detectChanges();
+
+      expect(recordCalls.at(-1)).toEqual([1, {}]);
+      expect(fixture.componentInstance.pickedPlayer()).toBeNull();
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
+    });
+
+    it('has no active filter on a plain first load (undefined values are not filters)', () => {
+      expect(setup([]).componentInstance.hasActiveFilters()).toBe(false);
+    });
+
+    it('a matchup sentence in the summary leads to that player\'s row', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({
+              matchups: [
+                insightFixture({
+                  list: 'matchup',
+                  rule: 'partner_above_overall',
+                  metric_key: null,
+                  player: { key: 'r:p1', nickname: '阿哲', member_id: null },
+                  params: { win_rate: 0.67, matches: 6, wins: 4, losses: 2, baseline: 0.4, diff: 0.27 },
+                }),
+              ],
+            }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      const details = root.querySelector<HTMLDetailsElement>('[data-role="partner"]')!;
+      details.open = false;
+
+      root.querySelector<HTMLButtonElement>('app-player-insights [data-list="matchup"] .insight')!.click();
+
+      expect(details.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#matchup-partner-r\\:p1 button'));
+      root.remove();
+    });
+  });
+
+  // 036-match-insights-benchmarks US1 (T014)
+  describe('strengths and weaknesses summary', () => {
+    it('sits above the dashboard and shows what the dashboard response carries', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({
+              weaknesses: [insightFixture({ list: 'weakness', metric_key: 'team_receive' })],
+            }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+
+      const summary = root.querySelector('app-player-insights')!;
+      const dashboard = root.querySelector('app-player-dashboard')!;
+      expect(summary.compareDocumentPosition(dashboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(summary.querySelector('[data-list="weakness"] [data-sentence]')?.textContent).toContain(
+        'playerInsights.rule.rate_vs_overall.weakness',
+      );
+    });
+
+    it('jumps to the metric card an insight is about', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({
+              strengths: [insightFixture({ metric_key: 'winner_share' })],
+            }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      const group = root.querySelector<HTMLDetailsElement>('[data-group="ending"]')!;
+      expect(group.open).toBe(false);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(group.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
     });
   });
 });

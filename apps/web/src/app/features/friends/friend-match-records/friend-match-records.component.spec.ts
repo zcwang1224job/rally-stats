@@ -7,7 +7,12 @@ import {
   MatchRecordDetailResponse,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
-import { dashboardFixture } from '../../../core/player-dashboard/dashboard-fixtures';
+import {
+  dashboardFixture,
+  insightFixture,
+  insightsFixture,
+} from '../../../core/player-dashboard/dashboard-fixtures';
+import { MatchComparisonResponse } from '../../../core/api/match-comparison.models';
 import { AuthService } from '../../auth/auth.service';
 import { FriendMatchRecordsComponent } from './friend-match-records.component';
 
@@ -34,6 +39,14 @@ const oneMatch: MemberMatchRecordsResponse = {
   win_rate: 1,
   round_win_rates: [],
   opponent_records: [],
+  partner_records: [],
+  matchup_highlights: {
+    most_played_partner: null,
+    best_partner: null,
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 0,
   page: 1,
   total_pages: 1,
 };
@@ -46,8 +59,32 @@ const emptyRecords: MemberMatchRecordsResponse = {
   win_rate: 0,
   round_win_rates: [],
   opponent_records: [],
+  partner_records: [],
+  matchup_highlights: {
+    most_played_partner: null,
+    best_partner: null,
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 0,
   page: 1,
   total_pages: 1,
+};
+
+const COMPARISON: MatchComparisonResponse = {
+  friend_total_matches: 12,
+  my_total_matches: 9,
+  metrics: [
+    {
+      key: 'team_serve',
+      kind: 'rate',
+      better_when: 'higher',
+      friend: { value: 0.5, numerator: 50, denominator: 100, matches_used: 8 },
+      me: { value: 0.6, numerator: 60, denominator: 100, matches_used: 6 },
+      better: 'me',
+    },
+  ],
+  head_to_head: { as_opponents: null, as_partners: null },
 };
 
 function setup(options: {
@@ -55,9 +92,11 @@ function setup(options: {
   getFriendMatchRecords?: () => unknown;
   getFriendMatchRecordDetail?: () => unknown;
   getFriendMatchDashboard?: () => unknown;
+  getFriendMatchComparison?: () => unknown;
 }) {
   const getFriendMatchRecordsCalls: unknown[][] = [];
   const getFriendMatchDashboardCalls: unknown[][] = [];
+  const getFriendMatchComparisonCalls: unknown[][] = [];
   const authServiceStub = {
     getFriendMatchRecords: (...args: unknown[]) => {
       getFriendMatchRecordsCalls.push(args);
@@ -66,6 +105,10 @@ function setup(options: {
     getFriendMatchDashboard: (...args: unknown[]) => {
       getFriendMatchDashboardCalls.push(args);
       return (options.getFriendMatchDashboard ?? (() => of(dashboardFixture())))();
+    },
+    getFriendMatchComparison: (...args: unknown[]) => {
+      getFriendMatchComparisonCalls.push(args);
+      return (options.getFriendMatchComparison ?? (() => of(COMPARISON)))();
     },
     getFriendMatchRecordDetail:
       options.getFriendMatchRecordDetail ??
@@ -116,7 +159,12 @@ function setup(options: {
   });
   const fixture = TestBed.createComponent(FriendMatchRecordsComponent);
   fixture.detectChanges();
-  return { fixture, getFriendMatchRecordsCalls, getFriendMatchDashboardCalls };
+  return {
+    fixture,
+    getFriendMatchRecordsCalls,
+    getFriendMatchDashboardCalls,
+    getFriendMatchComparisonCalls,
+  };
 }
 
 describe('FriendMatchRecordsComponent', () => {
@@ -303,6 +351,201 @@ describe('FriendMatchRecordsComponent', () => {
 
       expect(fixture.componentInstance.dashboard()).toBeNull();
       expect(fixture.nativeElement.querySelector('app-player-dashboard')).toBeNull();
+      // 036: the summary lives and dies with the dashboard it rides on.
+      expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US4 (T050)
+  describe('compare with me', () => {
+    const toggle = (root: HTMLElement) =>
+      root.querySelector<HTMLButtonElement>('[data-compare-toggle]')!;
+
+    it('asks for nothing until the button is pressed, and then only once', () => {
+      const { fixture, getFriendMatchComparisonCalls } = setup({});
+      const root: HTMLElement = fixture.nativeElement;
+      expect(getFriendMatchComparisonCalls.length).toBe(0);
+      expect(root.querySelector('app-friend-comparison')).toBeNull();
+      expect(toggle(root).getAttribute('aria-pressed')).toBe('false');
+
+      toggle(root).click();
+      fixture.detectChanges();
+      expect(getFriendMatchComparisonCalls).toEqual([['friend-1']]);
+      expect(toggle(root).getAttribute('aria-pressed')).toBe('true');
+      expect(root.querySelector('app-friend-comparison [data-metric="team_serve"]')).not.toBeNull();
+
+      toggle(root).click(); // hide…
+      toggle(root).click(); // …and show again: no second request
+      fixture.detectChanges();
+      expect(getFriendMatchComparisonCalls.length).toBe(1);
+      expect(root.querySelector('app-friend-comparison [data-better-mark]')).not.toBeNull();
+    });
+
+    it('a failure says so inside the comparison and leaves the rest alone', () => {
+      const { fixture } = setup({
+        getFriendMatchComparison: () => throwError(() => new Error('boom')),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      toggle(root).click();
+      fixture.detectChanges();
+
+      expect(root.querySelector('app-friend-comparison [data-failed]')).not.toBeNull();
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard')).not.toBeNull();
+    });
+
+    it('drops a comparison already on screen once the records are refused (023 FR-007)', () => {
+      let allowed = true;
+      const { fixture } = setup({
+        getFriendMatchRecords: () =>
+          allowed
+            ? of({ ...oneMatch, total_pages: 2 } satisfies MemberMatchRecordsResponse)
+            : throwError(
+                () =>
+                  ({
+                    errorCode: 'MATCH_RECORDS_PRIVATE',
+                    i18nKey: 'errors.MATCH_RECORDS_PRIVATE',
+                    detail: null,
+                    status: 403,
+                  }) satisfies ApiError,
+              ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      toggle(root).click();
+      fixture.detectChanges();
+      expect(root.querySelector('app-friend-comparison')).not.toBeNull();
+
+      allowed = false;
+      fixture.componentInstance.goToPage(2);
+      fixture.detectChanges();
+
+      expect(root.querySelector('app-friend-comparison')).toBeNull();
+      expect(fixture.componentInstance.comparison()).toBeNull();
+    });
+
+    it('never shows an in-group comparison on a friend\'s page (FR-037)', () => {
+      const { fixture } = setup({});
+      expect(fixture.nativeElement.querySelector('app-group-benchmark')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US2 (T028, FR-037)
+  describe('partners and opponents', () => {
+    const withRows = (): MemberMatchRecordsResponse => ({
+      ...oneMatch,
+      doubles_matches: 6,
+      partner_records: [
+        {
+          player_key: 'm:p1',
+          member_id: 'p1',
+          nickname: '阿哲',
+          wins: 4,
+          losses: 2,
+          matches: 6,
+          win_rate: 0.6667,
+          avg_margin: 2.5,
+          low_sample: false,
+        },
+      ],
+    });
+
+    it("shows the friend's tables, with rows that cannot be clicked", () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('app-matchup-records').length).toBe(2);
+      expect(root.querySelector('[data-role="partner"] [data-player="m:p1"]')).not.toBeNull();
+      expect(root.querySelector('app-matchup-records button.matchup--button')).toBeNull();
+    });
+
+    it('still has no filter form of its own', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      expect(fixture.nativeElement.querySelector('form')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-picked-player]')).toBeNull();
+    });
+
+    it("a matchup sentence leads to that player's row", () => {
+      const { fixture } = setup({
+        getFriendMatchRecords: () => of(withRows()),
+        getFriendMatchDashboard: () =>
+          of(
+            dashboardFixture({
+              insights: insightsFixture({
+                matchups: [
+                  insightFixture({
+                    list: 'matchup',
+                    rule: 'partner_above_overall',
+                    metric_key: null,
+                    player: { key: 'm:p1', nickname: '阿哲', member_id: 'p1' },
+                    params: { win_rate: 0.67, matches: 6, wins: 4, losses: 2, baseline: 0.4, diff: 0.27 },
+                  }),
+                ],
+              }),
+            }),
+          ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights [data-list="matchup"] .insight')!.click();
+
+      expect(document.activeElement).toBe(root.querySelector('#matchup-partner-m\\:p1'));
+      root.remove();
+    });
+
+    it('shows no tables for a friend without any match', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(emptyRecords) });
+      expect(fixture.nativeElement.querySelector('app-matchup-records')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US1 (T015, FR-037)
+  describe('strengths and weaknesses summary', () => {
+    const withSummary = () =>
+      of(
+        dashboardFixture({
+          insights: insightsFixture({
+            weaknesses: [insightFixture({ list: 'weakness', metric_key: 'winner_share' })],
+          }),
+        }),
+      );
+
+    it("shows the friend's whole summary, things to work on included, above their dashboard", () => {
+      const { fixture } = setup({ getFriendMatchDashboard: withSummary });
+      const root: HTMLElement = fixture.nativeElement;
+
+      const summary = root.querySelector('app-player-insights')!;
+      const dashboard = root.querySelector('app-player-dashboard')!;
+      expect(summary.compareDocumentPosition(dashboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(summary.querySelector('[data-list="weakness"] [data-sentence]')).not.toBeNull();
+    });
+
+    it("jumps to the friend's metric card", () => {
+      const { fixture } = setup({ getFriendMatchDashboard: withSummary });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(root.querySelector<HTMLDetailsElement>('[data-group="ending"]')!.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
+    });
+
+    it('shows nothing of the summary when the dashboard is refused', () => {
+      const { fixture } = setup({
+        getFriendMatchDashboard: () =>
+          throwError(
+            () =>
+              ({
+                errorCode: 'MATCH_RECORDS_PRIVATE',
+                i18nKey: 'errors.MATCH_RECORDS_PRIVATE',
+                detail: null,
+                status: 403,
+              }) satisfies ApiError,
+          ),
+      });
+      expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
     });
   });
 });

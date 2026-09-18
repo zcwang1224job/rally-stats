@@ -49,7 +49,32 @@ EMPTY = {
     "trends": [],
     "landing": None,
     "error_breakdown": None,
+    # 036: nothing to go on yet, so no sentence — never a made-up one.
+    "insights": {
+        "status": "insufficient_data",
+        "benchmark_group_name": None,
+        "strengths": [],
+        "weaknesses": [],
+        "recent": [],
+        "matchups": [],
+    },
 }
+# 036 data-model.md 規則表 — the frontend's INSIGHT_RULES is the same list
+# (player-insights.component.spec.ts), so the two ends are pinned together.
+INSIGHT_RULES = (
+    "rate_vs_overall",
+    "deuce_vs_even",
+    "error_share_high",
+    "winner_share_high",
+    "recent_change",
+    "partner_above_overall",
+    "opponent_below_overall",
+    "benchmark_quartile",
+)
+INSIGHT_LISTS = {"status", "benchmark_group_name", "strengths", "weaknesses", "recent", "matchups"}
+# Runs of seven: the serving side keeps the serve, so team A wins 18 of its 20
+# serve points and 2 of its 14 receive points. A wins 21:14.
+STREAKY = ("A" * 7 + "B" * 7) * 2 + "A" * 7
 
 
 async def _register(session: AsyncSession, email: str, *, verified: bool = True) -> Member:
@@ -426,3 +451,93 @@ async def test_friend_view_carries_the_ending_fields_and_rejections_do_not(
     assert rejected.status_code == 403
     assert "error_breakdown" not in rejected.json() and "metrics" not in rejected.json()
     assert stranger.id != owner.id
+
+
+# ------------------------------------------------ 036-match-insights-benchmarks US1: insights
+
+
+async def _play_streaky_doubles(session: AsyncSession, member: Member, matches: int = 3) -> None:
+    group = await make_group(session, "Streaky", match_mode="doubles")
+    mine = [
+        (await make_entry(session, group, "我", member.id)).id,
+        (await make_entry(session, group, "搭檔")).id,
+    ]
+    theirs = [
+        (await make_entry(session, group, "對手一")).id,
+        (await make_entry(session, group, "對手二")).id,
+    ]
+    for _ in range(matches):
+        await make_played_match(session, group, team_a=mine, team_b=theirs, sides=STREAKY)
+
+
+async def test_insight_rule_codes_are_the_documented_eight() -> None:
+    from typing import get_args
+
+    from app.domains.member import insights
+    from app.domains.member import schemas as member_schemas
+
+    assert get_args(insights.InsightRule) == INSIGHT_RULES
+    assert get_args(member_schemas.InsightRule) == INSIGHT_RULES
+
+
+async def test_insights_shape_and_reproducibility(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    member = await _register(db_session, "dash-insights@example.com")
+    await _play_streaky_doubles(db_session, member)
+    headers = await _login(client, "dash-insights@example.com")
+
+    first = await client.get("/members/me/match-dashboard", headers=headers)
+    second = await client.get("/members/me/match-dashboard", headers=headers)
+
+    assert first.status_code == 200
+    body = first.json()
+    assert [metric["key"] for metric in body["metrics"]] == METRIC_KEYS  # untouched by 036
+    insights = body["insights"]
+    assert set(insights) == INSIGHT_LISTS
+    assert insights["status"] == "ok"
+    assert insights["benchmark_group_name"] is None
+    weakness = insights["weaknesses"][0]
+    assert set(weakness) == {"list", "rule", "level", "source", "metric_key", "player", "params"}
+    assert weakness["list"] == "weakness"
+    assert weakness["rule"] in INSIGHT_RULES
+    assert (weakness["source"], weakness["metric_key"], weakness["player"]) == (
+        "self", "team_receive", None,
+    )
+    receive = next(metric for metric in body["metrics"] if metric["key"] == "team_receive")
+    for field in ("value", "numerator", "denominator", "matches_used"):
+        assert weakness["params"][field] == receive["all"][field]  # FR-002
+    # SC-002: the same data always yields the same sentences, in the same order.
+    assert second.json()["insights"] == insights
+
+
+async def test_friend_view_carries_insights_without_any_benchmark_source(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    viewer = await _register(db_session, "dash-viewer9@example.com")
+    owner = await _register(db_session, "dash-owner9@example.com")
+    await _befriend(db_session, viewer, owner)
+    await _play_streaky_doubles(db_session, owner)
+
+    as_friend = await client.get(
+        f"/members/{owner.id}/match-dashboard",
+        headers=await _login(client, "dash-viewer9@example.com"),
+    )
+
+    assert as_friend.status_code == 200
+    insights = as_friend.json()["insights"]
+    assert insights["weaknesses"]  # the full summary, 待加強 included (FR-037)
+    everything = (
+        insights["strengths"] + insights["weaknesses"] + insights["recent"] + insights["matchups"]
+    )
+    assert all(item["source"] != "benchmark" for item in everything)
+    assert insights["benchmark_group_name"] is None
+
+    owner.share_match_records_with_friends = False
+    await db_session.commit()
+    rejected = await client.get(
+        f"/members/{owner.id}/match-dashboard",
+        headers=await _login(client, "dash-viewer9@example.com"),
+    )
+    assert rejected.status_code == 403
+    assert "insights" not in rejected.json()

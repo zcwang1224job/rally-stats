@@ -761,3 +761,33 @@ def test_error_breakdown_is_none_without_a_single_error() -> None:
     result = aggregate([_sample(day, ending=_ending(winners=3)) for day in range(12)])
     assert _metric(result, "winners_per_match").all is not None
     assert result.error_breakdown_all is None and result.error_breakdown_recent is None
+
+
+# --- 036-match-insights-benchmarks US3/US4: overall_values() ----------------
+
+
+def test_overall_values_are_exactly_aggregates_all_values() -> None:
+    from app.domains.member.player_dashboard import overall_values
+
+    samples = [
+        _sample(
+            index,
+            won=index % 2 == 0,
+            points_for=21 if index % 2 == 0 else 15,
+            points_against=15 if index % 2 == 0 else 21,
+            serve=ServeSample(Ratio(8, 14), Ratio(6, 16), None, None) if index < 8 else None,
+        )
+        for index in range(12)
+    ]
+
+    values = overall_values(samples)
+    metrics = {metric.key: metric.all for metric in aggregate(samples).metrics}
+
+    assert values == {key: value for key, value in metrics.items() if value is not None}
+    assert "team_serve" in values and "own_serve" not in values  # no data → left out
+
+
+def test_overall_values_of_nothing() -> None:
+    from app.domains.member.player_dashboard import overall_values
+
+    assert overall_values([]) == {}

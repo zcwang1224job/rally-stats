@@ -73,9 +73,19 @@ async def make_member(
 
 
 async def make_entry(
-    session: AsyncSession, group: Group, nickname: str, member_id: uuid.UUID | None = None
+    session: AsyncSession,
+    group: Group,
+    nickname: str,
+    member_id: uuid.UUID | None = None,
+    *,
+    status: str = "active",
+    joined_at: datetime | None = None,
 ) -> RosterEntry:
-    entry = RosterEntry(group_id=group.id, nickname=nickname, member_id=member_id, status="active")
+    """036: `status` / `joined_at` let a test model a member who left and
+    rejoined (two rows for the same member in one group)."""
+    entry = RosterEntry(group_id=group.id, nickname=nickname, member_id=member_id, status=status)
+    if joined_at is not None:
+        entry.joined_at = joined_at
     session.add(entry)
     await session.commit()
     await session.refresh(entry)

@@ -478,3 +478,62 @@ async def test_ending_metrics_add_no_query(db_session: AsyncSession) -> None:
 
     assert dashboard.error_breakdown is not None
     assert len(plain) == len(with_endings)
+
+
+# --- 036-match-insights-benchmarks US1: insights ride on the dashboard ------
+
+# Runs of seven: whoever is serving keeps the serve, so my team (A) wins 18 of
+# its 20 serve points and 2 of its 14 receive points. A wins 21:14.
+STREAKY = ("A" * 7 + "B" * 7) * 2 + "A" * 7
+
+
+async def test_insights_quote_the_dashboards_own_numbers_and_follow_the_filters(
+    db_session: AsyncSession,
+) -> None:
+    setup = await _Doubles.create(db_session, "insights@example.com")
+    for index in range(3):
+        await make_played_match(
+            db_session, setup.group, team_a=setup.mine, team_b=setup.theirs, sides=STREAKY,
+            ended_at=NOW - timedelta(days=index),
+        )
+
+    with count_selects(db_session) as queries:
+        dashboard = await build_member_match_dashboard(
+            db_session, setup.member.id, MemberMatchFilters()
+        )
+
+    assert dashboard.insights.status == "ok"
+    # Serve and receive mirror each other: one sentence per pair, the larger
+    # gap (FR-016). This helper always has the first-listed player — me —
+    # serve and receive, so my own pair repeats the team's.
+    assert dashboard.insights.strengths == []
+    assert [item.metric_key for item in dashboard.insights.weaknesses] == [
+        "team_receive", "own_receive",
+    ]
+    weakness = dashboard.insights.weaknesses[0]
+    assert (weakness.list, weakness.rule, weakness.level) == (
+        "weakness", "rate_vs_overall", "strong",
+    )
+    receive = _metric(dashboard, "team_receive").all
+    assert receive is not None
+    assert weakness.params["value"] == receive.value
+    assert weakness.params["numerator"] == receive.numerator == 6
+    assert weakness.params["denominator"] == receive.denominator == 42
+    assert weakness.params["matches_used"] == receive.matches_used == 3
+    assert weakness.params["baseline"] == round(21 / 34, 4)
+    assert dashboard.insights.benchmark_group_name is None
+
+    # Same filters as the metrics (FR-019): I lost none of these.
+    losses_only = await build_member_match_dashboard(
+        db_session, setup.member.id, MemberMatchFilters(result="loss")
+    )
+    assert losses_only.total_matches == 0
+    assert losses_only.insights.status == "insufficient_data"
+    assert losses_only.insights.weaknesses == []
+
+    # …and they cost no query of their own.
+    with count_selects(db_session) as baseline_queries:
+        await build_member_match_dashboard(
+            db_session, setup.member.id, MemberMatchFilters(match_mode="doubles")
+        )
+    assert len(queries) == len(baseline_queries)

@@ -1,6 +1,11 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
+import {
+  BenchmarkGroupsResponse,
+  GroupBenchmarkResponse,
+} from '../../core/api/group-benchmark.models';
+import { MatchComparisonResponse } from '../../core/api/match-comparison.models';
 import { MemberMatchDashboardResponse } from '../../core/api/player-dashboard.models';
 import {
   MatchRecordDetailResponse,
@@ -145,6 +150,25 @@ export class AuthService {
     );
   }
 
+  /** 036-match-insights-benchmarks US3: the groups I can compare within,
+   * the one with most of my matches first. */
+  getBenchmarkGroups(): Observable<BenchmarkGroupsResponse> {
+    return this.api.get<BenchmarkGroupsResponse>(
+      '/members/me/benchmark-groups',
+      this.authHeader(),
+    );
+  }
+
+  /** 036 US3: always over ALL of the group's matches — this endpoint takes
+   * no filter, on purpose (the page's filters are about me and could not be
+   * applied to anyone else). */
+  getGroupBenchmark(groupId: string): Observable<GroupBenchmarkResponse> {
+    return this.api.get<GroupBenchmarkResponse>(
+      `/members/me/group-benchmark?group_id=${encodeURIComponent(groupId)}`,
+      this.authHeader(),
+    );
+  }
+
   private withMatchFilters(
     params: URLSearchParams,
     filters: MemberMatchRecordFilters,
@@ -254,6 +278,15 @@ export class AuthService {
   getFriendMatchDashboard(memberId: string): Observable<MemberMatchDashboardResponse> {
     return this.api.get<MemberMatchDashboardResponse>(
       `/members/${memberId}/match-dashboard`,
+      this.authHeader(),
+    );
+  }
+
+  /** 036-match-insights-benchmarks US4: the friend's numbers next to mine.
+   * Same 023 gate as every other look at a friend's records. */
+  getFriendMatchComparison(memberId: string): Observable<MatchComparisonResponse> {
+    return this.api.get<MatchComparisonResponse>(
+      `/members/${memberId}/match-comparison`,
       this.authHeader(),
     );
   }

@@ -789,6 +789,29 @@ class RoundWinRatePoint(BaseModel):
     win_rate: float
 
 
+class MatchupRecord(OpponentRecord):
+    """036-match-insights-benchmarks US2: a partner or an opponent of ONE
+    member, keyed by who the player is (`m:<member_id>` / `r:<roster_entry_id>`)
+    rather than by nickname. A superset of `OpponentRecord`, whose five fields
+    keep their names and meaning; `nickname` is the player's name in their
+    latest match in range. `OpponentRecord` itself — and the group page's
+    `player_records` that uses it — is untouched."""
+
+    player_key: str
+    member_id: str | None
+    avg_margin: float  # my score minus theirs, per match; one decimal
+    low_sample: bool  # fewer than 3 matches: listed, flagged, never singled out
+
+
+class MatchupHighlights(BaseModel):
+    """Player keys; None when nobody has played enough (FR-024)."""
+
+    most_played_partner: str | None = None
+    best_partner: str | None = None
+    most_faced_opponent: str | None = None
+    toughest_opponent: str | None = None
+
+
 class MemberMatchRecordsResponse(BaseModel):
     matches: list[MemberMatchRecordSummary]
     total_matches: int
@@ -796,7 +819,11 @@ class MemberMatchRecordsResponse(BaseModel):
     total_losses: int
     win_rate: float
     round_win_rates: list[RoundWinRatePoint]
-    opponent_records: list[OpponentRecord]
+    opponent_records: list[MatchupRecord]
+    # 036: all three aggregate the whole filtered set, like `opponent_records`.
+    partner_records: list[MatchupRecord] = []
+    matchup_highlights: MatchupHighlights = MatchupHighlights()
+    doubles_matches: int = 0  # 0 → "singles has no partner" instead of an empty table
     page: int
     total_pages: int
 

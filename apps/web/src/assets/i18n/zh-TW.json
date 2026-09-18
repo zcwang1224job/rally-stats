@@ -284,6 +284,31 @@
       "opponentRanking": {
         "title": "對戰對象戰績排行",
         "empty": "尚無對戰對象資料"
+      },
+      "matchups": {
+        "partnerTitle": "搭檔戰績",
+        "opponentTitle": "對手戰績",
+        "empty": "目前沒有可以列出的對象",
+        "noDoubles": "單打比賽沒有搭檔；打過雙打之後，這裡會列出你和每位搭檔的戰績。",
+        "lowSample": "場數少",
+        "record": "{{matches}} 場 · {{wins}} 勝 {{losses}} 敗",
+        "margin": "平均分差",
+        "sort": {
+          "label": "排序",
+          "matches": "場數",
+          "win_rate": "勝率",
+          "avg_margin": "平均分差"
+        },
+        "highlights": {
+          "partnerMost": "最常一起出賽",
+          "partnerStandout": "勝率最高的搭檔",
+          "opponentMost": "最常交手",
+          "opponentStandout": "勝率最低的對手",
+          "figure": "{{matches}} 場 · 勝率 {{rate}}"
+        },
+        "activePartner": "只看與 {{nickname}} 搭檔的比賽",
+        "activeOpponent": "只看對上 {{nickname}} 的比賽",
+        "clear": "清除這個條件"
       }
     },
     "nicknameSectionTitle": "暱稱",
@@ -811,6 +836,117 @@
       }
     }
   },
+  "playerInsights": {
+    "title": "優缺點摘要",
+    "loading": "正在整理你的優缺點…",
+    "list": {
+      "strength": "強項",
+      "weakness": "待加強",
+      "recent": "最近變化",
+      "matchup": "對戰組合"
+    },
+    "listEmpty": {
+      "strength": "目前沒有特別突出的項目",
+      "weakness": "目前沒有明顯落後的項目",
+      "recent": "最近的表現和整體差不多",
+      "matchup": "還沒有特別突出的搭檔或對手"
+    },
+    "tone": {
+      "strength": "強項",
+      "weakness": "待加強",
+      "matchup": "對戰組合"
+    },
+    "status": {
+      "insufficientData": "資料還不夠：累積幾場有逐分紀錄的比賽之後，這裡會指出你的強項與最值得加強的地方。",
+      "balanced": "目前各項表現均衡，沒有特別突出或落後的項目。"
+    },
+    "benchmarkPending": "正在加入團內比較…",
+    "benchmarkOmittedByFilters": "已套用篩選條件，摘要暫不含團內比較（兩者的比賽範圍不同）。",
+    "benchmarkIncluded": "已納入「{{group}}」的團內比較。",
+    "evidence": {
+      "points": "{{numerator}}／{{denominator}} 分 · 依據 {{matches}} 場",
+      "recent": "最近 {{matches}} 場有此資料",
+      "matchup": "{{wins}} 勝 {{losses}} 敗 · 共 {{matches}} 場",
+      "benchmark": "第 {{rank}} 名／共 {{pool}} 人"
+    },
+    "rule": {
+      "rate_vs_overall": {
+        "strength": "{{metric}} {{value}}，高於你在這些比賽的應有水準 {{baseline}}（多 {{diff}} 個百分點）",
+        "weakness": "{{metric}} {{value}}，低於你在這些比賽的應有水準 {{baseline}}（少 {{diff}} 個百分點）"
+      },
+      "deuce_vs_even": {
+        "strength": "平分延長時你拿下 {{value}} 的分數，高於五五波",
+        "weakness": "平分延長時你拿下 {{value}} 的分數，低於五五波"
+      },
+      "error_share_high": {
+        "weakness": "你的失分有 {{value}} 來自自己的失誤",
+        "weaknessDominant": "你的失分有 {{value}} 來自自己的失誤，其中 {{dominantShare}} 是{{dominant}}"
+      },
+      "winner_share_high": {
+        "strength": "你的得分有 {{value}} 是自己主動拿下的"
+      },
+      "recent_change": {
+        "improved": "{{metric}}最近是 {{recentValue}}，整體是 {{allValue}}",
+        "declined": "{{metric}}最近是 {{recentValue}}，整體是 {{allValue}}"
+      },
+      "partner_above_overall": {
+        "matchup": "和 {{nickname}} 搭檔的勝率 {{winRate}}，高於你的雙打整體勝率 {{baseline}}"
+      },
+      "opponent_below_overall": {
+        "matchup": "對上 {{nickname}} 的勝率 {{winRate}}，低於你的整體勝率 {{baseline}}"
+      },
+      "benchmark_quartile": {
+        "strength": "{{metric}} {{mine}}，優於「{{group}}」的團內平均 {{groupAverage}}，排第 {{rank}}／{{pool}}",
+        "weakness": "{{metric}} {{mine}}，不及「{{group}}」的團內平均 {{groupAverage}}，排第 {{rank}}／{{pool}}"
+      }
+    }
+  },
+  "groupBenchmark": {
+    "title": "團內比較",
+    "intro": "選一個你加入過的團，看看每項指標的團內平均，以及你排第幾名。不會顯示任何其他球友的名字或個別數字。",
+    "pickGroup": "比較的團",
+    "myMatches": "我 {{count}} 場",
+    "groupStatus": {
+      "left": "已離開",
+      "kicked": "已被移出",
+      "disbanded": "已解散"
+    },
+    "scopeNote": "固定以「{{group}}」的全部 {{total}} 場比賽計算（其中你打了 {{mine}} 場），不受上方篩選條件影響。",
+    "noGroups": "你還沒有以會員身分加入過任何團，加入之後就能在這裡和球友比較。",
+    "columns": {
+      "mine": "我",
+      "average": "團內平均",
+      "rank": "我的名次"
+    },
+    "pool": "{{count}} 人",
+    "rank": "第 {{rank}} 名／共 {{pool}} 人",
+    "status": {
+      "poolTooSmall": "團內樣本不足：目前只有 {{count}} 人在這個團打滿 5 場有此資料的比賽",
+      "selfBelowMinimum": "你在此團的場數不足，暫不排名",
+      "noDirection": "這項沒有高低之分，不排名"
+    },
+    "loading": "正在計算團內比較…",
+    "failed": "團內比較暫時無法載入，其他內容不受影響。"
+  },
+  "friendComparison": {
+    "toggle": "與我比較",
+    "friend": "{{nickname}}",
+    "friendGeneric": "好友",
+    "me": "我",
+    "basedOn": "{{used}} 場",
+    "better": "較佳",
+    "tie": "相同",
+    "loading": "正在比較…",
+    "failed": "暫時無法比較，其他內容不受影響。",
+    "headToHead": {
+      "title": "我們的交手紀錄",
+      "asOpponents": "互為對手",
+      "asPartners": "互為搭檔",
+      "tally": "{{matches}} 場 · 我 {{wins}} 勝 {{losses}} 敗 · 平均分差 {{margin}}",
+      "neverOpponents": "還沒有當過對手",
+      "neverPartners": "還沒有搭檔過"
+    }
+  },
   "matchRecordDetail": {
     "title": "比賽詳情",
     "close": "關閉",
@@ -1040,6 +1176,7 @@
     "INVITE_ALREADY_PENDING": "已對此好友送出過邀請，正在等待回覆中",
     "GROUP_INVITE_NOT_FOUND": "找不到此組團邀請",
     "GROUP_INVITE_NOT_PENDING": "此邀請已被處理過",
-    "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄"
+    "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄",
+    "INVALID_PLAYER_KEY": "球員識別碼格式不正確，請重新整理後再試一次"
   }
 }

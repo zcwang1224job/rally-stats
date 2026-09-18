@@ -1,0 +1,131 @@
+:host {
+  display: block;
+  min-width: 0;
+  margin-bottom: var(--space-lg);
+}
+
+.comparison__title {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-body);
+}
+
+.comparison__note {
+  margin: 0 0 var(--space-lg);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.comparison__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comparison__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 2fr) minmax(5rem, 1.2fr) minmax(5rem, 1.2fr);
+  align-items: baseline;
+  gap: var(--space-sm);
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.comparison__row--head {
+  border-top: 0;
+  color: var(--color-text-muted);
+}
+
+.comparison__label {
+  overflow-wrap: anywhere;
+}
+
+.comparison__cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-xs);
+}
+
+.comparison__value {
+  font-weight: var(--font-weight-bold);
+}
+
+.comparison__basis,
+.comparison__tie {
+  color: var(--color-text-muted);
+}
+
+// The triangle and the word carry it; the colour only agrees with them.
+.comparison__better {
+  color: var(--color-brand-accent);
+  font-weight: var(--font-weight-bold);
+  white-space: nowrap;
+}
+
+// Column heads are decorative (aria-hidden); each cell names its own side for
+// assistive technology, and visibly on a phone.
+.comparison__cell-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.comparison__head-to-head {
+  margin-top: var(--space-md);
+  font-size: var(--font-size-caption);
+
+  h3 {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--font-size-body);
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-xs) var(--space-md);
+    margin: 0;
+  }
+
+  dt {
+    color: var(--color-text-muted);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 560px) {
+  .comparison__row--head {
+    display: none;
+  }
+
+  .comparison__row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .comparison__label {
+    grid-column: 1 / -1;
+    font-weight: var(--font-weight-bold);
+  }
+
+  .comparison__cell-label {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    color: var(--color-text-muted);
+  }
+
+  .comparison__head-to-head dl {
+    grid-template-columns: 1fr;
+  }
+}
