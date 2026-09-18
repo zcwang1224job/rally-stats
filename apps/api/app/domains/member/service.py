@@ -65,13 +65,17 @@ from app.domains.member.schemas import (
     SUPPORTED_LANGUAGES,
     BenchmarkGroupOption,
     BenchmarkGroupsResponse,
+    ComparisonMetric,
     DashboardInsights,
     DashboardMetricValue,
     GroupBenchmarkGroup,
     GroupBenchmarkMetric,
     GroupBenchmarkResponse,
+    HeadToHeadResponse,
+    HeadToHeadTally,
     LoginRecordsResponse,
     LoginRecordSummary,
+    MatchComparisonResponse,
     MemberGroupHistoryResponse,
     MemberGroupStatsResponse,
     MemberMatchDashboardResponse,
@@ -774,6 +778,90 @@ async def view_member_match_dashboard(
     `view_member_match_records()`."""
     await _resolve_viewable_member(session, viewer_id, member_id)
     return await build_member_match_dashboard(session, member_id, filters)
+
+
+# 036 US4: a verdict needs this many matches behind BOTH numbers — the same
+# minimum 034 asks of a "recent" value before calling it progress.
+COMPARISON_MIN_MATCHES = 3
+
+
+async def _overall_values(
+    session: AsyncSession, member_id: uuid.UUID
+) -> "tuple[dict[str, player_dashboard.MetricValue], list[FilteredMatch]]":
+    """A member's unfiltered "all" values — what their dashboard shows before
+    any filter — without the trends and landings a comparison has no use for."""
+    filtered = await _filtered_member_matches(session, member_id, MemberMatchFilters())
+    inputs = await load_match_stat_inputs(session, [item.match for item in filtered])
+    samples = [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
+    return player_dashboard.overall_values(samples), filtered
+
+
+def _better(
+    better_when: player_dashboard.BetterWhen | None,
+    friend: player_dashboard.MetricValue | None,
+    me: player_dashboard.MetricValue | None,
+) -> Literal["me", "friend", "tie"] | None:
+    if better_when is None or friend is None or me is None:
+        return None
+    if friend.value is None or me.value is None:
+        return None
+    if min(friend.matches_used, me.matches_used) < COMPARISON_MIN_MATCHES:
+        return None
+    if friend.value == me.value:
+        return "tie"
+    mine_is_higher = me.value > friend.value
+    return "me" if mine_is_higher == (better_when == "higher") else "friend"
+
+
+async def view_member_match_comparison(
+    session: AsyncSession, viewer_id: uuid.UUID, member_id: uuid.UUID
+) -> MatchComparisonResponse:
+    """036-match-insights-benchmarks US4: a friend's dashboard numbers next
+    to the viewer's own, and the two players' record against and alongside
+    each other.
+
+    Same gate as every other look at a friend's records (023,
+    `_resolve_viewable_member()`), evaluated on this request. The viewer needs
+    no sharing setting of their own: what they see is what the friend already
+    shares, plus their own numbers — which reach nobody else, because this
+    function writes nothing and notifies nobody (FR-039).
+
+    Which side is "better" is a rule (direction, minimum sample), so it is
+    decided here rather than in the page.
+
+    Errors: `SELF_VIEW_NOT_SUPPORTED`, `MEMBER_NOT_FOUND`,
+    `FRIENDSHIP_REQUIRED`, `MATCH_RECORDS_PRIVATE`."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    friend_values, friend_matches = await _overall_values(session, member_id)
+    my_values, my_matches = await _overall_values(session, viewer_id)
+    meetings = matchups.head_to_head(_matchup_inputs(my_matches), f"m:{member_id}")
+
+    def value(found: player_dashboard.MetricValue | None) -> DashboardMetricValue | None:
+        return DashboardMetricValue(**asdict(found)) if found is not None else None
+
+    def tally(found: matchups.MatchupTally | None) -> HeadToHeadTally | None:
+        return HeadToHeadTally(**asdict(found)) if found is not None else None
+
+    return MatchComparisonResponse(
+        friend_total_matches=len(friend_matches),
+        my_total_matches=len(my_matches),
+        metrics=[
+            ComparisonMetric(
+                key=spec.key,
+                kind=spec.kind,
+                better_when=spec.better_when,
+                friend=value(friend_values.get(spec.key)),
+                me=value(my_values.get(spec.key)),
+                better=_better(
+                    spec.better_when, friend_values.get(spec.key), my_values.get(spec.key)
+                ),
+            )
+            for spec in player_dashboard.metric_specs()
+        ],
+        head_to_head=HeadToHeadResponse(
+            as_opponents=tally(meetings.as_opponents), as_partners=tally(meetings.as_partners)
+        ),
+    )
 
 
 async def view_member_match_record_detail(

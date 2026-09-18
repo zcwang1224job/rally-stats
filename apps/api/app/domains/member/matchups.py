@@ -150,3 +150,44 @@ def build(inputs: Sequence[MatchupInput]) -> MatchupResult:
         overall_win_rate=_win_rate(inputs),
         doubles_win_rate=_win_rate(doubles),
     )
+
+
+@dataclass(frozen=True)
+class MatchupTally:
+    """Always from MY side: `wins` are mine, `avg_margin` is mine minus theirs."""
+
+    matches: int
+    wins: int
+    losses: int
+    win_rate: float
+    avg_margin: float
+
+
+@dataclass(frozen=True)
+class HeadToHead:
+    """036 US4. None: we never met in that role."""
+
+    as_opponents: MatchupTally | None
+    as_partners: MatchupTally | None
+
+
+def _tally(inputs: Sequence[MatchupInput]) -> MatchupTally | None:
+    if not inputs:
+        return None
+    wins = sum(item.won for item in inputs)
+    return MatchupTally(
+        matches=len(inputs),
+        wins=wins,
+        losses=len(inputs) - wins,
+        win_rate=round(wins / len(inputs), 4),
+        avg_margin=round(sum(item.margin for item in inputs) / len(inputs), 1),
+    )
+
+
+def head_to_head(inputs: Sequence[MatchupInput], friend_key: str) -> HeadToHead:
+    """My record against, and alongside, one particular player — read off MY
+    matches, so it needs nothing of theirs."""
+    return HeadToHead(
+        as_opponents=_tally([i for i in inputs if any(p.key == friend_key for p in i.opponents)]),
+        as_partners=_tally([i for i in inputs if any(p.key == friend_key for p in i.partners)]),
+    )

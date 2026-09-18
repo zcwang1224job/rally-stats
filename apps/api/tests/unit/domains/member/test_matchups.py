@@ -181,3 +181,36 @@ def test_win_rates_for_the_insight_baselines() -> None:
 def test_same_input_same_output() -> None:
     inputs = _partner("m:b", 3, 3) + _partner("m:a", 3, 3)
     assert matchups.build(inputs) == matchups.build(list(reversed(inputs)))
+
+
+# --- US4: head_to_head() -----------------------------------------------------
+
+
+def test_head_to_head_as_opponents_and_as_partners_from_my_side() -> None:
+    friend, other, rival = ref("m:friend"), ref("m:other"), ref("r:rival")
+    inputs = [
+        played(1, -4, opponents=(friend,)),  # singles: lost to them
+        played(2, 6, partners=(other,), opponents=(friend, rival)),  # doubles: beat them
+        played(3, 2, partners=(friend,), opponents=(other, rival)),  # with them: won
+        played(4, -8, partners=(friend,), opponents=(other, rival)),  # with them: lost
+        played(5, 9, partners=(other,), opponents=(rival, ref("r:x"))),  # not involved
+    ]
+
+    result = matchups.head_to_head(inputs, "m:friend")
+
+    assert result.as_opponents == matchups.MatchupTally(
+        matches=2, wins=1, losses=1, win_rate=0.5, avg_margin=1.0
+    )
+    assert result.as_partners == matchups.MatchupTally(
+        matches=2, wins=1, losses=1, win_rate=0.5, avg_margin=-3.0
+    )
+
+
+def test_head_to_head_is_none_where_we_never_met() -> None:
+    friend = ref("m:friend")
+    only_opponents = matchups.head_to_head([played(1, 3, opponents=(friend,))], "m:friend")
+    assert only_opponents.as_opponents is not None and only_opponents.as_partners is None
+
+    never = matchups.head_to_head([played(1, 3, opponents=(ref("m:someone"),))], "m:friend")
+    assert never == matchups.HeadToHead(as_opponents=None, as_partners=None)
+    assert matchups.head_to_head([], "m:friend") == matchups.HeadToHead(None, None)

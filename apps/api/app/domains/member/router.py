@@ -34,6 +34,7 @@ from app.domains.member.schemas import (
     LoginRecordsResponse,
     LoginRequest,
     LoginResponse,
+    MatchComparisonResponse,
     MemberGroupHistoryResponse,
     MemberMatchDashboardResponse,
     MemberPublicResponse,
@@ -711,6 +712,22 @@ async def get_viewed_member_match_dashboard(
     → `MATCH_RECORDS_PRIVATE`，每次請求重新檢查、不通知被檢視方。Errors:
     `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、上述四者。"""
     return await service.view_member_match_dashboard(session, member.id, member_id, filters)
+
+
+@router.get("/members/{member_id}/match-comparison", response_model=MatchComparisonResponse)
+async def get_viewed_member_match_comparison(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MatchComparisonResponse:
+    """036-match-insights-benchmarks US4: the friend's 23 unfiltered metrics
+    next to the viewer's own, which side is better where that can be said, and
+    the two players' head-to-head record. Read-only; nobody is notified
+    (FR-039). Declared after every `/members/me/...` route, like the other
+    `/{member_id}/...` ones. Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `SELF_VIEW_NOT_SUPPORTED`, `MEMBER_NOT_FOUND`,
+    `FRIENDSHIP_REQUIRED`, `MATCH_RECORDS_PRIVATE`."""
+    return await service.view_member_match_comparison(session, member.id, member_id)
 
 
 @router.get(

@@ -527,3 +527,38 @@ class GroupBenchmarkResponse(BaseModel):
     # the same `insights.derive()` — the page shows this instead of the
     # dashboard's own insights while no filter is active (FR-033, FR-034).
     insights: DashboardInsights
+
+
+# 036-match-insights-benchmarks US4: a friend's numbers next to mine.
+class ComparisonMetric(BaseModel):
+    key: str
+    kind: Literal["rate", "average", "ratio"]
+    better_when: Literal["higher", "lower"] | None
+    friend: DashboardMetricValue | None
+    me: DashboardMetricValue | None
+    # None: no direction, or either side has no value / fewer than 3 matches
+    # behind it — never a verdict on a sample that thin (US4-2).
+    better: Literal["me", "friend", "tie"] | None
+
+
+class HeadToHeadTally(BaseModel):
+    """From the VIEWER's side: `wins` are mine, `avg_margin` mine minus theirs."""
+
+    matches: int
+    wins: int
+    losses: int
+    win_rate: float
+    avg_margin: float
+
+
+class HeadToHeadResponse(BaseModel):
+    as_opponents: HeadToHeadTally | None  # None: never played against each other
+    as_partners: HeadToHeadTally | None  # None: never partnered
+
+
+class MatchComparisonResponse(BaseModel):
+    friend_total_matches: int
+    my_total_matches: int
+    metrics: list[ComparisonMetric]  # all 23, dashboard order, unfiltered
+    head_to_head: HeadToHeadResponse
+
