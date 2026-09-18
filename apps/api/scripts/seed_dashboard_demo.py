@@ -8,7 +8,8 @@ Creates two verified members (password `abc12345`):
 
 - demo@example.com  — 16 doubles matches, oldest to newest getting better
   (heavy losses -> narrow losses -> wins), one deuce thriller, serve records,
-  and landings recorded both as team A and as team B;
+  and landings recorded both as team A and as team B, with point endings
+  (035) on about four fifths of the recorded points;
 - heavy@example.com — 300 matches with full point logs, for timing the
   dashboard against SC-007 (quickstart scenario 12)."""
 
@@ -82,10 +83,23 @@ async def seed(database: str) -> None:
                 y = rng.uniform(0.05, 0.95) if won_by_me else rng.betavariate(2, 5)
                 if as_team_b:
                     x, y = 1 - x, 1 - y
+                # 035: how the rally ended — what the picker would have
+                # auto-filled (out of bounds -> out), a coin flip between a
+                # winner and a net shot in bounds, and about a fifth of the
+                # points left unrecorded, as real scorers do.
+                in_bounds = 0 <= x <= 1 and 0 <= y <= 1
+                ending: str | None
+                if rng.random() < 0.2:
+                    ending = None
+                elif not in_bounds:
+                    ending = "out"
+                else:
+                    ending = "winner" if rng.random() < 0.55 else "net"
                 shots[point] = Shot(
                     scorer=(me.id if rng.random() < 0.5 else partner.id) if won_by_me else opp1.id,
                     loser=opp2.id if won_by_me else (me.id if rng.random() < 0.6 else partner.id),
                     landing=(round(x, 3), round(y, 3)),
+                    ending=ending,
                 )
             await make_played_match(
                 session,
