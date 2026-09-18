@@ -1015,13 +1015,19 @@ async def verify_ever_group_member(
     member call live operations again, a real authorization-boundary bug,
     not this feature's intent (research.md #3).
 
+    `.limit(1)` + `.first()`, NOT `scalar_one_or_none()`: `join_group()`
+    adds a new roster row on every join, so a member who left and came back
+    has several rows here and `scalar_one_or_none()` raised
+    `MultipleResultsFound` — a 500 for exactly the members 014 promises can
+    still read their history (036 research.md Decision 7).
+
     Errors: `GROUP_MEMBERSHIP_NEVER_HELD` (403)."""
     result = await session.execute(
-        select(RosterEntry.id).where(
-            RosterEntry.group_id == group_id, RosterEntry.member_id == member_id
-        )
+        select(RosterEntry.id)
+        .where(RosterEntry.group_id == group_id, RosterEntry.member_id == member_id)
+        .limit(1)
     )
-    if result.scalar_one_or_none() is None:
+    if result.first() is None:
         raise ApiError("GROUP_MEMBERSHIP_NEVER_HELD", status_code=403)
 
 

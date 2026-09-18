@@ -1,11 +1,16 @@
 """Contract tests for 014-member-groups-history, per
 specs/014-member-groups-history/contracts/member-groups-history-api.md."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.member.models import Member
 from app.domains.member.service import register
+from app.domains.roster.models import RosterEntry
 
 pytestmark = pytest.mark.asyncio
 
@@ -212,3 +217,44 @@ async def test_group_history_requires_login(client: AsyncClient) -> None:
     )
     assert response.status_code == 401
     assert response.json()["error_code"] == "MEMBER_TOKEN_INVALID"
+
+
+async def test_group_history_works_for_a_member_who_left_and_rejoined(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """036 research.md Decision 7: every join adds a roster row, so a
+    returning member has two rows in the group — this used to be a 500."""
+    await _register_and_verify(db_session, "history-c-a8@example.com", "團長8")
+    await _register_and_verify(db_session, "history-c-b8@example.com", "回鍋")
+    a_token = await _login(client, "history-c-a8@example.com")
+    b_token = await _login(client, "history-c-b8@example.com")
+    group = await _create_member_group(
+        client, a_token, valid_turnstile_token, "History Contract Group 8"
+    )
+    joined = await client.post(
+        f"/groups/{group['group_id']}/join",
+        headers={"Authorization": f"Bearer {b_token}"},
+        json={},
+    )
+    assert joined.status_code == 201
+
+    member_id = (
+        await db_session.execute(
+            select(Member.id).where(Member.email == "history-c-b8@example.com")
+        )
+    ).scalar_one()
+    db_session.add(
+        RosterEntry(
+            group_id=uuid.UUID(group["group_id"]),
+            member_id=member_id,
+            nickname="回鍋（上一次）",
+            status="left",
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/members/me/groups/{group['group_id']}/history",
+        headers={"Authorization": f"Bearer {b_token}"},
+    )
+    assert response.status_code == 200
