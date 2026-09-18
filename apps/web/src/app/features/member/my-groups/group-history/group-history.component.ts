@@ -3,6 +3,7 @@ import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../../core/api/api-error';
 import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
 import {
@@ -74,6 +75,7 @@ interface PlayerPieSlice {
 @Component({
   selector: 'app-group-history',
   imports: [
+    PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
     DatePipe,
@@ -101,10 +103,6 @@ export class GroupHistoryComponent {
   readonly history = signal<MemberGroupHistoryResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
-  readonly pageNumbers = computed(() => {
-    const totalPages = this.history()?.total_pages ?? 1;
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  });
 
   readonly filterForm = this.fb.nonNullable.group({
     nickname: [''],

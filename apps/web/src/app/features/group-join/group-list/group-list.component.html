@@ -169,20 +169,6 @@
       }
     </ul>
 
-    @if (totalPages() > 1) {
-      <nav class="pagination">
-        <button type="button" class="btn btn--secondary" [disabled]="page() === 1" (click)="goToPage(page() - 1)">
-          {{ 'common.previousPage' | translate }}
-        </button>
-        @for (p of pageNumbers(); track p) {
-          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
-            {{ p }}
-          </button>
-        }
-        <button type="button" class="btn btn--secondary" [disabled]="page() === totalPages()" (click)="goToPage(page() + 1)">
-          {{ 'common.nextPage' | translate }}
-        </button>
-      </nav>
-    }
+    <app-pagination [page]="page()" [totalPages]="totalPages()" (pageChange)="goToPage($event)" />
   }
 </main>

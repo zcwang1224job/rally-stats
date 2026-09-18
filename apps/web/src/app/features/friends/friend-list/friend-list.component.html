@@ -87,15 +87,7 @@
       }
     </ul>
 
-    @if (totalPages() > 1) {
-      <nav class="pagination">
-        @for (p of pageNumbers(); track p) {
-          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
-            {{ p }}
-          </button>
-        }
-      </nav>
-    }
+    <app-pagination [page]="page()" [totalPages]="totalPages()" (pageChange)="goToPage($event)" />
   }
 </main>
 

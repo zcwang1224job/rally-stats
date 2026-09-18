@@ -151,30 +151,11 @@
           }
         </ul>
 
-        <div class="pagination">
-          <button
-            type="button"
-            class="btn btn--secondary"
-            [disabled]="loginRecordsPage() <= 1"
-            (click)="loadLoginRecords(loginRecordsPage() - 1)"
-          >
-            {{ 'common.previousPage' | translate }}
-          </button>
-          <span class="pagination__indicator">
-            {{
-              'member.settings.accountDetails.pageIndicator'
-                | translate: { page: loginRecordsPage(), totalPages: loginRecordsTotalPages() }
-            }}
-          </span>
-          <button
-            type="button"
-            class="btn btn--secondary"
-            [disabled]="loginRecordsPage() >= loginRecordsTotalPages()"
-            (click)="loadLoginRecords(loginRecordsPage() + 1)"
-          >
-            {{ 'common.nextPage' | translate }}
-          </button>
-        </div>
+        <app-pagination
+          [page]="loginRecordsPage()"
+          [totalPages]="loginRecordsTotalPages()"
+          (pageChange)="loadLoginRecords($event)"
+        />
       }
     </section>
   }

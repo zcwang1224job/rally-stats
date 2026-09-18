@@ -336,8 +336,7 @@
         "empty": "尚無登入紀錄",
         "deviceDesktop": "桌面瀏覽器",
         "deviceMobile": "行動裝置瀏覽器",
-        "deviceUnknown": "未知裝置",
-        "pageIndicator": "第 {{page}} / {{totalPages}} 頁"
+        "deviceUnknown": "未知裝置"
       },
       "security": {
         "title": "安全性",
@@ -387,6 +386,7 @@
     "copy": "複製",
     "previousPage": "上一頁",
     "nextPage": "下一頁",
+    "pagination": "分頁",
     "accept": "接受",
     "reject": "拒絕",
     "copied": "已複製",

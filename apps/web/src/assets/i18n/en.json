@@ -336,8 +336,7 @@
         "empty": "No login records yet",
         "deviceDesktop": "Desktop Browser",
         "deviceMobile": "Mobile Browser",
-        "deviceUnknown": "Unknown Device",
-        "pageIndicator": "Page {{page}} of {{totalPages}}"
+        "deviceUnknown": "Unknown Device"
       },
       "security": {
         "title": "Security",
@@ -387,6 +386,7 @@
     "copy": "Copy",
     "previousPage": "Previous Page",
     "nextPage": "Next Page",
+    "pagination": "Pagination",
     "accept": "Accept",
     "reject": "Reject",
     "copied": "Copied",

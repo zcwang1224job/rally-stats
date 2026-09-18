@@ -321,13 +321,6 @@
   justify-content: flex-end;
 }
 
-.pagination {
-  display: flex;
-  gap: var(--space-xs);
-  margin-top: var(--space-md);
-  flex-wrap: wrap;
-}
-
 // 016-match-score-timeline: rows are clickable (opens the match detail
 // dialog).
 .record-row--clickable {

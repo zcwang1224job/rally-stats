@@ -363,9 +363,11 @@ describe('SettingsComponent', () => {
       timestampPattern,
     );
 
-    const [prevButton, nextButton] = Array.from<HTMLButtonElement>(
+    const buttons = Array.from<HTMLButtonElement>(
       fixture.nativeElement.querySelectorAll('.pagination button'),
     );
+    const prevButton = buttons[0];
+    const nextButton = buttons[buttons.length - 1];
     expect(prevButton.disabled).toBe(true);
     expect(nextButton.disabled).toBe(false);
   });

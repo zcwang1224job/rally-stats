@@ -130,20 +130,6 @@ h2 {
   font-size: var(--font-size-caption);
 }
 
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  margin-top: var(--space-md);
-}
-
-.pagination__indicator {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-caption);
-  font-variant-numeric: tabular-nums;
-}
-
 .empty-state {
   display: flex;
   flex-direction: column;

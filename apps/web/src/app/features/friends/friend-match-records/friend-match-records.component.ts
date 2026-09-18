@@ -1,7 +1,8 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import {
   MatchRecordDetailResponse,
@@ -36,6 +37,7 @@ import { FriendComparisonComponent } from './friend-comparison/friend-comparison
 @Component({
   selector: 'app-friend-match-records',
   imports: [
+    PaginationComponent,
     TranslatePipe,
     DatePipe,
     MatchRecordDetailDialogComponent,
@@ -120,10 +122,6 @@ export class FriendMatchRecordsComponent {
     });
   }
 
-  readonly pageNumbers = computed(() => {
-    const totalPages = this.records()?.total_pages ?? 1;
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  });
 
   private readonly detailDialogRef =
     viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');

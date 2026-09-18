@@ -1,7 +1,8 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { NotificationListResponse, NotificationSummary } from '../../../core/api/notification.models';
 import { NotificationService } from '../notification.service';
@@ -12,7 +13,7 @@ import { NotificationService } from '../notification.service';
  * （FR-007）。 */
 @Component({
   selector: 'app-notification-list',
-  imports: [TranslatePipe, DatePipe],
+  imports: [TranslatePipe, DatePipe, PaginationComponent],
   templateUrl: './notification-list.component.html',
   styleUrl: './notification-list.component.scss',
 })
@@ -23,10 +24,6 @@ export class NotificationListComponent {
   readonly records = signal<NotificationListResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
-  readonly pageNumbers = computed(() => {
-    const totalPages = this.records()?.total_pages ?? 1;
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  });
 
   constructor() {
     this.load(this.page());

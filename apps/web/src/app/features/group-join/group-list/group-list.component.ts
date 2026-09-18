@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { GroupListItem } from '../../../core/api/group-join.models';
 import { AuthService } from '../../auth/auth.service';
@@ -25,7 +26,7 @@ interface FilterChip {
 
 @Component({
   selector: 'app-group-list',
-  imports: [TranslatePipe, ReactiveFormsModule, RouterLink],
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, PaginationComponent],
   templateUrl: './group-list.component.html',
   styleUrl: './group-list.component.scss',
 })
@@ -41,9 +42,6 @@ export class GroupListComponent {
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
   readonly totalPages = signal(1);
-  readonly pageNumbers = computed(() =>
-    Array.from({ length: this.totalPages() }, (_, i) => i + 1),
-  );
   /** A handful of placeholder rows shown in place of the group list while
    * the first page loads — purely cosmetic (skeleton screens read as
    * "loading" faster than a bare loading line), no data behind them. */
