@@ -312,7 +312,12 @@ dialog.dialog--xl {
 .tabs {
   display: flex;
   gap: var(--space-xs);
-  padding-bottom: var(--space-xs);
+  // The strip bleeds into the page gutter by the fade's width, so the fade
+  // only ever covers the gutter — the first/last tab and their focus rings
+  // stay fully visible and aligned with the content edge. The block padding
+  // keeps the focus ring clear of the scroll container's clipping.
+  margin-inline: calc(var(--space-md) * -1);
+  padding: var(--space-xs) var(--space-md);
   overflow-x: auto;
   mask-image: linear-gradient(
     to right,
@@ -359,7 +364,8 @@ dialog.dialog--xl {
   .tabs--sidebar {
     flex: 0 0 200px;
     flex-direction: column;
-    padding-bottom: 0;
+    margin-inline: 0;
+    padding: 0;
     overflow-x: visible;
     mask-image: none;
 
