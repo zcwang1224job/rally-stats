@@ -633,7 +633,8 @@
       "serve": "Serve and return",
       "clutch": "Clutch points",
       "scoring": "Scoring and margins",
-      "landing": "Landing distribution"
+      "landing": "Landing distribution",
+      "ending": "Winners & errors"
     },
     "fraction": {
       "perMatch": "{{total}} over {{matches}} matches"
@@ -664,9 +665,6 @@
     },
     "landing": {
       "empty": "No landing records — the scorer has to mark where the shuttle landed, in a match with detailed scoring on",
-      "rangeLabel": "Landing range",
-      "rangeAll": "All",
-      "rangeRecent": "Last {{window}}",
       "legendScored": "Points won (circle)",
       "legendLost": "Points lost (diamond)",
       "courtLabel": "Landing distribution across matches: {{scored}} points won, {{lost}} points lost",
@@ -765,6 +763,49 @@
         "label": "Average losing margin",
         "hint": "Losses only — lower is better: losing by less is progress too",
         "empty": "No losses in this range"
+      },
+      "winner_share": {
+        "label": "Winner share",
+        "hint": "Winners ÷ points scored with a recorded ending — higher is better",
+        "empty": "No point-ending data in this range"
+      },
+      "winners_per_match": {
+        "label": "Winners per match",
+        "hint": "Matches with point-ending data only — higher is better",
+        "empty": "No point-ending data in this range"
+      },
+      "errors_per_match": {
+        "label": "Errors per match",
+        "hint": "Points given away — lower is better",
+        "empty": "No point-ending data in this range"
+      },
+      "error_share_of_lost": {
+        "label": "Error share of points lost",
+        "hint": "Own errors ÷ points lost with a recorded ending — lower is better",
+        "empty": "No point-ending data in this range"
+      },
+      "winner_error_ratio": {
+        "label": "Winners to errors",
+        "hint": "Winners ÷ own errors — higher is better; undefined without an error",
+        "empty": "No point-ending data in this range"
+      }
+    },
+    "range": {
+      "label": "Range",
+      "all": "All",
+      "recent": "Last {{window}}",
+      "note": "Applies to the error breakdown and the landing map"
+    },
+    "errorBreakdown": {
+      "title": "Error breakdown",
+      "caption": "Own errors counted by kind, with their share",
+      "total": "{{total}} errors in total ({{matches}} matches)",
+      "empty": "No errors recorded in this range",
+      "kind": {
+        "out": "Out",
+        "net": "Net",
+        "serve_fault": "Serve fault",
+        "other_error": "Other"
       }
     }
   },

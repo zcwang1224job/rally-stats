@@ -261,7 +261,7 @@ describe('FriendMatchRecordsComponent', () => {
       });
 
       expect(getFriendMatchDashboardCalls).toEqual([['friend-1']]);
-      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(18);
+      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(23);
 
       fixture.componentInstance.goToPage(2);
       expect(getFriendMatchDashboardCalls.length).toBe(1);

@@ -67,12 +67,21 @@
   gap: var(--space-xs);
 }
 
-.landing-range {
-  display: inline-flex;
+// 035: the one range switch, above the groups (shared by the landing map
+// and the error breakdown).
+.dashboard-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-xs);
 }
 
-.landing-range__button {
+.dashboard-range__note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.dashboard-range__button {
   min-height: var(--touch-target-min);
   padding: 0 var(--space-md);
   border: 1px solid var(--color-border);
@@ -101,4 +110,67 @@
   margin: var(--space-xs) 0 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-caption);
+}
+
+// 035: my errors by kind — four rows, one colour (nominal categories, no
+// gradient), a thin bar for the share.
+.error-breakdown__title {
+  margin: var(--space-md) 0 var(--space-xs);
+  font-size: var(--font-size-body);
+}
+
+.error-breakdown {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+
+  th,
+  td {
+    padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    font-weight: normal;
+    vertical-align: middle;
+  }
+}
+
+.error-breakdown__count {
+  text-align: right;
+  width: 3rem;
+}
+
+.error-breakdown__share {
+  width: 50%;
+}
+
+.error-breakdown__percent {
+  display: inline-block;
+  width: 3rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.error-breakdown__bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: calc(100% - 3.5rem);
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.error-breakdown__fill {
+  display: block;
+  height: 100%;
+  background: var(--color-brand-primary);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

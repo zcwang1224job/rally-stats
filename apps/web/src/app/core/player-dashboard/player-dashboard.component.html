@@ -12,6 +12,35 @@
         }
       </p>
 
+      <!-- 035: ONE range switch for every range-dependent picture below
+           (the error breakdown and the landing map) — never one per
+           block. Only offered when there is a recent window to compare. -->
+      @if (d.has_comparison) {
+        <div
+          class="dashboard-range"
+          role="group"
+          [attr.aria-label]="'playerDashboard.range.label' | translate"
+        >
+          <button
+            type="button"
+            class="dashboard-range__button"
+            [attr.aria-pressed]="effectiveRange() === 'all'"
+            (click)="range.set('all')"
+          >
+            {{ 'playerDashboard.range.all' | translate }}
+          </button>
+          <button
+            type="button"
+            class="dashboard-range__button"
+            [attr.aria-pressed]="effectiveRange() === 'recent'"
+            (click)="range.set('recent')"
+          >
+            {{ 'playerDashboard.range.recent' | translate: { window: d.recent_window } }}
+          </button>
+          <span class="dashboard-range__note">{{ 'playerDashboard.range.note' | translate }}</span>
+        </div>
+      }
+
       @for (group of groups; track group; let first = $first) {
         <details class="dashboard-group" [attr.data-group]="group" [open]="first">
           <summary>{{ 'playerDashboard.group.' + group | translate }}</summary>
@@ -36,37 +65,52 @@
               [labelKey]="labelKey(metric.key)"
             />
           }
+          <!-- 035: under the ending cards, my errors by kind for the
+               selected range. One colour: kinds are categories, not a
+               scale. -->
+          @if (group === 'ending') {
+            <h3 class="error-breakdown__title">{{ 'playerDashboard.errorBreakdown.title' | translate }}</h3>
+            @if (errorBreakdownView(); as breakdown) {
+              <table class="error-breakdown" data-error-breakdown>
+                <caption class="visually-hidden">
+                  {{ 'playerDashboard.errorBreakdown.caption' | translate }}
+                </caption>
+                <tbody>
+                  @for (row of breakdown.rows; track row.kind) {
+                    <tr [attr.data-error-kind]="row.kind">
+                      <th scope="row">{{ 'playerDashboard.errorBreakdown.kind.' + row.kind | translate }}</th>
+                      <td class="error-breakdown__count">{{ row.count }}</td>
+                      <td class="error-breakdown__share">
+                        <span class="error-breakdown__percent">{{ (row.share * 100).toFixed(0) }}%</span>
+                        <span class="error-breakdown__bar" aria-hidden="true">
+                          <span class="error-breakdown__fill" [style.width.%]="row.share * 100"></span>
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              <p class="dashboard-group__note" data-error-breakdown-total>
+                {{
+                  'playerDashboard.errorBreakdown.total'
+                    | translate: { total: breakdown.total, matches: rangeMatchTotal() }
+                }}
+              </p>
+            } @else {
+              <p class="dashboard__empty" data-state="error-breakdown-empty">
+                {{ 'playerDashboard.errorBreakdown.empty' | translate }}
+              </p>
+            }
+          }
         </details>
       }
 
       <details class="dashboard-group" data-group="landing">
         <summary>{{ 'playerDashboard.group.landing' | translate }}</summary>
         @if (landingView(); as view) {
+          <!-- 035: the all/recent switch moved up to the dashboard level
+               (`.dashboard-range`), shared with the error breakdown. -->
           <div class="landing-controls">
-            @if (d.has_comparison) {
-              <div
-                class="landing-range"
-                role="group"
-                [attr.aria-label]="'playerDashboard.landing.rangeLabel' | translate"
-              >
-                <button
-                  type="button"
-                  class="landing-range__button"
-                  [attr.aria-pressed]="effectiveRange() === 'all'"
-                  (click)="landingRange.set('all')"
-                >
-                  {{ 'playerDashboard.landing.rangeAll' | translate }}
-                </button>
-                <button
-                  type="button"
-                  class="landing-range__button"
-                  [attr.aria-pressed]="effectiveRange() === 'recent'"
-                  (click)="landingRange.set('recent')"
-                >
-                  {{ 'playerDashboard.landing.rangeRecent' | translate: { window: d.recent_window } }}
-                </button>
-              </div>
-            }
             <div class="landing-toggles">
               <label>
                 <input
@@ -125,7 +169,7 @@
             <li data-coverage="matches">
               {{
                 'playerDashboard.basedOn'
-                  | translate: { used: view.matchesUsed, total: landingMatchTotal() }
+                  | translate: { used: view.matchesUsed, total: rangeMatchTotal() }
               }}
             </li>
           </ul>
