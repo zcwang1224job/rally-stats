@@ -901,6 +901,52 @@
       }
     }
   },
+  "groupBenchmark": {
+    "title": "Compare within a group",
+    "intro": "Pick a group you have belonged to and see each metric's group average and where you rank. No other player's name or individual number is ever shown.",
+    "pickGroup": "Group",
+    "myMatches": "{{count}} of my matches",
+    "groupStatus": {
+      "left": "left",
+      "kicked": "removed",
+      "disbanded": "disbanded"
+    },
+    "scopeNote": "Always worked out from all {{total}} matches of “{{group}}” ({{mine}} of them yours) — the filters above do not apply here.",
+    "noGroups": "You have not joined any group as a member yet. Once you do, you can compare with the people you play with here.",
+    "columns": {
+      "mine": "Me",
+      "average": "Group average",
+      "rank": "My rank"
+    },
+    "pool": "{{count}} players",
+    "rank": "Rank {{rank}} of {{pool}}",
+    "status": {
+      "poolTooSmall": "Not enough players: only {{count}} have five matches with this data in this group",
+      "selfBelowMinimum": "You have too few matches in this group to be ranked",
+      "noDirection": "No better or worse for this one, so no rank"
+    },
+    "loading": "Working out the group comparison…",
+    "failed": "The group comparison could not be loaded. Everything else is unaffected."
+  },
+  "friendComparison": {
+    "toggle": "Compare with me",
+    "friend": "{{nickname}}",
+    "friendGeneric": "Friend",
+    "me": "Me",
+    "basedOn": "{{used}} matches",
+    "better": "better",
+    "tie": "level",
+    "loading": "Comparing…",
+    "failed": "The comparison could not be loaded. Everything else is unaffected.",
+    "headToHead": {
+      "title": "Our record against and with each other",
+      "asOpponents": "As opponents",
+      "asPartners": "As partners",
+      "tally": "{{matches}} played · I won {{wins}}, lost {{losses}} · avg. margin {{margin}}",
+      "neverOpponents": "Never played against each other",
+      "neverPartners": "Never partnered"
+    }
+  },
   "matchRecordDetail": {
     "title": "Match Details",
     "close": "Close",

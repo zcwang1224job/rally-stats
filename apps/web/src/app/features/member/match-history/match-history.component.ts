@@ -5,6 +5,10 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import {
+  BenchmarkGroupOption,
+  GroupBenchmarkResponse,
+} from '../../../core/api/group-benchmark.models';
+import {
   MatchRecordDetailResponse,
   MatchRecordResultFilter,
   MatchRecordScoreComparison,
@@ -13,9 +17,14 @@ import {
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
 import {
+  DashboardInsights,
   DashboardMetricKey,
   MemberMatchDashboardResponse,
 } from '../../../core/api/player-dashboard.models';
+import {
+  getBenchmarkGroup,
+  setBenchmarkGroup,
+} from '../../../core/benchmark-group-preference';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import {
   MatchupRecordsComponent,
@@ -27,6 +36,7 @@ import { PlayerInsightsComponent } from '../../../core/player-insights/player-in
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
+import { GroupBenchmarkComponent } from './group-benchmark/group-benchmark.component';
 import { FriendsService } from '../../friends/friends.service';
 
 interface RoundTrendPoint {
@@ -57,6 +67,7 @@ interface PerformanceTier {
     PlayerDashboardComponent,
     PlayerInsightsComponent,
     MatchupRecordsComponent,
+    GroupBenchmarkComponent,
   ],
   templateUrl: './match-history.component.html',
   styleUrl: './match-history.component.scss',
@@ -130,6 +141,86 @@ export class MatchHistoryComponent {
   readonly hasActiveFilters = computed(() =>
     Object.values(this.appliedFilters()).some((value) => value !== undefined),
   );
+
+  // ---- 036 US3: the in-group comparison (research.md Decision 9) ----------
+  /** null until asked for: the most expensive request on the page is only
+   * made for a member who uses it — on opening the block, or straight away
+   * when a group was chosen on an earlier visit (its sentences belong in the
+   * summary, FR-033). */
+  readonly benchmarkGroups = signal<BenchmarkGroupOption[] | null>(null);
+  readonly benchmarkGroupId = signal<string | null>(null);
+  readonly benchmark = signal<GroupBenchmarkResponse | null>(null);
+  readonly benchmarkLoading = signal(false);
+  readonly benchmarkFailed = signal(false);
+  private benchmarkStarted = false;
+  private benchmarkRequest = 0;
+
+  /** THE rule for which summary is shown, and the only one (FR-033, FR-034):
+   * the benchmark response's — my unfiltered summary with the in-group source
+   * merged in by the backend — while it is loaded and no filter is active;
+   * otherwise the dashboard's own. Nothing is merged, ranked or thresholded
+   * here. */
+  readonly summaryInsights = computed<DashboardInsights | null>(() => {
+    const inGroup = this.benchmark();
+    return inGroup && !this.hasActiveFilters()
+      ? inGroup.insights
+      : (this.dashboard()?.insights ?? null);
+  });
+  readonly benchmarkPending = computed(() => this.benchmarkLoading() && !this.hasActiveFilters());
+  readonly benchmarkOmittedByFilters = computed(
+    () => this.benchmarkGroupId() !== null && this.hasActiveFilters(),
+  );
+
+  /** Opening the block, or a remembered group: load my groups, then the one
+   * to compare within — the remembered one if it is still mine to open, else
+   * the one with most of my matches (FR-027). Once per visit. */
+  startBenchmark(): void {
+    if (this.benchmarkStarted) {
+      return;
+    }
+    this.benchmarkStarted = true;
+    this.auth.getBenchmarkGroups().subscribe({
+      next: ({ groups }) => {
+        this.benchmarkGroups.set(groups);
+        const remembered = getBenchmarkGroup(this.selfMemberId);
+        const pick = groups.find((group) => group.group_id === remembered) ?? groups[0];
+        if (pick) {
+          this.selectBenchmarkGroup(pick.group_id);
+        }
+      },
+      error: () => {
+        this.benchmarkGroups.set([]);
+        this.benchmarkFailed.set(true);
+      },
+    });
+  }
+
+  selectBenchmarkGroup(groupId: string): void {
+    setBenchmarkGroup(this.selfMemberId, groupId);
+    this.benchmarkGroupId.set(groupId);
+    this.benchmark.set(null);
+    this.benchmarkLoading.set(true);
+    this.benchmarkFailed.set(false);
+    const request = ++this.benchmarkRequest;
+    this.auth.getGroupBenchmark(groupId).subscribe({
+      next: (response) => {
+        if (request !== this.benchmarkRequest) {
+          return; // a later choice already superseded this one
+        }
+        this.benchmark.set(response);
+        this.benchmarkLoading.set(false);
+      },
+      error: () => {
+        if (request !== this.benchmarkRequest) {
+          return;
+        }
+        // Stays inside its own block: the summary falls back to the
+        // dashboard's, and nothing else on the page notices (FR-007).
+        this.benchmarkLoading.set(false);
+        this.benchmarkFailed.set(true);
+      },
+    });
+  }
 
   /** 036 US2: the partner or opponent whose row was clicked. Sent as an exact
    * `partner_key` / `opponent_key`, alongside whatever the form holds — the
@@ -318,6 +409,9 @@ export class MatchHistoryComponent {
     this.dashboardFailed.set(false);
     this.auth.getMatchDashboard(filters).subscribe({
       next: (response) => {
+        if (getBenchmarkGroup(this.selfMemberId)) {
+          this.startBenchmark(); // after the dashboard, never ahead of it
+        }
         if (key !== this.dashboardFiltersKey) {
           return; // a newer request has been sent since
         }

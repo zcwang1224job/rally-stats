@@ -1,0 +1,94 @@
+<details class="benchmark card" (toggle)="onToggle($event)">
+  <summary class="benchmark__title">{{ 'groupBenchmark.title' | translate }}</summary>
+  <p class="benchmark__intro">{{ 'groupBenchmark.intro' | translate }}</p>
+
+  @if (groups(); as options) {
+    @if (options.length === 0) {
+      <p class="benchmark__note" data-no-groups>{{ 'groupBenchmark.noGroups' | translate }}</p>
+    } @else {
+      <label class="benchmark__picker">
+        <span>{{ 'groupBenchmark.pickGroup' | translate }}</span>
+        <select [value]="selectedGroupId() ?? ''" (change)="onSelect($event)" data-group-select>
+          @for (group of options; track group.group_id) {
+            <option [value]="group.group_id" [selected]="group.group_id === selectedGroupId()">
+              {{ group.name }}
+              @if (groupStatusKey(group); as statusKey) {
+                （{{ statusKey | translate }}）
+              }
+              · {{ 'groupBenchmark.myMatches' | translate: { count: group.my_completed_matches } }}
+            </option>
+          }
+        </select>
+      </label>
+
+      @if (failed()) {
+        <p class="benchmark__note" role="alert" data-failed>
+          {{ 'groupBenchmark.failed' | translate }}
+        </p>
+      } @else if (loading() || !benchmark()) {
+        <p class="benchmark__note" aria-busy="true" data-loading>
+          {{ 'groupBenchmark.loading' | translate }}
+        </p>
+      } @else if (benchmark(); as b) {
+        <!-- FR-032: said in words, because it is the one block on this page
+             that does NOT follow the filters above. -->
+        <p class="benchmark__note" data-scope>
+          {{
+            'groupBenchmark.scopeNote'
+              | translate: { group: b.group.name, total: b.total_matches, mine: b.my_matches }
+          }}
+        </p>
+
+        <ul class="benchmark__rows">
+          <li class="benchmark__row benchmark__row--head" aria-hidden="true">
+            <span></span>
+            <span>{{ 'groupBenchmark.columns.mine' | translate }}</span>
+            <span>{{ 'groupBenchmark.columns.average' | translate }}</span>
+            <span>{{ 'groupBenchmark.columns.rank' | translate }}</span>
+          </li>
+          @for (metric of b.metrics; track metric.key) {
+            <li class="benchmark__row" [attr.data-metric]="metric.key" [attr.data-status]="metric.status">
+              <span class="benchmark__label">{{ labelKey(metric) | translate }}</span>
+              <span class="benchmark__mine" data-mine>
+                <span class="benchmark__cell-label">{{ 'groupBenchmark.columns.mine' | translate }}</span>
+                {{ mine(metric) }}
+              </span>
+              @if (metric.status === 'pool_too_small') {
+                <!-- One explanation across both columns — never two blank cells. -->
+                <span class="benchmark__status benchmark__status--wide" data-status-note>
+                  {{ 'groupBenchmark.status.poolTooSmall' | translate: { count: metric.pool_size } }}
+                </span>
+              } @else {
+                <span class="benchmark__average" data-average>
+                  <span class="benchmark__cell-label">{{ 'groupBenchmark.columns.average' | translate }}</span>
+                  {{ average(metric) }}
+                  <span class="benchmark__pool">
+                    {{ 'groupBenchmark.pool' | translate: { count: metric.pool_size } }}
+                  </span>
+                </span>
+                @if (metric.status === 'ok') {
+                  <span class="benchmark__rank" data-rank>
+                    {{ 'groupBenchmark.rank' | translate: { rank: metric.rank, pool: metric.pool_size } }}
+                  </span>
+                } @else {
+                  <span class="benchmark__status" data-status-note>
+                    {{
+                      (metric.status === 'no_direction'
+                        ? 'groupBenchmark.status.noDirection'
+                        : 'groupBenchmark.status.selfBelowMinimum'
+                      ) | translate
+                    }}
+                  </span>
+                }
+              }
+            </li>
+          }
+        </ul>
+      }
+    }
+  } @else {
+    <p class="benchmark__note" aria-busy="true" data-loading>
+      {{ 'groupBenchmark.loading' | translate }}
+    </p>
+  }
+</details>

@@ -1,8 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
+import {
+  BenchmarkGroupOption,
+  BenchmarkGroupsResponse,
+  GroupBenchmarkResponse,
+} from '../../../core/api/group-benchmark.models';
 import { MemberMatchDashboardResponse } from '../../../core/api/player-dashboard.models';
 import {
   dashboardFixture,
@@ -72,6 +77,31 @@ const recordsResponse: MemberMatchRecordsResponse = {
   total_pages: 1,
 };
 
+const BENCHMARK_GROUPS: BenchmarkGroupOption[] = [
+  { group_id: 'g-busy', group_number: 1, name: '週三羽球', status: 'active', member_status: 'active', my_completed_matches: 86 },
+  { group_id: 'g-old', group_number: 2, name: '老球友', status: 'active', member_status: 'left', my_completed_matches: 12 },
+];
+
+function benchmarkResponse(groupId: string): GroupBenchmarkResponse {
+  return {
+    group: { group_id: groupId, name: groupId === 'g-busy' ? '週三羽球' : '老球友' },
+    total_matches: 200,
+    my_matches: 86,
+    metrics: [],
+    insights: insightsFixture({
+      benchmark_group_name: '週三羽球',
+      strengths: [
+        insightFixture({
+          rule: 'benchmark_quartile',
+          source: 'benchmark',
+          metric_key: 'team_serve',
+          params: { mine: 0.6, group_average: 0.5, diff: 0.1, rank: 1, pool_size: 12, kind: 'rate' },
+        }),
+      ],
+    }),
+  };
+}
+
 const defaultCandidates: InviteCandidatesResponse = {
   candidates: [{ member_id: 'm2', friendship_status: 'none', invite_eligible: true }],
 };
@@ -85,6 +115,10 @@ function setup(
     dashboard?: Observable<MemberMatchDashboardResponse>;
     dashboardCalls?: unknown[][];
     recordCalls?: unknown[][];
+    benchmarkGroups?: Observable<BenchmarkGroupsResponse>;
+    benchmark?: (groupId: string) => Observable<GroupBenchmarkResponse>;
+    benchmarkCalls?: string[];
+    benchmarkGroupCalls?: unknown[][];
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -101,6 +135,14 @@ function setup(
           getMatchDashboard: (...args: unknown[]) => {
             options.dashboardCalls?.push(args);
             return options.dashboard ?? of(dashboardFixture());
+          },
+          getBenchmarkGroups: (...args: unknown[]) => {
+            options.benchmarkGroupCalls?.push(args);
+            return options.benchmarkGroups ?? of({ groups: BENCHMARK_GROUPS });
+          },
+          getGroupBenchmark: (groupId: string) => {
+            options.benchmarkCalls?.push(groupId);
+            return (options.benchmark ?? ((id: string) => of(benchmarkResponse(id))))(groupId);
           },
           getMatchRecordDetail: (...args: unknown[]) => {
             detailCalls.push(args);
@@ -268,6 +310,141 @@ describe('MatchHistoryComponent', () => {
       expect(root.querySelector('app-player-dashboard [data-metric]')).toBeNull();
       // 036: the summary rides on the same request — it stays out of the way.
       expect(root.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US3 (T042)
+  describe('in-group comparison', () => {
+    const SELF = 'self-id';
+    const KEY = `rally-stats:benchmark-group:${SELF}`;
+    const ownSummary = () =>
+      of(
+        dashboardFixture({
+          insights: insightsFixture({
+            strengths: [insightFixture({ metric_key: 'endgame' })],
+          }),
+        }),
+      );
+    const open = (fixture: ReturnType<typeof setup>) => {
+      const details = (fixture.nativeElement as HTMLElement).querySelector<HTMLDetailsElement>(
+        'app-group-benchmark details',
+      )!;
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    };
+    const summaryRules = (fixture: ReturnType<typeof setup>) =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll('app-player-insights .insight'),
+      ).map((node) => node.getAttribute('data-rule'));
+
+    afterEach(() => localStorage.clear());
+
+    it('(a) asks for nothing until the block is opened, then uses my busiest group', () => {
+      const benchmarkCalls: string[] = [];
+      const benchmarkGroupCalls: unknown[][] = [];
+      const fixture = setup([], { benchmarkCalls, benchmarkGroupCalls });
+      expect(benchmarkGroupCalls.length).toBe(0);
+      expect(benchmarkCalls.length).toBe(0);
+
+      open(fixture);
+
+      expect(benchmarkGroupCalls.length).toBe(1);
+      expect(benchmarkCalls).toEqual(['g-busy']);
+      expect(localStorage.getItem(KEY)).toBe('g-busy');
+      open(fixture); // opening again is not another request
+      expect(benchmarkGroupCalls.length).toBe(1);
+    });
+
+    it('(b) a group chosen on an earlier visit loads by itself, after the dashboard', () => {
+      localStorage.setItem(KEY, 'g-old');
+      const benchmarkCalls: string[] = [];
+      setup([], { benchmarkCalls });
+      expect(benchmarkCalls).toEqual(['g-old']);
+    });
+
+    it('(c) choosing another group remembers it and asks again', () => {
+      const benchmarkCalls: string[] = [];
+      const fixture = setup([], { benchmarkCalls });
+      open(fixture);
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+        'app-group-benchmark select',
+      )!;
+
+      select.value = 'g-old';
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect(benchmarkCalls).toEqual(['g-busy', 'g-old']);
+      expect(localStorage.getItem(KEY)).toBe('g-old');
+    });
+
+    it('(d) a remembered group that is no longer mine falls back to the default', () => {
+      localStorage.setItem(KEY, 'g-gone');
+      const benchmarkCalls: string[] = [];
+      setup([], { benchmarkCalls });
+      expect(benchmarkCalls).toEqual(['g-busy']);
+      expect(localStorage.getItem(KEY)).toBe('g-busy');
+    });
+
+    it('(e) shows the merged summary while no filter is active, my own under a filter', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const fixture = setup([], { dashboard: ownSummary() });
+      const root: HTMLElement = fixture.nativeElement;
+      fixture.detectChanges();
+      expect(summaryRules(fixture)).toEqual(['benchmark_quartile']);
+      expect(root.querySelector('[data-benchmark-group]')).not.toBeNull();
+
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      fixture.componentInstance.applyFilters();
+      fixture.detectChanges();
+
+      expect(summaryRules(fixture)).toEqual(['rate_vs_overall']);
+      expect(root.querySelector('[data-benchmark-omitted]')).not.toBeNull();
+
+      fixture.componentInstance.clearFilters();
+      fixture.detectChanges();
+      expect(summaryRules(fixture)).toEqual(['benchmark_quartile']);
+      expect(root.querySelector('[data-benchmark-omitted]')).toBeNull();
+    });
+
+    it('(e) says so while the benchmark is on its way', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const pending = new Subject<GroupBenchmarkResponse>();
+      const fixture = setup([], { dashboard: ownSummary(), benchmark: () => pending });
+      fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+      expect(root.querySelector('[data-benchmark-pending]')).not.toBeNull();
+      expect(summaryRules(fixture)).toEqual(['rate_vs_overall']); // mine, meanwhile
+
+      pending.next(benchmarkResponse('g-busy'));
+      fixture.detectChanges();
+      expect(root.querySelector('[data-benchmark-pending]')).toBeNull();
+      expect(summaryRules(fixture)).toEqual(['benchmark_quartile']);
+    });
+
+    it('(f) a failure stays inside its own block', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const fixture = setup([], {
+        dashboard: ownSummary(),
+        benchmark: () => throwError(() => new Error('boom')),
+      });
+      fixture.detectChanges();
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelector('app-group-benchmark [data-failed]')).not.toBeNull();
+      expect(summaryRules(fixture)).toEqual(['rate_vs_overall']);
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(23);
+    });
+
+    it('is never bound to the page filters', () => {
+      localStorage.setItem(KEY, 'g-busy');
+      const benchmarkCalls: string[] = [];
+      const fixture = setup([], { benchmarkCalls });
+      fixture.componentInstance.filterForm.patchValue({ result: 'win' });
+      fixture.componentInstance.applyFilters();
+      expect(benchmarkCalls).toEqual(['g-busy']); // asked once, not again per filter
     });
   });
 

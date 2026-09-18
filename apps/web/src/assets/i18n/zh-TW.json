@@ -901,6 +901,52 @@
       }
     }
   },
+  "groupBenchmark": {
+    "title": "團內比較",
+    "intro": "選一個你加入過的團，看看每項指標的團內平均，以及你排第幾名。不會顯示任何其他球友的名字或個別數字。",
+    "pickGroup": "比較的團",
+    "myMatches": "我 {{count}} 場",
+    "groupStatus": {
+      "left": "已離開",
+      "kicked": "已被移出",
+      "disbanded": "已解散"
+    },
+    "scopeNote": "固定以「{{group}}」的全部 {{total}} 場比賽計算（其中你打了 {{mine}} 場），不受上方篩選條件影響。",
+    "noGroups": "你還沒有以會員身分加入過任何團，加入之後就能在這裡和球友比較。",
+    "columns": {
+      "mine": "我",
+      "average": "團內平均",
+      "rank": "我的名次"
+    },
+    "pool": "{{count}} 人",
+    "rank": "第 {{rank}} 名／共 {{pool}} 人",
+    "status": {
+      "poolTooSmall": "團內樣本不足：目前只有 {{count}} 人在這個團打滿 5 場有此資料的比賽",
+      "selfBelowMinimum": "你在此團的場數不足，暫不排名",
+      "noDirection": "這項沒有高低之分，不排名"
+    },
+    "loading": "正在計算團內比較…",
+    "failed": "團內比較暫時無法載入，其他內容不受影響。"
+  },
+  "friendComparison": {
+    "toggle": "與我比較",
+    "friend": "{{nickname}}",
+    "friendGeneric": "好友",
+    "me": "我",
+    "basedOn": "{{used}} 場",
+    "better": "較佳",
+    "tie": "相同",
+    "loading": "正在比較…",
+    "failed": "暫時無法比較，其他內容不受影響。",
+    "headToHead": {
+      "title": "我們的交手紀錄",
+      "asOpponents": "互為對手",
+      "asPartners": "互為搭檔",
+      "tally": "{{matches}} 場 · 我 {{wins}} 勝 {{losses}} 敗 · 平均分差 {{margin}}",
+      "neverOpponents": "還沒有當過對手",
+      "neverPartners": "還沒有搭檔過"
+    }
+  },
   "matchRecordDetail": {
     "title": "比賽詳情",
     "close": "關閉",

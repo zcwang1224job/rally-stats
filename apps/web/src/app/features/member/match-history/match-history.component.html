@@ -146,8 +146,10 @@
        so and this simply stays out of the way (FR-007). -->
   @if (!dashboardFailed()) {
     <app-player-insights
-      [insights]="dashboard()?.insights ?? null"
+      [insights]="summaryInsights()"
       [loading]="dashboardLoading()"
+      [pendingBenchmark]="benchmarkPending()"
+      [benchmarkOmittedByFilters]="benchmarkOmittedByFilters()"
       (metricPicked)="focusMetric($event)"
       (playerPicked)="focusMatchup($event)"
     />
@@ -160,6 +162,18 @@
     [loading]="dashboardLoading()"
     [failed]="dashboardFailed()"
     [singlesCourt]="singlesOnly()"
+  />
+
+  <!-- 036 US3: collapsed and silent until opened — unless a group was chosen
+       on an earlier visit. Deliberately NOT bound to the filters above. -->
+  <app-group-benchmark
+    [groups]="benchmarkGroups()"
+    [selectedGroupId]="benchmarkGroupId()"
+    [benchmark]="benchmark()"
+    [loading]="benchmarkLoading()"
+    [failed]="benchmarkFailed()"
+    (opened)="startBenchmark()"
+    (groupChanged)="selectBenchmarkGroup($event)"
   />
 
   @if (r.total_matches > 0) {
