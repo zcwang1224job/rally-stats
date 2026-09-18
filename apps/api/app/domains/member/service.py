@@ -7,6 +7,7 @@ import re
 import secrets
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal, cast
@@ -25,9 +26,10 @@ from app.domains.group import match_stats
 from app.domains.group.models import Group
 from app.domains.group.schemas import (
     MatchRecordDetailResponse,
+    MatchupHighlights,
+    MatchupRecord,
     MemberMatchRecordsResponse,
     MemberMatchRecordSummary,
-    OpponentRecord,
     RoundWinRatePoint,
 )
 from app.domains.group.service import (
@@ -45,7 +47,7 @@ from app.domains.group.service import (
     resolve_guest_binding_target,
     verify_ever_group_member,
 )
-from app.domains.member import insights, player_dashboard
+from app.domains.member import insights, matchups, player_dashboard
 from app.domains.member.models import (
     EmailVerificationToken,
     Member,
@@ -55,6 +57,7 @@ from app.domains.member.models import (
 )
 from app.domains.member.oauth_client import OAuthProfile, exchange_code_for_profile
 from app.domains.member.oauth_providers import Provider, get_provider_config
+from app.domains.member.player_identity import PlayerRef, player_key
 from app.domains.member.schemas import (
     SUPPORTED_LANGUAGES,
     LoginRecordsResponse,
@@ -717,6 +720,8 @@ async def view_member_match_records(
     opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
     opponent_score: int | None = None,
     match_mode: Literal["singles", "doubles"] | None = None,
+    partner_key: str | None = None,
+    opponent_key: str | None = None,
 ) -> MemberMatchRecordsResponse:
     """FR-018/FR-019: once authorized, delegates to the SAME
     `build_member_match_records()` the self-viewing `/members/me/
@@ -740,6 +745,8 @@ async def view_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=partner_key,
+        opponent_key=opponent_key,
     )
 
 
@@ -1179,6 +1186,12 @@ class MemberMatchFilters:
     opponent_score: int | None = None
     group_id: uuid.UUID | None = None
     match_mode: Literal["singles", "doubles"] | None = None
+    # 036 US2: a click on a partner/opponent row. EXACT identity
+    # (`player_identity.player_key`), unlike `opponents`/`partners` above
+    # which are nickname substrings — those would also pull in anyone with a
+    # similar name and miss the same member under another group's nickname.
+    partner_key: str | None = None
+    opponent_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1258,6 +1271,14 @@ async def _filtered_member_matches(
             list(filters.partners), [p.nickname for p in match_partners]
         ):
             continue
+        if filters.partner_key is not None and filters.partner_key not in {
+            _player_ref(p).key for p in match_partners
+        }:
+            continue
+        if filters.opponent_key is not None and filters.opponent_key not in {
+            _player_ref(p).key for p in match_opponents
+        }:
+            continue
         if filters.result is not None and won != (filters.result == "win"):
             continue
         if match.ended_at is not None:
@@ -1295,6 +1316,44 @@ async def _filtered_member_matches(
     return filtered
 
 
+def _player_ref(participant: ParticipantSummary) -> PlayerRef:
+    member_id = uuid.UUID(participant.member_id) if participant.member_id else None
+    return PlayerRef(
+        key=player_key(member_id, uuid.UUID(participant.roster_entry_id)),
+        nickname=participant.nickname,
+        member_id=participant.member_id,
+    )
+
+
+def _matchup_inputs(filtered: Sequence[FilteredMatch]) -> list[matchups.MatchupInput]:
+    """036 US2: each filtered match from my side, for `matchups.build()`.
+    Everything is already on `FilteredMatch` — no query."""
+    inputs: list[matchups.MatchupInput] = []
+    for item in filtered:
+        mine_is_a = item.my_team == "A"
+        mine = item.summary.team_a if mine_is_a else item.summary.team_b
+        theirs = item.summary.team_b if mine_is_a else item.summary.team_a
+        my_score = item.match.score_a if mine_is_a else item.match.score_b
+        their_score = item.match.score_b if mine_is_a else item.match.score_a
+        inputs.append(
+            matchups.MatchupInput(
+                ended_at=cast(datetime, item.match.ended_at),
+                won=item.won,
+                margin=my_score - their_score,
+                is_doubles=len(mine) + len(theirs) > 2,
+                partners=tuple(
+                    _player_ref(p) for p in mine if p.roster_entry_id != str(item.my_entry_id)
+                ),
+                opponents=tuple(_player_ref(p) for p in theirs),
+            )
+        )
+    return inputs
+
+
+def _matchup_record(record: matchups.MatchupRecord) -> MatchupRecord:
+    return MatchupRecord(**asdict(record))
+
+
 async def build_member_match_records(
     session: AsyncSession,
     member_id: uuid.UUID,
@@ -1313,6 +1372,8 @@ async def build_member_match_records(
     opponent_score: int | None = None,
     group_id: uuid.UUID | None = None,
     match_mode: Literal["singles", "doubles"] | None = None,
+    partner_key: str | None = None,
+    opponent_key: str | None = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020), extended with filters/statistics: a
     member's completed matches across every group they've ever joined as a
@@ -1355,6 +1416,8 @@ async def build_member_match_records(
             opponent_score=opponent_score,
             group_id=group_id,
             match_mode=match_mode,
+            partner_key=partner_key,
+            opponent_key=opponent_key,
         ),
     )
 
@@ -1364,15 +1427,9 @@ async def build_member_match_records(
     win_rate = (total_wins / total_matches) if total_matches else 0.0
 
     round_tallies: dict[int, list[int]] = defaultdict(lambda: [0, 0])
-    opponent_tallies: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for item in filtered:
         bucket = round_tallies[item.match.round_number]
         bucket[0 if item.won else 1] += 1
-
-        match_opponents = item.summary.team_b if item.my_team == "A" else item.summary.team_a
-        for opponent in match_opponents:
-            tally = opponent_tallies[opponent.nickname]
-            tally[0 if item.won else 1] += 1
 
     round_win_rates = [
         RoundWinRatePoint(
@@ -1383,20 +1440,9 @@ async def build_member_match_records(
         )
         for round_number, (wins, losses) in sorted(round_tallies.items())
     ]
-    opponent_records = sorted(
-        (
-            OpponentRecord(
-                nickname=nickname,
-                wins=wins,
-                losses=losses,
-                matches=wins + losses,
-                win_rate=(wins / (wins + losses)) if (wins + losses) else 0.0,
-            )
-            for nickname, (wins, losses) in opponent_tallies.items()
-        ),
-        key=lambda record: record.matches,
-        reverse=True,
-    )
+    # 036 US2: partners and opponents by WHO they are, not by nickname —
+    # see `matchups` for what the nickname tally this replaces got wrong.
+    matchup = matchups.build(_matchup_inputs(filtered))
 
     page_size = await get_default_page_size(session)
     total_pages = max(1, (total_matches + page_size - 1) // page_size)
@@ -1411,7 +1457,10 @@ async def build_member_match_records(
         total_losses=total_losses,
         win_rate=win_rate,
         round_win_rates=round_win_rates,
-        opponent_records=opponent_records,
+        opponent_records=[_matchup_record(r) for r in matchup.opponent_records],
+        partner_records=[_matchup_record(r) for r in matchup.partner_records],
+        matchup_highlights=MatchupHighlights(**asdict(matchup.highlights)),
+        doubles_matches=matchup.doubles_matches,
         page=page,
         total_pages=total_pages,
     )
@@ -1481,7 +1530,8 @@ async def build_member_match_dashboard(
     samples = [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
     result = player_dashboard.aggregate(samples)
     # 036: read off the finished result, same matches, no further query.
-    found = insights.derive(samples, result)
+    # 036 US2: partner/opponent rows come from the same filtered matches, no query.
+    found = insights.derive(samples, result, matchups.build(_matchup_inputs(filtered)))
     # 035: the two breakdown halves live as separate fields on the pure
     # result (each independently None) but travel as one nested object.
     payload = asdict(result)

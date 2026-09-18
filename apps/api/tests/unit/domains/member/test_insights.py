@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.domains.member import insights
+from app.domains.member import insights, matchups
 from app.domains.member.insights import Insight, InsightsResult
 from app.domains.member.player_dashboard import (
     EndingSample,
@@ -18,6 +18,7 @@ from app.domains.member.player_dashboard import (
     ServeSample,
     aggregate,
 )
+from app.domains.member.player_identity import PlayerRef
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 EVEN = Ratio(0, 0)
@@ -557,6 +558,105 @@ def test_the_naive_serve_baselines_are_measurably_worse() -> None:
     assert metric.value - pooled > 0.008  # reads serving as a strength
     assert metric.value - plain_share_weighted < -0.008  # reads it as a weakness
     assert abs(metric.value - exact) < 0.004
+
+
+# --- US2 (FR-025): notable partners and opponents -------------------------
+
+
+def _matchup_inputs(
+    *, partner_wins: int, partner_losses: int, other_wins: int, other_losses: int
+) -> "list[matchups.MatchupInput]":
+    """Doubles matches with partner m:p (vs. rivals r:1/r:2) and with partner
+    m:q (vs. rivals r:3/r:4), so the overall doubles win rate is a mix."""
+
+    def ref(key: str) -> PlayerRef:
+        return PlayerRef(key=key, nickname=key, member_id=key[2:] if key[0] == "m" else None)
+
+    def some(
+        partner: str, rivals: tuple[str, str], wins: int, losses: int
+    ) -> "list[matchups.MatchupInput]":
+        return [
+            matchups.MatchupInput(
+                ended_at=NOW - timedelta(days=index),
+                won=index < wins,
+                margin=3 if index < wins else -3,
+                is_doubles=True,
+                partners=(ref(partner),),
+                opponents=(ref(rivals[0]), ref(rivals[1])),
+            )
+            for index in range(wins + losses)
+        ]
+
+    return some("m:p", ("r:1", "r:2"), partner_wins, partner_losses) + some(
+        "m:q", ("r:3", "r:4"), other_wins, other_losses
+    )
+
+
+def derive_with(inputs: "list[matchups.MatchupInput]") -> InsightsResult:
+    return insights.derive([], aggregate([]), matchups.build(inputs))
+
+
+def test_a_partner_well_above_my_doubles_win_rate_is_named() -> None:
+    # With m:p 9/10, with m:q 1/10 → doubles overall 0.50.
+    result = derive_with(
+        _matchup_inputs(partner_wins=9, partner_losses=1, other_wins=1, other_losses=9)
+    )
+    partner = next(i for i in result.matchups if i.rule == "partner_above_overall")
+    assert (partner.bucket, partner.source, partner.metric_key) == ("matchup", "matchup", None)
+    assert partner.player == PlayerRef(key="m:p", nickname="m:p", member_id="p")
+    assert partner.level == "strong"  # 0.90 − 0.50 = 0.40
+    assert partner.params == {
+        "win_rate": 0.9,
+        "matches": 10,
+        "wins": 9,
+        "losses": 1,
+        "baseline": 0.5,
+        "diff": 0.4,
+    }
+    assert result.status == "ok"
+
+
+def test_an_opponent_well_below_my_overall_win_rate_is_named() -> None:
+    result = derive_with(
+        _matchup_inputs(partner_wins=9, partner_losses=1, other_wins=1, other_losses=9)
+    )
+    opponent = next(i for i in result.matchups if i.rule == "opponent_below_overall")
+    # r:3 and r:4 tie at 0.10; the smaller key is named, and only one of them.
+    assert opponent.player is not None and opponent.player.key == "r:3"
+    assert opponent.params["diff"] == -0.4
+    assert len(result.matchups) == 2  # one partner, one opponent, never more
+
+
+@pytest.mark.parametrize(("matches", "expected"), [(4, 0), (5, 1)])
+def test_matchup_insights_need_five_matches_together(matches: int, expected: int) -> None:
+    result = derive_with(
+        _matchup_inputs(partner_wins=matches, partner_losses=0, other_wins=0, other_losses=20)
+    )
+    assert len([i for i in result.matchups if i.rule == "partner_above_overall"]) == expected
+
+
+@pytest.mark.parametrize(
+    ("wins", "level"),
+    # other partner 5/10 → doubles overall = (wins + 5) / 20
+    [(7, None), (8, "mild"), (10, "mild")],
+)
+def test_matchup_gap_thresholds(wins: int, level: str | None) -> None:
+    result = derive_with(
+        _matchup_inputs(partner_wins=wins, partner_losses=10 - wins, other_wins=5, other_losses=5)
+    )
+    found = [i for i in result.matchups if i.rule == "partner_above_overall"]
+    if level is None:
+        assert found == []
+    else:
+        assert only(found).level == level
+
+
+def test_nothing_notable_about_anyone_is_balanced_not_insufficient() -> None:
+    result = derive_with(
+        _matchup_inputs(partner_wins=5, partner_losses=5, other_wins=5, other_losses=5)
+    )
+    assert result.matchups == []
+    assert result.status == "balanced"
 
 
 # --- the Literal sets are the ones the response schema declares ----------

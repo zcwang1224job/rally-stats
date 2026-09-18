@@ -7,7 +7,7 @@
 - `GET /members/me/match-records`（`require_verified_member`）
 - `GET /members/{member_id}/match-records`（另經 `_resolve_viewable_member()`，023）
 
-014 的 `GET /members/me/groups/{group_id}/history` 內含同一個建構函式的結果，因此其個人統計區塊同樣取得新欄位；該頁前端首版不呈現（規格 Assumptions）。
+014 的 `GET /members/me/groups/{group_id}/history` 內含同一個建構函式的結果，但它的 `my_stats.opponent_records` 宣告為既有的 `OpponentRecord`，因此**維持原本五個欄位、不含新欄位**——該頁首版不呈現搭檔／對手戰績（規格 Assumptions），回應也就不多帶用不到的資料。列的切分同樣改為依身分。
 
 ## 差異 1：新增 query 參數
 

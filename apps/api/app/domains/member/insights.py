@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.domains.group.match_stats import ERROR_TYPES
+from app.domains.member.matchups import MatchupRecord, MatchupResult
 from app.domains.member.player_dashboard import (
     DashboardResult,
     MatchSample,
@@ -75,6 +76,12 @@ WINNER_SHARE_STRONG = 0.60
 DOMINANT_ERROR_ABOVE = 0.50
 RELATIVE_CHANGE_MILD = 0.15
 RELATIVE_CHANGE_STRONG = 0.30
+
+# FR-025: a partner / an opponent is only named after five matches together,
+# and only when their win rate is this far from my own overall one.
+MATCHUP_MIN_MATCHES = 5
+MATCHUP_GAP_MILD = 0.15
+MATCHUP_GAP_STRONG = 0.30
 
 MAX_STRENGTHS = 3
 MAX_WEAKNESSES = 3
@@ -362,24 +369,75 @@ def _ranked(found: list[Insight]) -> list[Insight]:
     )
 
 
-def derive(samples: Sequence[MatchSample], dashboard: DashboardResult) -> InsightsResult:
+def _matchup_insights(found: MatchupResult) -> tuple[list[Insight], bool]:
+    """FR-025: at most one partner (well above my doubles win rate) and one
+    opponent (well below my overall one) — the widest gap of each, the
+    smaller key on a tie. Rows under five matches are never named."""
+    picked: list[Insight] = []
+    judged = False
+    for rule, records, baseline, above in (
+        ("partner_above_overall", found.partner_records, found.doubles_win_rate, True),
+        ("opponent_below_overall", found.opponent_records, found.overall_win_rate, False),
+    ):
+        if baseline is None:
+            continue
+        candidates: list[tuple[float, MatchupRecord, InsightLevel]] = []
+        for record in records:
+            if record.matches < MATCHUP_MIN_MATCHES:
+                continue
+            judged = True
+            diff = round(record.win_rate - baseline, 4)
+            level = _level(diff if above else -diff, MATCHUP_GAP_MILD, MATCHUP_GAP_STRONG)
+            if level is not None:
+                candidates.append((diff, record, level))
+        if not candidates:
+            continue
+        diff, record, level = min(candidates, key=lambda c: (-abs(c[0]), c[1].player_key))
+        picked.append(
+            Insight(
+                bucket="matchup",
+                rule=rule,  # type: ignore[arg-type]
+                level=level,
+                source="matchup",
+                metric_key=None,
+                player=PlayerRef(record.player_key, record.nickname, record.member_id),
+                params={
+                    "win_rate": record.win_rate,
+                    "matches": record.matches,
+                    "wins": record.wins,
+                    "losses": record.losses,
+                    "baseline": baseline,
+                    "diff": diff,
+                },
+                sample_size=record.matches,
+            )
+        )
+    return picked, judged
+
+
+def derive(
+    samples: Sequence[MatchSample],
+    dashboard: DashboardResult,
+    matchups: MatchupResult | None = None,
+) -> InsightsResult:
     metrics = {metric.key: metric for metric in dashboard.metrics}
 
     rate, rate_judged = _rate_insights(metrics, samples)
     endings, ending_judged = _ending_insights(metrics, dashboard)
     recent, recent_judged = _recent_insights(dashboard.metrics)
+    notable, matchup_judged = _matchup_insights(matchups) if matchups else ([], False)
 
     contrasts = _ranked(rate + endings)
     strengths = [i for i in contrasts if i.bucket == "strength"][:MAX_STRENGTHS]
     weaknesses = [i for i in contrasts if i.bucket == "weakness"][:MAX_WEAKNESSES]
 
     status: InsightStatus
-    if strengths or weaknesses or recent:
+    if strengths or weaknesses or recent or notable:
         status = "ok"
-    elif rate_judged or ending_judged or recent_judged:
+    elif rate_judged or ending_judged or recent_judged or matchup_judged:
         status = "balanced"
     else:
         status = "insufficient_data"
     return InsightsResult(
-        status=status, strengths=strengths, weaknesses=weaknesses, recent=recent, matchups=[]
+        status=status, strengths=strengths, weaknesses=weaknesses, recent=recent, matchups=notable
     )

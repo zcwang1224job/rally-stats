@@ -19,6 +19,7 @@ from app.domains.group.schemas import MatchRecordDetailResponse, MemberMatchReco
 from app.domains.member import security, service
 from app.domains.member.models import Member
 from app.domains.member.oauth_providers import Provider
+from app.domains.member.player_identity import parse_player_key
 from app.domains.member.schemas import (
     AddEmailRequest,
     AddEmailResponse,
@@ -480,6 +481,8 @@ async def get_member_match_records(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計。
     `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
@@ -514,6 +517,8 @@ async def get_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 
@@ -532,6 +537,19 @@ async def get_member_match_record_detail(
     return await service.get_member_match_record_detail(session, member.id, match_id)
 
 
+def _checked_player_key(value: str | None) -> str | None:
+    """036 US2: `partner_key` / `opponent_key` are `m:<uuid>` / `r:<uuid>`.
+    Anything else is a client bug, not an empty result. Errors:
+    `INVALID_PLAYER_KEY` (422)."""
+    if value is None:
+        return None
+    try:
+        parse_player_key(value)
+    except ValueError as error:
+        raise ApiError("INVALID_PLAYER_KEY", status_code=422) from error
+    return value
+
+
 def match_filters_query(
     opponent1: Annotated[str | None, Query(max_length=20)] = None,
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
@@ -546,6 +564,8 @@ def match_filters_query(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> service.MemberMatchFilters:
     """034-clutch-points-player-dashboard: the 13 filter query parameters of
     `/members/me/match-records` — same names, same validation, no `page` —
@@ -565,6 +585,8 @@ def match_filters_query(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 
@@ -679,6 +701,8 @@ async def get_viewed_member_match_records(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """022-member-personal-settings FR-018/FR-019 (好友檢視他人戰績):
     query 參數與既有 `/members/me/match-records` 完全相同、直接透傳
@@ -703,6 +727,8 @@ async def get_viewed_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 
