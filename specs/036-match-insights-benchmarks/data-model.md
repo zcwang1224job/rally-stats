@@ -4,6 +4,8 @@
 
 ## 身分鍵 `player_key`（貫穿三個模組）
 
+定義於新的小模組 `member/player_identity.py`（無 ORM）：`player_key(member_id, roster_entry_id) -> str`、`parse_player_key(value) -> ParsedKey`（格式不合 → `ValueError`，由路由層轉為 `422 INVALID_PLAYER_KEY`）、`PlayerRef`。獨立成檔是為了讓 `matchups.py`（US2）、`group_benchmark` 的服務層（US3）、比較端點（US4）各自引用，而不互相依賴。
+
 | 名單列 | `player_key` | 合併範圍 |
 |---|---|---|
 | `roster_entries.member_id` 不為 NULL（含依 028 綁定後） | `m:<member_id>` | 跨團、跨多段參與期間合併 |

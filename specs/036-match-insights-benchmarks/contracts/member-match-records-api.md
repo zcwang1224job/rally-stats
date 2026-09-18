@@ -17,7 +17,7 @@
 | `opponent_key` | 同上 | 只留「該球員在對方隊伍」的比賽 |
 
 - 與既有的 `opponent1`／`opponent2`／`partner`（暱稱子字串）及所有其他篩選**同時生效**（AND）。
-- 同樣適用於 `GET /members/me/match-dashboard` 與好友版（共用同一個 dependency），見 [member-match-dashboard-api.md](./member-match-dashboard-api.md)。
+- 同樣適用於 `GET /members/me/match-dashboard` 與好友版——四支路由的篩選參數集合 MUST 完全相同（以守門測試鎖定），見 [member-match-dashboard-api.md](./member-match-dashboard-api.md)。
 - 格式不合 → `422 INVALID_PLAYER_KEY`。格式正確但無比賽符合 → 正常的空結果。
 
 ## 差異 2：回應欄位

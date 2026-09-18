@@ -9,7 +9,7 @@
 在既有的個人對戰紀錄頁與好友戰績頁上，補上「結論、對象、基準」三件事，全部由既有紀錄在查看當下推導——**無 migration、無新資料表、無新套件**。
 
 1. **優缺點摘要（US1）**：新純函式 `member/insights.py` 讀 034 的 `MatchSample` 與 `aggregate()` 結果，依固定規則挑出強項／待加強／最近變化／對戰組合，回傳「規則代碼＋數字」，句子在前端語系檔。搭在既有儀表板回應上（多一個 `insights` 欄位），因此自動跟隨篩選、自動出現在好友頁。`aggregate()` 本體不動。
-2. **搭檔／對手戰績（US2）**：新純函式 `member/matchups.py` 以球員身分鍵（`m:<member_id>`／`r:<roster_entry_id>`）取代既有的暱稱字串彙總，新增平均分差、搭檔列表與重點摘要。點擊某一列＝兩個新的精確篩選參數，加在對戰紀錄與儀表板**共用**的 dependency 上，整頁一起縮小。
+2. **搭檔／對手戰績（US2）**：新純函式 `member/matchups.py` 以球員身分鍵（`m:<member_id>`／`r:<roster_entry_id>`）取代既有的暱稱字串彙總，新增平均分差、搭檔列表與重點摘要。點擊某一列＝兩個新的精確篩選參數；篩選只在對戰紀錄與儀表板都會經過的 `_filtered_member_matches()` 實作一次，整頁一起縮小（參數本身須加在四支路由上，見 research Decision 4）。
 3. **團內比較（US3）**：新端點。把 `_dashboard_sample()` 拆成「每場推導一次」與「每位球員取樣一次」，於是同一套函式可為該團每位球員（含訪客名單球員）算出同一組指標；新純函式 `member/group_benchmark.py` 算平均、名次、人數。**回應 schema 沒有任何可放他人資料的欄位**——匿名由結構保證。回應另帶一份已合併團內來源的摘要。
 4. **與好友比較（US4）**：新端點，沿用 023 的授權檢查；回傳雙方 23 項數值、較佳的一方與交手紀錄。
 
@@ -95,7 +95,8 @@ specs/036-match-insights-benchmarks/
 ```text
 apps/api/
 ├── app/domains/member/
-│   ├── matchups.py          # 新增：純函式——身分鍵、搭檔／對手戰績、重點摘要、head_to_head
+│   ├── player_identity.py   # 新增：純函式——player_key 的產生與解析、PlayerRef
+│   ├── matchups.py          # 新增：純函式——搭檔／對手戰績、重點摘要、head_to_head
 │   ├── insights.py          # 新增：純函式——規則表、門檻常數、排序與去重、status
 │   ├── group_benchmark.py   # 新增：純函式——門檻、平均、名次、四種 status
 │   ├── player_dashboard.py  # 擴充：overall_values()；aggregate() 不動
@@ -137,9 +138,9 @@ apps/web/src/
 **Structure Decision**：沿用既有 monorepo 配置，沒有新的模組邊界。三個新規則模組屬 `member` domain——與 034 的 `player_dashboard.py` 同一個理由：它們是「以某一位球員為視角的跨場彙總」。團內比較雖然讀取整個團的資料，但它回答的問題是「**我**在這個團的位置」、端點在 `/members/me/…` 之下、授權以會員為主體，因此也屬 `member`；`group` 只提供一個公開的載入器。共用於本人頁與好友頁的兩個元件放 `core/`，只出現在單一頁面的兩個放各自的 `features/` 之下。
 
 **建議實作順序**（供 `/speckit-tasks` 參考）：
-1. **前置**：`verify_ever_group_member()` 的迴歸測試與修正。
-2. **US2 後端＋前端**：`matchups.py` → 對戰紀錄回應 → 兩個精確篩選參數 → `app-matchup-records` 與點擊篩選。US2 先做，因為它對**所有**歷史比賽立即生效，且 US1 的「對戰組合」清單依賴它。
-3. **US1**：`insights.py`（自我對比＋最近變化＋對戰組合）→ 儀表板回應 → `app-player-insights`、指標卡錨點與 `focusMetric()`；好友頁接上摘要與搭檔／對手。
+1. **前置**：`verify_ever_group_member()` 的迴歸測試與修正；身分鍵小模組 `member/player_identity.py`（US2／US3／US4 共用，放前置以免 US3 依賴 US2 的檔案）。
+2. **US1**：`insights.py`（自我對比＋最近變化）→ 儀表板回應 → `app-player-insights`、指標卡錨點與 `focusMetric()`；好友頁接上摘要。`derive()` 的 `matchups`／`benchmark` 參數自始即為選填，對應的規則由 US2／US3 各自補上——規格 FR-009 本來就把「對戰組合」清單定為「US2 完成後另含」。
+3. **US2**：`matchups.py` → 對戰紀錄回應 → 兩個精確篩選參數 → `app-matchup-records` 與點擊篩選 → `insights` 的對戰組合規則；好友頁接上搭檔／對手。US1 與 US2 同為 P1 且互不相依，可由兩人平行進行；US2 對**所有**歷史比賽立即生效，人力只有一條線時也可先做。
 4. **US3**：`_dashboard_sample()` 重構（先以既有測試鎖住行為）→ `overall_values()` → `group_benchmark.py` → 兩支端點 → `insights` 的團內來源 → `app-group-benchmark` 與來源切換 → seed 與效能實測。
 5. **US4**：`head_to_head()` → 比較端點 → `app-friend-comparison`。
 

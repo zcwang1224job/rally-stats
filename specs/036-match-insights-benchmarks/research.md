@@ -33,10 +33,12 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
 
 ## Decision 4：點擊某一列＝兩個新的精確篩選參數
 
-- **Decision**：`match_filters_query`（`member/router.py`）與 `MemberMatchFilters` 新增 `partner_key`、`opponent_key`（值即 `player_key`）。因為對戰紀錄與儀表板兩支端點**共用同一個 dependency**，清單、勝敗統計、儀表板、摘要、搭檔／對手戰績會一起縮小範圍（FR-023），不需要各自處理。比對方式：該場的搭檔（或對手）中存在 `player_key` 完全相等者。
+- **Decision**：`MemberMatchFilters` 新增 `partner_key`、`opponent_key`（值即 `player_key`），篩選本身只實作一次——在 `_filtered_member_matches()`，對戰紀錄與儀表板都經過它，因此清單、勝敗統計、儀表板、摘要、搭檔／對手戰績會一起縮小範圍（FR-023）。比對方式：該場的搭檔（或對手）中存在 `player_key` 完全相等者。
+- **參數要加在四個地方（產生 tasks 時查證後更正）**：兩支儀表板路由共用 `match_filters_query` 這個 dependency（`member/router.py` L535），但兩支對戰紀錄路由（L466、L664）是**各自明列**同一組 query 參數，再以 keyword 傳給 `build_member_match_records()`／`view_member_match_records()`，到函式內才組成 `MemberMatchFilters`（`member/service.py` L1344）。因此新參數須加在：`match_filters_query`、兩支對戰紀錄路由、兩個服務函式的 keyword 參數。
+- **不順手重構成單一 dependency**：把對戰紀錄路由也改用 `match_filters_query` 會改變 `build_member_match_records()` 的簽章，而 `test_member_match_records.py` 與 `get_member_group_history()` 都以 keyword 呼叫它——牽動面與本功能不成比例。改以一支守門測試防止兩邊漂移：以 FastAPI 的路由內省斷言四支路由的篩選參數名稱集合完全相同（`page` 除外）。
 - **Rationale**：既有的 `opponent1`／`opponent2`／`partner` 是**不分大小寫的暱稱子字串**比對（`group/service.py` L1254–1276 的 `_matches_distinct_terms`）。用它實作「點某個人」會把暱稱相近的其他人一起帶進來，也會漏掉同一人在別團的不同暱稱——正好抵銷 Decision 3。兩組參數並存、互不影響（規格 Edge Cases「兩者同時生效」）。
 - **格式驗證**：`^(m|r):<uuid>$`，不合 → 422 `INVALID_PLAYER_KEY`；合法但沒有任何比賽符合 → 空結果（不是錯誤）。
-- **好友頁**：好友頁刻意沒有篩選表單（已查證 `friend-match-records.component`），因此該頁的搭檔／對手列表不可點擊；參數在好友端點上仍被接受（共用 dependency），只是前端不送。
+- **好友頁**：好友頁刻意沒有篩選表單（已查證 `friend-match-records.component`），因此該頁的搭檔／對手列表不可點擊；參數在好友端點上仍被接受（四支路由的參數集合保持一致），只是前端不送。
 
 ## Decision 5：團內比較——每場只推導一次，再從每位球員的視角取樣
 
