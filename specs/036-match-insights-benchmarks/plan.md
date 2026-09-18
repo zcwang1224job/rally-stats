@@ -36,7 +36,7 @@
   - `tests/unit/domains/group/`（擴充）——`verify_ever_group_member()` 對兩列名單的會員不拋例外（**先紅後綠**）；`load_group_completed_matches()`。
   - `tests/contract/`：`test_member_match_records_endpoint.py`、`test_member_match_dashboard_endpoint.py`、`test_member_groups_history_endpoints.py`（擴充）；`test_member_group_benchmark_endpoint.py`、`test_member_match_comparison_endpoint.py`（新）——含 422 `INVALID_PLAYER_KEY`、403 從未加入、已離團／已解散 200、**回應全文不含任何其他參賽者的暱稱與 id**、好友端點的四種拒絕、未驗證信箱被拒。
   - `tests/integration/test_member_match_records_flow.py`（擴充）——點擊篩選後對戰紀錄與儀表板的 `total_matches` 一致。
-- 前端：Vitest。`player-insights.component.spec.ts`（新）——四個清單、三種 `status`、空清單說明行、非顏色的區分、點擊發出 `metricPicked`／`playerPicked`、每條規則每個變體的語系 key 存在於兩份語系檔。`matchup-records.component.spec.ts`（新）——三種排序、`low_sample` 標示、重點摘要、`clickable=false` 時列不是按鈕、無雙打說明。`group-benchmark.component.spec.ts`（新）——選單預設、記住選擇、四種 `status` 的呈現、無團說明、記住的團失效時退回預設。`friend-comparison.component.spec.ts`（新）。`match-history.component.spec.ts`（擴充）——兩個新參數進入請求、作用中對象的 chip 與清除、`insights` 來源切換的單一規則、團內比較的載入時機（research Decision 9）。`friend-match-records.component.spec.ts`（擴充）——呈現摘要與搭檔／對手、無團內比較。`player-dashboard.component.spec.ts`（擴充）——`focusMetric()`。`benchmark-group-preference.spec.ts`（新）——存取失敗不拋例外。後端 `InsightRule` 與前端 `INSIGHT_RULES` 以測試綁定（沿用 035 綁定 `EndingType` 的作法）。
+- 前端：Vitest。`player-insights.component.spec.ts`（新）——四個清單、三種 `status`、空清單說明行、非顏色的區分、點擊發出 `metricPicked`／`playerPicked`、每條規則每個變體的語系 key 存在於兩份語系檔。`matchup-records.component.spec.ts`（新）——三種排序、`low_sample` 標示、重點摘要、`clickable=false` 時列不是按鈕、無雙打說明。`group-benchmark.component.spec.ts`（新）——選單預設、記住選擇、四種 `status` 的呈現、無團說明、記住的團失效時退回預設。`friend-comparison.component.spec.ts`（新）。`match-history.component.spec.ts`（擴充）——兩個新參數進入請求、作用中對象的 chip 與清除、`insights` 來源切換的單一規則、團內比較的載入時機（research Decision 9）。`friend-match-records.component.spec.ts`（擴充）——呈現摘要與搭檔／對手、無團內比較。`player-dashboard.component.spec.ts`（擴充）——`focusMetric()`。`benchmark-group-preference.spec.ts`（新）——存取失敗不拋例外。後端 `InsightRule` 與前端 `INSIGHT_RULES` 各以一條測試釘在 data-model.md 規則表的同一份八個代碼上（後端 T009、前端 T012）。
 
 **Target Platform**：延續既有（Docker on AWS ECS；行動裝置優先）。
 
@@ -69,6 +69,8 @@
 **Gate 結果**：無違反項目，不需填寫 Complexity Tracking。
 
 **Post-design re-check（Phase 1 完成後）**：data-model.md 與 contracts/ 確認——零儲存變更；三支新端點各自重用既有的授權函式，沒有新的授權分支；兩支既有端點只新增具預設值的欄位與選填參數，034／035 的 contract 零變動；團的 `player_records`（`OpponentRecord`）不受影響。設計期間有兩項回頭確認規格：(1) 規格 Assumptions 把「重點摘要」與「摘要敘述」的門檻寫在同一句，容易誤讀為重點摘要也要求 15 個百分點的差距——已拆成兩句，與 data-model.md 的規則表一致；(2) 規格 FR-027「記住會員上次的選擇」在設計中定為裝置端儲存，與「不新增儲存資料」不衝突，已於 research Decision 8 記載理由。Gate 結果維持 PASS。
+
+**`/speckit-analyze` 後修正**：0 項 CRITICAL、1 項 HIGH。(F1) 自我對比的基準由「合併相除」改為「逐場加權」——合併相除會讓發球／接發球、局末、平手四類指標帶有與 FR-012 同一類的結構性偏差，方向固定；FR-011、data-model 規則表、research Decision 1、T005 已更正，並新增合成資料的零偏差測試。其餘：四分之一切點與「明顯」的人數門檻明訂公式（C1）；SC-008 量化並要求先量上線前基準（B1）；前後端規則清單各以一條測試釘在同一份代碼上（F2）；示範資料拆成基本與效能兩項，前者提前（F3）；39 條 FR 全部可由任務以編號追溯（E1）；另有九項低等級的文字補強（C2–C7、F4–F6）。
 
 ## Project Structure
 

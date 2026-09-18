@@ -85,19 +85,19 @@ InsightsResult
 
 | `rule` | 來源 | 適用指標 | 基準 | 候選條件（輕微／明顯） | 最低樣本 |
 |---|---|---|---|---|---|
-| `rate_vs_overall` | self | `team_serve` `team_receive` `own_serve` `own_receive` `endgame` `when_tied` | 本人在該指標所涵蓋比賽的全場得分率 | 偏離 ≥ 0.05／≥ 0.10 | 分母 ≥ 30 分且 `matches_used` ≥ 3 |
+| `rate_vs_overall` | self | `team_serve` `team_receive` `own_serve` `own_receive` `endgame` `when_tied` | 逐場加權的全場得分率：Σ(該場此指標的分母 × 該場 `points_for ÷ (points_for + points_against)`) ÷ Σ該場此指標的分母（不得合併相除，FR-011） | 偏離 ≥ 0.05／≥ 0.10 | 分母 ≥ 30 分且 `matches_used` ≥ 3 |
 | `deuce_vs_even` | self | `deuce` | 0.50 | 同上 | 同上 |
 | `error_share_high` | self | `error_share_of_lost` | — | ≥ 0.60／≥ 0.70 → weakness | 分母 ≥ 20 分 |
 | `winner_share_high` | self | `winner_share` | — | ≥ 0.50／≥ 0.60 → strength | 分母 ≥ 20 分 |
-| `recent_change` | trend | 所有 `better_when` 非空、`verdict ∈ {improved, declined}` 的指標 | 「全部」的值 | `rate`：差 ≥ 0.05／0.10；`average`／`ratio`：相對變化 ≥ 15%／30% | 沿用 034（`recent.matches_used` ≥ 3） |
+| `recent_change` | trend | 所有 `better_when` 非空、`verdict ∈ {improved, declined}` 的指標 | 「全部」的值 | `rate`：差 ≥ 0.05／0.10；`average`／`ratio`：相對變化 ≥ 15%／30%；「全部」的值為 0 時相對變化無定義 → 不產生候選 | 沿用 034（`recent.matches_used` ≥ 3） |
 | `partner_above_overall` | matchup | — | `doubles_win_rate` | 勝率高出 ≥ 0.15／≥ 0.30 | 一起出賽 ≥ 5 場 |
 | `opponent_below_overall` | matchup | — | `overall_win_rate` | 勝率低於 ≥ 0.15／≥ 0.30 | 交手 ≥ 5 場 |
-| `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | 名次在前／後四分之一；第 1 名或最後 1 名為明顯 | `pool_size` ≥ 4 |
+| `benchmark_quartile` | benchmark | 所有有名次的指標 | 團內平均 | `q = ceil(pool_size ÷ 4)`；`rank ≤ q` → strength；`rank_from_bottom ≤ q` → weakness；兩者皆成立 → 不產生；第 1 名或倒數第 1 名**且** `pool_size ≥ 8` 為明顯，其餘輕微 | `pool_size` ≥ 4 |
 
 - **明訂排除**（FR-012）：`when_leading`、`when_trailing`、`match_point_conversion` 不進 `rate_vs_overall`；`match_points_saved`（`better_when` 為空）不進任何規則。
 - **成對指標**（FR-016）：`(team_serve, team_receive)`、`(own_serve, own_receive)` 每組只留偏離絕對值較大者；相同留 weakness。
 - **同一指標多來源**（Edge Cases）：strength／weakness 清單中同一個 `metric_key` 只留 `source` 優先序最高者（benchmark > self）。`recent` 是獨立清單，不去重。
-- **排序**（FR-015）：`level`（strong 先）→ `source`（benchmark 先）→ 樣本數（分母或場數，大者先）→ `_METRICS` 的固定順序。
+- **排序**（FR-015）：`level`（strong 先）→ `source`（benchmark 先）→ 樣本數（同一來源內比較：self 取 `denominator`、benchmark 取 `mine.matches_used`，大者先）→ `_METRICS` 的固定順序。
 - **`recent` 至少一句進步**（FR-014）：若候選同時有進步與退步而前兩名皆為退步，第二名換成排名最高的進步。
 - **`error_share_high` 的 `dominant_error`**：034／035 的 `error_breakdown_all` 中佔本人失誤 > 50% 的種類（`out`／`net`／`serve_fault`／`other_error`），否則 `None`。
 - **`status`**：四個清單皆空時——若**沒有任何規則達到最低樣本** → `insufficient_data`；若有規則達樣本但無一達門檻 → `balanced`。否則 `ok`（個別清單為空由前端顯示該清單的說明行，FR-018）。
@@ -125,6 +125,7 @@ BenchmarkMetric
   group_average: float | None       # status = pool_too_small → None
   pool_size: int                    # 達門檻人數（含我，若我達門檻）
   rank: int | None                  # 只有 status = ok 才有；並列同名次
+  rank_from_bottom: int | None      # 相反方向的 1224 名次；只供 insights 使用，**不進回應 schema**
 
 BenchmarkResult   metrics: list[BenchmarkMetric]   # 23 項，順序同 _METRICS
 ```
@@ -134,7 +135,7 @@ BenchmarkResult   metrics: list[BenchmarkMetric]   # 23 項，順序同 _METRICS
 - **達門檻**：該球員該指標的 `matches_used ≥ 5` 且 `value` 不為 `None`。
 - **`group_average`**：達門檻者 `value` 的算術平均（每人權重相同），四捨五入規則與 034 相同（`rate` 4 位、其餘 2 位）。
 - **`status` 判定順序**：`pool_size < 3` → `pool_too_small`；`better_when` 為空 → `no_direction`（有平均、無名次）；我未達門檻 → `self_below_minimum`（有平均、無名次）；否則 `ok`。
-- **名次**：依 `better_when` 排序（`higher` 由大到小、`lower` 由小到大），標準競賽排名（1224）。
+- **名次**：依 `better_when` 排序（`higher` 由大到小、`lower` 由小到大），標準競賽排名（1224）。`rank_from_bottom` 以相反的排序方向、同一規則算出（最後一名並列兩人時，兩人的 `rank_from_bottom` 皆為 1）。
 
 `player_dashboard.py` 新增一個函式：`overall_values(samples) -> dict[str, MetricValue]`——對 `_METRICS` 逐項呼叫既有的 `_metric_value()`，不算對比、趨勢、落點。`aggregate()` 不變。
 

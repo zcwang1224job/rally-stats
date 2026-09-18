@@ -6,7 +6,8 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
 
 - **Decision**：新純函式模組 `member/insights.py`（無 ORM／session）。輸入是 034 的 `MatchSample` 清單、`aggregate()` 的結果、Decision 3 的搭檔／對手戰績，以及（選填）Decision 5 的團內基準；輸出是一組 `Insight(list, rule, level, source, metric_key, player, params)`。後端只回傳規則代碼與數字，句子由前端以 `playerInsights.rule.<rule>.<variant>` 的語系 key 加參數組成。
 - **Rationale**：034／035 已確立「統計規則只存在於後端」（FR-002、FR-010 的可重現性也靠這一點）；Constitution VIII 要求後端不回傳寫死的句子。規則輸出為代碼＋參數，中英文切換時挑出的項目與順序自然相同（US1-10）。
-- **自我對比的基準怎麼算**：FR-011 的基準是「本人在**該指標所涵蓋比賽**中的全場得分率」。`MatchSample` 已有 `points_for`／`points_against`，而 `_METRICS` 每一項的 `contribution(sample)` 回傳 `None` 即代表該場不具備所需資料。因此基準＝對「該指標 contribution 不為 `None` 的那些 sample」加總 `points_for ÷ (points_for + points_against)`——不需要任何新查詢，也保證基準與指標是同一批比賽。
+- **自我對比的基準怎麼算**：FR-011 的基準是**逐場加權**的全場得分率。`_METRICS` 每一項的 `contribution(sample)` 回傳該場的 `(分子, 分母)`，`None` 代表該場不具備所需資料；`MatchSample` 已有 `points_for`／`points_against`。基準＝Σ(該場分母 × 該場得分率) ÷ Σ該場分母，只對 contribution 不為 `None` 的 sample 計算——不需要任何新查詢。
+- **為什麼不能直接合併相除**（analyze F1）：羽球是得分方發下一球，打得順的比賽發球的分數較多，合併後發球時得分率會自然高於全場得分率約「各場得分率的變異數 ÷ 平均」，接發球則自然偏低；局末與平手的分數集中在比分接近的比賽，會被拉向五成。粗估偏差 1 到 3 個百分點、方向固定——與 FR-012 排除領先／落後的理由是同一類問題，只是幅度較小。逐場加權後，在「每一分勝率於單場內固定」的假設下期望偏差為零；T005 以合成資料的零偏差測試鎖定。領先／落後仍排除，因為它們另有單場內的偏差（落後本身就是前面運氣差的結果，與該場的實際得分率相關）。
 - **為什麼 `aggregate()` 本體不動**：`insights.derive()` 是 `aggregate()` 之後的另一步，讀它的結果而不改它。034／035 的 23 項指標、對比、趨勢的既有測試因此零變動（FR-002）。
 - **Alternatives considered**：(a) 前端依儀表板回應自行挑選——規則會出現在兩端，且基準所需的逐場得分不在回應中；(b) 後端回傳完整句子——違反 Constitution VIII，也讓語系切換必須重新請求。
 
