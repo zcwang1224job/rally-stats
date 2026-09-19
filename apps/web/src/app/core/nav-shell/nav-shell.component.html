@@ -16,7 +16,7 @@
     [attr.aria-expanded]="open()"
     [attr.aria-label]="'nav.menuToggle' | translate"
   >
-    <span class="nav-shell__toggle-icon" aria-hidden="true">☰</span>
+    <span class="nav-shell__toggle-icon"><app-icon name="menu" /></span>
   </button>
 
   <div class="nav-shell__links" [class.is-open]="open()">

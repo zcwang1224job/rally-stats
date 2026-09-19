@@ -7,7 +7,7 @@
   }}</span>
   @if (match().started_at && match().ended_at) {
     <span class="time-range">
-      🕐 {{ match().started_at | date: startFormat() }} - {{ match().ended_at | date: 'HH:mm' }}
+      <app-icon name="clock" /> {{ match().started_at | date: startFormat() }} - {{ match().ended_at | date: 'HH:mm' }}
     </span>
   }
 </div>
@@ -54,7 +54,7 @@
   @switch (result()) {
     @case ('win') {
       <span class="status-badge status-badge--success">
-        🏅 {{ 'member.matchHistory.resultWinBadge' | translate }}
+        ✓ {{ 'member.matchHistory.resultWinBadge' | translate }}
       </span>
     }
     @case ('loss') {

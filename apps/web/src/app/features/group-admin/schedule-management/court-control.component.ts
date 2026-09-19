@@ -1,3 +1,4 @@
+import { IconComponent } from '../../../shared/icon/icon.component';
 import {
   Component,
   DestroyRef,
@@ -28,7 +29,7 @@ import { CourtScheduleStatus, MatchSummary, Team } from './schedule.models';
  * （FR-021~025）比照公開控制板同一套規則。 */
 @Component({
   selector: 'app-court-control',
-  imports: [TranslatePipe, ConfirmDialogComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, IconComponent],
   templateUrl: './court-control.component.html',
   styleUrl: './court-control.component.scss',
 })

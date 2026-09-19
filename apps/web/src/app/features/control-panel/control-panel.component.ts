@@ -1,4 +1,5 @@
 import { Component, DestroyRef, computed, inject, signal, viewChild } from '@angular/core';
+import { IconComponent } from '../../shared/icon/icon.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -28,7 +29,7 @@ import {
  * US1/US2）。 */
 @Component({
   selector: 'app-control-panel',
-  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent, IconComponent],
   templateUrl: './control-panel.component.html',
   styleUrl: './control-panel.component.scss',
 })

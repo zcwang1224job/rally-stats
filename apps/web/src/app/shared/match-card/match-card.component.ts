@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, input, output } from '@angular/core';
+import { IconComponent } from '../icon/icon.component';
 import { TranslatePipe } from '@ngx-translate/core';
 import { InviteCandidateStatus } from '../../core/api/friend.models';
 import { MatchRecordSummary } from '../../core/api/group-member-view.models';
@@ -25,7 +26,7 @@ export type MatchCardResult = 'win' | 'loss' | null;
   // list keeps its semantics and the whole row is the click target.
   // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'li[app-match-card]',
-  imports: [DatePipe, TranslatePipe, NicknameComponent, AddFriendButtonComponent],
+  imports: [DatePipe, TranslatePipe, NicknameComponent, AddFriendButtonComponent, IconComponent],
   templateUrl: './match-card.component.html',
   styleUrl: './match-card.component.scss',
   host: {

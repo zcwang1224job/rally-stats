@@ -55,3 +55,10 @@ h2 {
   border-color: color-mix(in srgb, var(--color-brand-accent) 25%, white);
   color: var(--color-brand-accent);
 }
+
+// The "+" between the two players of a pair — a joiner, not a control.
+.pair-joiner {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+}

@@ -44,7 +44,7 @@
             <li cdkDrag [cdkDragDisabled]="!isReorderable(match) || saving()">
               <div class="match-meta">
                 @if (isReorderable(match)) {
-                  <span class="drag-handle" cdkDragHandle aria-hidden="true">⠿</span>
+                  <span class="drag-handle" cdkDragHandle aria-hidden="true"><app-icon name="grip" /></span>
                 }
                 <span class="status-badge" [attr.data-status]="match.status">
                   {{ 'scheduleManagement.matchStatus.' + match.status | translate }}

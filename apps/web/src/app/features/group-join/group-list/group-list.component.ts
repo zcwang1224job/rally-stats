@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { IconComponent } from '../../../shared/icon/icon.component';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -26,7 +27,7 @@ interface FilterChip {
 
 @Component({
   selector: 'app-group-list',
-  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, PaginationComponent],
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, PaginationComponent, IconComponent],
   templateUrl: './group-list.component.html',
   styleUrl: './group-list.component.scss',
 })
