@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -45,6 +45,10 @@ export class RoundMatchesListComponent {
   readonly groupId = input.required<string>();
   readonly roundPhase = input<RoundPhase | null>(null);
   readonly roster = input<RosterScheduleStatus[]>([]);
+  /** 父層每重新讀取一次賽程就加一；清單展開時跟著安靜地重新載入。以前清單
+   * 只在展開或按「重新整理」時才載入，比賽打完、換下一場、有人加入後，
+   * 剩餘場數與比分都停在舊資料。 */
+  readonly refreshKey = input(0);
 
   editable(): boolean {
     const phase = this.roundPhase();
@@ -105,6 +109,36 @@ export class RoundMatchesListComponent {
         this.load();
       }
       this.wasEditable = isEditable;
+    });
+
+    effect(() => {
+      const key = this.refreshKey();
+      untracked(() => {
+        if (key === this.lastRefreshKey) {
+          return;
+        }
+        this.lastRefreshKey = key;
+        this.refresh();
+      });
+    });
+  }
+
+  private lastRefreshKey = 0;
+
+  /** 背景更新：不顯示載入狀態、不清掉操作訊息。管理員正在點選要互換的
+   * 球員、或調整還在送出時先跳過，免得清單在手底下變動。 */
+  private refresh(): void {
+    if (!this.expanded() || this.loading() || this.saving() || this.firstPick() !== null) {
+      return;
+    }
+    this.scheduleService.getRoundMatches(this.groupId()).subscribe({
+      next: (response) => {
+        if (!this.saving() && this.firstPick() === null) {
+          this.applyResponse(response);
+        }
+      },
+      // 背景更新失敗時保留現有清單；下次重新讀取或手動重新整理會再試。
+      error: () => undefined,
     });
   }
 

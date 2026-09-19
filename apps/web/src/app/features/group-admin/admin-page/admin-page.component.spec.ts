@@ -2,7 +2,8 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of, throwError } from 'rxjs';
+import type * as Ably from 'ably';
+import { Subject, of, throwError } from 'rxjs';
 import { CourtManagementService } from '../court-management/court-management.service';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { AuthService } from '../../auth/auth.service';
@@ -66,6 +67,7 @@ describe('AdminPageComponent', () => {
       selfMemberId?: string | null;
       getInviteCandidatesStatus?: FriendsService['getInviteCandidatesStatus'];
     } = {},
+    realtimeSubscribe: RealtimeService['subscribe'] = () => of(),
   ) {
     TestBed.configureTestingModule({
       imports: [AdminPageComponent],
@@ -95,7 +97,7 @@ describe('AdminPageComponent', () => {
         },
         {
           provide: RealtimeService,
-          useValue: { connectionState: signal('connected'), subscribe: () => of() },
+          useValue: { connectionState: signal('connected'), subscribe: realtimeSubscribe },
         },
         {
           provide: CourtManagementService,
@@ -146,6 +148,47 @@ describe('AdminPageComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.links-section')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.sectionTitle');
+  });
+
+  it('refetches the schedule when an idle court or the roster changes elsewhere', async () => {
+    const streams = new Map<string, Subject<Ably.Message>>();
+    const realtimeSubscribe = (channel: string, event: string) => {
+      const key = `${channel}|${event}`;
+      if (!streams.has(key)) {
+        streams.set(key, new Subject<Ably.Message>());
+      }
+      return streams.get(key)!.asObservable();
+    };
+    let scheduleCalls = 0;
+    setup(
+      false,
+      {},
+      {
+        getSchedule: () => {
+          scheduleCalls += 1;
+          return of({
+            ...scheduleResponse,
+            courts: [
+              { court_id: 'c1', name: '1號場', current_match: null, waiting_reason: 'no_queued_match', next_up: null },
+            ],
+          });
+        },
+      },
+      {},
+      realtimeSubscribe as RealtimeService['subscribe'],
+    );
+    const initialCalls = scheduleCalls;
+
+    // A match pulled onto the idle court, then a member joining: each burst
+    // collapses into one refetch.
+    streams.get('court:g1:c1|rotation.updated')!.next({} as Ably.Message);
+    streams.get('court:g1:c1|match.nextRound')!.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(scheduleCalls).toBe(initialCalls + 1);
+
+    streams.get('group:g1:notifications|member.joined')!.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(scheduleCalls).toBe(initialCalls + 2);
   });
 
   it('offers the continuous-rotation toggle for fair-rotation doubles and saves it', () => {

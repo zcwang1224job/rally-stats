@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { QRCodeComponent } from 'angularx-qrcode';
-import { interval } from 'rxjs';
+import { Subject, debounceTime, interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
@@ -41,6 +41,7 @@ import { CourtControlComponent } from '../schedule-management/court-control.comp
 import { RoundMatchesListComponent } from '../schedule-management/round-matches-list.component';
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // spec FR-035: 30s heartbeat fallback ceiling
+const SCHEDULE_REFRESH_DEBOUNCE_MS = 300;
 
 /** 010-app-wide-ui-redesign US3 (data-model.md): left-nav tab shell —
  * client-side view state only, never reflected in the URL (research.md
@@ -199,6 +200,10 @@ export class AdminPageComponent {
     }
     this.load();
     this.subscribeToDisbandEvent();
+    this.subscribeToRosterEvents();
+    this.scheduleRefresh
+      .pipe(debounceTime(SCHEDULE_REFRESH_DEBOUNCE_MS), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadSchedule());
     interval(HEARTBEAT_INTERVAL_MS)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.load());
@@ -275,9 +280,51 @@ export class AdminPageComponent {
    * 串接（此區塊僅顯示狀態，不提供計分操作）。 */
   loadSchedule(): void {
     this.scheduleService.getSchedule(this.groupId).subscribe({
-      next: (response) => this.schedule.set(response),
+      next: (response) => {
+        this.schedule.set(response);
+        this.subscribeToCourtChannels(response);
+        this.scheduleVersion.update((version) => version + 1);
+      },
       error: () => this.schedule.set(null),
     });
+  }
+
+  /** 每次重新讀取賽程就加一，傳給本輪賽程清單讓它跟著更新。 */
+  readonly scheduleVersion = signal(0);
+
+  // 即時事件觸發的重新讀取：同一件事常同時送出好幾個事件（例如一場打完會有
+  // match.ended、rotation.updated），合併成一次讀取。
+  private readonly scheduleRefresh = new Subject<void>();
+  private readonly subscribedCourtChannels = new Set<string>();
+
+  /** 以前只有「正在比賽的場地」各自的 court-control 會訂閱事件，空場地沒人
+   * 聽：另一台裝置規劃並開始一輪、連續輪轉把人排上空場地、有人加入或離開
+   * 時，管理頁都要等 30 秒的 heartbeat 才看得到。改成跟成員端賽程頁一樣
+   * 訂閱每個場地（不含 match.scoreUpdated，比分由 court-control 自己更新，
+   * 每得一分都重讀整份賽程太頻繁）。 */
+  private subscribeToCourtChannels(schedule: ScheduleResponse): void {
+    for (const court of schedule.courts) {
+      const channel = `court:${this.groupId}:${court.court_id}`;
+      if (this.subscribedCourtChannels.has(channel)) {
+        continue;
+      }
+      this.subscribedCourtChannels.add(channel);
+      for (const event of ['match.ended', 'rotation.updated', 'match.nextRound']) {
+        this.realtime
+          .subscribe(channel, event)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(() => this.scheduleRefresh.next());
+      }
+    }
+  }
+
+  private subscribeToRosterEvents(): void {
+    for (const event of ['member.joined', 'member.left']) {
+      this.realtime
+        .subscribe(`group:${this.groupId}:notifications`, event)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => this.scheduleRefresh.next());
+    }
   }
 
   /** 013-group-invite-friends US1/US3: the "邀請好友" tab's data — only
