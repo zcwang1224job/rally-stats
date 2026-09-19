@@ -176,6 +176,10 @@ async def _play_until_round_done(
 
 async def _run(session: AsyncSession, sc: Scenario, seed: int) -> Report:
     rng = random.Random(seed)
+    # The service shuffles call-up order and random pairings with the
+    # module-level `random`; seed it too so a seed means one session. Roster
+    # ids are still random uuids, so tie-breaks can differ between runs.
+    random.seed(seed)
     _Clock.current = SESSION_START
     group, _courts, ids = await _setup(session, sc)
 
@@ -293,8 +297,13 @@ SCENARIOS = [
              max_opponent_repeat=5, max_streak=6),
     Scenario("雙打輪替 7人2場 10輪", "fair_rotation", "doubles", 7, 2, rounds=10,
              max_opponent_repeat=4, max_streak=3),
+    # 12 of 13 (and below, 8 of 9) are on court at any time, so nearly
+    # everyone plays nearly every match, and the longest run is the metric
+    # most sensitive to tie-break order: before `random` was seeded it
+    # ranged 5-7 and 6-10 over five repeats. These two guards only catch a
+    # gross regression.
     Scenario("雙打輪替 13人3場 10輪", "fair_rotation", "doubles", 13, 3, rounds=10,
-             max_opponent_repeat=4, max_streak=6),
+             max_opponent_repeat=4, max_streak=8),
     Scenario("雙打連續輪轉 10人2場 3小時", "fair_rotation", "doubles", 10, 2,
              continuous_minutes=180, max_opponent_repeat=10, max_streak=7),
     Scenario("雙打連續輪轉 9人2場 3小時", "fair_rotation", "doubles", 9, 2,
@@ -304,7 +313,7 @@ SCENARIOS = [
     Scenario("個人混雙 8人2場 2輪", "individual_mixed", "doubles", 8, 2, rounds=2,
              max_opponent_repeat=5),
     Scenario("個人混雙 9人2場 2輪", "individual_mixed", "doubles", 9, 2, rounds=2,
-             max_opponent_repeat=8, max_streak=9),
+             max_opponent_repeat=8, max_streak=11),
     Scenario("固定搭檔(正式) 8人2場 3輪", "fixed_partner", "doubles", 8, 2, rounds=3,
              formal_pairs=True, max_opponent_repeat=4),
     Scenario("固定搭檔(自動) 8人2場 3輪", "fixed_partner", "doubles", 8, 2, rounds=3,
