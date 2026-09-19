@@ -24,8 +24,10 @@ from app.domains.group.security import hash_admin_pin
 from app.domains.member import models as member_models
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.algorithms import (
+    current_run,
     greedy_pair_by_cost,
     min_cost_pairing,
+    pair_doubles_matches,
     pick_next_match,
     stage1_select_players,
 )
@@ -213,6 +215,78 @@ def test_min_cost_pairing_large_roster_pairs_everyone_without_repeats() -> None:
     assert len(pairs) == 10
     assert {u for pair in pairs for u in pair} == set(units)
     assert not any(frozenset(pair) in repeat for pair in pairs)
+
+
+def test_stage1_splits_players_who_keep_meeting() -> None:
+    """Four players finish the same match and tie on every count; two of
+    them have met far more often. With pair_cost, the two picked (and the
+    two left out, who will return together) avoid that pair."""
+    t = datetime(2026, 1, 1, tzinfo=UTC)
+    a, b, c, d, waiting = (uuid.uuid4() for _ in range(5))
+    roster = [(pid, 0, t) for pid in (a, b, c, d)] + [(waiting, 1, t)]
+    stats = {pid: (3, t + timedelta(hours=1)) for pid in (a, b, c, d)}
+    met = {frozenset((a, b)): 9}
+
+    def cost(x: uuid.UUID, y: uuid.UUID) -> int:
+        return met.get(frozenset((x, y)), 0)
+
+    picked = stage1_select_players(roster, 3, stats, cost)
+    assert picked[0] == waiting
+    assert not {a, b} <= set(picked)
+    assert not {a, b} <= {a, b, c, d} - set(picked)
+
+
+def test_stage1_rests_whoever_has_played_most_in_a_row() -> None:
+    t = datetime(2026, 1, 1, tzinfo=UTC)
+    a, b = uuid.uuid4(), uuid.uuid4()
+    roster = [(a, 0, t), (b, 0, t + timedelta(minutes=1))]
+    stats = {a: (5, t), b: (5, t)}
+    assert stage1_select_players(roster, 1, stats, run_lengths={a: 6, b: 1}) == [b]
+    # Short runs count as equal: join order decides.
+    assert stage1_select_players(roster, 1, stats, run_lengths={a: 2, b: 1}) == [a]
+
+
+def test_current_run_counts_back_to_back_matches_only() -> None:
+    t = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+    spans = [
+        (t, t + timedelta(minutes=10)),
+        # 8-minute rest breaks the run
+        (t + timedelta(minutes=18), t + timedelta(minutes=30)),
+        (t + timedelta(minutes=30), t + timedelta(minutes=41)),
+        (t + timedelta(minutes=41, seconds=20), t + timedelta(minutes=52)),
+    ]
+    assert current_run(spans) == (t + timedelta(minutes=18), 3)
+    assert current_run([]) is None
+
+
+def test_pair_doubles_matches_avoids_repeat_opponents_too() -> None:
+    """Every teammate split of these 4 is new, so pairing teammates first
+    would take the first split — putting a and b against each other for
+    the fourth time. The joint split keeps them on the same side."""
+    a, b, c, d = (uuid.uuid4() for _ in range(4))
+    opponents = {frozenset((a, b)): 3}
+
+    [(team_x, team_y)] = pair_doubles_matches(
+        [a, c, b, d],
+        lambda _x, _y: 0,
+        lambda x, y: opponents.get(frozenset((x, y)), 0),
+    )
+    assert {a, b} in ({*team_x}, {*team_y})
+
+
+def test_pick_next_match_among_unrested_prefers_fewer_and_shorter_runs() -> None:
+    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    long_run, short_run, fresh_1, fresh_2, other = (uuid.uuid4() for _ in range(5))
+    just_now = now - timedelta(seconds=10)
+    last_ended = {long_run: just_now, short_run: just_now, other: just_now}
+    since = {long_run: now - timedelta(hours=1), short_run: now - timedelta(minutes=12),
+             other: now - timedelta(minutes=12)}
+    candidates = [
+        ("two_unrested", [long_run, other, fresh_1, fresh_2]),
+        ("long_run", [long_run, fresh_1, fresh_2]),
+        ("short_run", [short_run, fresh_1, fresh_2]),
+    ]
+    assert pick_next_match(candidates, last_ended, now, on_court_since=since) == "short_run"
 
 
 def test_pick_next_match_prefers_rested_players_then_queue_order() -> None:
@@ -665,6 +739,30 @@ async def test_round_list_reports_remaining_estimate_and_byes(db_session: AsyncS
     summary = await build_round_matches_list(db_session, group)
     assert summary.remaining_count == 0
     assert summary.estimated_remaining_minutes is None
+
+
+@pytest.mark.asyncio
+async def test_players_of_a_match_ended_early_are_not_listed_as_sitting_out(
+    db_session: AsyncSession,
+) -> None:
+    """Ending a match early marks it abandoned, but its players did play:
+    fair_rotation doubles with 5 players, the 4 on court must not show up
+    as "not scheduled this round" once their match is ended early."""
+    group = await _make_group(db_session)
+    [court] = await _make_courts(db_session, group, 1)
+    entries = await _make_entries(db_session, group, 5)
+    group = await plan_next_round(db_session, group)
+    group = await start_planned_round(db_session, group)
+    [match] = (
+        await db_session.execute(select(Match).where(Match.group_id == group.id))
+    ).scalars().all()
+
+    await end_match_early(db_session, court, match.id)
+
+    summary = await build_round_matches_list(db_session, group)
+    played = (await _lineup(db_session, match.id))
+    [waiting] = [e for e in entries if e.id not in played["A"] | played["B"]]
+    assert [s.roster_entry_id for s in summary.sitting_out] == [str(waiting.id)]
 
 
 @pytest.mark.asyncio

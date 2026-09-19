@@ -7,16 +7,18 @@ Pure functions with no ORM/DB dependency, so they're trivially unit-testable
 and reusable at different granularities (individual players to form teammate
 pairs, or already-formed teams to form match-ups)."""
 
+import math
 import random
 import uuid
 from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import datetime, timedelta
 from functools import cache
+from itertools import combinations
 from typing import TypeVar, cast
 
 T = TypeVar("T")
 
-# (matches actually played in this group, when the latest of them started)
+# (matches actually played in this group, when the latest of them ended)
 PlayStats = tuple[int, datetime | None]
 
 
@@ -24,36 +26,99 @@ def stage1_select_players(
     roster: Sequence[tuple[uuid.UUID, int | None, datetime]],
     n: int,
     play_stats: Mapping[uuid.UUID, PlayStats] | None = None,
+    pair_cost: Callable[[uuid.UUID, uuid.UUID], int] | None = None,
+    run_lengths: Mapping[uuid.UUID, int] | None = None,
 ) -> list[uuid.UUID]:
     """FR-005: top `n` roster entries by wait_count DESC (None = infinite,
     i.e. never played — always outranks any finite count). `roster` items
     are (roster_entry_id, wait_count, joined_at) tuples.
 
     Ties on wait_count go to whoever has played fewer matches, then to
-    whoever played least recently, and only then to joined_at ASC. Right
-    after a round, everyone who played shares wait_count 0, so a bare
-    joined_at tie-break handed the leftover seats to the earliest joiners
-    every single round whenever the roster wasn't a multiple of the round's
-    capacity (10 players on 2 courts: the first 6 played every round, the
-    last 4 every other round). `play_stats` maps roster_entry_id to
-    `PlayStats`; a missing entry means "never played"."""
-    stats = play_stats or {}
+    whoever finished their last match earliest (has rested longest), and
+    only then to joined_at ASC. Right after a round, everyone who played
+    shares wait_count 0, so a bare joined_at tie-break handed the leftover
+    seats to the earliest joiners every single round whenever the roster
+    wasn't a multiple of the round's capacity (10 players on 2 courts: the
+    first 6 played every round, the last 4 every other round). `play_stats`
+    maps roster_entry_id to `PlayStats`; a missing entry means "never
+    played".
 
-    def sort_key(
+    Players who finished the same match share that end time; among them,
+    whoever has played the most matches in a row without a break
+    (`run_lengths`, see `current_run()`) goes last. Without it the one who
+    sat out was arbitrary, and in a simulated 9-player continuous rotation
+    (8 on court, 1 resting) one player went 14 matches in a row without a
+    break. Runs up to `_RUN_TOLERANCE` matches count as equal: two players
+    who came on together have identical runs, so ranking every difference
+    kept them moving as a unit and `pair_cost` below never got to split
+    them (5 fixed pairs formed in a simulated 10-player continuous
+    rotation, each meeting 11-12 times in 3 hours).
+
+    With `pair_cost` (how often two players have already met), players
+    still tied at the cut-off are chosen one at a time by fewest meetings
+    with those already picked, instead of by join order. Players who finish
+    the same match tie on everything above, and picking the same early
+    joiners among them every time kept sending the same few people on court
+    together: in a simulated 3-hour continuous rotation, one pair met as
+    opponents 11 times while others met once. The match count itself is
+    never loosened for this: treating counts one apart as equal mixed
+    people up better still, but let a player fall two matches behind."""
+    stats = play_stats or {}
+    runs = run_lengths or {}
+
+    def priority(
         item: tuple[uuid.UUID, int | None, datetime],
-    ) -> tuple[bool, int, int, float, datetime]:
-        roster_entry_id, wait_count, joined_at = item
-        played, last_started = stats.get(roster_entry_id, (0, None))
+    ) -> tuple[bool, int, int, float, int]:
+        roster_entry_id, wait_count, _joined_at = item
+        played, last_ended = stats.get(roster_entry_id, (0, None))
         return (
             wait_count is not None,
             -(wait_count or 0),
             played,
-            last_started.timestamp() if last_started is not None else float("-inf"),
-            joined_at,
+            last_ended.timestamp() if last_ended is not None else float("-inf"),
+            max(runs.get(roster_entry_id, 0) - _RUN_TOLERANCE, 0),
         )
 
-    ordered = sorted(roster, key=sort_key)
-    return [item[0] for item in ordered[:n]]
+    ordered = sorted(roster, key=lambda item: (priority(item), item[2]))
+    if pair_cost is None or len(ordered) <= n or n <= 0:
+        return [item[0] for item in ordered[:n]]
+
+    cutoff = priority(ordered[n - 1])
+    selected = [item[0] for item in ordered if priority(item) < cutoff]
+    tied = [item[0] for item in ordered if priority(item) == cutoff]
+    needed = n - len(selected)
+
+    def meetings(group: Sequence[uuid.UUID]) -> int:
+        return sum(pair_cost(a, b) for a, b in combinations(group, 2))
+
+    if math.comb(len(tied), needed) <= _MAX_TIE_SUBSETS:
+        # Whoever is left out gets top priority next time and so tends to go
+        # back on court together: in continuous rotation with 10 players and
+        # 2 courts, the two left out always came from the same match and
+        # always returned into the same match, so one pair met 11 times in 3
+        # hours. Count their meetings too, not just those of the picked.
+        # min() keeps the earliest joiners among equal subsets.
+        best = min(
+            combinations(tied, needed),
+            key=lambda picked: meetings([*selected, *picked])
+            + meetings([pid for pid in tied if pid not in picked]),
+        )
+        return [*selected, *best]
+
+    while len(selected) < n:
+        # min() keeps the earliest joiner among equally fresh candidates.
+        pick = min(tied, key=lambda pid: sum(pair_cost(pid, other) for other in selected))
+        selected.append(pick)
+        tied.remove(pick)
+    return selected
+
+
+# Matches in a row that don't yet count against a player in selection.
+_RUN_TOLERANCE = 2
+
+# Tie pools small enough to try every subset of (in practice: a court's 4
+# finishers choosing 2 or 3).
+_MAX_TIE_SUBSETS = 200
 
 
 def greedy_pair_by_cost(units: Sequence[T], cost: Callable[[T, T], int]) -> list[tuple[T, T]]:
@@ -177,29 +242,76 @@ def pick_next_match(
     last_ended: Mapping[uuid.UUID, datetime],
     now: datetime,
     saturation: timedelta = REST_SATURATION,
+    on_court_since: Mapping[uuid.UUID, datetime] | None = None,
 ) -> T | None:
     """Chooses which queued match a freed court should take next.
     `candidates` are (match, participant ids) in call-up order, already
     filtered to matches with nobody currently on another court; `last_ended`
     maps a player to when their latest played match ended (absent = hasn't
     played yet). Each candidate is scored by the shortest rest among its
-    players, capped at `saturation`; the highest score wins, and ties keep
-    call-up order. Taking the earliest candidate unconditionally made the
-    same people play several matches in a row while others waited through
-    long gaps: in a simulated 12-player, 4-court singles round, 55
-    back-to-back starts and a 45-minute longest wait, versus 17 and 19
-    minutes with this rule."""
+    players, capped at `saturation`; the highest score wins. Taking the
+    earliest candidate unconditionally made the same people play several
+    matches in a row while others waited through long gaps: in a simulated
+    12-player, 4-court singles round, 55 back-to-back starts and a
+    45-minute longest wait, versus 17 and 19 minutes with this rule.
+
+    When even the best candidate needs someone who hasn't rested yet (a
+    small roster, where every queued match involves someone who just came
+    off), that shortest rest is the same for everyone and used to fall
+    straight through to call-up order — which kept the same player on court
+    8 matches running in a simulated 6-player individual_mixed round. So
+    ties go to the candidate with fewer unrested players, then to the one
+    whose unrested players have been on court for the shortest unbroken
+    stretch (`on_court_since`: when each player's current run of matches
+    without a real rest began), and only then to call-up order."""
+    since = on_court_since or {}
     best: T | None = None
-    best_rest: timedelta | None = None
+    best_score: tuple[timedelta, int, timedelta] | None = None
     for item, players in candidates:
         rest = saturation
+        unrested = 0
+        longest_run = timedelta(0)
         for player in players:
             ended = last_ended.get(player)
-            if ended is not None:
-                rest = min(rest, max(now - ended, timedelta(0)))
-        if best_rest is None or rest > best_rest:
-            best, best_rest = item, rest
+            if ended is None:
+                continue
+            player_rest = max(now - ended, timedelta(0))
+            rest = min(rest, player_rest)
+            if player_rest < saturation:
+                unrested += 1
+                longest_run = max(longest_run, now - since.get(player, now))
+        score = (rest, -unrested, -longest_run)
+        if best_score is None or score > best_score:
+            best, best_score = item, score
     return best
+
+
+# Two matches count as one unbroken run when the second started less than
+# this long after the first ended — i.e. the player went straight back on.
+# Sitting out even one match takes several minutes, so this separates
+# "rested" from "didn't" without depending on how long matches last.
+RUN_BREAK = timedelta(minutes=1)
+
+
+def current_run(
+    spans: Sequence[tuple[datetime, datetime]], gap: timedelta = RUN_BREAK
+) -> tuple[datetime, int] | None:
+    """A player's current unbroken run of matches: when it began and how
+    many matches it holds. `spans` are their played matches' (started,
+    ended). None without any played match."""
+    ordered = sorted(spans)
+    if not ordered:
+        return None
+    start = ordered[-1][0]
+    length = 1
+    for (prev_start, prev_end), (next_start, _next_end) in zip(
+        reversed(ordered[:-1]), reversed(ordered[1:]), strict=False
+    ):
+        if next_start - prev_end >= gap:
+            break
+        start = prev_start
+        length += 1
+    return start, length
 
 
 TeamCandidate = tuple[tuple[uuid.UUID, uuid.UUID], int | None, int | None, datetime, datetime]
@@ -340,3 +452,51 @@ def team_matchup_stage2(
         return sum(pair_count(a, b) for a in team_x for b in team_y)
 
     return min_cost_pairing(teams, cross_cost)
+
+
+# Up to 8 players (105 ways to form teams) every team split is tried; past
+# that the search grows by an order of magnitude per court.
+_JOINT_DOUBLES_MAX_PLAYERS = 8
+
+
+def _all_pairings(units: list[T]) -> list[list[tuple[T, T]]]:
+    if not units:
+        return [[]]
+    first, rest = units[0], units[1:]
+    result = []
+    for i, partner in enumerate(rest):
+        for tail in _all_pairings(rest[:i] + rest[i + 1 :]):
+            result.append([(first, partner), *tail])
+    return result
+
+
+def pair_doubles_matches(
+    players: Sequence[uuid.UUID],
+    teammate_count: Callable[[uuid.UUID, uuid.UUID], int],
+    opponent_count: Callable[[uuid.UUID, uuid.UUID], int],
+) -> list[tuple[tuple[uuid.UUID, uuid.UUID], tuple[uuid.UUID, uuid.UUID]]]:
+    """Splits a multiple of 4 players into doubles matches: fewest repeat
+    teammates first, then fewest repeat opponents. Pairing teammates first
+    and only then matching teams can't see that a teammate split it treats
+    as equal leaves the same two people facing each other again — with 4
+    players there is only one way to match two teams, so the opponents were
+    never considered at all. Up to `_JOINT_DOUBLES_MAX_PLAYERS` players,
+    every split is compared on both counts; beyond that it falls back to
+    the two steps (`stage2_pair_players` then `team_matchup_stage2`)."""
+    if len(players) > _JOINT_DOUBLES_MAX_PLAYERS:
+        return team_matchup_stage2(stage2_pair_players(players, teammate_count), opponent_count)
+
+    Matchups = list[tuple[tuple[uuid.UUID, uuid.UUID], tuple[uuid.UUID, uuid.UUID]]]
+    best: tuple[tuple[int, int], Matchups] | None = None
+    for teams in _all_pairings(list(players)):
+        teammate_total = sum(teammate_count(a, b) for a, b in teams)
+        if best is not None and teammate_total > best[0][0]:
+            continue
+        matchups = team_matchup_stage2(teams, opponent_count)
+        opponent_total = sum(
+            opponent_count(a, b) for team_x, team_y in matchups for a in team_x for b in team_y
+        )
+        key = (teammate_total, opponent_total)
+        if best is None or key < best[0]:
+            best = (key, matchups)
+    return best[1] if best is not None else []

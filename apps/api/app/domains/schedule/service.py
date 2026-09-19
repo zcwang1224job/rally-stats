@@ -7,7 +7,7 @@ import random
 import secrets
 import statistics
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast, get_args
@@ -25,12 +25,13 @@ from app.domains.group.models import Group, RoundHistory
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.algorithms import (
     PlayStats,
+    current_run,
+    pair_doubles_matches,
     pick_next_match,
     random_pair_units,
     round_robin_pairs,
     stage1_select_players,
     stage2_pair_players,
-    team_matchup_stage2,
 )
 from app.domains.schedule.models import (
     Match,
@@ -469,13 +470,15 @@ async def _get_play_stats(
     session: AsyncSession, group_id: uuid.UUID
 ) -> dict[uuid.UUID, PlayStats]:
     """roster_entry_id -> (matches that took a court in this group, when the
-    latest of them started). Counts matches abandoned mid-play too, since
-    the players were on court."""
+    latest of them ended). Counts matches abandoned mid-play too, since the
+    players were on court. The end time, not the start, since every match
+    of a round starts together but they finish at different times, and
+    whoever finished first has rested longest."""
     result = await session.execute(
         select(
             MatchParticipant.roster_entry_id,
             func.count(),
-            func.max(Match.started_at),
+            func.max(Match.ended_at),
         )
         .join(Match, Match.id == MatchParticipant.match_id)
         .where(Match.group_id == group_id, Match.started_at.is_not(None))
@@ -483,6 +486,44 @@ async def _get_play_stats(
     )
     return {row[0]: (row[1], row[2]) for row in result.all()}
 
+
+async def _get_current_runs(
+    session: AsyncSession, group_id: uuid.UUID, player_ids: Collection[uuid.UUID] | None = None
+) -> dict[uuid.UUID, tuple[datetime, int]]:
+    """roster_entry_id -> (when their current run of back-to-back matches
+    began, how many matches it holds), from their finished matches in this
+    group (`current_run()`). Limited to `player_ids` when given."""
+    query = (
+        select(MatchParticipant.roster_entry_id, Match.started_at, Match.ended_at)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group_id,
+            Match.started_at.is_not(None),
+            Match.ended_at.is_not(None),
+        )
+    )
+    if player_ids is not None:
+        query = query.where(MatchParticipant.roster_entry_id.in_(player_ids))
+    spans: dict[uuid.UUID, list[tuple[datetime, datetime]]] = {}
+    for roster_entry_id, started_at, ended_at in (await session.execute(query)).all():
+        spans.setdefault(roster_entry_id, []).append((started_at, ended_at))
+    return {
+        pid: run
+        for pid, player_spans in spans.items()
+        if (run := current_run(player_spans)) is not None
+    }
+
+
+def _run_lengths(runs: dict[uuid.UUID, tuple[datetime, int]]) -> dict[uuid.UUID, int]:
+    return {pid: length for pid, (_start, length) in runs.items()}
+
+
+# Whether a match counts as part of someone's round: everything except a
+# match abandoned before it ever took a court. A match ended early
+# ("提前結束") is abandoned too, but its players did play — counting it as
+# nothing listed them as "not scheduled this round", could hand them a
+# rematch as late joiners, and made them look like idle substitutes.
+_COUNTS_TOWARD_ROUND = or_(Match.status != "abandoned", Match.started_at.is_not(None))
 
 # Call-up order of a round's queued matches. created_at only breaks ties
 # between rows written before queue_position existed.
@@ -555,11 +596,13 @@ async def _choose_next_queued_match(
         .group_by(MatchParticipant.roster_entry_id)
     )
     last_ended = {row[0]: row[1] for row in last_ended_result.all()}
+    runs = await _get_current_runs(session, group_id, all_players)
 
     return pick_next_match(
         [(m, players_by_match.get(m.id, [])) for m in candidates],
         last_ended,
         datetime.now(UTC),
+        on_court_since={pid: start for pid, (start, _length) in runs.items()},
     )
 
 
@@ -663,15 +706,21 @@ async def _generate_fair_rotation_matches(
 
     roster = await _get_active_roster_for_selection(session, group.id)
     play_stats = await _get_play_stats(session, group.id)
+    counts = await _load_pair_counts(session, group.id)
+    capacity = len(courts) * _DOUBLES_PER_MATCH
+    # Only whole matches are seated, so select that many up front: the
+    # ones trimmed afterwards would otherwise have influenced (via
+    # _met_count) who else got picked.
+    seats = min(capacity, len(roster) // _DOUBLES_PER_MATCH * _DOUBLES_PER_MATCH)
+    run_lengths = _run_lengths(await _get_current_runs(session, group.id))
     selected_ids = _whole_doubles_matches(
-        stage1_select_players(roster, len(courts) * _DOUBLES_PER_MATCH, play_stats)
+        stage1_select_players(roster, seats, play_stats, _met_count(counts), run_lengths)
     )
     await apply_wait_count_updates(session, group.id, selected_ids)
 
     if not selected_ids:
         return
 
-    counts = await _load_pair_counts(session, group.id)
     for team_a, team_b in _pair_doubles(selected_ids, counts):
         await create_match_with_participants(
             session,
@@ -699,11 +748,18 @@ def _whole_doubles_matches(selected_ids: list[uuid.UUID]) -> list[uuid.UUID]:
 def _pair_doubles(
     selected_ids: Sequence[uuid.UUID], counts: PairCounts
 ) -> list[tuple[tuple[uuid.UUID, uuid.UUID], tuple[uuid.UUID, uuid.UUID]]]:
-    """fair_rotation doubles' two-step pairing: teammates first, avoiding
-    repeat partners, then which team faces which, avoiding repeat
-    opponents."""
-    teammate_pairs = stage2_pair_players(selected_ids, _teammate_cost(counts))
-    return team_matchup_stage2(teammate_pairs, _opponent_cost(counts))
+    """fair_rotation doubles' pairing: fewest repeat teammates, then fewest
+    repeat opponents (`pair_doubles_matches()`)."""
+    return pair_doubles_matches(selected_ids, _teammate_cost(counts), _opponent_cost(counts))
+
+
+def _met_count(counts: PairCounts) -> Callable[[uuid.UUID, uuid.UUID], int]:
+    """How many matches two players have shared, on either side."""
+
+    def cost(a: uuid.UUID, b: uuid.UUID) -> int:
+        return sum(counts.get(frozenset((a, b)), [0, 0]))
+
+    return cost
 
 
 async def _generate_singles_round_robin_matches(
@@ -822,7 +878,14 @@ async def _generate_individual_mixed_matches(
         else:
             active_order = wave_order
 
-        teammate_pairs = stage2_pair_players(active_order, cost_favoring_unseen_teammates)
+        # Teammates and opponents decided together (pair_doubles_matches):
+        # with 4 active players there is only one way to match two teams,
+        # so choosing teammates alone left the opponents to chance — 2 to 8
+        # meetings per pair over two simulated 6-player rounds.
+        team_matchups = pair_doubles_matches(
+            active_order, cost_favoring_unseen_teammates, _opponent_cost(counts)
+        )
+        teammate_pairs = [team for matchup in team_matchups for team in matchup]
         new_pairs = [
             frozenset(pair) for pair in teammate_pairs if frozenset(pair) not in seen_teammate_pairs
         ]
@@ -831,7 +894,6 @@ async def _generate_individual_mixed_matches(
             continue
         stale_rotations = 0
 
-        team_matchups = team_matchup_stage2(teammate_pairs, _opponent_cost(counts))
         for team_a, team_b in team_matchups:
             for player_id in (*team_a, *team_b):
                 play_count_this_round[player_id] += 1
@@ -1671,7 +1733,14 @@ async def _seat_waiting_players_on_court(
     active_roster = await _get_active_roster_for_selection(session, group.id)
     idle_roster = [row for row in active_roster if row[0] not in busy]
     play_stats = await _get_play_stats(session, group.id)
-    selected = stage1_select_players(idle_roster, _DOUBLES_PER_MATCH, play_stats)
+    counts = await _load_pair_counts(session, group.id)
+    selected = stage1_select_players(
+        idle_roster,
+        _DOUBLES_PER_MATCH,
+        play_stats,
+        _met_count(counts),
+        _run_lengths(await _get_current_runs(session, group.id)),
+    )
     if len(selected) < _DOUBLES_PER_MATCH:
         return None
 
@@ -1686,7 +1755,6 @@ async def _seat_waiting_players_on_court(
             .values(wait_count=func.coalesce(RosterEntry.wait_count, 0) + 1)
         )
 
-    counts = await _load_pair_counts(session, group.id)
     [(team_a, team_b)] = _pair_doubles(selected, counts)
     return await create_match_with_participants(
         session,
@@ -1904,7 +1972,7 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
     scheduled = {
         participant.roster_entry_id
         for match in matches
-        if match.status != "abandoned"
+        if match.status != "abandoned" or match.started_at is not None
         for participant in participants_by_match.get(match.id, [])
     }
     roster_result = await session.execute(
@@ -2236,7 +2304,7 @@ async def _schedule_late_joiner_matches(session: AsyncSession, group: Group) -> 
         .where(
             Match.group_id == group.id,
             Match.round_number == round_number,
-            Match.status != "abandoned",
+            _COUNTS_TOWARD_ROUND,
         )
     )
     sides: dict[tuple[uuid.UUID, str], list[uuid.UUID]] = {}
@@ -2454,15 +2522,14 @@ async def remove_roster_entry_from_schedule(
 
 
 async def _round_appearances(session: AsyncSession, group: Group) -> dict[uuid.UUID, int]:
-    """roster_entry_id -> matches in the current round, abandoned ones
-    excluded."""
+    """roster_entry_id -> matches in the current round (`_COUNTS_TOWARD_ROUND`)."""
     result = await session.execute(
         select(MatchParticipant.roster_entry_id, func.count())
         .join(Match, Match.id == MatchParticipant.match_id)
         .where(
             Match.group_id == group.id,
             Match.round_number == group.current_round_number,
-            Match.status != "abandoned",
+            _COUNTS_TOWARD_ROUND,
         )
         .group_by(MatchParticipant.roster_entry_id)
     )
