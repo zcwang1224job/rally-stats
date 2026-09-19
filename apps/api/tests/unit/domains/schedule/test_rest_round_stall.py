@@ -414,16 +414,41 @@ async def test_repeated_toggling_never_spins_the_round_counter(
 async def test_an_empty_round_advances_once_someone_is_back(
     db_session: AsyncSession, published: list
 ) -> None:
+    """Round 1 was generated with nothing in it (one player ready); the
+    other coming back makes a match possible, so it advances."""
     group = await make_group(db_session, match_mode="singles", auto_next_round=True)
     await make_courts(db_session, group, 1)
+    db_session.add(RoundHistory(group_id=group.id, round_number=1, started_at=datetime.now(UTC)))
+    await db_session.commit()
     a, b = await make_players(db_session, group, 2)
     await set_resting(db_session, a)
 
     await set_rest_state(db_session, group, a, resting=False)
 
     await db_session.refresh(group)
-    assert await in_progress(db_session, group)
-    assert b.id in await participants(db_session, (await in_progress(db_session, group))[0].id)
+    assert group.current_round_number == 2
+    [started] = await in_progress(db_session, group)
+    assert await participants(db_session, started.id) == {a.id, b.id}
+
+
+@pytest.mark.asyncio
+async def test_a_group_nobody_has_started_never_starts_itself(
+    db_session: AsyncSession, published: list
+) -> None:
+    """With Auto Next Round on but no round ever generated, resting and
+    coming back must not start round 1 — only the admin does that."""
+    group = await make_group(db_session, match_mode="singles", auto_next_round=True)
+    await make_courts(db_session, group, 1)
+    a, *_others = await make_players(db_session, group, 4)
+
+    await set_rest_state(db_session, group, a, resting=True)
+    await set_rest_state(db_session, group, a, resting=False)
+
+    assert await in_progress(db_session, group) == []
+    history = await db_session.execute(
+        select(RoundHistory.round_number).where(RoundHistory.group_id == group.id)
+    )
+    assert history.scalars().all() == []
 
 
 async def _queued(session: AsyncSession, group: Group) -> list[Match]:

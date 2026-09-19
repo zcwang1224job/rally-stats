@@ -1955,7 +1955,9 @@ async def round_would_auto_advance(
 
     - The round finished (every match terminal): advance, as before. After
       a rest change, only if the next round would have a match — otherwise
-      toggling would spin through empty rounds (037, SC-006).
+      toggling would spin through empty rounds (037, SC-006) — and only
+      once a round has ever been generated: a group nobody has started
+      yet mustn't start itself because someone pressed "rest".
     - The round is stalled by rest: advance if the next round would have a
       match (037 FR-020 and its exception)."""
     if group.scheduling_mechanism == "manual" or not group.auto_next_round:
@@ -1963,7 +1965,15 @@ async def round_would_auto_advance(
     if not await _get_active_courts_ordered(session, group.id):
         return False
     if await round_is_complete(session, group.id, group.current_round_number):
-        return not triggered_by_rest_change or await _can_generate_any_match(session, group)
+        if not triggered_by_rest_change:
+            return True
+        started = await session.execute(
+            select(RoundHistory.round_number).where(RoundHistory.group_id == group.id).limit(1)
+        )
+        return (
+            started.scalar_one_or_none() is not None
+            and await _can_generate_any_match(session, group)
+        )
     if await round_is_stalled_by_rest(session, group):
         return await _can_generate_any_match(session, group)
     return False
