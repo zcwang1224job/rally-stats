@@ -7,7 +7,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 Team = Literal["A", "B"]
-WaitingReason = Literal["manual_assignment", "no_queued_match"]
+# 037-rest-ready-toggle adds: held_for_rest (every queued match is waiting on
+# a resting player) and not_enough_ready (continuous rotation can't make a
+# four with the ready players while someone rests).
+WaitingReason = Literal["manual_assignment", "no_queued_match", "held_for_rest", "not_enough_ready"]
+RestEffect = Literal["held", "substitute"]
 # 018-plan-then-start: derived (not stored) round state for the algorithmic
 # mechanisms' "規劃賽程安排" -> "Next Round" two-step admin flow — always
 # None for scheduling_mechanism == "manual", which has no plan/start split.
@@ -29,9 +33,23 @@ class ParticipantSummary(BaseModel):
     member_id: str | None = None
 
 
+class RosterSummary(BaseModel):
+    roster_entry_id: str
+    nickname: str
+
+
+class SubstitutionPreview(BaseModel):
+    """037: who plays in place of whom when the previewed match is called."""
+
+    resting: RosterSummary
+    substitute: RosterSummary
+
+
 class NextUpPreview(BaseModel):
     match_id: str
+    # 037: the lineup that will actually play — substitutes included.
     participants: list[ParticipantSummary]
+    substitutions: list[SubstitutionPreview] = []
 
 
 class ServeStationInfo(BaseModel):
@@ -117,11 +135,18 @@ class RoundMatchSummary(BaseModel):
     score_a: int
     score_b: int
     winner_team: Team | None
+    # 037-rest-ready-toggle: only for a queued match with a resting player —
+    # "held" (kept for their return) or "substitute" (a substitute plays).
+    rest_effect: RestEffect | None = None
 
 
-class RosterSummary(BaseModel):
-    roster_entry_id: str
-    nickname: str
+class WaitingOnRest(BaseModel):
+    """037 FR-021: queued matches of this round waiting on resting players."""
+
+    match_count: int
+    players: list[RosterSummary]
+    # The round can't go on without them (nothing on court, nothing callable).
+    stalled: bool
 
 
 class RoundMatchesResponse(BaseModel):
@@ -133,8 +158,11 @@ class RoundMatchesResponse(BaseModel):
     # service.py `_estimate_remaining_minutes()`. None when nothing remains.
     estimated_remaining_minutes: int | None = None
     # Active members with no match at all in this round (a bye, or a
-    # fair_rotation doubles player who didn't make the cut).
+    # fair_rotation doubles player who didn't make the cut). Not resting
+    # players: that's their choice, not a bye (037).
     sitting_out: list[RosterSummary] = []
+    # 037: None when no queued match is waiting on a resting player.
+    waiting_on_rest: WaitingOnRest | None = None
 
 
 class AutoNextRoundRequest(BaseModel):

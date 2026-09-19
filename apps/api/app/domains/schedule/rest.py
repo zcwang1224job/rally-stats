@@ -10,7 +10,7 @@ simply leaves them out (`service._IS_READY`)."""
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ApiError
@@ -33,8 +33,12 @@ async def set_rest_state(
 ) -> RestStateResponse:
     """Puts `entry` into the requested state. A request for the state it is
     already in changes and publishes nothing (`changed=False`). Callers
-    MUST have already checked the caller may change this entry."""
-    del confirm_round_end  # 037 T023: REST_ENDS_ROUND
+    MUST have already checked the caller may change this entry.
+
+    Resting that would end the round on the spot raises REST_ENDS_ROUND
+    (409) and changes nothing, unless `confirm_round_end` — which is a
+    confirmation, not an order: if resting no longer ends the round by
+    then, it's an ordinary rest (FR-033)."""
     if group.status == "disbanded":
         raise ApiError("GROUP_DISBANDED", status_code=409)
 
@@ -56,7 +60,8 @@ async def set_rest_state(
     if rested_since is None:
         current.resting_since = now
         await session.flush()
-        # 037 T023: REST_ENDS_ROUND
+        if not confirm_round_end:
+            await _refuse_if_round_would_end(session, group)
     else:
         session.add(
             RosterRestPeriod(
@@ -69,7 +74,9 @@ async def set_rest_state(
         current.played_credit += await _returning_credit(session, group, current)
         current.resting_since = None
         await session.flush()
-        # 037 T024: late-joiner matches for this round
+        # Left out when the round was generated: their share of it, the way
+        # a late joiner gets theirs (FR-012, research.md Decision 8).
+        await service._schedule_late_joiner_matches(session, group)
 
     await session.commit()
     await session.refresh(current)
@@ -78,7 +85,11 @@ async def set_rest_state(
     # Fills courts a returning player (or a newly possible match) lets
     # start, and has every court refetch its "next up" preview.
     await service.refresh_courts_after_roster_change(session, group)
-    # 037 T023: auto next round
+    # A rest can leave the round stalled; a return can make an empty round
+    # playable (research.md Decision 6).
+    await service.check_round_complete_and_maybe_auto_advance(
+        session, group, triggered_by_rest_change=True
+    )
 
     await publish(
         group_notifications_channel(str(group.id)),
@@ -86,6 +97,30 @@ async def set_rest_state(
         {"roster_entry_id": str(current.id), "nickname": current.nickname, "resting": resting},
     )
     return await _response(session, current, changed=True)
+
+
+async def _refuse_if_round_would_end(session: AsyncSession, group: Group) -> None:
+    """FR-031: with the rest already flushed, would Auto Next Round now end
+    the round and cancel matches? Then undo everything and ask first
+    (REST_ENDS_ROUND) — the player confirms and resends. Same rule as the
+    advance itself (`service.round_would_auto_advance()`), and only when
+    there's something to cancel: ending a round that's already over costs
+    nobody a match."""
+    if not await service.round_would_auto_advance(session, group, triggered_by_rest_change=True):
+        return
+    to_cancel = await session.execute(
+        select(func.count())
+        .select_from(Match)
+        .where(
+            Match.group_id == group.id,
+            Match.round_number == group.current_round_number,
+            Match.status == "queued",
+        )
+    )
+    count = to_cancel.scalar_one()
+    if count:
+        await session.rollback()
+        raise ApiError("REST_ENDS_ROUND", status_code=409, detail={"matches_to_cancel": count})
 
 
 async def _returning_credit(session: AsyncSession, group: Group, entry: RosterEntry) -> int:
