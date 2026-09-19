@@ -24,11 +24,13 @@ class PlayerHistory(NamedTuple):
     """A player's record in the group, all in match counts — never in
     minutes, so a scorer who ends a match late (or a slow or quick game)
     doesn't change who counts as rested.
-    - played: matches they have been on court for.
+    - played: matches they have been on court for, plus any
+      `RosterEntry.played_credit` (037: the service layer adds it).
     - rest: matches that went on court after their latest match ended, i.e.
       how many they have sat out since (0 = just came off, or still on
       court). A match that started on another court while they were still
-      playing doesn't count as rest.
+      playing doesn't count as rest, and neither does one that started
+      while they were resting (037).
     - run: matches in their current back-to-back run — two of their matches
       are back to back when no other match went on court in between."""
 
@@ -251,11 +253,24 @@ def stage2_pair_players(
     return min_cost_pairing(player_ids, pair_count)
 
 
-def player_histories(matches: Sequence[PlayedMatch]) -> dict[uuid.UUID, PlayerHistory]:
+# A rest period as `player_histories()` reads it: from, until (None = still
+# resting). Start inclusive, end exclusive.
+RestPeriod = tuple[datetime, datetime | None]
+
+
+def player_histories(
+    matches: Sequence[PlayedMatch],
+    rest_periods: Mapping[uuid.UUID, Sequence[RestPeriod]] | None = None,
+) -> dict[uuid.UUID, PlayerHistory]:
     """`PlayerHistory` for everyone in `matches` — every match of the group
     that went on court. Timestamps are only used to put matches in order,
     never to measure how long anyone rested. A player absent from the
-    result has never played."""
+    result has never played.
+
+    037-rest-ready-toggle: matches that went on court during one of a
+    player's `rest_periods` aren't matches they sat out. Without that, an
+    hour's rest counted as a dozen matches waited and won every tie on
+    return (research.md Decision 3)."""
     starts = sorted(started for started, _ended, _players in matches)
 
     def started_between(since: datetime, before: datetime | None) -> int:
@@ -278,6 +293,12 @@ def player_histories(matches: Sequence[PlayedMatch]) -> dict[uuid.UUID, PlayerHi
         player_spans.sort(key=lambda span: span[0])
         _last_start, last_end = player_spans[-1]
         rest = 0 if last_end is None else started_between(last_end, None)
+        if last_end is not None and rest_periods:
+            for period_start, period_end in rest_periods.get(player, ()):
+                # Rest is only counted from last_end on, so only the part of
+                # the period after it can be taken off.
+                rest -= started_between(max(period_start, last_end), period_end)
+            rest = max(rest, 0)
         run = 1
         for (_prev_start, prev_end), (next_start, _next_end) in zip(
             reversed(player_spans[:-1]), reversed(player_spans[1:]), strict=False
@@ -287,6 +308,24 @@ def player_histories(matches: Sequence[PlayedMatch]) -> dict[uuid.UUID, PlayerHi
             run += 1
         histories[player] = PlayerHistory(len(player_spans), rest, run)
     return histories
+
+
+def returning_played_credit(own_played: int, others_played: Sequence[int]) -> int:
+    """037-rest-ready-toggle research.md Decision 4: how many matches to
+    credit a player coming back from a rest. Selection prefers whoever has
+    played fewest, so without this someone back from an hour off won every
+    tie until they had caught up — in a 10-player continuous rotation, they
+    were never the one sitting out again that evening.
+
+    The target is the lower median of everyone else's played count (credit
+    included): the minimum would be dragged to 0 by a fresh newcomer, and
+    the mean is skewed by outliers. Never negative — a player already at
+    or above the target keeps their count."""
+    if not others_played:
+        return 0
+    ordered = sorted(others_played)
+    target = ordered[(len(ordered) - 1) // 2]
+    return max(target - own_played, 0)
 
 
 # Matches a player needs to have sat out before the next match stops
