@@ -1,20 +1,12 @@
-@use '../../../styles/breakpoints';
+@use '../../../styles/court-board';
 
-// feature/control-panel-scoreboard-style: this operator-facing panel now
-// mirrors scoreboard.component.scss's dark theme (previously the one screen
-// in the app using --color-ink as a page background, per 010-app-wide-ui-
-// redesign research.md Decision 1) instead of its own light theme, plus the
-// same station/pulse/court/camouflage/layout patterns — see that file's
-// comments for the rationale behind each pattern; only the pieces specific
-// to this panel (swap-teams toolbar, language switcher, offline banner) are
-// commented here.
+// feature/control-panel-scoreboard-style: the operator-facing panel shares
+// the scoreboard's dark court (styles/_court-board.scss, `control-panel`
+// size preset — see that partial for the rationale behind each pattern);
+// only the pieces specific to this panel (swap-teams row, language
+// switcher, offline banner) are commented here.
 :host {
-  --scoreboard-bg: var(--color-ink);
-  --color-focus-ring: var(--color-ink-text); // dark board: light focus ring
-  --scoreboard-team-a-bg: var(--color-team-a-bg);
-  --scoreboard-team-a-border: var(--color-team-a-border);
-  --scoreboard-team-b-bg: var(--color-team-b-bg);
-  --scoreboard-team-b-border: var(--color-team-b-border);
+  @include court-board.theme;
 
   display: flex;
   flex-direction: column;
@@ -72,19 +64,7 @@ h1 {
   }
 
   .btn {
-    background: var(--scoreboard-bg);
-    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-    color: color-mix(in srgb, var(--color-ink) 55%, white);
-    box-shadow: none;
-
-    @media (hover: hover) {
-      &:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-        border-color: var(--color-ink-text);
-        color: var(--color-ink-text);
-        box-shadow: none;
-      }
-    }
+    @include court-board.camouflage;
   }
 }
 
@@ -96,192 +76,7 @@ h1 {
   min-height: 0;
 }
 
-.score-board {
-  display: flex;
-  justify-content: center;
-  align-items: stretch;
-  gap: var(--space-md);
-  // Bumped up from 50vh — merging the swap button into .round-row above
-  // freed a whole row's worth of vertical space, so the court claims it
-  // instead of leaving it unused.
-  min-height: 58vh;
-  position: relative;
-}
-
-.score-board::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: var(--space-md);
-  transform: translateX(-50%);
-  pointer-events: none;
-  background-repeat: no-repeat, repeat, repeat;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 70%), rgba(255, 255, 255, 70%)),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 35%) 0 1px,
-      transparent 1px 8px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 35%) 0 1px,
-      transparent 1px 8px
-    );
-  background-size:
-    100% 6px,
-    auto,
-    auto;
-  background-position:
-    top,
-    0 0,
-    0 0;
-}
-
-.team {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  gap: var(--space-md);
-  padding: var(--space-lg);
-  border-radius: var(--radius-md);
-  border: 4px solid transparent;
-
-  background-repeat: no-repeat;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%));
-  background-size:
-    70% 5px,
-    100% 5px,
-    100% 5px,
-    5px 100%,
-    5px 100%;
-  background-position:
-    center 50%,
-    center 20%,
-    center 80%,
-    15% center,
-    85% center;
-}
-
-.team--a {
-  align-items: flex-start;
-}
-
-.team--b {
-  align-items: flex-end;
-}
-
-.team-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.team--a,
-.team--b {
-  .station {
-    color: var(--color-ink-text);
-  }
-}
-
-.team--a {
-  background-color: var(--scoreboard-team-a-bg);
-  border-color: var(--scoreboard-team-a-border);
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-
-.team--b {
-  background-color: var(--scoreboard-team-b-bg);
-  border-color: var(--scoreboard-team-b-border);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-}
-
-.station {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-lg);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-ink) 45%, transparent);
-  font-family: var(--font-family-base);
-  font-size: 1.5rem;
-  font-weight: var(--font-weight-bold);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    font-size: 1.75rem;
-    padding: var(--space-md) var(--space-xl);
-  }
-}
-
-.station--bottom {
-  margin-top: auto;
-}
-
-.station--server {
-  border: 3px solid var(--color-brand-primary);
-  font-weight: var(--font-weight-black);
-}
-
-.server-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 1.75rem;
-  line-height: 1;
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    font-size: 2rem;
-  }
-}
-
-.score {
-  display: inline-block;
-  font-family: var(--font-family-score);
-  font-variant-numeric: tabular-nums;
-  font-size: 6rem;
-  font-weight: var(--font-weight-black);
-  line-height: 1;
-  color: var(--color-ink-text);
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    font-size: 9rem;
-  }
-}
-
-@keyframes score-pulse {
-  0% {
-    transform: scale(1.2);
-    color: var(--color-brand-primary);
-  }
-
-  100% {
-    transform: scale(1);
-    color: var(--color-ink-text);
-  }
-}
-
-.score--pulse {
-  animation: score-pulse 1.2s ease-out;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
+@include court-board.court(control-panel);
 
 .next-up {
   color: var(--color-ink-text-muted);
@@ -312,37 +107,13 @@ h1 {
     min-width: 72px;
     min-height: 72px;
     font-size: var(--font-size-heading);
-    background: var(--scoreboard-bg);
-    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-    color: color-mix(in srgb, var(--color-ink) 55%, white);
-    box-shadow: none;
-
-    @media (hover: hover) {
-      &:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-        border-color: var(--color-ink-text);
-        color: var(--color-ink-text);
-        box-shadow: none;
-      }
-    }
+    @include court-board.camouflage;
   }
 }
 
 .end-match-button {
   margin-top: var(--space-lg);
-  background: var(--scoreboard-bg);
-  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
-  color: color-mix(in srgb, var(--color-ink) 55%, white);
-  box-shadow: none;
-
-  @media (hover: hover) {
-    &:hover:not(:disabled) {
-      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-      border-color: var(--color-danger);
-      color: var(--color-ink-text);
-      box-shadow: none;
-    }
-  }
+  @include court-board.camouflage-danger;
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
@@ -374,73 +145,6 @@ h1 {
     height: calc(var(--font-size-body) * 1.6);
   }
 
-  // A wide-but-short phone screen let .score-board stretch edge-to-edge
-  // while staying short — since it's a flex row with .team { flex: 1 },
-  // the drawn court ended up a much wider/flatter rectangle than a real
-  // badminton court, so its line markings (drawn as % offsets, sized for
-  // a normal-ish rectangle) looked distorted.
-  //
-  // A guessed max-height (a plain vh fraction) undershot the space this
-  // panel's chrome (header/round-row/scoring-controls) actually leaves
-  // free — it capped the court SMALLER than it was before this fix, the
-  // opposite of the goal. Container query units fix that properly:
-  // .board-main becomes a size container (its own height is already fixed
-  // by the flex column above, independent of its children, so this can't
-  // create a sizing loop), and .score-board's width is the LARGER of "fill
-  // the container's width" or "fill its height" — whichever the real
-  // court ratio (13.4m / 6.1m — see shot-placement-picker.component.ts's
-  // identical dimensions) hits first — capped at 100% so it never
-  // overflows either dimension. That's the maximum size that both
-  // preserves the ratio and fits, i.e. this panel's exact available
-  // space, not a guessed fraction of it.
-  .board-main {
-    container-type: size;
-  }
+  @include court-board.compact-landscape;
 
-  .score-board {
-    min-height: 0;
-    aspect-ratio: 13.4 / 6.1;
-    width: min(100%, 100cqh * (13.4 / 6.1));
-    height: auto;
-    margin: 0 auto;
-  }
-
-  .team {
-    padding: var(--space-sm);
-    gap: var(--space-sm);
-  }
-
-  .station {
-    padding: var(--space-xs) var(--space-sm);
-    font-size: var(--font-size-body);
-  }
-
-  .server-badge {
-    font-size: var(--font-size-heading);
-  }
-
-  .score {
-    font-size: 3rem;
-  }
-
-  .scoring-controls {
-    margin-top: var(--space-xs);
-    gap: var(--space-lg);
-  }
-
-  .buttons {
-    .btn {
-      min-width: var(--touch-target-min);
-      min-height: var(--touch-target-min);
-      font-size: var(--font-size-body);
-    }
-  }
-
-  .end-match-button {
-    margin-top: var(--space-sm);
-  }
-
-  .waiting-message {
-    margin-top: var(--space-sm);
-  }
 }

@@ -1,20 +1,15 @@
-@use '../../../../styles/breakpoints';
+@use '../../../../styles/court-board';
 
-// feature/control-panel-scoreboard-style: mirrors scoreboard.component.scss's
-// dark theme/station/pulse/court/camouflage patterns (see that file's
-// comments for the rationale behind each), scaled down into a bounded card
-// rather than a full-viewport page — this component renders inline inside
+// feature/control-panel-scoreboard-style: the scoreboard's dark court
+// (styles/_court-board.scss, `inline` size preset), scaled down into a
+// bounded card rather than a full-viewport page — this component renders
+// inline inside
 // the admin page's per-court `.court-control-block.card` (admin-page.
 // component.html), alongside its own `<h3>` court-name heading outside this
 // component's template, so it never owns the whole screen the way the
 // scoreboard/public control panel do.
 :host {
-  --scoreboard-bg: var(--color-ink);
-  --color-focus-ring: var(--color-ink-text); // dark board: light focus ring
-  --scoreboard-team-a-bg: var(--color-team-a-bg);
-  --scoreboard-team-a-border: var(--color-team-a-border);
-  --scoreboard-team-b-bg: var(--color-team-b-bg);
-  --scoreboard-team-b-border: var(--color-team-b-border);
+  @include court-board.theme;
 
   display: block;
   padding: var(--space-md);
@@ -35,192 +30,11 @@
   }
 
   .btn {
-    background: var(--scoreboard-bg);
-    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-    color: color-mix(in srgb, var(--color-ink) 55%, white);
-    box-shadow: none;
-
-    @media (hover: hover) {
-      &:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-        border-color: var(--color-ink-text);
-        color: var(--color-ink-text);
-        box-shadow: none;
-      }
-    }
+    @include court-board.camouflage;
   }
 }
 
-.score-board {
-  display: flex;
-  justify-content: center;
-  align-items: stretch;
-  gap: var(--space-sm);
-  position: relative;
-}
-
-.score-board::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: var(--space-sm);
-  transform: translateX(-50%);
-  pointer-events: none;
-  background-repeat: no-repeat, repeat, repeat;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 70%), rgba(255, 255, 255, 70%)),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 35%) 0 1px,
-      transparent 1px 8px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 35%) 0 1px,
-      transparent 1px 8px
-    );
-  background-size:
-    100% 4px,
-    auto,
-    auto;
-  background-position:
-    top,
-    0 0,
-    0 0;
-}
-
-.team {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-  min-height: 9rem;
-  border-radius: var(--radius-sm);
-  border: 3px solid transparent;
-
-  background-repeat: no-repeat;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%));
-  background-size:
-    70% 4px,
-    100% 4px,
-    100% 4px,
-    4px 100%,
-    4px 100%;
-  background-position:
-    center 50%,
-    center 20%,
-    center 80%,
-    15% center,
-    85% center;
-}
-
-.team--a {
-  align-items: flex-start;
-}
-
-.team--b {
-  align-items: flex-end;
-}
-
-.team-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.team--a,
-.team--b {
-  .station {
-    color: var(--color-ink-text);
-  }
-}
-
-.team--a {
-  background-color: var(--scoreboard-team-a-bg);
-  border-color: var(--scoreboard-team-a-border);
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-}
-
-.team--b {
-  background-color: var(--scoreboard-team-b-bg);
-  border-color: var(--scoreboard-team-b-border);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
-.station {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-xs) var(--space-sm);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-ink) 45%, transparent);
-  font-family: var(--font-family-base);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.station--bottom {
-  margin-top: auto;
-}
-
-.station--server {
-  border: 2px solid var(--color-brand-primary);
-  font-weight: var(--font-weight-black);
-}
-
-.server-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--font-size-heading);
-  line-height: 1;
-}
-
-.score {
-  display: inline-block;
-  font-family: var(--font-family-score);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-display);
-  font-weight: var(--font-weight-black);
-  line-height: 1;
-  color: var(--color-ink-text);
-}
-
-@keyframes score-pulse {
-  0% {
-    transform: scale(1.2);
-    color: var(--color-brand-primary);
-  }
-
-  100% {
-    transform: scale(1);
-    color: var(--color-ink-text);
-  }
-}
-
-.score--pulse {
-  animation: score-pulse 1.2s ease-out;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
+@include court-board.court(inline);
 
 // Below .score-board (the court), never on top of the court markings — one
 // .buttons group per team, laid out side by side so each stays roughly
@@ -241,34 +55,10 @@
     flex: 1;
     min-height: 64px;
     font-size: var(--font-size-heading);
-    background: var(--scoreboard-bg);
-    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-    color: color-mix(in srgb, var(--color-ink) 55%, white);
-    box-shadow: none;
-
-    @media (hover: hover) {
-      &:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-        border-color: var(--color-ink-text);
-        color: var(--color-ink-text);
-        box-shadow: none;
-      }
-    }
+    @include court-board.camouflage;
   }
 }
 
 .end-match-button {
-  background: var(--scoreboard-bg);
-  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
-  color: color-mix(in srgb, var(--color-ink) 55%, white);
-  box-shadow: none;
-
-  @media (hover: hover) {
-    &:hover:not(:disabled) {
-      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-      border-color: var(--color-danger);
-      color: var(--color-ink-text);
-      box-shadow: none;
-    }
-  }
+  @include court-board.camouflage-danger;
 }
