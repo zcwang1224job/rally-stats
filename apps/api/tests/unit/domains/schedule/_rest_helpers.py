@@ -10,6 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.court.models import Court
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
+# groups.created_by_member_id points at members: without this, a module
+# importing only these helpers fails on its own (as most schedule tests do).
+from app.domains.member import models as _member_models  # noqa: F401
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.service import _advance_after_terminal

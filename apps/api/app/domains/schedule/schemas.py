@@ -1,6 +1,7 @@
 """Pydantic request/response schemas for the schedule domain, per
 specs/003-schedule-rotation/contracts/schedule-api.md."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -84,6 +85,11 @@ class RosterScheduleStatus(BaseModel):
     # and admin-facing schedule pages, same builder) is the "加好友" entry
     # point's canonical home — None for Guests (mirrors is_guest).
     member_id: str | None = None
+    # 037-rest-ready-toggle: resting players stay on the roster, marked.
+    resting: bool = False
+    resting_since: datetime | None = None
+    # 037: fixed_partner only — who they team with in this round's matches.
+    partner_roster_entry_id: str | None = None
 
 
 class ScheduleResponse(BaseModel):
@@ -235,6 +241,28 @@ class MatchDetailResponse(BaseModel):
 class KickMemberResponse(BaseModel):
     roster_entry_id: str
     status: str
+
+
+class RestStateRequest(BaseModel):
+    """037-rest-ready-toggle contracts/rest-state-api.md. The target state,
+    not a toggle, so a double tap or the player and an admin pressing at
+    once can't cancel each other out."""
+
+    resting: bool
+    # Confirms a rest that ends the round on the spot (REST_ENDS_ROUND).
+    confirm_round_end: bool = False
+    # Self-service endpoint only, for a Guest; ignored on the admin one.
+    guest_session_token: str | None = None
+
+
+class RestStateResponse(BaseModel):
+    roster_entry_id: str
+    resting: bool
+    resting_since: datetime | None
+    # With resting: the player is on court now and rests after this match.
+    currently_playing: bool
+    # False when the entry was already in the requested state (no-op).
+    changed: bool
 
 
 class RegenerateGuestLinkResponse(BaseModel):

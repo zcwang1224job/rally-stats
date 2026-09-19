@@ -1,0 +1,24 @@
+:host {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  max-width: 100%;
+}
+
+.rest-toggle {
+  gap: var(--space-xs);
+}
+
+// Admin roster rows sit next to the icon buttons; still keeps .btn's
+// touch-target floor (constitution VII), only padding and text shrink.
+.rest-toggle--compact {
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-caption);
+}
+
+.rest-toggle__note {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}

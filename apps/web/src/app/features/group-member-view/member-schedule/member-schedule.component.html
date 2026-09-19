@@ -66,6 +66,19 @@
 
   <section class="card">
     <h2>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h2>
+    @if (self(); as me) {
+      <div class="self-rest">
+        <app-rest-toggle-button
+          [resting]="!!me.resting"
+          [currentlyPlaying]="me.currently_playing"
+          [pending]="restPending()"
+          (toggled)="setRest($event)"
+        />
+        @if (restErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+      </div>
+    }
     <ul class="roster-list">
       @for (member of s.roster; track member.roster_entry_id) {
         <li class="card friend-row">
@@ -76,6 +89,9 @@
               <span class="status-badge status-badge--success">{{ 'scheduleManagement.currentlyPlaying' | translate }}</span>
             } @else if (s.scheduling_mechanism === 'manual' && member.wait_count !== null) {
               <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
+            }
+            @if (member.resting) {
+              <span class="status-badge status-badge--muted">{{ 'scheduleManagement.restingBadge' | translate }}</span>
             }
           </span>
           @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {

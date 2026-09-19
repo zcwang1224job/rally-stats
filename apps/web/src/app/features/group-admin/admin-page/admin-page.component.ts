@@ -319,7 +319,7 @@ export class AdminPageComponent {
   }
 
   private subscribeToRosterEvents(): void {
-    for (const event of ['member.joined', 'member.left']) {
+    for (const event of ['member.joined', 'member.left', 'roster.restChanged']) {
       this.realtime
         .subscribe(`group:${this.groupId}:notifications`, event)
         .pipe(takeUntilDestroyed(this.destroyRef))

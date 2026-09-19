@@ -69,6 +69,12 @@ from app.domains.schedule.schemas import (
 
 _ACTIVE_MATCH_STATUSES = ("queued", "in_progress")
 
+# 037-rest-ready-toggle: a resting player is still in the group (status
+# "active") but isn't picked to play. Every "who can play next" query adds
+# this; queries about who is in the group, or who partners whom, don't
+# (research.md Decision 2).
+_IS_READY = RosterEntry.resting_since.is_(None)
+
 
 async def abandon_group_matches(session: AsyncSession, group_id: uuid.UUID) -> None:
     """Implements 001's `AbandonMatchesHook` — called from `disband_group()`.
@@ -110,7 +116,8 @@ async def apply_wait_count_updates(
     """FR-007 / research.md #9: selected participants' `wait_count` -> 0;
     every other active roster entry's `wait_count` += 1 (NULL treated as 0
     first, i.e. a never-played member who missed this round has now waited
-    one round). Two bulk UPDATEs, not a per-row Python loop."""
+    one round). Two bulk UPDATEs, not a per-row Python loop. A resting
+    player isn't waiting, so their count stays frozen (037 FR-024)."""
     selected = list(selected_ids)
     if selected:
         await session.execute(
@@ -121,6 +128,7 @@ async def apply_wait_count_updates(
         .where(
             RosterEntry.group_id == group_id,
             RosterEntry.status == "active",
+            _IS_READY,
             RosterEntry.id.notin_(selected),
         )
         .values(wait_count=func.coalesce(RosterEntry.wait_count, 0) + 1)
@@ -398,9 +406,10 @@ async def _get_active_courts_ordered(session: AsyncSession, group_id: uuid.UUID)
 async def _get_active_roster_for_selection(
     session: AsyncSession, group_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, int | None, datetime]]:
+    """Ready players only (037) — both callers pick who plays next."""
     result = await session.execute(
         select(RosterEntry.id, RosterEntry.wait_count, RosterEntry.joined_at).where(
-            RosterEntry.group_id == group_id, RosterEntry.status == "active"
+            RosterEntry.group_id == group_id, RosterEntry.status == "active", _IS_READY
         )
     )
     return [(row.id, row.wait_count, row.joined_at) for row in result.all()]
@@ -411,10 +420,10 @@ async def _get_active_roster_ids(session: AsyncSession, group_id: uuid.UUID) -> 
     generation includes every active member — no wait_count-based subset
     selection (research.md #5), unlike `_get_active_roster_for_selection`
     above, which `stage1_select_players` still needs for fair_rotation
-    doubles (untouched by this feature)."""
+    doubles (untouched by this feature). Ready players only (037)."""
     result = await session.execute(
         select(RosterEntry.id)
-        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active")
+        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active", _IS_READY)
         # Without an ORDER BY the order was whatever the heap returned, and
         # the round-robin generators' anchors and tie-breaks all depend on it.
         .order_by(RosterEntry.joined_at, RosterEntry.id)
@@ -895,7 +904,7 @@ async def compute_auto_partner_teams_for_round(
     often each pair has already been teammates (reusing
     `stage2_pair_players`) and never touches `partnerships`. With an odd
     headcount one member sits the round out (`_choose_bye()`)."""
-    active_ids = await _get_active_roster_ordered(session, group_id)
+    active_ids = await _get_ready_roster_ordered(session, group_id)
     if len(active_ids) % 2 == 1:
         bye = await _choose_bye(session, group_id, active_ids)
         active_ids = [pid for pid in active_ids if pid != bye]
@@ -933,12 +942,18 @@ async def _resolve_manual_fixed_partner_teams(
     清單中出現超過一次（FR-003：該重複成員涉及的組合一律視為無效、一律
     捨棄，MUST NOT 只丟棄後面出現的那一組）的組合皆被捨棄；(3) 對步驟 1+2
     後仍未涵蓋到的現役成員，呼叫 `random_pair_units()` 當場隨機配對補齊
-    （FR-002）；人數為奇數時，先由 `_choose_bye()` 挑一人本輪輪空。"""
-    formal_teams = await _get_active_partnership_teams(session, group.id)
-    covered = {pid for pair in formal_teams for pid in pair}
+    （FR-002）；人數為奇數時，先由 `_choose_bye()` 挑一人本輪輪空。
 
-    active_ids = await _get_active_roster_ordered(session, group.id)
+    037：正式搭檔有一人休息時整隊這一輪不排，另一人也不進自動補位——否則他
+    會被臨時配給別人，休息者一回來就落單（research.md Decision 2）。"""
+    active_ids = await _get_ready_roster_ordered(session, group.id)
     active_set = set(active_ids)
+
+    all_formal_teams = await _get_active_partnership_teams(session, group.id)
+    formal_teams = [
+        team for team in all_formal_teams if team[0] in active_set and team[1] in active_set
+    ]
+    covered = {pid for pair in all_formal_teams for pid in pair}
 
     temp_list = temporary_pairings or []
     member_counts: dict[uuid.UUID, int] = {}
@@ -1857,6 +1872,8 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             # function/response) instead of next to live-match participants
             # — this is the one place it's populated within this function.
             member_id=str(entry.member_id) if entry.member_id else None,
+            resting=entry.resting_since is not None,
+            resting_since=entry.resting_since,
         )
         for entry in roster_result.scalars()
     ]
@@ -1929,9 +1946,10 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
         if match.status != "abandoned" or match.started_at is not None
         for participant in participants_by_match.get(match.id, [])
     }
+    # Resting players have no match by choice, not as a bye (037).
     roster_result = await session.execute(
         select(RosterEntry.id, RosterEntry.nickname)
-        .where(RosterEntry.group_id == group.id, RosterEntry.status == "active")
+        .where(RosterEntry.group_id == group.id, RosterEntry.status == "active", _IS_READY)
         .order_by(RosterEntry.joined_at, RosterEntry.id)
     )
     sitting_out = [
@@ -2104,9 +2122,24 @@ async def build_match_detail(
 
 
 async def _get_active_roster_ordered(session: AsyncSession, group_id: uuid.UUID) -> list[uuid.UUID]:
+    """Everyone in the group, resting or not, in join order — for formal
+    partnerships, which resting doesn't affect (037 FR-034). Anything
+    deciding who plays uses `_get_ready_roster_ordered()` instead."""
     result = await session.execute(
         select(RosterEntry.id)
         .where(RosterEntry.group_id == group_id, RosterEntry.status == "active")
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def _get_ready_roster_ordered(session: AsyncSession, group_id: uuid.UUID) -> list[uuid.UUID]:
+    """037: `_get_active_roster_ordered()` without resting players, for
+    everything that decides who plays — this round's teams, late joiners'
+    matches, substitutes, the temporary pairing preview."""
+    result = await session.execute(
+        select(RosterEntry.id)
+        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active", _IS_READY)
         .order_by(RosterEntry.joined_at, RosterEntry.id)
     )
     return [row[0] for row in result.all()]
@@ -2266,7 +2299,7 @@ async def _schedule_late_joiner_matches(session: AsyncSession, group: Group) -> 
         sides.setdefault((match_id, team), []).append(roster_entry_id)
     scheduled = {pid for ids in sides.values() for pid in ids}
 
-    active = await _get_active_roster_ordered(session, group.id)
+    active = await _get_ready_roster_ordered(session, group.id)
     newcomers = [pid for pid in active if pid not in scheduled]
     if not newcomers:
         return False
@@ -2369,16 +2402,19 @@ async def _teams_for_newcomers(
     """fixed_partner late-joiner teams: formal partnerships whose both
     members are newcomers (manual partner source only), then the rest in
     join order. An odd one out stays unscheduled until someone else
-    arrives."""
+    arrives. A newcomer whose formal partner is resting waits for them
+    instead of being paired with someone else (037 research.md Decision 8)."""
     newcomer_set = set(newcomers)
     teams: list[tuple[uuid.UUID, uuid.UUID]] = []
+    covered: set[uuid.UUID] = set()
     if group.partner_source == "manual":
-        teams = [
-            team
-            for team in await _get_active_partnership_teams(session, group.id)
-            if team[0] in newcomer_set and team[1] in newcomer_set
-        ]
-    covered = {pid for team in teams for pid in team}
+        ready = set(await _get_ready_roster_ordered(session, group.id))
+        for team in await _get_active_partnership_teams(session, group.id):
+            if team[0] in newcomer_set and team[1] in newcomer_set:
+                teams.append(team)
+            elif any(pid not in ready for pid in team):
+                covered.update(team)
+    covered.update(pid for team in teams for pid in team)
     rest = [pid for pid in newcomers if pid not in covered]
     teams.extend(zip(rest[0::2], rest[1::2], strict=False))
     return teams
@@ -2509,7 +2545,7 @@ async def _pick_substitute(
     staying = [pid for pid in in_match if pid != leaving_id]
     candidates = [
         pid
-        for pid in await _get_active_roster_ordered(session, group.id)
+        for pid in await _get_ready_roster_ordered(session, group.id)
         if pid != leaving_id and pid not in in_match
     ]
     if not candidates:
@@ -2689,7 +2725,7 @@ async def preview_random_partner_pairing(
     if group.partner_source != "manual":
         raise ApiError("PARTNER_SOURCE_MISMATCH", status_code=409)
 
-    active_ids = await _get_active_roster_ordered(session, group.id)
+    active_ids = await _get_ready_roster_ordered(session, group.id)
     paired = await _get_paired_ids(session, group.id)
     unpaired_ids = [pid for pid in active_ids if pid not in paired]
     pairs = random_pair_units(unpaired_ids)

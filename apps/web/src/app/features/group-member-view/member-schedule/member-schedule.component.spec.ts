@@ -1,12 +1,14 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { Observable, Subject, of } from 'rxjs';
+import { NEVER, Observable, Subject, of, throwError } from 'rxjs';
+import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import {
+  RestStateResponse,
   RoundMatchesResponse,
   ScheduleResponse,
 } from '../../group-admin/schedule-management/schedule.models';
@@ -115,18 +117,27 @@ function setup(
     schedule?: ScheduleResponse;
     candidates?: InviteCandidatesResponse;
     selfMemberId?: string | null;
+    getMemberSchedule?: () => Observable<ScheduleResponse>;
+    selfRosterEntryId?: string;
+    setOwnRestState?: (groupId: string, id: string, resting: boolean) => Observable<RestStateResponse>;
+    subscribe?: (channel: string, event: string) => Observable<unknown>;
   } = {},
 ) {
   TestBed.configureTestingModule({
     imports: [MemberScheduleComponent],
     providers: [
       provideTranslateService({}),
-      { provide: RealtimeService, useValue: { connectionState: signal('connected'), subscribe: () => of() } },
+      {
+        provide: RealtimeService,
+        useValue: { connectionState: signal('connected'), subscribe: options.subscribe ?? (() => of()) },
+      },
       {
         provide: GroupMemberViewService,
         useValue: {
-          getMemberSchedule: () => of(options.schedule ?? scheduleResponse),
+          getMemberSchedule: options.getMemberSchedule ?? (() => of(options.schedule ?? scheduleResponse)),
           getRoundMatches: options.getRoundMatches ?? (() => of(roundMatchesResponse)),
+          resolveRosterEntryId: () => of(options.selfRosterEntryId ?? 'cp1'),
+          setOwnRestState: options.setOwnRestState ?? (() => NEVER),
         },
       },
       {
@@ -233,6 +244,7 @@ describe('MemberScheduleComponent roster-list add-friend entries', () => {
           useValue: {
             getMemberSchedule: () => of(scheduleResponses[Math.min(call++, 1)]),
             getRoundMatches: () => of(roundMatchesResponse),
+            resolveRosterEntryId: () => of('cp1'),
           },
         },
         { provide: AuthService, useValue: { getCachedMemberId: () => 'self-id' } },
@@ -264,5 +276,120 @@ describe('MemberScheduleComponent roster-list add-friend entries', () => {
 
     expect(fixture.nativeElement.textContent).toContain('新成員');
     expect(requestedIds.sort()).toEqual(['m2', 'm3']);
+  });
+});
+
+// 037-rest-ready-toggle US1
+describe('MemberScheduleComponent rest/ready', () => {
+  function withRoster(overrides: Partial<ScheduleResponse['roster'][number]>[]): ScheduleResponse {
+    return {
+      ...scheduleResponse,
+      roster: scheduleResponse.roster.map((row, i) => ({ ...row, ...(overrides[i] ?? {}) })),
+    };
+  }
+
+  const restOk: RestStateResponse = {
+    roster_entry_id: 'cp3',
+    resting: true,
+    resting_since: '2026-09-19T12:00:00Z',
+    currently_playing: false,
+    changed: true,
+  };
+
+  it('marks resting players on the roster, with text not just colour', () => {
+    const fixture = setup({ schedule: withRoster([{}, {}, { resting: true }]) });
+
+    const rows = fixture.nativeElement.querySelectorAll('.roster-list .friend-row');
+    expect(rows[2].textContent).toContain('scheduleManagement.restingBadge');
+    expect(rows[0].textContent).not.toContain('scheduleManagement.restingBadge');
+  });
+
+  it('shows one rest button, for the viewer themself', () => {
+    const fixture = setup({ selfRosterEntryId: 'cp3' });
+
+    const buttons = fixture.nativeElement.querySelectorAll('app-rest-toggle-button');
+    expect(buttons.length).toBe(1);
+    expect(buttons[0].textContent).toContain('restToggle.rest');
+  });
+
+  it('shows no rest button until it knows who the viewer is', () => {
+    const fixture = setup({ selfRosterEntryId: 'not-on-the-roster' });
+
+    expect(fixture.nativeElement.querySelector('app-rest-toggle-button')).toBeNull();
+  });
+
+  it('offers "ready" to a resting viewer, and tells a playing one when the break starts', () => {
+    const fixture = setup({
+      schedule: withRoster([{ resting: true }]),
+      selfRosterEntryId: 'cp1',
+    });
+
+    const text = fixture.nativeElement.querySelector('app-rest-toggle-button').textContent;
+    expect(text).toContain('restToggle.ready');
+    expect(text).toContain('restToggle.afterThisMatch');
+  });
+
+  it('sends the target state and reloads from the server on success', () => {
+    const sent: [string, string, boolean][] = [];
+    let loads = 0;
+    const fixture = setup({
+      selfRosterEntryId: 'cp3',
+      getMemberSchedule: () => {
+        loads += 1;
+        return of(scheduleResponse);
+      },
+      setOwnRestState: (groupId, id, resting) => {
+        sent.push([groupId, id, resting]);
+        return of(restOk);
+      },
+    });
+    const before = loads;
+
+    fixture.nativeElement.querySelector('app-rest-toggle-button button').click();
+
+    expect(sent).toEqual([['g1', 'cp3', true]]);
+    expect(loads).toBe(before + 1);
+    expect(fixture.componentInstance.restPending()).toBe(false);
+  });
+
+  it('keeps the old state and shows the error when the request fails', () => {
+    const error: ApiError = {
+      errorCode: 'ROSTER_ENTRY_NOT_FOUND',
+      i18nKey: 'errors.ROSTER_ENTRY_NOT_FOUND',
+      detail: null,
+      status: 404,
+    };
+    const fixture = setup({
+      selfRosterEntryId: 'cp3',
+      setOwnRestState: () => throwError(() => error),
+    });
+
+    fixture.nativeElement.querySelector('app-rest-toggle-button button').click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.self-rest [role="alert"]').textContent).toContain(
+      'errors.ROSTER_ENTRY_NOT_FOUND',
+    );
+    expect(fixture.nativeElement.querySelector('app-rest-toggle-button').textContent).toContain(
+      'restToggle.rest',
+    );
+    expect(fixture.componentInstance.restPending()).toBe(false);
+  });
+
+  it('refetches when someone rests or comes back', () => {
+    const restChanged$ = new Subject<void>();
+    let loads = 0;
+    setup({
+      getMemberSchedule: () => {
+        loads += 1;
+        return of(scheduleResponse);
+      },
+      subscribe: (_channel, event) => (event === 'roster.restChanged' ? restChanged$ : of()),
+    });
+    const before = loads;
+
+    restChanged$.next();
+
+    expect(loads).toBe(before + 1);
   });
 });

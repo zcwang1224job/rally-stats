@@ -191,6 +191,53 @@ describe('AdminPageComponent', () => {
     expect(scheduleCalls).toBe(initialCalls + 2);
   });
 
+  // 037-rest-ready-toggle T040
+  it('refetches the schedule when someone rests or comes back', async () => {
+    const restChanged = new Subject<Ably.Message>();
+    let scheduleCalls = 0;
+    setup(
+      false,
+      {},
+      {
+        getSchedule: () => {
+          scheduleCalls += 1;
+          return of(scheduleResponse);
+        },
+      },
+      {},
+      ((channel: string, event: string) =>
+        channel === 'group:g1:notifications' && event === 'roster.restChanged'
+          ? restChanged.asObservable()
+          : of()) as RealtimeService['subscribe'],
+    );
+    const initialCalls = scheduleCalls;
+
+    restChanged.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(scheduleCalls).toBe(initialCalls + 1);
+  });
+
+  it('marks resting players on the roster tab, with text not just colour', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r1', nickname: '小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+            { roster_entry_id: 'r2', nickname: '小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: false },
+          ],
+        }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+    expect(rows[0].textContent).toContain('scheduleManagement.restingBadge');
+    expect(rows[1].textContent).not.toContain('scheduleManagement.restingBadge');
+  });
+
   it('offers the continuous-rotation toggle for fair-rotation doubles and saves it', () => {
     const calls: boolean[] = [];
     const fixture = setup(false, {}, {

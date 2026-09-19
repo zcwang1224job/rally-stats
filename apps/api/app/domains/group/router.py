@@ -61,6 +61,8 @@ from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
     AllCourtsLiveState,
     RecordShotPlacementRequest,
+    RestStateRequest,
+    RestStateResponse,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
@@ -879,6 +881,32 @@ async def leave_group(
         member_id=member.id if member is not None else None,
     )
     return LeaveGroupResponse(roster_entry_id=str(updated.id), status="left")
+
+
+@router.put("/{group_id}/roster/{roster_entry_id}/rest-state", response_model=RestStateResponse)
+async def set_own_rest_state(
+    group_id: uuid.UUID,
+    roster_entry_id: uuid.UUID,
+    payload: RestStateRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    member: Annotated[Member | None, Depends(optional_member)],
+) -> RestStateResponse:
+    """037-rest-ready-toggle US1: a player resting or coming back, on
+    their own — same ownership proof as `leave`. The body is the target
+    state, so repeating it is harmless (`changed: false`). Errors:
+    `ROSTER_ENTRY_NOT_FOUND` (also when the caller can't prove ownership),
+    `GROUP_DISBANDED`, `REST_ENDS_ROUND` (resting would end the round on
+    the spot; resend with `confirm_round_end: true`)."""
+    group = await service.get_group_by_id(session, group_id)
+    return await service.set_own_rest_state(
+        session,
+        group,
+        roster_entry_id,
+        resting=payload.resting,
+        confirm_round_end=payload.confirm_round_end,
+        guest_session_token=payload.guest_session_token,
+        member_id=member.id if member is not None else None,
+    )
 
 
 @join_router.get("/join/{join_link_token}", response_model=JoinLinkPreviewResponse)

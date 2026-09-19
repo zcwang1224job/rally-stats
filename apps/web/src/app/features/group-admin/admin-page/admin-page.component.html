@@ -266,6 +266,9 @@
                                scheduling mechanism — only manual mode still updates it. -->
                           <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
                         }
+                        @if (member.resting) {
+                          <span class="status-badge status-badge--muted">{{ 'scheduleManagement.restingBadge' | translate }}</span>
+                        }
                       </span>
                       @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {
                         <app-add-friend-button

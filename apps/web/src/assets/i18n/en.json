@@ -567,6 +567,15 @@
       }
     }
   },
+  "restToggle": {
+    "rest": "Take a break",
+    "ready": "I'm ready",
+    "afterThisMatch": "Your break starts after this match",
+    "adminRest": "Rest",
+    "adminReady": "Ready",
+    "adminAriaLabel": "Put {{nickname}} on a break",
+    "adminReadyAriaLabel": "Mark {{nickname}} as ready"
+  },
   "scheduleManagement": {
     "sectionTitle": "Court Control",
     "roundLabel": "Round {{round}}",
@@ -613,6 +622,7 @@
     "rosterSectionTitle": "Rotation Roster",
     "waitCountLabel": "Waited {{count}} rounds",
     "currentlyPlaying": "Playing",
+    "restingBadge": "☕ Resting",
     "kickMember": "Remove",
     "kickMemberAriaLabel": "Remove {{nickname}}",
     "regenerateGuestLink": "Regenerate Link",

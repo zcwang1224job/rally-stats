@@ -73,6 +73,23 @@ export interface RosterScheduleStatus {
    * (member-schedule page and admin roster tab, same backend builder) is
    * the "加好友" entry point's canonical home. */
   member_id?: string | null;
+  /** 037-rest-ready-toggle: resting players stay on the roster, marked.
+   * Optional so an older backend (no field) reads as "nobody resting". */
+  resting?: boolean;
+  resting_since?: string | null;
+  /** 037: fixed_partner only — who they team with in this round's matches. */
+  partner_roster_entry_id?: string | null;
+}
+
+/** 037: PUT …/rest-state response (contracts/rest-state-api.md). */
+export interface RestStateResponse {
+  roster_entry_id: string;
+  resting: boolean;
+  resting_since: string | null;
+  /** With resting: on court now, resting after this match. */
+  currently_playing: boolean;
+  /** False when already in the requested state. */
+  changed: boolean;
 }
 
 export interface ScheduleResponse {

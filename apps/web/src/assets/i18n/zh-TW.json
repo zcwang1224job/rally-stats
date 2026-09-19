@@ -567,6 +567,15 @@
       }
     }
   },
+  "restToggle": {
+    "rest": "我要休息",
+    "ready": "準備好了",
+    "afterThisMatch": "打完這一場後開始休息",
+    "adminRest": "休息",
+    "adminReady": "準備好了",
+    "adminAriaLabel": "將 {{nickname}} 設為休息中",
+    "adminReadyAriaLabel": "將 {{nickname}} 設為準備好了"
+  },
   "scheduleManagement": {
     "sectionTitle": "場地控制",
     "roundLabel": "第 {{round}} 輪",
@@ -613,6 +622,7 @@
     "rosterSectionTitle": "輪替名單",
     "waitCountLabel": "已等待 {{count}} 輪",
     "currentlyPlaying": "比賽中",
+    "restingBadge": "☕ 休息中",
     "kickMember": "踢除",
     "kickMemberAriaLabel": "踢除 {{nickname}}",
     "regenerateGuestLink": "重新產生連結",
