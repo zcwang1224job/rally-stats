@@ -8,8 +8,41 @@
 
 ```json
 // RestStateRequest
-{ "resting": true, "guest_session_token": "…（只有本人端點、且呼叫者為訪客時）" }
+{
+  "resting": true,
+  "confirm_round_end": false,   // 選填，預設 false；見下方「會使這一輪立刻結束的休息」
+  "guest_session_token": "…（只有本人端點、且呼叫者為訪客時）"
+}
 ```
+
+## 會使這一輪立刻結束的休息——`REST_ENDS_ROUND`（兩支端點相同）
+
+FR-031～FR-033、research.md Decision 6。
+
+`resting: true` 的請求，若生效後這一輪會**立刻**自動換輪（開啟自動進入
+下一輪、沒有比賽在打、剩下的排隊場次全部因休息而無法上場、且下一輪
+排得出至少一場），而請求的 `confirm_round_end` 不為 `true`：
+
+```json
+// 409
+{ "error_code": "REST_ENDS_ROUND", "detail": { "matches_to_cancel": 2 } }
+```
+
+- 回這個錯誤時 MUST **什麼都沒改**：球員仍是準備中、沒有場次被取消、
+  不發布任何事件。
+- `matches_to_cancel`：這一輪目前仍為 `queued`、換輪時會被取消的場次數。
+- 前端收到後跳出提醒（「本輪還沒打的 N 場比賽會被取消，並直接進入
+  下一輪」），使用者確認後以 `confirm_round_end: true` 重送同一個請求。
+- `confirm_round_end: true` **不是強制換輪**：重送時以當下的狀況為準——
+  仍會結束這一輪 → 生效並換輪；已不會（期間有新場次、有人回來、
+  自動換輪被關掉…）→ 就是一般的休息，不換輪。
+- 判斷式與真正觸發自動換輪的判斷式 MUST 是**同一個函式**，不得各寫
+  一份——否則會出現「沒提醒卻換輪」。
+- `resting: false` 的請求忽略 `confirm_round_end`，永遠不回這個錯誤。
+- 不會使這一輪「立刻」結束的休息（例如還有比賽在打）MUST NOT 回這個
+  錯誤，即使之後最後一場打完時會因此換輪。
+- 錯誤訊息的語系 key `errors.REST_ENDS_ROUND` 仍須存在（其他呼叫端的
+  後備顯示），但兩個畫面都以提醒框處理，不把它當成錯誤顯示。
 
 ```json
 // RestStateResponse
@@ -40,6 +73,9 @@ body 的 `guest_session_token`；呼叫者 MUST 被證明擁有 `roster_entry_id
   不是 `active`、或呼叫者無法證明擁有它。四種情況 MUST 回傳完全相同的
   錯誤，MUST NOT 洩漏該列是否存在（FR-004）。
 - `GROUP_DISBANDED`（409）——團已解散。
+- `REST_ENDS_ROUND`（409）——見上。**授權檢查 MUST 先於這個判斷**：
+  無法證明擁有該列的呼叫者只會得到 `ROSTER_ENTRY_NOT_FOUND`，不會因此
+  得知這一輪的狀況。
 
 ## `PUT /groups/{group_id}/members/{roster_entry_id}/rest-state`（管理員）
 
@@ -57,6 +93,7 @@ body 的 `guest_session_token`；呼叫者 MUST 被證明擁有 `roster_entry_id
 - `ROSTER_ENTRY_NOT_FOUND`（404）——該列不存在、不屬於此團、或
   `status` 不是 `active`。
 - `GROUP_DISBANDED`（409）。
+- `REST_ENDS_ROUND`（409）——見上；管理頁的提醒文字指明是哪一位球員。
 
 建立者自己的那一列**可以**被切換（與踢人不同——休息不是移除）。
 

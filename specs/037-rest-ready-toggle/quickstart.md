@@ -19,10 +19,12 @@ alembic upgrade head
 # 後端（於 apps/api）
 python -m pytest tests/unit/domains/schedule/test_rest_histories.py        # 純函式：休息區間不計入 rest、played_credit 的下中位數
 python -m pytest tests/unit/domains/schedule/test_rest_state.py            # 切換、冪等、區間寫入、credit 調整、收斂流程
-python -m pytest tests/unit/domains/schedule/test_rest_round_generation.py # 各排程方式產生新一輪時排除休息者；wait_count 凍結
+python -m pytest tests/unit/domains/schedule/test_rest_round_generation.py # 各排程方式產生新一輪時排除休息者；正式搭檔關係不受影響
+python -m pytest tests/unit/domains/schedule/test_rest_fairness.py         # wait_count 凍結、rest 扣除休息期間、played_credit
 python -m pytest tests/unit/domains/schedule/test_rest_call_up.py          # 叫場優先序、替補、保留、預告與實際一致、同時空場不重複替補
-python -m pytest tests/unit/domains/schedule/test_rest_round_stall.py      # 被休息卡住的判斷、自動換輪與兩個守門條件
-python -m pytest tests/unit/domains/schedule/test_fairness_simulation.py   # SC-004：隨機休息／回來的模擬
+python -m pytest tests/unit/domains/schedule/test_rest_return.py           # 回來後走中途加入者流程、立即叫場
+python -m pytest tests/unit/domains/schedule/test_rest_round_stall.py      # 被休息卡住的判斷、自動換輪、兩個守門條件、REST_ENDS_ROUND 的提醒
+python -m pytest tests/integration/test_schedule_fairness_simulation.py    # SC-004：隨機休息／回來的模擬
 python -m pytest tests/contract -k "rest_state or schedule or round_matches"
 python -m pytest tests/integration/test_rest_toggle_flow.py
 ruff check app/ tests/ && mypy app/
@@ -53,6 +55,8 @@ A 正在場上。按「我要休息」。
 A 休息中。管理員結束這一輪、規劃下一輪。
 
 **預期**：規劃出的場次沒有 A；本輪賽程清單的「輪空」不列 A；A 仍是休息中。各排程方式各做一次——固定搭檔循環賽（手動搭檔）時，A 的搭檔也沒有場次，且沒有被臨時配給別人。
+
+**搭檔關係不受影響（FR-034）**：A 休息中時，把團從公平輪替切到固定搭檔循環賽（自動建立正式搭檔）→ 搭檔設定頁裡 A **有**被配到搭檔；A 休息中時一位新成員加入 → 若 A 是唯一落單的人，新成員與 A 配成正式搭檔。
 
 ## 情境 4：短暫休息，場次原封不動（US2 情境 1–3，SC-003）
 
@@ -85,6 +89,18 @@ A 休息中。管理員結束這一輪、規劃下一輪。
 - **未開啟自動進入下一輪**：管理頁顯示「剩下 N 場在等休息中的球員：A」，樣式醒目；管理員可以幫 A 按「準備好了」、或結束這一輪。
 - **開啟自動進入下一輪**：最後一場別人的比賽一結束就自動換輪，A 的場次被取消，新的一輪沒有 A。
 - **守門條件**：只有 A、B 兩人的單打團，A 休息 → **不**換輪（換了也排不出比賽），A 的場次留著；輪次編號不變。反覆切換 A 的狀態，輪次編號 MUST NOT 每次加一。
+
+## 情境 7b：按下去就會結束這一輪——先提醒（FR-031～FR-033，SC-009）
+
+單打循環、4 人、2 面場地、**開啟自動進入下一輪**。打到所有場地都閒置、只剩 2 場含 A 的排隊場次（其餘三人準備中，下一輪排得出來）。A 按「我要休息」。
+
+**預期**：
+- 跳出提醒：「本輪還沒打的 2 場比賽會被取消，並直接進入下一輪」，有「取消」與「確認休息」。此時其他視窗的名單上 A **仍是準備中**，本輪賽程清單沒有任何變化。
+- 按「取消」→ 什麼都沒變；A 的按鈕仍是「我要休息」。
+- 再按一次並「確認休息」→ A 變成休息中、這一輪結束、自動進入下一輪，新的一輪沒有 A。
+- **不該跳的情況**：同樣的團，但還有一場別人的比賽在打時 A 按休息 → 不跳提醒、一鍵生效；A 的畫面出現說明文字「你還有 2 場保留中，這一輪結束前沒回來會被取消」。關閉自動進入下一輪後重做 → 不跳提醒。
+- **確認不是強制**：提醒跳出後先不按；用管理頁為這一輪手動加一場不含 A 的比賽（或讓一位新成員加入，產生新場次），再回到 A 的視窗按「確認休息」→ A 變成休息中，但這一輪**沒有**結束。
+- 管理員在管理頁替 A 按休息 → 同樣的提醒，文字指明是 A。
 
 ## 情境 8：休息不是插隊的捷徑（US3，SC-004）
 

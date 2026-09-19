@@ -12,15 +12,27 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
 ## Decision 2：所有「誰是候選人」的查詢在同一處加上「準備中」條件
 
 - **Decision**：`schedule/service.py` 新增一個模組層級的條件 `_IS_READY = RosterEntry.resting_since.is_(None)`，加在下列讀取點（皆已帶 `status == "active"`）：
-  - `_get_active_roster_for_selection()`——公平輪替雙打的整輪挑人與「場地一空就排下一場」（FR-009、FR-010）。
-  - `_get_active_roster_ids()`／`_get_active_roster_ordered()`——單打循環、個人全混搭、固定搭檔的整輪產生，以及中途加入者流程與替補候選（FR-009、FR-012、FR-016）。
+  - `_get_active_roster_for_selection()`——兩個呼叫端（公平輪替雙打的整輪挑人 L658、「場地一空就排下一場」L1689）都是挑人上場，條件直接加在函式裡（FR-009、FR-010）。
+  - `_get_active_roster_ids()`——兩個呼叫端（單打循環 L723、個人全混搭 L799 的整輪產生）都是挑人上場，條件直接加在函式裡（FR-009）。
+  - `_get_active_roster_ordered()`——**不能直接加**（`/speckit-analyze` F1，已逐一查證 7 個呼叫端）：其中 3 個是在建立**正式搭檔關係**，不是挑人上場；把休息者排除會讓他拿不到搭檔、回來後落單，違反 FR-034。做法：新增 `_get_ready_roster_ordered()`（同樣的查詢＋`_IS_READY`），原函式維持不變，呼叫端依下表改用：
+
+    | 呼叫端（`service.py`） | 用途 | 用哪一個 |
+    |---|---|---|
+    | `compute_auto_partner_teams_for_round()` L898 | 自動搭檔：每一輪重新組隊 | ready |
+    | `_resolve_manual_fixed_partner_teams()` L940 | 手動搭檔：當輪的隊伍＋自動補位 | ready（另加整隊排除，見下） |
+    | `_schedule_late_joiner_matches()` L2269 | 中途加入者／回來的人補場次 | ready |
+    | `_pick_substitute()` L2512 | 替補候選 | ready |
+    | `preview_random_partner_pairing()` L2692 | 017 的**當輪臨時配對**預覽 | ready |
+    | `auto_pair_on_enter_fixed_partner()` L2131 | 切到固定搭檔時建立正式 `Partnership` | **active（不變）** |
+    | `handle_member_joined()` L2214 | 新成員加入時建立正式 `Partnership` | **active（不變）** |
+
   - `apply_wait_count_updates()` 的「沒被挑到的人 +1」那一句（FR-024）。
   - `_seat_waiting_players_on_court()` 的 `passed_over`——它由 `idle_roster` 推得，`idle_roster` 來自上面第一個函式，因此自動排除（FR-024、US3 情境 4）。
 - **固定搭檔**（兩種搭檔來源都已查證）：
   - `partner_source == "auto"`：`compute_auto_partner_teams_for_round()` 每一輪從名單重新組隊，沒有跨輪的固定隊伍——名單只含準備中的人即可，休息者的前一輪搭檔會自然與別人組隊。
   - `partner_source == "manual"`：`_resolve_manual_fixed_partner_teams()` 以 `Partnership` 為單位，再由 017 的自動補位把落單者臨時配對。任一人休息的 `Partnership` MUST **整隊**排除，且另一人 MUST NOT 進入自動補位的候選（FR-009）——否則他會被臨時配給別人，休息者一回來就變成落單，要等到下一輪才能歸隊。
-- **不加條件的地方**：`build_schedule_snapshot()` 的名單（休息中的人要顯示）、`manual_assign()` 與 `change_match_player()` 的驗證（FR-029：管理員可選休息中的人）、人數上限、排行榜與所有紀錄查詢（FR-028）。
-- **Rationale**：休息對排程的全部影響就是「候選人名單少了他」。把條件收斂在讀取名單的三個函式，各排程方式的配對邏輯一行都不用改（spec Assumptions：「不改變任何排程方式本身的配對邏輯」）。
+- **不加條件的地方**：正式搭檔關係的建立與維護（上表的兩個 active、以及管理員的手動調整搭檔與 `build_partnerships_snapshot()`——FR-034）、`build_schedule_snapshot()` 的名單（休息中的人要顯示）、`manual_assign()` 與 `change_match_player()` 的驗證（FR-029：管理員可選休息中的人）、人數上限、排行榜與所有紀錄查詢（FR-028）。
+- **Rationale**：休息對排程的全部影響就是「候選人名單少了他」。把條件收斂在讀取名單的函式（兩個直接加、一個拆成 ready／active 兩個版本），各排程方式的配對邏輯一行都不用改（spec Assumptions：「不改變任何排程方式本身的配對邏輯」）。
 
 ## Decision 3：「坐著等了幾場」要扣掉休息期間——需要保存休息區間
 
@@ -63,19 +75,24 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
   - 被卡住而換輪：下一輪排不出任何一場時**不換輪**——換了只會把保留的場次取消、得到一個空的輪次；不如留著等他回來。
   - 已結束而換輪（由切換事件觸發時）：同樣排不出來就不換，否則每一次切換都會讓輪次編號加一。由比賽結束觸發的既有路徑行為不變。
 - **觸發點**：既有的「比賽結束後」之外，新增「休息狀態變更後」（Decision 7 的收斂流程）。兩個方向都要：切成休息可能讓這一輪變成被卡住；切回準備中可能讓一個空的輪次有人可排。
-- **誤觸的後果（已知、接受）**：所有場地閒置、只剩一場含 A 的比賽、開著自動換輪——A 一按休息，這一輪立刻結束，那一場被取消。A 再按準備好了，會由 Decision 8 的流程把他補進新的一輪，損失是那一場。這與「最後一場比賽打完就自動換輪」是同一種、由管理員自己開啟的自動行為；為此在切換上加確認框，會讓最常用的操作（隨手按一下休息）變慢，不划算。
+- **按下去就會立刻結束這一輪的情況——先提醒**（`/speckit-analyze` D1；使用者 2026-09-19 決定：維持自動換輪，但要先提醒；FR-031～FR-033）：所有場地閒置、只剩含 A 的場次、開著自動換輪——A 一按休息，這一輪立刻結束，那幾場被取消且救不回來。這是不可還原的後果，同樣會取消場次的「離開團」就有確認框（`leave-group.component.html` 的 `app-confirm-dialog`），Constitution V 要求比照。
+  - **由後端判斷、兩段式請求**：`set_rest_state(resting=True)` 在交易內先寫入 `resting_since` 並 flush，接著以**同一個**判斷式評估「現在會不會自動換輪」（`auto_next_round` 開啟、非手動安排、有場地、`round_is_stalled_by_rest()`、`_can_generate_any_match()`）。會、且請求沒有帶 `confirm_round_end: true` → **rollback** 並回 409 `REST_ENDS_ROUND`，`detail = { "matches_to_cancel": N }`；什麼都沒改。前端收到這個錯誤才跳提醒，確認後帶 `confirm_round_end: true` 重送。
+  - **為什麼不由前端自己判斷要不要跳**：條件取決於替補可得性、準備中人數、有沒有比賽在打——都是後端才有的即時狀態（Constitution X）；而且畫面上的資料可能已過時。用「先試、被拒才問」的方式，判斷式與真正換輪的判斷式是同一個，不會出現「沒提醒卻換輪」或「提醒了卻沒換輪」的落差。
+  - **確認不是強制**（FR-033）：帶了 `confirm_round_end: true` 而當下已不會結束這一輪 → 就是一般的休息，不換輪。沒帶、而當下也不會結束 → 一般的休息，不跳提醒。切回準備中永遠忽略這個欄位。
+  - **不提醒的情況**：還有比賽在打時按休息、之後最後一場打完而換輪——那是既有的「比賽結束觸發自動換輪」，當下沒有人在操作畫面，無從確認。改以事前的說明文字告知（FR-033：「你還有 N 場保留中，這一輪結束前沒回來會被取消」），由前端從本輪賽程清單裡自己的 `rest_effect == "held"` 場次數得出。
+  - **管理員代為切換**：同一個服務函式、同一個錯誤，管理頁跳同樣的提醒（文字指明是哪一位球員）。
 - **未開啟自動換輪**：什麼都不做；管理頁由 Decision 9 的欄位顯示提示（FR-021）。
 
 ## Decision 7：切換是一個「設定為某狀態」的端點，後面接一段固定的收斂流程
 
-- **Decision**：請求內容是目標狀態 `{ "resting": true | false }`，不是「切換」。已經是目標狀態時為 no-op 並回傳現況（連點兩下、或本人與管理員同時按，不會互相抵銷）。
+- **Decision**：請求內容是目標狀態 `{ "resting": true | false, "confirm_round_end": false }`，不是「切換」（`confirm_round_end` 見 Decision 6）。已經是目標狀態時為 no-op 並回傳現況（連點兩下、或本人與管理員同時按，不會互相抵銷）。
 - **兩支路由、一個服務函式**：
   - 本人：`PUT /groups/{group_id}/roster/{roster_entry_id}/rest-state`，放在 `group/router.py` 的 `leave` 旁邊，擁有權檢查與 `leave_group()` 完全相同（訪客 token 或會員身分相符；不符一律 `ROSTER_ENTRY_NOT_FOUND`，不洩漏該列是否存在）。
   - 管理員：`PUT /groups/{group_id}/members/{roster_entry_id}/rest-state`，放在 `schedule/router.py` 的踢人旁邊，`Depends(require_admin)`。
   - 兩者都呼叫新模組 `schedule/rest.py` 的 `set_rest_state()`。它 import `service`，`service` 不 import 它，沒有循環相依。
 - **收斂流程**（`set_rest_state()` 內，順序固定）：
   1. 取團列鎖（與連續輪轉、替補同一把），讀名單列；非 `active` → `ROSTER_ENTRY_NOT_FOUND`。
-  2. 切成休息：寫 `resting_since = now`。切回準備中：寫入一列 `roster_rest_periods`、清 `resting_since`、依 Decision 4 調整 `played_credit`，再呼叫 `_schedule_late_joiner_matches()`（Decision 8）。
+  2. 切成休息：寫 `resting_since = now` 並 flush；若因此會立刻自動換輪而請求未帶確認 → rollback、回 409 `REST_ENDS_ROUND`（Decision 6），流程到此為止。切回準備中：寫入一列 `roster_rest_periods`、清 `resting_since`、依 Decision 4 調整 `played_credit`，再呼叫 `_schedule_late_joiner_matches()`（Decision 8）。
   3. commit。
   4. `refresh_courts_after_roster_change()`——既有函式：輪次進行中就把閒置場地填滿（叫排隊中的場次，否則連續輪轉排人），並對每面場地發 `match.nextRound` 讓畫面重抓。這一步同時滿足 FR-019（回來就立刻叫場）。
   5. `check_round_complete_and_maybe_auto_advance()`（Decision 6）。
@@ -110,6 +127,6 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
 
 - **純函式（先寫、先紅）**：`player_histories()` 的休息區間（區間內不計、區間前後照計、多段區間、進行中的區間、在場上時按休息）；`returning_played_credit()`（下中位數、只有自己、已高於目標、新人拉低最小值時不受影響）。
 - **服務層（經資料庫）**：每個排程方式各一組——整輪產生排除休息者、固定搭檔整隊排除；`apply_wait_count_updates()` 與連續輪轉不對休息者 +1；叫場優先序；替補的三個條件與找不到時保留；單打循環／固定搭檔保留；回來後立即叫場；`round_is_stalled_by_rest()` 與兩個守門條件；回來走中途加入者流程與 Decision 8 的兩個風險；兩面場地同時空出不會挑到同一位替補。
-- **模擬（SC-004）**：擴充既有的 `tests/unit/domains/schedule/test_fairness_simulation.py`——多人、多輪、固定亂數種子、隨機休息與回來；斷言 (a) 休息前後 `wait_count` 差值為 0，(b) 回來後第一次挑人時，順位不優於同一時刻 `wait_count` 相同且一直準備中的人，(c) 回來後的上場比例不高於全體的中位數加一個容許值（防 Decision 4 的回歸）。
-- **契約**：兩支端點的授權矩陣（本人會員、本人訪客、他人、管理員、未登入；已離開／被踢的列；別的團的列）、冪等、回應形狀；`ScheduleResponse`／`RoundMatchesResponse` 的新欄位。
+- **模擬（SC-004）**：擴充既有的情境驅動模擬 `tests/integration/test_schedule_fairness_simulation.py`（`Scenario`／`_run()`／`Report` 在這裡；`tests/unit/…/test_fairness_simulation.py` 只有單一固定情境，不適合擴充）——多人、多輪、固定亂數種子、隨機休息與回來；斷言 (a) 休息前後 `wait_count` 差值為 0，(b) 回來後第一次挑人時，順位不優於同一時刻 `wait_count` 相同且一直準備中的人，(c) 回來後的上場比例不高於全體的中位數加一個容許值（防 Decision 4 的回歸）。
+- **契約**：兩支端點的授權矩陣（本人會員、本人訪客、他人、管理員、未登入；已離開／被踢的列；別的團的列）、冪等、回應形狀；`ScheduleResponse`／`RoundMatchesResponse` 的新欄位；`REST_ENDS_ROUND` 的兩段式流程（未確認 → 409 且狀態與場次完全不變；確認 → 生效並換輪；確認但當下已不需要 → 一般休息、不換輪；不會立刻結束這一輪 → 不回 409）。
 - **既有測試零變動的範圍**：排行榜、對戰紀錄、個人統計（SC-008）；沒有人休息時，所有排程測試的結果 MUST 與現在相同——新條件在沒有休息者時是恆真。

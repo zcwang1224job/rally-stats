@@ -113,5 +113,14 @@ rest(p) = 上一場結束之後上場的比賽數
 - 目標列 MUST 屬於路徑上的 `group_id` 且 `status == "active"`，否則 `ROSTER_ENTRY_NOT_FOUND`（404）。
 - 本人端點：MUST 證明擁有該列（訪客 token 相符，或會員身分相符）；任何不符一律 `ROSTER_ENTRY_NOT_FOUND`，與「不存在」無法區分。
 - 管理員端點：`require_admin`（該團的管理員 JWT）。
-- 團已解散：沿用 `get_group_by_id()` 既有的錯誤。
+- 團已解散：`GROUP_DISBANDED`（409）。
+- **會使這一輪立刻結束的休息**（FR-031～FR-033）：`resting: true`、生效後會立刻自動換輪、而 `confirm_round_end` 不為 `true` → `REST_ENDS_ROUND`（409，`detail.matches_to_cancel`），交易 rollback、不留下任何變更。判斷發生在授權檢查**之後**。判斷式＝`check_round_complete_and_maybe_auto_advance()` 實際用來決定換輪的同一個函式（新：`round_would_auto_advance(session, group) -> bool`，供兩邊呼叫）。新錯誤代碼一個：`REST_ENDS_ROUND`。
 - 沒有頻率限制（spec Assumptions）。
+
+## 名單讀取函式的分工（research Decision 2）
+
+| 函式 | 回傳 | 誰用 |
+|---|---|---|
+| `_get_active_roster_for_selection()`、`_get_active_roster_ids()` | active **且準備中** | 整輪產生、連續輪轉（全部呼叫端都是挑人上場） |
+| `_get_ready_roster_ordered()`（新） | active **且準備中** | 自動搭檔當輪組隊、手動搭檔當輪隊伍與自動補位、中途加入者流程、替補候選、017 臨時配對預覽 |
+| `_get_active_roster_ordered()`（不變） | active（含休息中） | 建立正式 `Partnership`：切到固定搭檔時、新成員加入時（FR-034） |
