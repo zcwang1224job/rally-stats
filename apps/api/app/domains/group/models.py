@@ -94,6 +94,11 @@ class Group(Base):
 
     current_round_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     auto_next_round: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # fair_rotation doubles only: when a court frees up and nothing is queued,
+    # immediately seat the four longest-waiting idle players there, instead
+    # of leaving the court empty until every court's match ends and the next
+    # round is generated. A plain immediate toggle like auto_next_round.
+    continuous_rotation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # 018-plan-then-start follow-up: off by default — the scoreboard link is
     # typically shared more widely (posted for spectators) than the
     # control-panel link, so letting it also score is an admin-opt-in widening

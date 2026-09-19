@@ -7,6 +7,7 @@ import {
   ParticipantSummary,
   RoundPhase,
   RosterScheduleStatus,
+  RoundMatchesResponse,
   RoundMatchSummary,
   Team,
 } from './schedule.models';
@@ -68,6 +69,21 @@ export class RoundMatchesListComponent {
   readonly saving = signal(false);
   readonly actionSuccess = signal(false);
 
+  // 本輪進度摘要：還剩幾場、預估多久打完、誰這輪沒有排到。循環賽一輪可能
+  // 有數十場，沒有這些資訊時管理員看不出這一輪還要打多久。
+  readonly remainingCount = signal(0);
+  readonly estimatedRemainingMinutes = signal<number | null>(null);
+  readonly sittingOutNames = signal<string | null>(null);
+
+  private applyResponse(response: RoundMatchesResponse): void {
+    this.roundNumber.set(response.round_number);
+    this.matches.set(response.matches);
+    this.remainingCount.set(response.remaining_count);
+    this.estimatedRemainingMinutes.set(response.estimated_remaining_minutes);
+    const names = response.sitting_out.map((entry) => entry.nickname);
+    this.sittingOutNames.set(names.length > 0 ? names.join(', ') : null);
+  }
+
   private flashSuccess(): void {
     this.actionSuccess.set(true);
     setTimeout(() => this.actionSuccess.set(false), 2000);
@@ -108,8 +124,7 @@ export class RoundMatchesListComponent {
     this.firstPick.set(null);
     this.scheduleService.getRoundMatches(this.groupId()).subscribe({
       next: (response) => {
-        this.roundNumber.set(response.round_number);
-        this.matches.set(response.matches);
+        this.applyResponse(response);
         this.loading.set(false);
       },
       error: (error: ApiError) => {
@@ -180,8 +195,7 @@ export class RoundMatchesListComponent {
       .swapPlannedMatchPlayers(this.groupId(), first.matchId, first.rosterEntryId, matchId, rosterEntryId)
       .subscribe({
         next: (response) => {
-          this.roundNumber.set(response.round_number);
-          this.matches.set(response.matches);
+          this.applyResponse(response);
           this.firstPick.set(null);
           this.saving.set(false);
           this.flashSuccess();
@@ -206,8 +220,7 @@ export class RoundMatchesListComponent {
       .changeMatchPlayer(this.groupId(), matchId, oldRosterEntryId, newRosterEntryId)
       .subscribe({
         next: (response) => {
-          this.roundNumber.set(response.round_number);
-          this.matches.set(response.matches);
+          this.applyResponse(response);
           this.saving.set(false);
           this.flashSuccess();
         },
@@ -243,8 +256,7 @@ export class RoundMatchesListComponent {
     this.saving.set(true);
     this.scheduleService.reorderPlannedMatches(this.groupId(), queuedOrder).subscribe({
       next: (response) => {
-        this.roundNumber.set(response.round_number);
-        this.matches.set(response.matches);
+        this.applyResponse(response);
         this.saving.set(false);
         this.flashSuccess();
       },

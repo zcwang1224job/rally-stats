@@ -616,6 +616,20 @@ export class AdminPageComponent {
     });
   }
 
+  toggleContinuousRotation(enabled: boolean): void {
+    this.nextRoundErrorKey.set(null);
+    this.scheduleService.setContinuousRotation(this.groupId, enabled).subscribe({
+      next: () => this.loadSchedule(),
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
   hasUnfinishedMatches(): boolean {
     return (this.schedule()?.courts ?? []).some((court) => court.current_match !== null);
   }

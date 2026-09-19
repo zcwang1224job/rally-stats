@@ -79,7 +79,8 @@
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-.swap-hint {
+.swap-hint,
+.round-progress {
   color: var(--color-text-muted);
   font-size: var(--font-size-caption);
 }

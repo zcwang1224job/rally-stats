@@ -89,7 +89,9 @@ class RosterScheduleStatus(BaseModel):
 class ScheduleResponse(BaseModel):
     current_round_number: int
     scheduling_mechanism: str
+    match_mode: str
     auto_next_round: bool
+    continuous_rotation: bool
     round_phase: RoundPhase | None
     courts: list[CourtScheduleStatus]
     roster: list[RosterScheduleStatus]
@@ -111,9 +113,22 @@ class RoundMatchSummary(BaseModel):
     winner_team: Team | None
 
 
+class RosterSummary(BaseModel):
+    roster_entry_id: str
+    nickname: str
+
+
 class RoundMatchesResponse(BaseModel):
     round_number: int
     matches: list[RoundMatchSummary]
+    # queued + in_progress matches still to finish this round
+    remaining_count: int = 0
+    # Rough time until the round's last match ends — see
+    # service.py `_estimate_remaining_minutes()`. None when nothing remains.
+    estimated_remaining_minutes: int | None = None
+    # Active members with no match at all in this round (a bye, or a
+    # fair_rotation doubles player who didn't make the cut).
+    sitting_out: list[RosterSummary] = []
 
 
 class AutoNextRoundRequest(BaseModel):
@@ -124,9 +139,12 @@ class AutoNextRoundResponse(BaseModel):
     auto_next_round: bool
 
 
-class RosterSummary(BaseModel):
-    roster_entry_id: str
-    nickname: str
+class ContinuousRotationRequest(BaseModel):
+    enabled: bool
+
+
+class ContinuousRotationResponse(BaseModel):
+    continuous_rotation: bool
 
 
 class PartnershipSummary(BaseModel):

@@ -72,6 +72,36 @@
 
 **錯誤代碼**：`ADMIN_TOKEN_INVALID`、`AUTO_NEXT_ROUND_NOT_SUPPORTED_IN_MANUAL_MODE`（400）。
 
+## PATCH /groups/{group_id}/continuous-rotation
+
+（feature/schedule-fairness 新增）公平輪替雙打專用：場地打完且沒有排隊中的比賽時，立刻從不在場上的人依優先序（wait_count、上場次數少、最久沒打）排 4 位上場，列入目前這一輪，不必等所有場地打完才開下一輪。
+
+**Request**
+
+```json
+{ "enabled": true }
+```
+
+**Response 200**
+
+```json
+{ "continuous_rotation": true }
+```
+
+`enabled: true` 且不是 `fair_rotation` + `doubles` 時 MUST 拒絕。之後切換成其他排程方式時旗標保留但不生效。
+
+**錯誤代碼**：`ADMIN_TOKEN_INVALID`、`CONTINUOUS_ROTATION_NOT_SUPPORTED`（400）。
+
+## feature/schedule-fairness 其他行為變更
+
+- `GET /groups/{group_id}/schedule` 回應新增 `match_mode`、`continuous_rotation`。
+- `GET /groups/{group_id}/schedule/matches` 回應新增 `remaining_count`（排隊中＋進行中場數）、`estimated_remaining_minutes`（粗估剩餘分鐘，沒有剩餘場次時為 `null`；以本團最近 30 場已完成比賽的中位時長估算，不足 3 場時以目標分數 × 0.6 分鐘估算）、`sitting_out`（本輪沒有排到任何比賽的現役成員）。清單順序改為：已上場的依上場先後，其餘依叫號順序。
+- 固定搭檔人數為奇數時不再回 `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT`：上場次數最多的一人本輪輪空（同分時最晚加入者）。
+- 場地空出來時，不再固定取叫號順序第一的場次：在球員都沒有正在別場比賽的候選中，優先挑「球員最短休息時間最長」者；休息都超過 5 分鐘時才依叫號順序。「即將登場」預告用同一套規則。
+- 回合規劃後才加入的成員，會自動補排進目前這一輪（單打：對每位尚未交手的人；固定搭檔：新成員兩兩成組後對每一隊；個人混雙：與每位成員各搭檔一次）。
+- 成員離開時，公平輪替雙打與個人混雙的排隊中比賽改由本輪場次最少的人遞補；單打與固定搭檔維持作廢（每人剛好少一場，仍然公平）。
+- `pair_history` 新增 `teammate_count`，並改為比賽上場時才計數（規劃了但沒打的比賽不計）；migration `b5c8e2f41a07` 以已上場的比賽重建整張表。
+
 ## GET /groups/{group_id}/partnerships
 
 **Response 200**

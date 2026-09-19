@@ -44,7 +44,9 @@ const adminGroupResponse: AdminGroupResponse = {
 const scheduleResponse: ScheduleResponse = {
   current_round_number: 1,
   scheduling_mechanism: 'fair_rotation',
+  match_mode: 'doubles',
   auto_next_round: false,
+  continuous_rotation: false,
   // 'awaiting_plan' is the only phase that keeps app-round-matches-list's
   // editable auto-load off by default (editable now covers both
   // 'awaiting_start' AND 'in_progress' — see round-matches-list.component.ts)
@@ -144,6 +146,40 @@ describe('AdminPageComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.links-section')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.sectionTitle');
+  });
+
+  it('offers the continuous-rotation toggle for fair-rotation doubles and saves it', () => {
+    const calls: boolean[] = [];
+    const fixture = setup(false, {}, {
+      setContinuousRotation: (_groupId: string, enabled: boolean) => {
+        calls.push(enabled);
+        return of({ continuous_rotation: enabled });
+      },
+    });
+
+    navButtons(fixture)[1].click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('scheduleManagement.continuousRotation');
+    const toggle = Array.from(
+      fixture.nativeElement.querySelectorAll('label.checkbox-label') as NodeListOf<HTMLLabelElement>,
+    )
+      .find((label) => label.textContent?.includes('scheduleManagement.continuousRotation'))!
+      .querySelector('input') as HTMLInputElement;
+    toggle.click();
+
+    expect(calls).toEqual([true]);
+  });
+
+  it('hides the continuous-rotation toggle outside fair-rotation doubles', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () => of({ ...scheduleResponse, match_mode: 'singles' }),
+    });
+
+    navButtons(fixture)[1].click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).not.toContain('scheduleManagement.continuousRotation');
   });
 
   it('clicking 輪替名單 shows the roster list, not the schedule/links sections', () => {

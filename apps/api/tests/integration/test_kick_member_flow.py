@@ -96,10 +96,20 @@ async def test_kick_member_converges_schedule_without_regenerating_round(
     assert kick_response.status_code == 200
     assert kick_response.json()["status"] == "kicked"
 
+    # fair_rotation doubles: the kicked member's queued match gets a
+    # substitute instead of being abandoned for everyone else in it.
     queued_status = await db_session.execute(
         text("SELECT status FROM matches WHERE id = :id"), {"id": match_id}
     )
-    assert queued_status.scalar_one() == "abandoned"
+    assert queued_status.scalar_one() == "queued"
+    lineup = await db_session.execute(
+        text("SELECT roster_entry_id FROM match_participants WHERE match_id = :id"),
+        {"id": match_id},
+    )
+    lineup_ids = {str(row[0]) for row in lineup.all()}
+    assert extra_a not in lineup_ids
+    assert extra_b in lineup_ids
+    assert len(lineup_ids) == 2
 
     # The in-progress match and the group's round number are unaffected.
     schedule_after = (await client.get(f"/groups/{group_id}/schedule", headers=headers)).json()

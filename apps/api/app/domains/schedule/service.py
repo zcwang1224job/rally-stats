@@ -2,12 +2,14 @@
 changes, and the abandon-matches hooks consumed by 001/002. Per
 specs/003-schedule-rotation/plan.md and research.md."""
 
+import math
 import random
 import secrets
+import statistics
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import cast, get_args
 
 from sqlalchemy import delete, exists, or_, select, update
@@ -22,11 +24,14 @@ from app.domains.court.models import Court
 from app.domains.group.models import Group, RoundHistory
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.algorithms import (
+    PlayStats,
+    current_run,
+    pair_doubles_matches,
+    pick_next_match,
     random_pair_units,
     round_robin_pairs,
     stage1_select_players,
     stage2_pair_players,
-    team_matchup_stage2,
 )
 from app.domains.schedule.models import (
     Match,
@@ -68,8 +73,9 @@ _ACTIVE_MATCH_STATUSES = ("queued", "in_progress")
 async def abandon_group_matches(session: AsyncSession, group_id: uuid.UUID) -> None:
     """Implements 001's `AbandonMatchesHook` — called from `disband_group()`.
     Abandons every not-yet-terminal match for the whole group. PairHistory is
-    untouched: pair counts are recorded at match creation, not completion
-    (research.md #5), so nothing to undo here."""
+    untouched: a match is counted when it takes a court, so a queued match
+    abandoned here was never counted, and one abandoned mid-play really was
+    played."""
     await session.execute(
         update(Match)
         .where(Match.group_id == group_id, Match.status.in_(_ACTIVE_MATCH_STATUSES))
@@ -121,24 +127,54 @@ async def apply_wait_count_updates(
     )
 
 
-async def _increment_pair_history(
-    session: AsyncSession, group_id: uuid.UUID, player_ids: Sequence[uuid.UUID]
+async def _record_pair_history(
+    session: AsyncSession,
+    group_id: uuid.UUID,
+    team_a: Sequence[uuid.UUID],
+    team_b: Sequence[uuid.UUID],
+    delta: int = 1,
 ) -> None:
-    """research.md #5: every unordered pair among `player_ids` gets +1,
-    regardless of team role, at match-creation time (never reversed later
-    regardless of how the match ends — see FR-009)."""
-    ids = list(player_ids)
-    for i in range(len(ids)):
-        for j in range(i + 1, len(ids)):
-            lo, hi = sorted((ids[i], ids[j]))
-            stmt = pg_insert(PairHistory).values(
-                group_id=group_id, player_lo_id=lo, player_hi_id=hi, pair_count=1
-            )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["group_id", "player_lo_id", "player_hi_id"],
-                set_={"pair_count": PairHistory.pair_count + 1},
-            )
-            await session.execute(stmt)
+    """research.md #5: every unordered pair among the match's players gets
+    `delta` on pair_count, and same-side pairs also on teammate_count.
+    Called when a match takes a court (`_start_match()`), not when it is
+    planned, so a planned match that never gets played (round ended early,
+    member left) leaves no trace. `delta=-1` undoes a start, for a match
+    put back in the queue or a lineup changed mid-match."""
+    teams = [(pid, "A") for pid in team_a] + [(pid, "B") for pid in team_b]
+    for i in range(len(teams)):
+        for j in range(i + 1, len(teams)):
+            (id_i, team_i), (id_j, team_j) = teams[i], teams[j]
+            lo, hi = sorted((id_i, id_j))
+            teammate_delta = delta if team_i == team_j else 0
+            if delta > 0:
+                stmt = pg_insert(PairHistory).values(
+                    group_id=group_id,
+                    player_lo_id=lo,
+                    player_hi_id=hi,
+                    pair_count=delta,
+                    teammate_count=teammate_delta,
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["group_id", "player_lo_id", "player_hi_id"],
+                    set_={
+                        "pair_count": PairHistory.pair_count + delta,
+                        "teammate_count": PairHistory.teammate_count + teammate_delta,
+                    },
+                )
+                await session.execute(stmt)
+            else:
+                await session.execute(
+                    update(PairHistory)
+                    .where(
+                        PairHistory.group_id == group_id,
+                        PairHistory.player_lo_id == lo,
+                        PairHistory.player_hi_id == hi,
+                    )
+                    .values(
+                        pair_count=PairHistory.pair_count + delta,
+                        teammate_count=PairHistory.teammate_count + teammate_delta,
+                    )
+                )
 
 
 async def get_pair_count(
@@ -274,9 +310,8 @@ def _opt_str(value: uuid.UUID | None) -> str | None:
 
 async def _initialize_serve_state(session: AsyncSession, match: Match) -> None:
     """030-score-serve-record FR-001/FR-002 (research.md Decision 4/5):
-    called once, exactly when a match becomes `in_progress` (the only two
-    call sites are `create_match_with_participants()` and
-    `pull_queued_match_for_court()`) — randomly assigns the serving team
+    called once, exactly when a match becomes `in_progress` (only via
+    `_start_match()`) — randomly assigns the serving team
     and, for doubles, each team's own reference server (both the serving
     and the receiving side, so `_compute_station()` has a starting point
     for all four slots). Mutates `match` in place; caller flushes/commits."""
@@ -284,6 +319,20 @@ async def _initialize_serve_state(session: AsyncSession, match: Match) -> None:
     match.serving_team = random.choice(("A", "B"))
     match.team_a_reference_server_id = random.choice(team_a)
     match.team_b_reference_server_id = random.choice(team_b)
+
+
+async def _start_match(session: AsyncSession, match: Match, court_id: uuid.UUID | None) -> None:
+    """Puts a match on `court_id` as `in_progress`: the one place a match
+    starts, whether it was queued (`pull_queued_match_for_court()`) or
+    created straight onto a court (`create_match_with_participants()`).
+    Also where the match enters PairHistory. Flushes, never commits."""
+    match.court_id = court_id
+    match.status = "in_progress"
+    match.started_at = datetime.now(UTC)
+    await _initialize_serve_state(session, match)
+    team_a, team_b = await _match_participants_by_team(session, match.id)
+    await _record_pair_history(session, match.group_id, team_a, team_b)
+    await session.flush()
 
 
 async def create_match_with_participants(
@@ -295,18 +344,21 @@ async def create_match_with_participants(
     status: str,
     team_a: Sequence[uuid.UUID],
     team_b: Sequence[uuid.UUID],
+    queue_position: int | None = None,
 ) -> Match:
-    """Writes `matches` + `match_participants` + `pair_history`, applying the
-    group's current Match Scoring Settings as an immutable snapshot (spec
-    FR-012, 001's data-model.md §2). Flushes but does NOT commit — this is a
-    building block called in a loop by `generate_next_round()`, which commits
-    once for the whole round (atomicity); callers using it standalone (e.g.
-    `manual_assign()`) are responsible for their own commit."""
+    """Writes `matches` + `match_participants`, applying the group's current
+    Match Scoring Settings as an immutable snapshot (spec FR-012, 001's
+    data-model.md §2); a match created `in_progress` is started on
+    `court_id` right away, which also records its PairHistory. Flushes but
+    does NOT commit — this is a building block called in a loop by
+    `generate_next_round()`, which commits once for the whole round
+    (atomicity); callers using it standalone (e.g. `manual_assign()`) are
+    responsible for their own commit."""
     match = Match(
         group_id=group.id,
-        court_id=court_id,
+        court_id=None,
         round_number=round_number,
-        status=status,
+        status="queued",
         target_score=group.target_score,
         deuce_threshold=group.deuce_threshold,
         cap_score=group.cap_score,
@@ -314,7 +366,7 @@ async def create_match_with_participants(
         # only — pull_queued_match_for_court() merely transitions an
         # already-created row to in_progress, this value is already fixed.
         detailed_scoring_enabled=group.detailed_scoring_enabled,
-        started_at=datetime.now(UTC) if status == "in_progress" else None,
+        queue_position=queue_position,
     )
     session.add(match)
     await session.flush()
@@ -323,11 +375,13 @@ async def create_match_with_participants(
         MatchParticipant(match_id=match.id, roster_entry_id=pid, team="A") for pid in team_a
     ] + [MatchParticipant(match_id=match.id, roster_entry_id=pid, team="B") for pid in team_b]
     session.add_all(participants)
-
-    await _increment_pair_history(session, group.id, list(team_a) + list(team_b))
     await session.flush()
+
     if status == "in_progress":
-        await _initialize_serve_state(session, match)
+        await _start_match(session, match, court_id)
+    elif status != "queued":
+        match.status = status
+        match.court_id = court_id
         await session.flush()
     return match
 
@@ -359,49 +413,146 @@ async def _get_active_roster_ids(session: AsyncSession, group_id: uuid.UUID) -> 
     above, which `stage1_select_players` still needs for fair_rotation
     doubles (untouched by this feature)."""
     result = await session.execute(
-        select(RosterEntry.id).where(
-            RosterEntry.group_id == group_id, RosterEntry.status == "active"
-        )
+        select(RosterEntry.id)
+        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active")
+        # Without an ORDER BY the order was whatever the heap returned, and
+        # the round-robin generators' anchors and tie-breaks all depend on it.
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
     )
     return list(result.scalars())
 
 
-async def _build_pair_count_lookup(
-    session: AsyncSession, group_id: uuid.UUID
-) -> Callable[[uuid.UUID, uuid.UUID], int]:
+# frozenset({player, player}) -> [teammate count, opponent count]
+PairCounts = dict[frozenset[uuid.UUID], list[int]]
+
+
+async def _load_pair_counts(session: AsyncSession, group_id: uuid.UUID) -> PairCounts:
     result = await session.execute(select(PairHistory).where(PairHistory.group_id == group_id))
-    cache = {
-        frozenset((row.player_lo_id, row.player_hi_id)): row.pair_count
+    return {
+        frozenset((row.player_lo_id, row.player_hi_id)): [
+            row.teammate_count,
+            row.pair_count - row.teammate_count,
+        ]
         for row in result.scalars()
     }
 
-    def lookup(a: uuid.UUID, b: uuid.UUID) -> int:
-        return cache.get(frozenset((a, b)), 0)
 
-    return lookup
+def _teammate_cost(counts: PairCounts) -> Callable[[uuid.UUID, uuid.UUID], int]:
+    def cost(a: uuid.UUID, b: uuid.UUID) -> int:
+        return counts.get(frozenset((a, b)), [0, 0])[0]
+
+    return cost
 
 
-async def pull_queued_match_for_court(
-    session: AsyncSession, group_id: uuid.UUID, round_number: int, court_id: uuid.UUID
-) -> Match | None:
-    """FR-027: binds the next `queued`, court-unassigned match in this round
-    to `court_id` and starts it. Shared by round generation's initial
-    distribution (research.md #7) and `advance_court_after_match_ends`
-    (US3) — same "pull from the queue" mechanism either way.
+def _opponent_cost(counts: PairCounts) -> Callable[[uuid.UUID, uuid.UUID], int]:
+    def cost(a: uuid.UUID, b: uuid.UUID) -> int:
+        return counts.get(frozenset((a, b)), [0, 0])[1]
 
-    011-round-robin-scheduling research.md #4: a full round-robin schedule
-    puts the same player in several queued matches at once, so this MUST
-    skip any candidate whose participants are already in an `in_progress`
-    match elsewhere in the group — otherwise the same person could end up
-    "playing" on two courts simultaneously. Picks the earliest-created
-    eligible match; if none is eligible yet, returns None (court waits)."""
-    busy_participants = (
+    return cost
+
+
+def _count_planned_match(
+    counts: PairCounts, team_a: Sequence[uuid.UUID], team_b: Sequence[uuid.UUID]
+) -> None:
+    """Adds a just-planned match to an in-memory `PairCounts`, so a
+    generator building several matches in one go sees its own earlier
+    matches (the table itself only changes once a match starts)."""
+    for team in (team_a, team_b):
+        for i in range(len(team)):
+            for j in range(i + 1, len(team)):
+                counts.setdefault(frozenset((team[i], team[j])), [0, 0])[0] += 1
+    for a in team_a:
+        for b in team_b:
+            counts.setdefault(frozenset((a, b)), [0, 0])[1] += 1
+
+
+async def _get_play_stats(
+    session: AsyncSession, group_id: uuid.UUID
+) -> dict[uuid.UUID, PlayStats]:
+    """roster_entry_id -> (matches that took a court in this group, when the
+    latest of them ended). Counts matches abandoned mid-play too, since the
+    players were on court. The end time, not the start, since every match
+    of a round starts together but they finish at different times, and
+    whoever finished first has rested longest."""
+    result = await session.execute(
+        select(
+            MatchParticipant.roster_entry_id,
+            func.count(),
+            func.max(Match.ended_at),
+        )
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(Match.group_id == group_id, Match.started_at.is_not(None))
+        .group_by(MatchParticipant.roster_entry_id)
+    )
+    return {row[0]: (row[1], row[2]) for row in result.all()}
+
+
+async def _get_current_runs(
+    session: AsyncSession, group_id: uuid.UUID, player_ids: Collection[uuid.UUID] | None = None
+) -> dict[uuid.UUID, tuple[datetime, int]]:
+    """roster_entry_id -> (when their current run of back-to-back matches
+    began, how many matches it holds), from their finished matches in this
+    group (`current_run()`). Limited to `player_ids` when given."""
+    query = (
+        select(MatchParticipant.roster_entry_id, Match.started_at, Match.ended_at)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group_id,
+            Match.started_at.is_not(None),
+            Match.ended_at.is_not(None),
+        )
+    )
+    if player_ids is not None:
+        query = query.where(MatchParticipant.roster_entry_id.in_(player_ids))
+    spans: dict[uuid.UUID, list[tuple[datetime, datetime]]] = {}
+    for roster_entry_id, started_at, ended_at in (await session.execute(query)).all():
+        spans.setdefault(roster_entry_id, []).append((started_at, ended_at))
+    return {
+        pid: run
+        for pid, player_spans in spans.items()
+        if (run := current_run(player_spans)) is not None
+    }
+
+
+def _run_lengths(runs: dict[uuid.UUID, tuple[datetime, int]]) -> dict[uuid.UUID, int]:
+    return {pid: length for pid, (_start, length) in runs.items()}
+
+
+# Whether a match counts as part of someone's round: everything except a
+# match abandoned before it ever took a court. A match ended early
+# ("提前結束") is abandoned too, but its players did play — counting it as
+# nothing listed them as "not scheduled this round", could hand them a
+# rematch as late joiners, and made them look like idle substitutes.
+_COUNTS_TOWARD_ROUND = or_(Match.status != "abandoned", Match.started_at.is_not(None))
+
+# Call-up order of a round's queued matches. created_at only breaks ties
+# between rows written before queue_position existed.
+_QUEUE_ORDER = (Match.queue_position.asc().nulls_last(), Match.created_at, Match.id)
+
+
+def _busy_participants_subquery(group_id: uuid.UUID):  # type: ignore[no-untyped-def]
+    return (
         select(MatchParticipant.roster_entry_id)
         .join(Match, Match.id == MatchParticipant.match_id)
         .where(Match.group_id == group_id, Match.status == "in_progress")
     ).scalar_subquery()
 
-    result = await session.execute(
+
+async def _choose_next_queued_match(
+    session: AsyncSession, group_id: uuid.UUID, round_number: int, *, lock: bool
+) -> Match | None:
+    """The match a freed court should take next, shared by the real pull
+    and the read-only "next up" preview so the preview never promises a
+    different match than the one that actually gets called.
+
+    011-round-robin-scheduling research.md #4: a full round-robin schedule
+    puts the same player in several queued matches at once, so candidates
+    with anyone already `in_progress` elsewhere in the group are skipped —
+    otherwise the same person could end up "playing" on two courts at once.
+    Among the rest, `pick_next_match()` prefers the match whose players
+    have rested longest, falling back to call-up order once everyone has
+    rested enough."""
+    query = (
         select(Match)
         .where(
             Match.group_id == group_id,
@@ -411,22 +562,63 @@ async def pull_queued_match_for_court(
             ~exists(
                 select(MatchParticipant.id).where(
                     MatchParticipant.match_id == Match.id,
-                    MatchParticipant.roster_entry_id.in_(busy_participants),
+                    MatchParticipant.roster_entry_id.in_(_busy_participants_subquery(group_id)),
                 )
             ),
         )
-        .order_by(Match.created_at)
-        .limit(1)
-        .with_for_update(skip_locked=True)
+        .order_by(*_QUEUE_ORDER)
     )
-    match = result.scalar_one_or_none()
+    if lock:
+        query = query.with_for_update(skip_locked=True)
+    candidates = list((await session.execute(query)).scalars())
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+
+    participants_result = await session.execute(
+        select(MatchParticipant.match_id, MatchParticipant.roster_entry_id).where(
+            MatchParticipant.match_id.in_([m.id for m in candidates])
+        )
+    )
+    players_by_match: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for match_id, roster_entry_id in participants_result.all():
+        players_by_match.setdefault(match_id, []).append(roster_entry_id)
+    all_players = {pid for players in players_by_match.values() for pid in players}
+
+    last_ended_result = await session.execute(
+        select(MatchParticipant.roster_entry_id, func.max(Match.ended_at))
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group_id,
+            Match.started_at.is_not(None),
+            Match.ended_at.is_not(None),
+            MatchParticipant.roster_entry_id.in_(all_players),
+        )
+        .group_by(MatchParticipant.roster_entry_id)
+    )
+    last_ended = {row[0]: row[1] for row in last_ended_result.all()}
+    runs = await _get_current_runs(session, group_id, all_players)
+
+    return pick_next_match(
+        [(m, players_by_match.get(m.id, [])) for m in candidates],
+        last_ended,
+        datetime.now(UTC),
+        on_court_since={pid: start for pid, (start, _length) in runs.items()},
+    )
+
+
+async def pull_queued_match_for_court(
+    session: AsyncSession, group_id: uuid.UUID, round_number: int, court_id: uuid.UUID
+) -> Match | None:
+    """FR-027: binds the next queued, court-unassigned match in this round
+    to `court_id` and starts it. Shared by round generation's initial
+    distribution (research.md #7) and `advance_court_after_match_ends`
+    (US3) — same "pull from the queue" mechanism either way. Which match is
+    "next" is `_choose_next_queued_match()`'s call; if none is eligible
+    yet, returns None (court waits)."""
+    match = await _choose_next_queued_match(session, group_id, round_number, lock=True)
     if match is None:
         return None
-    match.court_id = court_id
-    match.status = "in_progress"
-    match.started_at = datetime.now(UTC)
-    await _initialize_serve_state(session, match)
-    await session.flush()
+    await _start_match(session, match, court_id)
     return match
 
 
@@ -512,20 +704,24 @@ async def _generate_fair_rotation_matches(
         await _generate_singles_round_robin_matches(session, group, round_number)
         return
 
-    per_match = 4
-    n = len(courts) * per_match
-
     roster = await _get_active_roster_for_selection(session, group.id)
-    selected_ids = stage1_select_players(roster, n)
+    play_stats = await _get_play_stats(session, group.id)
+    counts = await _load_pair_counts(session, group.id)
+    capacity = len(courts) * _DOUBLES_PER_MATCH
+    # Only whole matches are seated, so select that many up front: the
+    # ones trimmed afterwards would otherwise have influenced (via
+    # _met_count) who else got picked.
+    seats = min(capacity, len(roster) // _DOUBLES_PER_MATCH * _DOUBLES_PER_MATCH)
+    run_lengths = _run_lengths(await _get_current_runs(session, group.id))
+    selected_ids = _whole_doubles_matches(
+        stage1_select_players(roster, seats, play_stats, _met_count(counts), run_lengths)
+    )
     await apply_wait_count_updates(session, group.id, selected_ids)
 
     if not selected_ids:
         return
 
-    pair_count_lookup = await _build_pair_count_lookup(session, group.id)
-    teammate_pairs = stage2_pair_players(selected_ids, pair_count_lookup)
-    team_matchups = team_matchup_stage2(teammate_pairs, pair_count_lookup)
-    for team_a, team_b in team_matchups:
+    for team_a, team_b in _pair_doubles(selected_ids, counts):
         await create_match_with_participants(
             session,
             group,
@@ -535,6 +731,35 @@ async def _generate_fair_rotation_matches(
             team_a=list(team_a),
             team_b=list(team_b),
         )
+
+
+_DOUBLES_PER_MATCH = 4
+
+
+def _whole_doubles_matches(selected_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    """Trims a stage-1 selection down to whole doubles matches. With fewer
+    active players than the courts hold (say 7 players, 2 courts), stage 1
+    returns all 7 but only 4 can be seated; the other 3 used to have their
+    wait_count reset as if they had played, so the same 3 kept missing out
+    round after round. The lowest-priority players are the ones trimmed."""
+    return selected_ids[: len(selected_ids) // _DOUBLES_PER_MATCH * _DOUBLES_PER_MATCH]
+
+
+def _pair_doubles(
+    selected_ids: Sequence[uuid.UUID], counts: PairCounts
+) -> list[tuple[tuple[uuid.UUID, uuid.UUID], tuple[uuid.UUID, uuid.UUID]]]:
+    """fair_rotation doubles' pairing: fewest repeat teammates, then fewest
+    repeat opponents (`pair_doubles_matches()`)."""
+    return pair_doubles_matches(selected_ids, _teammate_cost(counts), _opponent_cost(counts))
+
+
+def _met_count(counts: PairCounts) -> Callable[[uuid.UUID, uuid.UUID], int]:
+    """How many matches two players have shared, on either side."""
+
+    def cost(a: uuid.UUID, b: uuid.UUID) -> int:
+        return sum(counts.get(frozenset((a, b)), [0, 0]))
+
+    return cost
 
 
 async def _generate_singles_round_robin_matches(
@@ -570,28 +795,23 @@ async def _generate_individual_mixed_matches(
     member partners with every other active member at least once this
     round — a combinatorial design problem with no general closed-form
     solution (unlike singles/fixed_partner's circle method), so this uses a
-    multi-wave greedy loop instead: each wave reuses the exact same
-    two-stage pipeline fair_rotation doubles already runs
-    (`stage2_pair_players` -> `team_matchup_stage2`), re-reading
-    `PairHistory` (which reflects every match `flush()`-ed by earlier waves
-    in this same call, per `create_match_with_participants`) so each wave
-    tends to surface pairs not yet seen. A wave that adds no new teammate
-    pair just means this rotation (see below) is stuck given the current
-    `PairHistory` — not that every rotation is; only once a full cycle of
-    rotations in a row adds nothing does the loop give up, since the
-    pipeline is otherwise deterministic given unchanged inputs.
+    multi-wave loop instead: each wave reuses the exact same two-stage
+    pipeline fair_rotation doubles already runs (`stage2_pair_players` ->
+    `team_matchup_stage2`) against an in-memory copy of the group's
+    teammate/opponent counts that also includes every match planned by
+    earlier waves in this same call (`_count_planned_match()` — the table
+    itself only changes once a match starts), so each wave tends to surface
+    pairs not yet seen. A wave that adds no new teammate pair just means
+    this rotation (see below) is stuck given the current counts — not that
+    every rotation is; only once a full cycle of rotations in a row adds
+    nothing does the loop give up, since the pipeline is otherwise
+    deterministic given unchanged inputs.
 
-    `PairHistory` counts teammates and opponents alike (003 research.md
-    #5), so every pair in a single match gets incremented equally — on its
-    own, that degenerates into the SAME tie-break every wave (a fresh
-    group's first individual_mixed round would stall after just one wave,
-    even when perfect coverage is achievable). The teammate-forming stage
-    therefore adds a large penalty for any pair already seen as teammates
-    THIS generation (`seen_teammate_pairs`, precise — unlike `PairHistory`,
-    it doesn't conflate teammates with opponents), pushing the greedy
-    search toward genuinely new pairings each wave; the matchup stage still
-    uses the unpenalized `pair_count_lookup`, since minimizing repeat
-    opponents is exactly what it's already meant to do.
+    The teammate-forming stage also adds a large penalty for any pair
+    already teamed up THIS generation (`seen_teammate_pairs`), so the goal
+    "everyone partners everyone once per round" outweighs history from
+    earlier rounds; the matchup stage uses the opponent counts alone, since
+    minimizing repeat opponents is exactly what it's meant to do.
 
     `greedy_pair_by_cost`'s anchor (`remaining.pop(0)`, i.e. the list's
     first element) always ends up paired, never the odd one left sitting
@@ -635,20 +855,16 @@ async def _generate_individual_mixed_matches(
     NOT_YET_TEAMMATES_PENALTY = 1_000_000
     play_count_this_round: dict[uuid.UUID, int] = dict.fromkeys(roster_ids, 0)
     sit_out_count = len(roster_ids) % 4
+    counts = await _load_pair_counts(session, group.id)
+    teammate_count = _teammate_cost(counts)
+
+    def cost_favoring_unseen_teammates(a: uuid.UUID, b: uuid.UUID) -> int:
+        penalty = NOT_YET_TEAMMATES_PENALTY if frozenset((a, b)) in seen_teammate_pairs else 0
+        return teammate_count(a, b) + penalty
 
     wave = 0
     stale_rotations = 0
     while len(seen_teammate_pairs) < total_possible_pairs and stale_rotations < len(roster_ids):
-        pair_count_lookup = await _build_pair_count_lookup(session, group.id)
-
-        def cost_favoring_unseen_teammates(
-            a: uuid.UUID,
-            b: uuid.UUID,
-            _pair_count_lookup: Callable[[uuid.UUID, uuid.UUID], int] = pair_count_lookup,
-        ) -> int:
-            penalty = NOT_YET_TEAMMATES_PENALTY if frozenset((a, b)) in seen_teammate_pairs else 0
-            return _pair_count_lookup(a, b) + penalty
-
         rotation = wave % len(roster_ids)
         wave_order = roster_ids[rotation:] + roster_ids[:rotation]
         wave += 1
@@ -662,7 +878,14 @@ async def _generate_individual_mixed_matches(
         else:
             active_order = wave_order
 
-        teammate_pairs = stage2_pair_players(active_order, cost_favoring_unseen_teammates)
+        # Teammates and opponents decided together (pair_doubles_matches):
+        # with 4 active players there is only one way to match two teams,
+        # so choosing teammates alone left the opponents to chance — 2 to 8
+        # meetings per pair over two simulated 6-player rounds.
+        team_matchups = pair_doubles_matches(
+            active_order, cost_favoring_unseen_teammates, _opponent_cost(counts)
+        )
+        teammate_pairs = [team for matchup in team_matchups for team in matchup]
         new_pairs = [
             frozenset(pair) for pair in teammate_pairs if frozenset(pair) not in seen_teammate_pairs
         ]
@@ -671,10 +894,10 @@ async def _generate_individual_mixed_matches(
             continue
         stale_rotations = 0
 
-        team_matchups = team_matchup_stage2(teammate_pairs, pair_count_lookup)
         for team_a, team_b in team_matchups:
             for player_id in (*team_a, *team_b):
                 play_count_this_round[player_id] += 1
+            _count_planned_match(counts, team_a, team_b)
             await create_match_with_participants(
                 session,
                 group,
@@ -718,12 +941,30 @@ async def compute_auto_partner_teams_for_round(
     when `partner_source == "auto"` — deliberately a different function
     from `auto_pair_on_enter_fixed_partner()` (research.md #6 naming
     clarification), which is a one-time join-order fallback that writes to
-    `partnerships`. This pairs the whole active roster by minimizing
-    `PairHistory` pair_count (reusing `stage2_pair_players`) and never
-    touches `partnerships`."""
+    `partnerships`. This pairs the whole active roster by minimizing how
+    often each pair has already been teammates (reusing
+    `stage2_pair_players`) and never touches `partnerships`. With an odd
+    headcount one member sits the round out (`_choose_bye()`)."""
     active_ids = await _get_active_roster_ordered(session, group_id)
-    pair_count_lookup = await _build_pair_count_lookup(session, group_id)
-    return stage2_pair_players(active_ids, pair_count_lookup)
+    if len(active_ids) % 2 == 1:
+        bye = await _choose_bye(session, group_id, active_ids)
+        active_ids = [pid for pid in active_ids if pid != bye]
+    counts = await _load_pair_counts(session, group_id)
+    return stage2_pair_players(active_ids, _teammate_cost(counts))
+
+
+async def _choose_bye(
+    session: AsyncSession, group_id: uuid.UUID, candidates: Sequence[uuid.UUID]
+) -> uuid.UUID:
+    """fixed_partner with an odd headcount: which of `candidates` sits this
+    round out. Whoever has played the most matches in the group, so the bye
+    rotates instead of always landing on the same person; among equals, the
+    latest joiner (`candidates` is in join order). This used to be a hard
+    error (FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT) that blocked the whole
+    round until the admin found one more player or sent one home."""
+    play_stats = await _get_play_stats(session, group_id)
+    order = {pid: index for index, pid in enumerate(candidates)}
+    return max(candidates, key=lambda pid: (play_stats.get(pid, (0, None))[0], order[pid]))
 
 
 async def _resolve_manual_fixed_partner_teams(
@@ -737,7 +978,7 @@ async def _resolve_manual_fixed_partner_teams(
     清單中出現超過一次（FR-003：該重複成員涉及的組合一律視為無效、一律
     捨棄，MUST NOT 只丟棄後面出現的那一組）的組合皆被捨棄；(3) 對步驟 1+2
     後仍未涵蓋到的現役成員，呼叫 `random_pair_units()` 當場隨機配對補齊
-    （FR-002）。"""
+    （FR-002）；人數為奇數時，先由 `_choose_bye()` 挑一人本輪輪空。"""
     formal_teams = await _get_active_partnership_teams(session, group.id)
     covered = {pid for pair in formal_teams for pid in pair}
 
@@ -763,6 +1004,9 @@ async def _resolve_manual_fixed_partner_teams(
         covered.add(player_b)
 
     remaining = [pid for pid in active_ids if pid not in covered]
+    if len(remaining) % 2 == 1:
+        bye = await _choose_bye(session, group.id, remaining)
+        remaining = [pid for pid in remaining if pid != bye]
     autofill_teams = random_pair_units(remaining)
 
     return [*formal_teams, *validated_temp_teams, *autofill_teams]
@@ -782,9 +1026,10 @@ async def _generate_fixed_partner_matches(
     (research.md #5); ALL teams participate. `group.partner_source`
     decides where the teams come from (research.md #6). 017-fixed-partner-
     autofill: in "manual" mode, `temporary_pairings` (validated) plus an
-    auto-fill pass over anyone still uncovered ensure the round always
-    covers every active member (FR-002/FR-003/FR-007) — see
-    `_resolve_manual_fixed_partner_teams()`."""
+    auto-fill pass over anyone still uncovered ensure the round covers
+    every active member (FR-002/FR-003/FR-007) — see
+    `_resolve_manual_fixed_partner_teams()` — except the one bye when the
+    headcount is odd."""
     del courts
 
     if group.partner_source == "auto":
@@ -832,19 +1077,22 @@ async def _lock_group_for_round_generation(session: AsyncSession, group_id: uuid
 async def _last_match_lineup_for_round(
     session: AsyncSession, group_id: uuid.UUID, round_number: int
 ) -> frozenset[uuid.UUID] | None:
-    """The full participant set (both teams) of the last-called match in the
-    given round, keyed off the same `created_at` ordering
-    `_shuffle_round_match_order` controls — or None if that round has no
-    matches (e.g. round_number < 1, or nothing generated yet). Lets a new
-    round's shuffle avoid reseating the previous round's closing lineup into
-    its own first slot."""
+    """The full participant set (both teams) of the given round's closing
+    match — the last one to start, or failing that the last in call-up
+    order — or None if that round has no matches (e.g. round_number < 1, or
+    nothing generated yet). Lets a new round's shuffle avoid reseating the
+    previous round's closing lineup into its own first slot."""
     if round_number < 1:
         return None
 
     last_match_result = await session.execute(
         select(Match.id)
         .where(Match.group_id == group_id, Match.round_number == round_number)
-        .order_by(Match.created_at.desc())
+        .order_by(
+            Match.started_at.desc().nulls_last(),
+            Match.queue_position.desc().nulls_last(),
+            Match.created_at.desc(),
+        )
         .limit(1)
     )
     last_match_id = last_match_result.scalar_one_or_none()
@@ -881,11 +1129,8 @@ async def _shuffle_round_match_order(
     """Randomizes the call-up/display order of this round's just-generated
     matches — purely cosmetic, deliberately separate from who's paired with
     whom (that's decided by the mechanism-specific generators above; this
-    runs after all of them). `pull_queued_match_for_court` and
-    `build_round_matches_list` both `order_by(Match.created_at)` (this
-    file), and `created_at` is otherwise unused — never serialized to any
-    schema — so overwriting it with a freshly shuffled sequence is the
-    cheapest way to randomize both without a dedicated ordering column.
+    runs after all of them). Writes `queue_position`, which the pull, the
+    "next up" preview and `build_round_matches_list` all order by.
 
     Also avoids landing the exact same 2/4-player lineup that closed out the
     previous round into this round's opening slot: if the shuffle happens to
@@ -910,12 +1155,13 @@ async def _shuffle_round_match_order(
                     match_ids[0], match_ids[i] = match_ids[i], match_ids[0]
                     break
 
-    base = datetime.now(UTC)
+    await _write_queue_positions(session, match_ids)
+
+
+async def _write_queue_positions(session: AsyncSession, match_ids: Sequence[uuid.UUID]) -> None:
     for index, match_id in enumerate(match_ids):
         await session.execute(
-            update(Match)
-            .where(Match.id == match_id)
-            .values(created_at=base + timedelta(microseconds=index))
+            update(Match).where(Match.id == match_id).values(queue_position=index)
         )
 
 
@@ -1018,15 +1264,6 @@ async def generate_next_round(
     courts = await _get_active_courts_ordered(session, group.id)
     if not courts:
         raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
-
-    # 011-round-robin-scheduling FR-003: fixed_partner's team round-robin
-    # requires an even headcount to pair everyone up — checked before any
-    # side effect (lock/abandon/round-number bump), same style as the
-    # zero-courts guard above.
-    if group.scheduling_mechanism == "fixed_partner":
-        active_count = len(await _get_active_roster_ordered(session, group.id))
-        if active_count % 2 != 0:
-            raise ApiError("FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT", status_code=400)
 
     await _lock_group_for_round_generation(session, group.id)
     await _begin_new_round(session, group)
@@ -1150,11 +1387,6 @@ async def plan_next_round(
     if not courts:
         raise ApiError("NO_COURTS_AVAILABLE", status_code=400)
 
-    if group.scheduling_mechanism == "fixed_partner":
-        active_count = len(await _get_active_roster_ordered(session, group.id))
-        if active_count % 2 != 0:
-            raise ApiError("FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT", status_code=400)
-
     await _lock_group_for_round_generation(session, group.id)
     await _begin_new_round(session, group)
     await _generate_round_matches_for_mechanism(session, group, courts, temporary_pairings)
@@ -1220,12 +1452,10 @@ async def swap_planned_match_players(
     rather than per-round-phase for exactly that reason. Each participant
     row keeps its match and team-letter slot, only the `roster_entry_id`
     values trade places, so a swap never changes a match's A/B side balance
-    or its court/order. Known limitation: `PairHistory` was already
-    incremented for the pre-swap pairing at plan time
-    (`_increment_pair_history`) and is deliberately NOT corrected here —
-    recomputing it correctly for doubles' partner+opponent structure is its
-    own scoped problem, and the fairness drift from an occasional manual
-    swap is minor compared to that complexity. Publishes via
+    or its court/order. PairHistory only holds matches that already took a
+    court, so a queued match needs no correction; for an `in_progress` one
+    the old lineup's counts move to the new lineup
+    (`_move_started_pair_history()`). Publishes via
     `_publish_lineup_changed()` so any open scoreboard/control panel for
     either match refreshes in real time."""
     if match_id_1 == match_id_2:
@@ -1266,12 +1496,35 @@ async def swap_planned_match_players(
     if roster_entry_id_1 in match_2_ids or roster_entry_id_2 in match_1_ids:
         raise ApiError("DUPLICATE_PARTICIPANT", status_code=400)
 
-    participant_1.roster_entry_id, participant_2.roster_entry_id = (
-        roster_entry_id_2,
-        roster_entry_id_1,
-    )
+    async def swap() -> None:
+        participant_1.roster_entry_id, participant_2.roster_entry_id = (
+            roster_entry_id_2,
+            roster_entry_id_1,
+        )
+
+    await _move_started_pair_history(session, list(matches_by_id.values()), swap)
     await session.commit()
     await _publish_lineup_changed(session, group, list(matches_by_id.values()))
+
+
+async def _move_started_pair_history(
+    session: AsyncSession,
+    matches: Sequence[Match],
+    change_lineup: Callable[[], Awaitable[None]],
+) -> None:
+    """Runs `change_lineup()` (which edits participants of `matches`) and
+    keeps PairHistory in step for whichever of them already started: their
+    old lineup is taken out of the counts and the new one put in. Queued
+    matches aren't counted yet, so they need nothing."""
+    started = [match for match in matches if match.status == "in_progress"]
+    for match in started:
+        team_a, team_b = await _match_participants_by_team(session, match.id)
+        await _record_pair_history(session, match.group_id, team_a, team_b, delta=-1)
+    await change_lineup()
+    await session.flush()
+    for match in started:
+        team_a, team_b = await _match_participants_by_team(session, match.id)
+        await _record_pair_history(session, match.group_id, team_a, team_b)
 
 
 async def change_match_player(
@@ -1291,8 +1544,8 @@ async def change_match_player(
     they can't physically be on two courts at once; no such restriction for
     a still-`queued` match, since a round-robin schedule already routinely
     lists the same person in several queued matches at once (only one gets
-    pulled onto a court at a time). Same PairHistory caveat as
-    `swap_planned_match_players()`. Publishes via `_publish_lineup_changed()`
+    pulled onto a court at a time). PairHistory is kept in step the same
+    way as in `swap_planned_match_players()`. Publishes via `_publish_lineup_changed()`
     so any open scoreboard/control panel for the match refreshes in real
     time."""
     if group.scheduling_mechanism == "manual":
@@ -1341,7 +1594,10 @@ async def change_match_player(
         if busy_result.scalar_one_or_none() is not None:
             raise ApiError("PARTICIPANT_ALREADY_PLAYING", status_code=400)
 
-    target.roster_entry_id = new_roster_entry_id
+    async def substitute() -> None:
+        target.roster_entry_id = new_roster_entry_id
+
+    await _move_started_pair_history(session, [match], substitute)
     await session.commit()
     await _publish_lineup_changed(session, group, [match])
 
@@ -1350,16 +1606,19 @@ async def reorder_planned_matches(
     session: AsyncSession, group: Group, match_ids: Sequence[uuid.UUID]
 ) -> None:
     """018-plan-then-start: lets the admin drag-reorder the round's still-
-    `queued` call-up order — same `created_at`-rewrite mechanism as
+    `queued` call-up order — same `queue_position` write as
     `_shuffle_round_match_order` (random.shuffle), just admin-driven instead
-    of random. Follow-up requirement: this now works whether the round is
-    still fully `awaiting_start` or already `in_progress` (some matches
-    already on courts, the rest still queued) — only a match that hasn't
-    been pulled onto a court yet has a "call-up order" left to adjust, so
-    the eligible set is exactly `status == "queued"`, not the whole round.
-    `match_ids` MUST be a permutation of exactly that queued set — the
-    whole point is reordering, not adding/removing matches, so anything
-    else is rejected outright rather than guessed at. Broadcasts
+    of random. The order is what a freed court follows once everyone
+    involved has rested `REST_SATURATION`; before that, a candidate whose
+    players rested longer can go first (`_choose_next_queued_match()`).
+    Follow-up requirement: this now works whether the round is still fully
+    `awaiting_start` or already `in_progress` (some matches already on
+    courts, the rest still queued) — only a match that hasn't been pulled
+    onto a court yet has a "call-up order" left to adjust, so the eligible
+    set is exactly `status == "queued"`, not the whole round. `match_ids`
+    MUST be a permutation of exactly that queued set — the whole point is
+    reordering, not adding/removing matches, so anything else is rejected
+    outright rather than guessed at. Broadcasts
     `match.nextRound` to every court afterward so a court currently peeking
     one of these matches as `next_up` refreshes to the new order — same
     reuse-as-refetch-trigger convention as `_publish_lineup_changed()`."""
@@ -1381,13 +1640,7 @@ async def reorder_planned_matches(
     if set(match_ids) != queued_ids or len(match_ids) != len(queued_ids):
         raise ApiError("VALIDATION_ERROR", status_code=400)
 
-    base = datetime.now(UTC)
-    for index, match_id in enumerate(match_ids):
-        await session.execute(
-            update(Match)
-            .where(Match.id == match_id)
-            .values(created_at=base + timedelta(microseconds=index))
-        )
+    await _write_queue_positions(session, match_ids)
     await session.commit()
 
     for court in await _get_active_courts_ordered(session, group.id):
@@ -1427,8 +1680,90 @@ async def advance_court_after_match_ends(session: AsyncSession, match: Match) ->
     group = group_result.scalar_one()
     if group.scheduling_mechanism == "manual":
         return None
-    return await pull_queued_match_for_court(
+    pulled = await pull_queued_match_for_court(
         session, match.group_id, match.round_number, match.court_id
+    )
+    if pulled is None:
+        pulled = await _seat_waiting_players_on_court(
+            session, group, match.court_id, match.round_number
+        )
+    return pulled
+
+
+def _continuous_rotation_applies(group: Group) -> bool:
+    return (
+        group.continuous_rotation
+        and group.scheduling_mechanism == "fair_rotation"
+        and group.match_mode == "doubles"
+    )
+
+
+async def _seat_waiting_players_on_court(
+    session: AsyncSession, group: Group, court_id: uuid.UUID, round_number: int
+) -> Match | None:
+    """Continuous rotation: with nothing left in the queue, puts the four
+    highest-priority players who aren't on a court straight onto
+    `court_id`, as a new match in the current round. Without it, a fair_
+    rotation doubles court that finishes early sits empty until every other
+    court is done and the next round is generated. Priority is stage 1's
+    (wait_count, then fewest matches played, then longest since playing);
+    the four picked go to wait_count 0 and the idle players passed over
+    wait one more, so wait_count keeps meaning "matches sat out". None if
+    the mode is off, the round has moved on, the court was filled
+    meanwhile, or fewer than four players are free. Flushes, never
+    commits."""
+    if not _continuous_rotation_applies(group) or round_number != group.current_round_number:
+        return None
+
+    # Two courts finishing at once must not seat the same idle players
+    # twice. Unlike round generation's NOWAIT lock, this waits its turn.
+    await session.execute(select(Group.id).where(Group.id == group.id).with_for_update())
+    occupied = await session.execute(
+        select(Match.id).where(Match.court_id == court_id, Match.status == "in_progress")
+    )
+    if occupied.scalar_one_or_none() is not None:
+        return None
+
+    busy_result = await session.execute(
+        select(MatchParticipant.roster_entry_id)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(Match.group_id == group.id, Match.status == "in_progress")
+    )
+    busy = set(busy_result.scalars())
+    active_roster = await _get_active_roster_for_selection(session, group.id)
+    idle_roster = [row for row in active_roster if row[0] not in busy]
+    play_stats = await _get_play_stats(session, group.id)
+    counts = await _load_pair_counts(session, group.id)
+    selected = stage1_select_players(
+        idle_roster,
+        _DOUBLES_PER_MATCH,
+        play_stats,
+        _met_count(counts),
+        _run_lengths(await _get_current_runs(session, group.id)),
+    )
+    if len(selected) < _DOUBLES_PER_MATCH:
+        return None
+
+    passed_over = [row[0] for row in idle_roster if row[0] not in selected]
+    await session.execute(
+        update(RosterEntry).where(RosterEntry.id.in_(selected)).values(wait_count=0)
+    )
+    if passed_over:
+        await session.execute(
+            update(RosterEntry)
+            .where(RosterEntry.id.in_(passed_over))
+            .values(wait_count=func.coalesce(RosterEntry.wait_count, 0) + 1)
+        )
+
+    [(team_a, team_b)] = _pair_doubles(selected, counts)
+    return await create_match_with_participants(
+        session,
+        group,
+        court_id=court_id,
+        round_number=round_number,
+        status="in_progress",
+        team_a=list(team_a),
+        team_b=list(team_b),
     )
 
 
@@ -1457,6 +1792,27 @@ async def set_auto_next_round(session: AsyncSession, group: Group, enabled: bool
     group.auto_next_round = enabled
     await session.commit()
     await session.refresh(group)
+    return group
+
+
+async def set_continuous_rotation(session: AsyncSession, group: Group, enabled: bool) -> Group:
+    """Plain immediate toggle, same shape as `set_auto_next_round()`. Only
+    fair_rotation doubles has a meaning for it (every other mechanism
+    already pre-plans the whole round), so enabling it anywhere else is
+    rejected; a group that later switches mechanism keeps the flag, and
+    `_continuous_rotation_applies()` ignores it. Turning it on mid-round
+    seats waiting players on any court that is idle right now."""
+    if enabled and not (
+        group.scheduling_mechanism == "fair_rotation" and group.match_mode == "doubles"
+    ):
+        raise ApiError("CONTINUOUS_ROTATION_NOT_SUPPORTED", status_code=400)
+    group.continuous_rotation = enabled
+    await session.commit()
+    await session.refresh(group)
+    if enabled and await get_round_phase(session, group) == "in_progress":
+        await _advance_other_idle_courts(
+            session, group, group.current_round_number, exclude_court_id=None
+        )
     return group
 
 
@@ -1558,7 +1914,9 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
     return ScheduleResponse(
         current_round_number=group.current_round_number,
         scheduling_mechanism=group.scheduling_mechanism,
+        match_mode=group.match_mode,
         auto_next_round=group.auto_next_round,
+        continuous_rotation=group.continuous_rotation,
         round_phase=round_phase,
         courts=court_statuses,
         roster=roster_statuses,
@@ -1569,13 +1927,18 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
     """011-round-robin-scheduling: the admin-facing "本輪賽程清單" — unlike
     `build_schedule_snapshot()` above (which only shows each court's
     *current* match), this returns every match in the current round
-    regardless of status (queued/in_progress/completed/abandoned), in
-    generation order, so the admin can see the whole pre-generated
-    round-robin schedule rather than just what's on court right now."""
+    regardless of status (queued/in_progress/completed/abandoned), so the
+    admin can see the whole pre-generated round-robin schedule rather than
+    just what's on court right now. Also how much of the round is left
+    and roughly how long it will take, which a round-robin round (up to
+    dozens of matches) otherwise gives no hint of, and who has no match in
+    it at all."""
     result = await session.execute(
         select(Match)
         .where(Match.group_id == group.id, Match.round_number == group.current_round_number)
-        .order_by(Match.created_at)
+        # Matches that already went on court first, in the order they did;
+        # then the queue in call-up order.
+        .order_by(Match.started_at.asc().nulls_last(), *_QUEUE_ORDER)
     )
     matches = result.scalars().all()
     if not matches:
@@ -1605,8 +1968,36 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
         )
         court_names = {row.id: row.name for row in courts_result.all()}
 
+    remaining = [match for match in matches if match.status in _ACTIVE_MATCH_STATUSES]
+    scheduled = {
+        participant.roster_entry_id
+        for match in matches
+        if match.status != "abandoned" or match.started_at is not None
+        for participant in participants_by_match.get(match.id, [])
+    }
+    roster_result = await session.execute(
+        select(RosterEntry.id, RosterEntry.nickname)
+        .where(RosterEntry.group_id == group.id, RosterEntry.status == "active")
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
+    )
+    sitting_out = [
+        RosterSummary(roster_entry_id=str(row.id), nickname=row.nickname)
+        for row in roster_result.all()
+        if str(row.id) not in scheduled
+    ]
+
     return RoundMatchesResponse(
         round_number=group.current_round_number,
+        remaining_count=len(remaining),
+        estimated_remaining_minutes=await _estimate_remaining_minutes(
+            session,
+            group,
+            [
+                [p.roster_entry_id for p in participants_by_match.get(match.id, [])]
+                for match in remaining
+            ],
+        ),
+        sitting_out=sitting_out,
         matches=[
             RoundMatchSummary(
                 match_id=str(match.id),
@@ -1620,6 +2011,59 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
             for match in matches
         ],
     )
+
+
+# Used until the group has finished enough matches of its own to measure.
+# Roughly 0.6 minutes per point of the target score: about 13 minutes for
+# a 21-point game, 9 for 15 points.
+_FALLBACK_MINUTES_PER_TARGET_POINT = 0.6
+_MIN_MATCHES_FOR_MEASURED_DURATION = 3
+_MEASURED_DURATION_SAMPLE = 30
+
+
+async def _typical_match_minutes(session: AsyncSession, group: Group) -> float:
+    """Median length of the group's last `_MEASURED_DURATION_SAMPLE`
+    completed matches, or a target-score-based guess before there are
+    enough of them."""
+    result = await session.execute(
+        select(Match.started_at, Match.ended_at)
+        .where(
+            Match.group_id == group.id,
+            Match.status == "completed",
+            Match.started_at.is_not(None),
+            Match.ended_at.is_not(None),
+        )
+        .order_by(Match.ended_at.desc())
+        .limit(_MEASURED_DURATION_SAMPLE)
+    )
+    durations = [
+        (ended - started).total_seconds() / 60 for started, ended in result.all() if ended > started
+    ]
+    if len(durations) >= _MIN_MATCHES_FOR_MEASURED_DURATION:
+        return float(statistics.median(durations))
+    return max(group.target_score * _FALLBACK_MINUTES_PER_TARGET_POINT, 5.0)
+
+
+async def _estimate_remaining_minutes(
+    session: AsyncSession, group: Group, remaining_lineups: Sequence[Sequence[str]]
+) -> int | None:
+    """Rough minutes until the round's last match ends: the remaining
+    matches spread over the courts, but never fewer rounds of play than
+    the busiest player still has matches (they can only play one at a
+    time). Counts an in-progress match as a whole one, so it leans long.
+    None when nothing remains or there are no courts."""
+    if not remaining_lineups:
+        return None
+    court_count = len(await _get_active_courts_ordered(session, group.id))
+    if court_count == 0:
+        return None
+    per_player: dict[str, int] = {}
+    for lineup in remaining_lineups:
+        for player in lineup:
+            per_player[player] = per_player.get(player, 0) + 1
+    busiest_player = max(per_player.values(), default=0)
+    slots = max(math.ceil(len(remaining_lineups) / court_count), busiest_player)
+    return math.ceil(slots * await _typical_match_minutes(session, group))
 
 
 async def manual_assign(
@@ -1709,7 +2153,7 @@ async def _get_active_roster_ordered(session: AsyncSession, group_id: uuid.UUID)
     result = await session.execute(
         select(RosterEntry.id)
         .where(RosterEntry.group_id == group_id, RosterEntry.status == "active")
-        .order_by(RosterEntry.joined_at)
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
     )
     return [row[0] for row in result.all()]
 
@@ -1807,37 +2251,223 @@ async def dissolve_partnership(
 
 async def handle_member_joined(
     session: AsyncSession, group: Group, new_member: RosterEntry
-) -> None:
-    """FR-038 (adding to the roster doesn't touch the current round's already
-    -generated matches — nothing to do here for that part, it's inherent in
-    never having been selected) + FR-022 (fixed_partner auto-pairing, when
-    applicable)."""
-    if group.scheduling_mechanism != "fixed_partner":
-        return
-    active_ids = await _get_active_roster_ordered(session, group.id)
-    paired = await _get_paired_ids(session, group.id)
-    unpaired_existing = [
-        pid for pid in active_ids if pid not in paired and pid != new_member.id
-    ]
-    if unpaired_existing:
-        session.add(
-            Partnership(
-                group_id=group.id, player_a_id=unpaired_existing[0], player_b_id=new_member.id
+) -> bool:
+    """FR-022 (fixed_partner auto-pairing, when applicable), then
+    `_schedule_late_joiner_matches()`. Returns whether the current round's
+    schedule gained matches, in which case the caller MUST call
+    `refresh_courts_after_roster_change()` once it has committed."""
+    if group.scheduling_mechanism == "fixed_partner":
+        active_ids = await _get_active_roster_ordered(session, group.id)
+        paired = await _get_paired_ids(session, group.id)
+        unpaired_existing = [
+            pid for pid in active_ids if pid not in paired and pid != new_member.id
+        ]
+        if unpaired_existing:
+            session.add(
+                Partnership(
+                    group_id=group.id, player_a_id=unpaired_existing[0], player_b_id=new_member.id
+                )
             )
+            await session.flush()
+    return await _schedule_late_joiner_matches(session, group)
+
+
+async def _schedule_late_joiner_matches(session: AsyncSession, group: Group) -> bool:
+    """Gives members who joined after the current round was planned their
+    share of that round, instead of making them wait for the next one — a
+    full round-robin round can run for hours. Adds queued matches to the
+    end of the call-up order; the freshly arrived players have rested the
+    longest, so `pick_next_match()` calls them early anyway.
+      - singles round-robin: the newcomer against everyone they haven't
+        met this round;
+      - fixed_partner: newcomers are paired up (their formal partnership
+        if both are new, otherwise in join order; an odd one waits for the
+        next arrival), and each new team plays every team in the round;
+      - individual_mixed: the newcomer partners every other member once,
+        against the two members with the fewest matches this round.
+    fair_rotation doubles needs nothing: a never-played member already
+    tops the next selection (wait_count NULL), and with continuous
+    rotation they're seated at the next free court. Nothing happens
+    before the round is planned or after it's over (the next plan includes
+    everyone). Flushes, never commits. Returns whether any match was
+    added."""
+    mechanism = group.scheduling_mechanism
+    if mechanism == "manual" or (mechanism == "fair_rotation" and group.match_mode != "singles"):
+        return False
+    if await get_round_phase(session, group) == "awaiting_plan":
+        return False
+
+    round_number = group.current_round_number
+    rows = await session.execute(
+        select(MatchParticipant.match_id, MatchParticipant.roster_entry_id, MatchParticipant.team)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group.id,
+            Match.round_number == round_number,
+            _COUNTS_TOWARD_ROUND,
         )
-        await session.flush()
+    )
+    sides: dict[tuple[uuid.UUID, str], list[uuid.UUID]] = {}
+    for match_id, roster_entry_id, team in rows.all():
+        sides.setdefault((match_id, team), []).append(roster_entry_id)
+    scheduled = {pid for ids in sides.values() for pid in ids}
+
+    active = await _get_active_roster_ordered(session, group.id)
+    newcomers = [pid for pid in active if pid not in scheduled]
+    if not newcomers:
+        return False
+
+    planned: list[tuple[list[uuid.UUID], list[uuid.UUID]]] = []
+
+    def plan(side_1: Sequence[uuid.UUID], side_2: Sequence[uuid.UUID]) -> None:
+        # Alternate who takes side A, so no newcomer is stuck on one side.
+        if len(planned) % 2 == 0:
+            planned.append((list(side_1), list(side_2)))
+        else:
+            planned.append((list(side_2), list(side_1)))
+
+    if mechanism == "fair_rotation":
+        met: set[frozenset[uuid.UUID]] = set()
+        match_ids = {match_id for match_id, _team in sides}
+        for match_id in match_ids:
+            met.add(frozenset(sides.get((match_id, "A"), []) + sides.get((match_id, "B"), [])))
+        for newcomer in newcomers:
+            for opponent in active:
+                pair = frozenset((newcomer, opponent))
+                if opponent == newcomer or pair in met:
+                    continue
+                met.add(pair)
+                plan([newcomer], [opponent])
+    elif mechanism == "fixed_partner":
+        round_teams: list[tuple[uuid.UUID, ...]] = []
+        for ids in sides.values():
+            team = tuple(sorted(ids))
+            if len(team) == 2 and team not in round_teams:
+                round_teams.append(team)
+        for new_team in await _teams_for_newcomers(session, group, newcomers):
+            for other_team in round_teams:
+                plan(new_team, other_team)
+            round_teams.append(tuple(sorted(new_team)))
+    else:
+        appearances: dict[uuid.UUID, int] = dict.fromkeys(active, 0)
+        for ids in sides.values():
+            for pid in ids:
+                if pid in appearances:
+                    appearances[pid] += 1
+        counts = await _load_pair_counts(session, group.id)
+        opponent_count = _opponent_cost(counts)
+        join_order = {pid: index for index, pid in enumerate(active)}
+        def opponent_rank(
+            pid: uuid.UUID, newcomer: uuid.UUID, partner: uuid.UUID
+        ) -> tuple[int, int, int]:
+            return (
+                appearances[pid],
+                opponent_count(newcomer, pid) + opponent_count(partner, pid),
+                join_order[pid],
+            )
+
+        for newcomer in newcomers:
+            for partner in active:
+                if partner == newcomer:
+                    continue
+                ranked = sorted(
+                    (
+                        (opponent_rank(pid, newcomer, partner), pid)
+                        for pid in active
+                        if pid not in (newcomer, partner)
+                    ),
+                )
+                opponents = [pid for _rank, pid in ranked[:2]]
+                if len(opponents) < 2:
+                    break
+                plan([newcomer, partner], opponents)
+                for pid in (newcomer, partner, *opponents):
+                    appearances[pid] += 1
+                _count_planned_match(counts, [newcomer, partner], opponents)
+
+    if not planned:
+        return False
+
+    position_result = await session.execute(
+        select(func.max(Match.queue_position)).where(
+            Match.group_id == group.id, Match.round_number == round_number
+        )
+    )
+    last_position = position_result.scalar_one()
+    next_position = 0 if last_position is None else last_position + 1
+    for offset, (team_a, team_b) in enumerate(planned):
+        await create_match_with_participants(
+            session,
+            group,
+            court_id=None,
+            round_number=round_number,
+            status="queued",
+            team_a=team_a,
+            team_b=team_b,
+            queue_position=next_position + offset,
+        )
+    return True
+
+
+async def _teams_for_newcomers(
+    session: AsyncSession, group: Group, newcomers: Sequence[uuid.UUID]
+) -> list[tuple[uuid.UUID, uuid.UUID]]:
+    """fixed_partner late-joiner teams: formal partnerships whose both
+    members are newcomers (manual partner source only), then the rest in
+    join order. An odd one out stays unscheduled until someone else
+    arrives."""
+    newcomer_set = set(newcomers)
+    teams: list[tuple[uuid.UUID, uuid.UUID]] = []
+    if group.partner_source == "manual":
+        teams = [
+            team
+            for team in await _get_active_partnership_teams(session, group.id)
+            if team[0] in newcomer_set and team[1] in newcomer_set
+        ]
+    covered = {pid for team in teams for pid in team}
+    rest = [pid for pid in newcomers if pid not in covered]
+    teams.extend(zip(rest[0::2], rest[1::2], strict=False))
+    return teams
+
+
+async def refresh_courts_after_roster_change(session: AsyncSession, group: Group) -> None:
+    """Post-commit follow-up to a join, leave or kick: a newcomer's matches
+    or a substitute may let an idle court start right away, and every
+    court's "next up" preview may have changed. Courts are only filled
+    while the round is actually under way — a planned round waits for the
+    admin's "start", and pulling a match here would start it for them.
+    Callers MUST have already committed."""
+    if group.scheduling_mechanism == "manual":
+        return
+    if await get_round_phase(session, group) == "in_progress":
+        await _advance_other_idle_courts(
+            session, group, group.current_round_number, exclude_court_id=None
+        )
+    for court in await _get_active_courts_ordered(session, group.id):
+        await publish(
+            court_channel(str(group.id), str(court.id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
 
 
 async def remove_roster_entry_from_schedule(
     session: AsyncSession, group: Group, roster_entry_id: uuid.UUID
 ) -> None:
-    """FR-039/040/041, shared by a member leaving and being kicked. Queued
-    matches are always created with an exact participant count for the
-    group's match_mode (no substitutes) — removing any one participant
-    always breaks that count, so the whole match is abandoned rather than
-    partially edited. In-progress matches are left completely untouched
-    (FR-040); this never regenerates a round (FR-041), it only mutates the
-    already-generated schedule for the current round."""
+    """FR-039/040/041, shared by a member leaving and being kicked. Each of
+    the member's queued matches in the current round either gets a
+    substitute or is abandoned:
+      - fair_rotation doubles and individual_mixed: a substitute
+        (`_pick_substitute()`) takes the empty slot, so the other three
+        still play. Abandoning used to cost all three a match.
+      - singles round-robin and fixed_partner: abandoned. Every other
+        player (or team) was due exactly one match against the leaver, so
+        each loses exactly one and the round stays even; a substitute would
+        hand someone a repeat match instead.
+    Also abandoned when nobody is free to substitute. In-progress matches
+    are left completely untouched (FR-040); this never regenerates a round
+    (FR-041), it only mutates the already-generated schedule for the
+    current round."""
     result = await session.execute(
         select(Match.id)
         .join(MatchParticipant, MatchParticipant.match_id == Match.id)
@@ -1847,16 +2477,104 @@ async def remove_roster_entry_from_schedule(
             Match.status == "queued",
             MatchParticipant.roster_entry_id == roster_entry_id,
         )
+        .order_by(*_QUEUE_ORDER)
     )
     match_ids = list(result.scalars().all())
     if not match_ids:
         return
-    await session.execute(
-        update(Match)
-        .where(Match.id.in_(match_ids))
-        .values(status="abandoned", ended_at=datetime.now(UTC))
-    )
+
+    to_abandon = match_ids
+    if group.match_mode == "doubles" and group.scheduling_mechanism in (
+        "fair_rotation",
+        "individual_mixed",
+    ):
+        to_abandon = []
+        appearances = await _round_appearances(session, group)
+        for match_id in match_ids:
+            substitute = await _pick_substitute(
+                session, group, match_id, roster_entry_id, appearances
+            )
+            if substitute is None:
+                to_abandon.append(match_id)
+                continue
+            await session.execute(
+                update(MatchParticipant)
+                .where(
+                    MatchParticipant.match_id == match_id,
+                    MatchParticipant.roster_entry_id == roster_entry_id,
+                )
+                .values(roster_entry_id=substitute)
+            )
+            appearances[substitute] = appearances.get(substitute, 0) + 1
+            if group.scheduling_mechanism == "fair_rotation":
+                # Same as being picked by stage 1: they're playing now.
+                await session.execute(
+                    update(RosterEntry).where(RosterEntry.id == substitute).values(wait_count=0)
+                )
+
+    if to_abandon:
+        await session.execute(
+            update(Match)
+            .where(Match.id.in_(to_abandon))
+            .values(status="abandoned", ended_at=datetime.now(UTC))
+        )
     await session.flush()
+
+
+async def _round_appearances(session: AsyncSession, group: Group) -> dict[uuid.UUID, int]:
+    """roster_entry_id -> matches in the current round (`_COUNTS_TOWARD_ROUND`)."""
+    result = await session.execute(
+        select(MatchParticipant.roster_entry_id, func.count())
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group.id,
+            Match.round_number == group.current_round_number,
+            _COUNTS_TOWARD_ROUND,
+        )
+        .group_by(MatchParticipant.roster_entry_id)
+    )
+    return {row[0]: row[1] for row in result.all()}
+
+
+async def _pick_substitute(
+    session: AsyncSession,
+    group: Group,
+    match_id: uuid.UUID,
+    leaving_id: uuid.UUID,
+    appearances: dict[uuid.UUID, int],
+) -> uuid.UUID | None:
+    """Who replaces `leaving_id` in queued doubles match `match_id`: an
+    active member not already in it, with the fewest matches this round,
+    then the fewest past meetings with the three who stay, then the
+    earliest joiner. Players busy on another court right now are fine —
+    the match is queued, and won't be called while they're playing."""
+    participants_result = await session.execute(
+        select(MatchParticipant.roster_entry_id).where(MatchParticipant.match_id == match_id)
+    )
+    in_match = set(participants_result.scalars())
+    staying = [pid for pid in in_match if pid != leaving_id]
+    candidates = [
+        pid
+        for pid in await _get_active_roster_ordered(session, group.id)
+        if pid != leaving_id and pid not in in_match
+    ]
+    if not candidates:
+        return None
+
+    counts = await _load_pair_counts(session, group.id)
+
+    def met(a: uuid.UUID, b: uuid.UUID) -> int:
+        return sum(counts.get(frozenset((a, b)), [0, 0]))
+
+    join_order = {pid: index for index, pid in enumerate(candidates)}
+    return min(
+        candidates,
+        key=lambda pid: (
+            appearances.get(pid, 0),
+            sum(met(pid, other) for other in staying),
+            join_order[pid],
+        ),
+    )
 
 
 async def handle_member_left(
@@ -1913,6 +2631,7 @@ async def kick_member(session: AsyncSession, group: Group, entry: RosterEntry) -
     await session.commit()
     await session.refresh(entry)
     await session.refresh(group)
+    await refresh_courts_after_roster_change(session, group)
 
     await publish(
         group_notifications_channel(str(group.id)),
@@ -2144,6 +2863,8 @@ async def _advance_other_idle_courts(
         if current.scalar_one_or_none() is not None:
             continue
         pulled = await pull_queued_match_for_court(session, group.id, round_number, court.id)
+        if pulled is None:
+            pulled = await _seat_waiting_players_on_court(session, group, court.id, round_number)
         if pulled is not None:
             await session.commit()
             await _publish_rotation_updated(session, group.id, court.id, pulled)
@@ -2489,9 +3210,15 @@ async def undo_match_completion(
         if touched:
             raise ApiError("NEXT_MATCH_ALREADY_STARTED", status_code=422)
 
-        # Reverses pull_queued_match_for_court()'s own writes exactly —
-        # nothing else (PairHistory, wait_count) is touched by a plain
-        # pull, so there's nothing else to unwind here.
+        # Reverses _start_match()'s writes exactly: the court binding, serve
+        # state and the PairHistory it recorded. wait_count is untouched by
+        # a plain pull, so there's nothing else to unwind here.
+        replacement_team_a, replacement_team_b = await _match_participants_by_team(
+            session, replacement.id
+        )
+        await _record_pair_history(
+            session, replacement.group_id, replacement_team_a, replacement_team_b, delta=-1
+        )
         await session.execute(
             update(Match)
             .where(Match.id == replacement.id)
@@ -2832,24 +3559,16 @@ async def end_match_early(
 async def peek_next_queued_match(
     session: AsyncSession, group_id: uuid.UUID, round_number: int, court_id: uuid.UUID
 ) -> Match | None:
-    """唯讀版本的「即將登場」預告查詢（research.md #11）——`WHERE` 子句與
-    `pull_queued_match_for_court` 相同，但不帶 `with_for_update`、不修改
-    `court_id`/`status`，避免與真正的領取路徑爭搶列鎖。`court_id` 參數目前
-    未用於篩選（同一輪的排隊比賽尚未綁定場地），保留供未來場地優先序
-    邏輯使用，並使函式簽章與「這是哪個場地的預告」語意保持明確。"""
+    """唯讀版本的「即將登場」預告查詢（research.md #11）——與
+    `pull_queued_match_for_court` 共用 `_choose_next_queued_match()` 的挑選
+    規則（略過有球員正在其他場地比賽的場次、優先休息較久的球員），只是不帶
+    `with_for_update`、不修改 `court_id`/`status`，避免與真正的領取路徑爭搶
+    列鎖。以前這裡只取排序第一的場次，連球員還在別的場地上的場次也會被預告，
+    跟實際叫到的不一樣。`court_id` 參數目前未用於篩選（同一輪的排隊比賽尚未
+    綁定場地），保留供未來場地優先序邏輯使用，並使函式簽章與「這是哪個場地
+    的預告」語意保持明確。"""
     del court_id  # 見上——目前排隊比賽皆未綁定場地，暫不需要以此篩選
-    result = await session.execute(
-        select(Match)
-        .where(
-            Match.group_id == group_id,
-            Match.round_number == round_number,
-            Match.status == "queued",
-            Match.court_id.is_(None),
-        )
-        .order_by(Match.created_at)
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
+    return await _choose_next_queued_match(session, group_id, round_number, lock=False)
 
 
 async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveState:

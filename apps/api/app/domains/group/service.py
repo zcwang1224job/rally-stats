@@ -78,7 +78,11 @@ from app.domains.schedule.models import (
     ShotPlacementRecord,
 )
 from app.domains.schedule.schemas import ParticipantSummary
-from app.domains.schedule.service import handle_member_joined, handle_member_left
+from app.domains.schedule.service import (
+    handle_member_joined,
+    handle_member_left,
+    refresh_courts_after_roster_change,
+)
 from app.system_config.service import (
     get_default_court_name,
     get_default_group_name_suffix,
@@ -860,11 +864,13 @@ async def join_group(
     session.add(roster_entry)
     await session.flush()
 
-    await handle_member_joined(session, group, roster_entry)
+    schedule_changed = await handle_member_joined(session, group, roster_entry)
     await _touch_activity(session, group)
     await session.commit()
     await session.refresh(group)
     await session.refresh(roster_entry)
+    if schedule_changed:
+        await refresh_courts_after_roster_change(session, group)
 
     await publish(
         group_notifications_channel(str(group.id)),
@@ -2054,6 +2060,7 @@ async def leave_group(
     await session.commit()
     await session.refresh(entry)
     await session.refresh(group)
+    await refresh_courts_after_roster_change(session, group)
 
     await publish(
         group_notifications_channel(str(group.id)),

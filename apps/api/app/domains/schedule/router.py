@@ -21,6 +21,8 @@ from app.domains.schedule.schemas import (
     AutoNextRoundRequest,
     AutoNextRoundResponse,
     ChangeMatchPlayerRequest,
+    ContinuousRotationRequest,
+    ContinuousRotationResponse,
     CourtLiveState,
     CourtStateResponse,
     KickMemberResponse,
@@ -80,9 +82,10 @@ async def get_round_matches(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RoundMatchesResponse:
     """011-round-robin-scheduling: 本輪完整賽程清單（管理頁「本輪賽程清單」
-    區塊），涵蓋 queued/in_progress/completed/abandoned 全部狀態，依產生
-    順序排列，讓管理員能看到整份預先排好的循環賽賽程，而不只是每個場地
-    目前這一場。Errors: `ADMIN_TOKEN_INVALID`."""
+    區塊），涵蓋 queued/in_progress/completed/abandoned 全部狀態（已上場的
+    依上場先後，其餘依叫號順序），讓管理員能看到整份預先排好的循環賽賽程，
+    而不只是每個場地目前這一場；另附剩餘場數、預估剩餘時間與本輪輪空名單。
+    Errors: `ADMIN_TOKEN_INVALID`."""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     return await service.build_round_matches_list(session, group)
@@ -100,9 +103,8 @@ async def next_round(
     (omitted/null/empty = unchanged existing behavior, US3) — only consumed
     when `scheduling_mechanism == "fixed_partner"` and `partner_source ==
     "manual"`; ignored otherwise. Errors: `ADMIN_TOKEN_INVALID`,
-    `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`,
-    `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT` (011-round-robin-scheduling
-    FR-003)."""
+    `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`. (An odd
+    fixed_partner headcount no longer fails: one member gets a bye.)"""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     temporary_pairings = (
@@ -145,8 +147,7 @@ async def plan_round(
     `GET .../schedule/matches` and `POST .../schedule/matches/swap`) before
     `POST .../schedule/start`. Errors: `ADMIN_TOKEN_INVALID`,
     `SCHEDULING_MECHANISM_MISMATCH` (manual mode — use `/next-round`
-    instead), `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`,
-    `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT`."""
+    instead), `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`."""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     temporary_pairings = (
@@ -258,6 +259,25 @@ async def set_auto_next_round(
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     updated = await service.set_auto_next_round(session, group, payload.enabled)
     return AutoNextRoundResponse(auto_next_round=updated.auto_next_round)
+
+
+@router.patch(
+    "/groups/{group_id}/continuous-rotation", response_model=ContinuousRotationResponse
+)
+async def set_continuous_rotation(
+    group_id: uuid.UUID,
+    payload: ContinuousRotationRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ContinuousRotationResponse:
+    """fair_rotation doubles only: a court that frees up with nothing queued
+    immediately takes the four longest-waiting idle players. Errors:
+    `ADMIN_TOKEN_INVALID`, `CONTINUOUS_ROTATION_NOT_SUPPORTED` (enabling it
+    for any other mechanism or for singles)."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.set_continuous_rotation(session, group, payload.enabled)
+    return ContinuousRotationResponse(continuous_rotation=updated.continuous_rotation)
 
 
 @router.get("/groups/{group_id}/partnerships", response_model=PartnershipsResponse)
