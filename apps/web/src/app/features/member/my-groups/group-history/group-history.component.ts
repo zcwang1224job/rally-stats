@@ -1,3 +1,4 @@
+import { RatioPercentPipe } from '../../../../shared/percent/ratio-percent.pipe';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -64,6 +65,7 @@ interface PlayerPieSlice {
 @Component({
   selector: 'app-group-history',
   imports: [
+    RatioPercentPipe,
     RecordHeroComponent,
     MatchCardComponent,
     RoundTrendChartComponent,

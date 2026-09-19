@@ -1,3 +1,4 @@
+import { IconComponent } from '../../../shared/icon/icon.component';
 import {
   Component,
   DestroyRef,
@@ -34,7 +35,7 @@ import {
  * 端點。 */
 @Component({
   selector: 'app-all-courts-court-block',
-  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent, IconComponent],
   templateUrl: './all-courts-court-block.component.html',
   styleUrl: './all-courts-court-block.component.scss',
 })

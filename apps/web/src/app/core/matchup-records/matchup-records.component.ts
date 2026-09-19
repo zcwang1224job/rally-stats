@@ -1,3 +1,4 @@
+import { formatPercent } from '../match-record-detail/ratio-format';
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, input, output, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -75,7 +76,7 @@ export class MatchupRecordsComponent {
   });
 
   percent(rate: number): string {
-    return `${Math.round(rate * 100)}%`;
+    return formatPercent(rate);
   }
 
   /** "+3.5" / "−6.0": the real minus sign, so the column lines up. */

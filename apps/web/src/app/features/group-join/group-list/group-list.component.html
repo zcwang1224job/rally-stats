@@ -75,7 +75,7 @@
           <li>
             <button type="button" class="filter-chip" (click)="clearFilter(chip.key)">
               <span>{{ chip.labelKey | translate }}: {{ chip.value || (chip.valueKey! | translate) }}</span>
-              <span aria-hidden="true">✕</span>
+              <app-icon name="x" />
             </button>
           </li>
         }
@@ -110,14 +110,14 @@
                   class="status-badge lock-icon lock-closed"
                   [attr.aria-label]="'groupJoin.hasPasswordLabel' | translate"
                   [title]="'groupJoin.hasPasswordLabel' | translate"
-                  >🔒 {{ 'groupJoin.hasPasswordLabel' | translate }}</span
+                  ><app-icon name="lock" /> {{ 'groupJoin.hasPasswordLabel' | translate }}</span
                 >
               } @else {
                 <span
                   class="status-badge lock-icon lock-open"
                   [attr.aria-label]="'groupJoin.noPasswordLabel' | translate"
                   [title]="'groupJoin.noPasswordLabel' | translate"
-                  >🔓 {{ 'groupJoin.noPasswordLabel' | translate }}</span
+                  ><app-icon name="unlock" /> {{ 'groupJoin.noPasswordLabel' | translate }}</span
                 >
               }
               <span class="status-badge">
@@ -130,12 +130,12 @@
           </div>
 
           <div class="group-card__meta">
-            <span>👤 {{ group.creator_nickname }}</span>
+            <span><app-icon name="user" /> {{ group.creator_nickname }}</span>
             @if (group.activity_time_start && group.activity_time_end) {
-              <span>🕐 {{ group.activity_time_start }} - {{ group.activity_time_end }}</span>
+              <span><app-icon name="clock" /> {{ group.activity_time_start }} - {{ group.activity_time_end }}</span>
             }
             @if (group.court_names.length > 0) {
-              <span>📍 {{ group.court_names.join('、') }}</span>
+              <span><app-icon name="map-pin" /> {{ group.court_names.join('、') }}</span>
             }
           </div>
 
@@ -143,7 +143,10 @@
             <div class="capacity-bar">
               <div class="capacity-bar__fill" [style.width.%]="capacityPercent(group)"></div>
             </div>
-            <span class="capacity-label">{{ group.current_member_count }} / {{ group.max_members }} 人</span>
+            <span class="capacity-label">{{
+              'groupJoin.capacity'
+                | translate: { current: group.current_member_count, max: group.max_members }
+            }}</span>
           </div>
 
           <div class="group-card__footer">

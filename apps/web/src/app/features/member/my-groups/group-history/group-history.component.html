@@ -83,7 +83,7 @@
                 {{ opponent.wins }}{{ 'member.matchHistory.stats.winShort' | translate }}
                 {{ opponent.losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}
               </span>
-              <span class="ranking-row__rate">{{ (opponent.win_rate * 100).toFixed(0) }}%</span>
+              <span class="ranking-row__rate">{{ opponent.win_rate | ratioPercent }}</span>
             </li>
           }
         </ol>
@@ -188,7 +188,7 @@
               <span class="player-pie-card__legend-name"><app-nickname [value]="slice.record.nickname" /></span>
               <span class="player-pie-card__legend-stats">
                 {{ 'memberGroupHistory.filters.playerChartWinsLabel' | translate: { wins: slice.record.wins } }}
-                ・{{ (slice.record.win_rate * 100).toFixed(0) }}%
+                ・{{ slice.record.win_rate | ratioPercent }}
               </span>
             </li>
           }

@@ -512,6 +512,13 @@ details.disclosure {
     color: var(--color-danger);
   }
 
+  &--brand {
+    background: color-mix(in srgb, var(--color-brand-primary) 12%, white);
+    border-color: color-mix(in srgb, var(--color-brand-primary) 30%, white);
+    // Darkened toward ink so the caption-size label clears 4.5:1 on the tint.
+    color: color-mix(in srgb, var(--color-brand-primary) 75%, var(--color-ink));
+  }
+
   &--muted {
     color: var(--color-text-muted);
   }

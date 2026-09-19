@@ -1,3 +1,4 @@
+import { RatioPercentPipe } from '../../shared/percent/ratio-percent.pipe';
 import { Component, ElementRef, computed, inject, input, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import {
@@ -69,6 +70,7 @@ const DENSE_ABOVE = 150;
 @Component({
   selector: 'app-player-dashboard',
   imports: [
+    RatioPercentPipe,
     TranslatePipe,
     DashboardMetricCardComponent,
     DashboardTrendChartComponent,

@@ -23,7 +23,7 @@
       >
       <span class="stats-summary__rate">
         {{ 'member.matchHistory.stats.winRate' | translate }}
-        {{ (r.win_rate * 100).toFixed(0) }}%
+        {{ r.win_rate | ratioPercent }}
       </span>
     </div>
   </section>

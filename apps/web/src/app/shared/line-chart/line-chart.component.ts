@@ -1,3 +1,4 @@
+import { formatPercent } from '../../core/match-record-detail/ratio-format';
 import { Component, computed, input, signal } from '@angular/core';
 
 /** One point on the line. `display` is the value as the reader sees it
@@ -162,6 +163,6 @@ export class LineChartComponent {
   }
 
   private formatBound(value: number): string {
-    return this.kind() === 'rate' ? `${Math.round(value * 100)}%` : value.toFixed(1);
+    return this.kind() === 'rate' ? formatPercent(value) : value.toFixed(1);
   }
 }

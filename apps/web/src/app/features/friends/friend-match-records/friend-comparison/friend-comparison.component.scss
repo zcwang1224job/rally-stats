@@ -1,3 +1,5 @@
+@use '../../../../../styles/breakpoints';
+
 :host {
   display: block;
   min-width: 0;
@@ -101,7 +103,7 @@
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
   .comparison__row--head {
     display: none;
   }

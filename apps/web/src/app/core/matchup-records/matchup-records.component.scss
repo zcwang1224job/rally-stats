@@ -1,3 +1,5 @@
+@use '../../../styles/breakpoints';
+
 :host {
   display: block;
   min-width: 0;
@@ -154,7 +156,7 @@
   text-align: end;
 }
 
-@media (max-width: 480px) {
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
   .matchup {
     grid-template-columns: 1fr auto auto;
     row-gap: 2px;

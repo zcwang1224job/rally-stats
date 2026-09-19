@@ -1,4 +1,5 @@
 import { Component, effect, inject, input, signal } from '@angular/core';
+import { IconComponent } from '../../../shared/icon/icon.component';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
@@ -35,7 +36,7 @@ import { ScheduleService } from './schedule.service';
  * 的回饋只是名字悄悄換掉，很容易被忽略。 */
 @Component({
   selector: 'app-round-matches-list',
-  imports: [TranslatePipe, DragDropModule],
+  imports: [TranslatePipe, DragDropModule, IconComponent],
   templateUrl: './round-matches-list.component.html',
   styleUrl: './round-matches-list.component.scss',
 })

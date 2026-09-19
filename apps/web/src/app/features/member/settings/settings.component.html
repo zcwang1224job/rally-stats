@@ -123,11 +123,11 @@
             <li class="login-records__row">
               <span class="login-records__device" aria-hidden="true">
                 @if (record.device_category === 'mobile') {
-                  📱
+                  <app-icon name="phone" />
                 } @else if (record.device_category === 'desktop') {
-                  🖥️
+                  <app-icon name="monitor" />
                 } @else {
-                  ❔
+                  <app-icon name="help" />
                 }
               </span>
               <span class="login-records__time">{{ record.created_at | date: 'yyyy/MM/dd HH:mm:ss' }}</span>

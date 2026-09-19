@@ -7,7 +7,7 @@
     @if (s.current_match; as match) {
       <div class="score-controls-toolbar">
         <button type="button" class="btn btn--secondary" (click)="toggleSwap()">
-          ⇄ {{ 'controlPanel.swapTeams' | translate }}
+          <app-icon name="swap" /> {{ 'controlPanel.swapTeams' | translate }}
         </button>
       </div>
       <div class="score-board">

@@ -1,4 +1,5 @@
 import { Component, effect, inject, signal } from '@angular/core';
+import { IconComponent } from '../../shared/icon/icon.component';
 import { RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { AuthService } from '../../features/auth/auth.service';
@@ -15,7 +16,7 @@ import { LanguageSwitcherComponent } from '../language/language-switcher.compone
  * member sees (FR-006). */
 @Component({
   selector: 'app-nav-shell',
-  imports: [RouterLink, TranslatePipe, NotificationBellComponent, LanguageSwitcherComponent],
+  imports: [RouterLink, TranslatePipe, NotificationBellComponent, LanguageSwitcherComponent, IconComponent],
   templateUrl: './nav-shell.component.html',
   styleUrl: './nav-shell.component.scss',
 })

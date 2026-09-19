@@ -27,8 +27,6 @@ h2 {
 // 加二次確認（憲章原則 V）；視覺上調得比主要的「點兩人互換」按鈕更輕，
 // 避免在配對列表中搶走主要操作的注意力。
 .btn--dissolve {
-  min-width: auto;
-  min-height: auto;
   padding: var(--space-xs) var(--space-sm);
   font-size: var(--font-size-caption);
   font-weight: normal;
@@ -56,4 +54,11 @@ h2 {
   background: color-mix(in srgb, var(--color-brand-accent) 10%, white);
   border-color: color-mix(in srgb, var(--color-brand-accent) 25%, white);
   color: var(--color-brand-accent);
+}
+
+// The "+" between the two players of a pair — a joiner, not a control.
+.pair-joiner {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
 }
