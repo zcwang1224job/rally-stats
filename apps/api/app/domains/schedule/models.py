@@ -53,6 +53,11 @@ class Match(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    # Call-up order among a round's queued matches (0 first), written by the
+    # round's shuffle, the admin's drag-reorder and late-joiner catch-up.
+    # NULL for matches that go straight onto a court (manual assignment,
+    # continuous rotation), which never wait in the queue.
+    queue_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # 030-score-serve-record: persistent "serve state", initialized once the
     # match becomes in_progress (_initialize_serve_state()) and advanced on
@@ -244,7 +249,12 @@ class PairHistory(Base):
     player_hi_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("roster_entries.id"), primary_key=True
     )
+    # Matches in which the two players met at all (as teammates or as
+    # opponents), counted when the match takes a court.
     pair_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # The subset of pair_count where they were on the same side; the
+    # opponent count is pair_count - teammate_count.
+    teammate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class Partnership(Base):

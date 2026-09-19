@@ -16,7 +16,9 @@ import { MemberScheduleComponent } from './member-schedule.component';
 const scheduleResponse: ScheduleResponse = {
   current_round_number: 1,
   scheduling_mechanism: 'manual',
+  match_mode: 'singles',
   auto_next_round: false,
+  continuous_rotation: false,
   round_phase: null,
   courts: [
     {
@@ -76,6 +78,9 @@ const defaultCandidates: InviteCandidatesResponse = {
 
 const roundMatchesResponse: RoundMatchesResponse = {
   round_number: 1,
+  remaining_count: 0,
+  estimated_remaining_minutes: null,
+  sitting_out: [],
   matches: [
     {
       match_id: 'm1',
@@ -161,7 +166,7 @@ describe('MemberScheduleComponent full round-matches list', () => {
   });
 
   it('shows a placeholder message when the round has no matches yet', () => {
-    const fixture = setup({ getRoundMatches: () => of({ round_number: 1, matches: [] }) });
+    const fixture = setup({ getRoundMatches: () => of({ round_number: 1, matches: [], remaining_count: 0, estimated_remaining_minutes: null, sitting_out: [] }) });
 
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.noRoundMatchesYet');
   });

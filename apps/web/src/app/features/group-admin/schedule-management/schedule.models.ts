@@ -78,7 +78,10 @@ export interface RosterScheduleStatus {
 export interface ScheduleResponse {
   current_round_number: number;
   scheduling_mechanism: string;
+  match_mode: string;
   auto_next_round: boolean;
+  /** 只對公平輪替雙打有意義：場地一空就從等最久的人排下一場。 */
+  continuous_rotation: boolean;
   round_phase: RoundPhase | null;
   courts: CourtScheduleStatus[];
   roster: RosterScheduleStatus[];
@@ -135,6 +138,12 @@ export interface RoundMatchSummary {
 export interface RoundMatchesResponse {
   round_number: number;
   matches: RoundMatchSummary[];
+  /** 還沒打完的場次數（排隊中＋進行中）。 */
+  remaining_count: number;
+  /** 粗估還要幾分鐘本輪才會打完；沒有剩餘場次時為 null。 */
+  estimated_remaining_minutes: number | null;
+  /** 本輪完全沒有排到比賽的現役成員（例如固定搭檔人數為奇數時的輪空）。 */
+  sitting_out: RosterSummary[];
 }
 
 // 017-fixed-partner-autofill: 暫時隨機配對——刻意沒有 partnership_id，

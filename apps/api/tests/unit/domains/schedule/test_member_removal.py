@@ -113,7 +113,9 @@ async def test_removal_does_not_touch_in_progress_match(db_session: AsyncSession
 
 @pytest.mark.asyncio
 async def test_removal_does_not_touch_other_queued_matches(db_session: AsyncSession) -> None:
-    group = await _make_group(db_session)
+    # fixed_partner still abandons the leaver's matches (fair_rotation
+    # doubles would substitute C or D in, see test_member_substitution.py).
+    group = await _make_group(db_session, "fixed_partner")
     a = await _make_roster_entry(db_session, group, "A")
     b = await _make_roster_entry(db_session, group, "B")
     c = await _make_roster_entry(db_session, group, "C")

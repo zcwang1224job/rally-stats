@@ -21,6 +21,18 @@
         </button>
       </div>
 
+      @if (matches().length > 0) {
+        <p class="round-progress">
+          {{ 'scheduleManagement.roundRemaining' | translate: { total: matches().length, remaining: remainingCount() } }}
+          @if (estimatedRemainingMinutes(); as minutes) {
+            · {{ 'scheduleManagement.roundEstimate' | translate: { minutes } }}
+          }
+        </p>
+        @if (sittingOutNames(); as names) {
+          <p class="round-progress">{{ 'scheduleManagement.roundSittingOut' | translate: { names } }}</p>
+        }
+      }
+
       @if (actionErrorKey(); as key) {
         <p role="alert">{{ key | translate }}</p>
       }

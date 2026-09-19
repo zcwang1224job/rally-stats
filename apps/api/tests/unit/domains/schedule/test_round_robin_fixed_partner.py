@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import ApiError
 from app.domains.court.models import Court
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
@@ -97,7 +96,10 @@ async def test_fixed_partner_round_robin_covers_every_team_matchup_once(
 
 
 @pytest.mark.asyncio
-async def test_odd_headcount_is_rejected(db_session: AsyncSession) -> None:
+async def test_odd_headcount_gives_the_unpartnered_member_a_bye(db_session: AsyncSession) -> None:
+    """An odd headcount used to fail with FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT;
+    now the member left without a partner sits the round out and the three
+    formal teams still play their round-robin."""
     group = await _make_group(db_session)
     await _make_court(db_session, group)
     entries = await _make_entries(db_session, group, 7)
@@ -108,15 +110,46 @@ async def test_odd_headcount_is_rejected(db_session: AsyncSession) -> None:
         )
     await db_session.commit()
 
-    with pytest.raises(ApiError) as exc_info:
-        await generate_next_round(db_session, group)
+    await generate_next_round(db_session, group)
 
-    assert exc_info.value.error_code == "FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT"
+    matches = (
+        await db_session.execute(select(Match).where(Match.group_id == group.id))
+    ).scalars().all()
+    assert len(matches) == math.comb(3, 2)
 
-    await db_session.refresh(group)
-    assert group.current_round_number == 1
-
-    match_count = await db_session.execute(
-        select(Match).where(Match.group_id == group.id)
+    players = set(
+        (
+            await db_session.execute(
+                select(MatchParticipant.roster_entry_id).where(
+                    MatchParticipant.match_id.in_([m.id for m in matches])
+                )
+            )
+        ).scalars()
     )
-    assert match_count.scalars().all() == []
+    assert players == {entry.id for entry in entries[:6]}
+
+
+@pytest.mark.asyncio
+async def test_bye_rotates_to_whoever_has_played_most(db_session: AsyncSession) -> None:
+    """auto partner source, 5 members: round 2's bye must go to someone who
+    played in round 1, so the same person doesn't sit out twice in a row."""
+    group = await _make_group(db_session, partner_source="auto")
+    await _make_court(db_session, group)
+    entries = await _make_entries(db_session, group, 5)
+
+    async def round_players(round_number: int) -> set[object]:
+        result = await db_session.execute(
+            select(MatchParticipant.roster_entry_id)
+            .join(Match, Match.id == MatchParticipant.match_id)
+            .where(Match.group_id == group.id, Match.round_number == round_number)
+        )
+        return set(result.scalars())
+
+    group = await generate_next_round(db_session, group)
+    first_bye = {entry.id for entry in entries} - await round_players(1)
+    assert len(first_bye) == 1
+
+    group = await generate_next_round(db_session, group)
+    second_bye = {entry.id for entry in entries} - await round_players(2)
+    assert len(second_bye) == 1
+    assert second_bye != first_bye

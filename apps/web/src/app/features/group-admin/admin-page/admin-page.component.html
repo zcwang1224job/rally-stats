@@ -149,6 +149,18 @@
                   </label>
                 }
 
+                @if (sched.scheduling_mechanism === 'fair_rotation' && sched.match_mode === 'doubles') {
+                  <label class="checkbox-label">
+                    <input
+                      type="checkbox"
+                      [checked]="sched.continuous_rotation"
+                      (change)="toggleContinuousRotation($any($event.target).checked)"
+                    />
+                    {{ 'scheduleManagement.continuousRotation' | translate }}
+                  </label>
+                  <p class="section-hint">{{ 'scheduleManagement.continuousRotationHint' | translate }}</p>
+                }
+
                 @if (sched.scheduling_mechanism === 'manual') {
                   <button
                     type="button"

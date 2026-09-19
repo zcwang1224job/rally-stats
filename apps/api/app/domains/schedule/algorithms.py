@@ -9,22 +9,50 @@ pairs, or already-formed teams to form match-ups)."""
 
 import random
 import uuid
-from collections.abc import Callable, Sequence
-from datetime import datetime
+from collections.abc import Callable, Collection, Mapping, Sequence
+from datetime import datetime, timedelta
+from functools import cache
 from typing import TypeVar, cast
 
 T = TypeVar("T")
+
+# (matches actually played in this group, when the latest of them started)
+PlayStats = tuple[int, datetime | None]
 
 
 def stage1_select_players(
     roster: Sequence[tuple[uuid.UUID, int | None, datetime]],
     n: int,
+    play_stats: Mapping[uuid.UUID, PlayStats] | None = None,
 ) -> list[uuid.UUID]:
     """FR-005: top `n` roster entries by wait_count DESC (None = infinite,
-    i.e. never played — always outranks any finite count), tie-broken by
-    joined_at ASC. `roster` items are (roster_entry_id, wait_count,
-    joined_at) tuples."""
-    ordered = sorted(roster, key=lambda item: (item[1] is not None, -(item[1] or 0), item[2]))
+    i.e. never played — always outranks any finite count). `roster` items
+    are (roster_entry_id, wait_count, joined_at) tuples.
+
+    Ties on wait_count go to whoever has played fewer matches, then to
+    whoever played least recently, and only then to joined_at ASC. Right
+    after a round, everyone who played shares wait_count 0, so a bare
+    joined_at tie-break handed the leftover seats to the earliest joiners
+    every single round whenever the roster wasn't a multiple of the round's
+    capacity (10 players on 2 courts: the first 6 played every round, the
+    last 4 every other round). `play_stats` maps roster_entry_id to
+    `PlayStats`; a missing entry means "never played"."""
+    stats = play_stats or {}
+
+    def sort_key(
+        item: tuple[uuid.UUID, int | None, datetime],
+    ) -> tuple[bool, int, int, float, datetime]:
+        roster_entry_id, wait_count, joined_at = item
+        played, last_started = stats.get(roster_entry_id, (0, None))
+        return (
+            wait_count is not None,
+            -(wait_count or 0),
+            played,
+            last_started.timestamp() if last_started is not None else float("-inf"),
+            joined_at,
+        )
+
+    ordered = sorted(roster, key=sort_key)
     return [item[0] for item in ordered[:n]]
 
 
@@ -45,6 +73,87 @@ def greedy_pair_by_cost(units: Sequence[T], cost: Callable[[T, T], int]) -> list
     return pairs
 
 
+# 2^14 subsets × 13 partner choices stays well under 10ms; past this the
+# exact search grows too fast and pairing falls back to greedy + 2-opt.
+_EXACT_PAIRING_MAX_UNITS = 14
+
+
+def _exact_min_cost_pairing(units: Sequence[T], cost: Callable[[T, T], int]) -> list[tuple[T, T]]:
+    """Minimum-total-cost matching by DP over subsets: the lowest-index
+    unpaired unit is always the anchor, and ties keep the earliest partner,
+    so all-equal costs reproduce the greedy result ((0, 1), (2, 3), ...).
+    With an odd count, the unit left out is whichever makes the rest
+    cheapest to pair, the latest one on ties."""
+    n = len(units)
+    costs = [[cost(units[i], units[j]) if i != j else 0 for j in range(n)] for i in range(n)]
+
+    @cache
+    def best(mask: int) -> tuple[int, tuple[tuple[int, int], ...]]:
+        if mask == 0:
+            return 0, ()
+        anchor = (mask & -mask).bit_length() - 1
+        rest = mask & ~(1 << anchor)
+        best_total: int | None = None
+        best_pairs: tuple[tuple[int, int], ...] = ()
+        partner_mask = rest
+        while partner_mask:
+            partner = (partner_mask & -partner_mask).bit_length() - 1
+            partner_mask &= partner_mask - 1
+            sub_total, sub_pairs = best(rest & ~(1 << partner))
+            total = costs[anchor][partner] + sub_total
+            if best_total is None or total < best_total:
+                best_total = total
+                best_pairs = ((anchor, partner), *sub_pairs)
+        return cast(int, best_total), best_pairs
+
+    full = (1 << n) - 1
+    if n % 2 == 0:
+        _total, index_pairs = best(full)
+    else:
+        options = [best(full & ~(1 << left_out)) for left_out in range(n - 1, -1, -1)]
+        _total, index_pairs = min(options, key=lambda option: option[0])
+    return [(units[i], units[j]) for i, j in index_pairs]
+
+
+def _improve_pairing_2opt(
+    pairs: list[tuple[T, T]], cost: Callable[[T, T], int]
+) -> list[tuple[T, T]]:
+    """Local search for rosters too large for the exact search: keeps
+    re-partnering any two pairs whenever one of the two alternative splits
+    of their four units is strictly cheaper, until nothing improves."""
+    improved = True
+    while improved:
+        improved = False
+        for i in range(len(pairs)):
+            for j in range(i + 1, len(pairs)):
+                (a, b), (c, d) = pairs[i], pairs[j]
+                current = cost(a, b) + cost(c, d)
+                for first, second in (((a, c), (b, d)), ((a, d), (b, c))):
+                    if cost(*first) + cost(*second) < current:
+                        pairs[i], pairs[j] = first, second
+                        improved = True
+                        break
+                if improved:
+                    break
+            if improved:
+                break
+    return pairs
+
+
+def min_cost_pairing(units: Sequence[T], cost: Callable[[T, T], int]) -> list[tuple[T, T]]:
+    """Pairs `units` up minimizing the total `cost` over all pairs — exact
+    for rosters up to `_EXACT_PAIRING_MAX_UNITS`, greedy plus 2-opt local
+    search beyond that. The greedy pass alone commits to its first anchor's
+    cheapest partner even when that forces an expensive repeat further down
+    the list. With an odd count one unit is left out of the result and
+    callers decide what to do with it, same as `greedy_pair_by_cost`.
+    (`min()` returns the first of equal options, i.e. the latest left-out
+    unit, since the options run from the last unit backwards.)"""
+    if len(units) <= _EXACT_PAIRING_MAX_UNITS + 1:
+        return _exact_min_cost_pairing(units, cost)
+    return _improve_pairing_2opt(greedy_pair_by_cost(units, cost), cost)
+
+
 def stage2_pair_players(
     player_ids: Sequence[uuid.UUID],
     pair_count: Callable[[uuid.UUID, uuid.UUID], int],
@@ -52,7 +161,45 @@ def stage2_pair_players(
     """FR-008: pair up `player_ids` (already stage-1 ordered) minimizing
     pair_count per pair. MUST NOT influence who made the stage-1 cut — this
     function only ever receives the already-selected list."""
-    return greedy_pair_by_cost(player_ids, pair_count)
+    return min_cost_pairing(player_ids, pair_count)
+
+
+# How long a player needs to have been off court before the next match
+# stops preferring someone who has rested longer. Beyond this, candidates
+# count as equally rested and the admin's call-up order decides. Chosen by
+# simulation: 5 minutes removes as many back-to-back matches as ranking on
+# raw rest time does, while leaving the admin's order alone far more often.
+REST_SATURATION = timedelta(minutes=5)
+
+
+def pick_next_match(
+    candidates: Sequence[tuple[T, Collection[uuid.UUID]]],
+    last_ended: Mapping[uuid.UUID, datetime],
+    now: datetime,
+    saturation: timedelta = REST_SATURATION,
+) -> T | None:
+    """Chooses which queued match a freed court should take next.
+    `candidates` are (match, participant ids) in call-up order, already
+    filtered to matches with nobody currently on another court; `last_ended`
+    maps a player to when their latest played match ended (absent = hasn't
+    played yet). Each candidate is scored by the shortest rest among its
+    players, capped at `saturation`; the highest score wins, and ties keep
+    call-up order. Taking the earliest candidate unconditionally made the
+    same people play several matches in a row while others waited through
+    long gaps: in a simulated 12-player, 4-court singles round, 55
+    back-to-back starts and a 45-minute longest wait, versus 17 and 19
+    minutes with this rule."""
+    best: T | None = None
+    best_rest: timedelta | None = None
+    for item, players in candidates:
+        rest = saturation
+        for player in players:
+            ended = last_ended.get(player)
+            if ended is not None:
+                rest = min(rest, max(now - ended, timedelta(0)))
+        if best_rest is None or rest > best_rest:
+            best, best_rest = item, rest
+    return best
 
 
 TeamCandidate = tuple[tuple[uuid.UUID, uuid.UUID], int | None, int | None, datetime, datetime]
@@ -183,11 +330,13 @@ def team_matchup_stage2(
     sum of pair_count across all 4 cross-team member combinations. Reused
     verbatim by fair_rotation's own doubles handling (US1) and individual
     mixed's second step (FR-025) — this is the one "team vs team" primitive
-    in the whole domain, not something fixed_partner owns exclusively."""
+    in the whole domain, not something fixed_partner owns exclusively.
+    Callers pass the opponent-only count here, since the teams are already
+    fixed and only who faces whom is still open."""
 
     def cross_cost(
         team_x: tuple[uuid.UUID, uuid.UUID], team_y: tuple[uuid.UUID, uuid.UUID]
     ) -> int:
         return sum(pair_count(a, b) for a in team_x for b in team_y)
 
-    return greedy_pair_by_cost(teams, cross_cost)
+    return min_cost_pairing(teams, cross_cost)

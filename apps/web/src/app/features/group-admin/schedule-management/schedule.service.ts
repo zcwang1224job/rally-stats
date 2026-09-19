@@ -161,6 +161,17 @@ export class ScheduleService {
     );
   }
 
+  setContinuousRotation(
+    groupId: string,
+    enabled: boolean,
+  ): Observable<{ continuous_rotation: boolean }> {
+    return this.api.patch<{ continuous_rotation: boolean }>(
+      `/groups/${groupId}/continuous-rotation`,
+      { enabled },
+      this.authHeader(groupId),
+    );
+  }
+
   manualAssign(
     groupId: string,
     courtId: string,

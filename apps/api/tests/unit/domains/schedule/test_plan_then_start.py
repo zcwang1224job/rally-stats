@@ -470,7 +470,7 @@ async def test_reorder_planned_matches_changes_call_up_order(db_session: AsyncSe
     result = await db_session.execute(
         select(Match.id)
         .where(Match.group_id == group.id, Match.round_number == 1)
-        .order_by(Match.created_at)
+        .order_by(Match.queue_position)
     )
     original_order = list(result.scalars())
     new_order = list(reversed(original_order))
@@ -480,7 +480,7 @@ async def test_reorder_planned_matches_changes_call_up_order(db_session: AsyncSe
     result = await db_session.execute(
         select(Match.id)
         .where(Match.group_id == group.id, Match.round_number == 1)
-        .order_by(Match.created_at)
+        .order_by(Match.queue_position)
     )
     assert list(result.scalars()) == new_order
 
@@ -532,7 +532,7 @@ async def test_reorder_is_allowed_once_round_has_started_for_still_queued_matche
     result = await db_session.execute(
         select(Match.id)
         .where(Match.group_id == group.id, Match.round_number == 1, Match.status == "queued")
-        .order_by(Match.created_at)
+        .order_by(Match.queue_position)
     )
     assert list(result.scalars()) == new_order
 
@@ -730,8 +730,11 @@ async def test_change_match_player_rejects_inactive_roster_member(
         select(Match).where(Match.group_id == group.id, Match.round_number == 1)
     )
     match = result.scalars().first()
-    old_player = next(iter(await _lineup(db_session, match.id)))
-    inactive_player = next(e for e in entries if e.id != old_player)
+    lineup = await _lineup(db_session, match.id)
+    old_player = next(iter(lineup))
+    # Someone outside this match — the other participant would be rejected
+    # as DUPLICATE_PARTICIPANT before the active check is reached.
+    inactive_player = next(e for e in entries if e.id not in lineup)
     inactive_player.status = "left"
     await db_session.commit()
 
