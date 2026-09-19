@@ -20,6 +20,16 @@ h2 {
 .score {
   font-size: var(--font-size-display);
   font-weight: var(--font-weight-black);
+  font-variant-numeric: tabular-nums;
+}
+
+// A row in the round's match list — sized like a match card's score, not
+// like the live courts' mini scoreboard above.
+.round-matches-list__score {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .participants {

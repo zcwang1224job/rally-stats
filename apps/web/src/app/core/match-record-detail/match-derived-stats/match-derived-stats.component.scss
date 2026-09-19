@@ -10,24 +10,6 @@
   // component is itself one item in that same column.
 }
 
-.derived-section {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-
-  > summary {
-    cursor: pointer;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-bold);
-    // A comfortable touch target without making the collapsed list tall.
-    padding: var(--space-xs) 0;
-  }
-
-  &[open] > summary {
-    margin-bottom: var(--space-sm);
-  }
-}
-
 .lead-change-list {
   margin: var(--space-xs) 0 0;
   padding-left: var(--space-lg);
