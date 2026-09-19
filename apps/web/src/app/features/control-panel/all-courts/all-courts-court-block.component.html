@@ -78,6 +78,8 @@
         [scoringTeam]="pendingScoringSide()"
         [servingTeam]="pendingServingTeam()"
         [servingScore]="pendingServingScore()"
+        [servingRosterEntryId]="pendingServingRosterEntryId()"
+        [leftTeam]="leftTeam()"
         (confirmed)="onShotPlacementConfirmed($event)"
         (scoreCancelled)="onShotPlacementCancelled()"
         (closed)="onShotPlacementClosed()"

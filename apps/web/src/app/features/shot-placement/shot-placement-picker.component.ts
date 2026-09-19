@@ -8,6 +8,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -18,6 +19,7 @@ import {
   Team,
 } from '../../core/api/court-live-state.models';
 import { CourtDiagramComponent } from '../../core/court-diagram/court-diagram.component';
+import { IconComponent } from '../../shared/icon/icon.component';
 
 /** 032-optional-shot-placement-detail: every field is independently
  * optional — confirm() sends whatever the scorer actually picked, never
@@ -98,9 +100,49 @@ const MAGNIFIER_ZOOM = 2.5;
 // which would otherwise cover the very thing being magnified.
 const MAGNIFIER_VERTICAL_OFFSET_PX = 90;
 
+// Mobile picker layout: the court is drawn at the same 2:1 box as every
+// other court diagram in the app, measured here in "court units" (1 unit =
+// 1/13.4 of the length) so the out-of-bounds margin and the half-court
+// window can be laid out around it in plain percentages.
+const COURT_LENGTH = 13.4;
+const COURT_WIDTH = COURT_LENGTH / 2;
+// Tappable out-of-bounds margin around the drawn court (FR-010) — the
+// same role `.court-area`'s 6% padding used to play.
+const OUT_MARGIN = 1;
+// Compact (half-court) view only: how much of the hidden half stays in
+// view past the net. That strip is the "switch to the other half" button,
+// wide enough for a thumb, and keeps the front court next to the net
+// itself (where net shots and kills land) free of any overlay.
+const PEEK = 1.4;
+
+// Phones get the half-court view: portrait below the tablet breakpoint
+// (styles/_breakpoints.scss $breakpoint-tablet — the same width where
+// dialog--xl turns full-screen), and short landscape (the same query the
+// control panel's own compact landscape layout uses).
+const COMPACT_VIEW_QUERY =
+  '(max-width: 767.98px), (orientation: landscape) and (max-height: 500px)';
+
+/** Which player group the current ending type makes the one worth asking
+ * about: the scoring player for a winner, the player at fault for every
+ * kind of error. `null` = no ending type yet, so both are asked. */
+type PlayerRole = 'scoring' | 'losing';
+
+export interface CourtViewGeometry {
+  /** Width / height of the visible window. */
+  aspect: number;
+  courtLeftPct: number;
+  courtTopPct: number;
+  courtWidthPct: number;
+  courtHeightPct: number;
+  /** Compact view only: which edge holds the peek of the hidden half. */
+  peekSide: 'left' | 'right' | null;
+  peekWidthPct: number;
+  outMarginTopPct: number;
+}
+
 @Component({
   selector: 'app-shot-placement-picker',
-  imports: [TranslatePipe, CourtDiagramComponent],
+  imports: [TranslatePipe, CourtDiagramComponent, IconComponent],
   templateUrl: './shot-placement-picker.component.html',
   styleUrl: './shot-placement-picker.component.scss',
 })
@@ -124,6 +166,17 @@ export class ShotPlacementPickerComponent {
    * courts was the legal, diagonal target — see `isServeFaultZone`.
    * `null` when unknown; the left/right check is then skipped. */
   readonly servingScore = input<number | null>(null);
+  /** The player who served THIS rally, captured with `servingTeam`. On a
+   * serve fault the server is the player at fault, so it is pre-selected
+   * as the losing player. `null` when unknown. */
+  readonly servingRosterEntryId = input<string | null>(null);
+  /** Which team the host screen currently draws on the left (the control
+   * panels let the scorer swap sides). The court here is drawn the same
+   * way round so a tap lands where the scorer sees it on the board.
+   * Swapped sides are the court seen after the teams change ends — the
+   * whole court turned around, so both x and y flip (the board's station
+   * pills do the same, see ControlPanelComponent.serveRosterId). */
+  readonly leftTeam = input<Team>('A');
   readonly confirmed = output<ShotPlacementConfirmed>();
   /** 032-cancel-score: the caller applies the matching -1 correction — this
    * component never touches the score itself, only requests it. */
@@ -142,10 +195,10 @@ export class ShotPlacementPickerComponent {
   // resolves it to the native element (its bounding box, unchanged) rather
   // than the component instance, which is what viewChild would give by
   // default for a component-tagged template reference.
+  private readonly courtArea = viewChild.required<ElementRef<HTMLElement>>('courtArea');
   private readonly court = viewChild.required<string, ElementRef<HTMLElement>>('court', {
     read: ElementRef,
   });
-  private readonly content = viewChild.required<ElementRef<HTMLDivElement>>('content');
 
   readonly selectedPoint = signal<{ x: number; y: number } | null>(null);
   readonly selectedRosterEntryId = signal<string | null>(null);
@@ -182,9 +235,7 @@ export class ShotPlacementPickerComponent {
 
   /** The scoring team is fixed by the caller (`scoringTeam` input) — the
    * losing team is simply the other one, always (only two teams exist). */
-  private readonly losingTeamFixed = computed<Team>(() =>
-    this.scoringTeam() === 'A' ? 'B' : 'A',
-  );
+  readonly losingTeam = computed<Team>(() => (this.scoringTeam() === 'A' ? 'B' : 'A'));
 
   /** True whenever the landing is in-bounds on the credited side's OWN
    * half — the precondition shared by `isServeFault` and `landingConflict`
@@ -339,7 +390,7 @@ export class ShotPlacementPickerComponent {
   readonly losingPlayers = computed(() =>
     this.landingConflict()
       ? []
-      : this.participants().filter((p) => p.team === this.losingTeamFixed()),
+      : this.participants().filter((p) => p.team === this.losingTeam()),
   );
 
   readonly magnifierVisible = signal(false);
@@ -349,7 +400,7 @@ export class ShotPlacementPickerComponent {
    * exactly at the lens's center — computed here rather than duplicated
    * inline in the template. */
   readonly magnifierContentStyle = computed(() => {
-    const point = this.selectedPoint();
+    const point = this.displayPoint();
     if (point === null) {
       return null;
     }
@@ -367,22 +418,145 @@ export class ShotPlacementPickerComponent {
     };
   });
 
-  /** 032: on a small enough screen, the court + both player sections don't
-   * all fit in the dialog at once — dynamically switch to a two-tab layout
-   * ("landing point" / "scoring & fault players") instead of letting the
-   * dialog scroll internally. Re-measured on open() and on window resize
-   * (see the constructor); recomputeLayoutMode() temporarily forces the
-   * full (non-tab) layout back on to measure whether it fits, so shrinking
-   * the window back can also switch tabs back off. */
-  readonly useTabs = signal(false);
-  readonly activeTab = signal<'landing' | 'players'>('landing');
-  /** Applied to `.content` only while `useTabs()` is true (component.ts
-   * `recomputeLayoutMode()`) — caps even a single active tab's own content
-   * to the space actually available, falling back to that tab's own
-   * internal scroll (rather than pushing the always-visible Cancel/Confirm
-   * actions off-screen) in the rare case one section alone still doesn't
-   * fit. `null` removes the cap entirely, restoring natural sizing. */
-  readonly contentMaxHeightPx = signal<number | null>(null);
+  /** Phones (COMPACT_VIEW_QUERY) show one half of the court, enlarged,
+   * instead of the whole court: the half where this point most likely
+   * landed, with a strip of the other half past the net to switch over.
+   * Wider screens keep the whole court. Replaces the old measured
+   * two-tab fallback: the layout itself (component.scss) now lets the
+   * court shrink to whatever height is left, so everything fits on one
+   * screen and the confirm button never needs scrolling to (035 FR-013). */
+  readonly compactView = signal(false);
+  /** The half the scorer switched to by hand; `null` = follow
+   * `autoViewTeam`. Cleared again by picking an ending type. */
+  readonly viewOverride = signal<Team | null>(null);
+  /** Where the shuttle most likely came down, going by the ending type
+   * the scorer tapped: out and serve faults land on the scoring side's
+   * half (or beyond it); winners, net shots and other errors on the
+   * losing side's half. Only a hand-picked type moves the view — an
+   * auto-filled one comes from a landing the scorer already placed, and
+   * flipping away from it would hide that very point. */
+  readonly autoViewTeam = computed<Team>(() => {
+    const manual = this.manualEndingType();
+    return manual === 'out' || manual === 'serve_fault' ? this.scoringTeam() : this.losingTeam();
+  });
+  readonly viewTeam = computed<Team>(() => this.viewOverride() ?? this.autoViewTeam());
+  /** Which side of the drawing the viewed half is on. */
+  readonly viewSide = computed<'left' | 'right'>(() =>
+    this.viewTeam() === this.leftTeam() ? 'left' : 'right',
+  );
+  /** True when the host draws B on the left: the court is shown turned
+   * around (see `leftTeam`). */
+  readonly rotated = computed(() => this.leftTeam() === 'B');
+  /** `selectedPoint` as drawn. Everything recorded stays in the data
+   * coordinates; only the drawing turns. */
+  readonly displayPoint = computed(() => {
+    const point = this.selectedPoint();
+    if (point === null) {
+      return null;
+    }
+    return this.rotated() ? { x: 1 - point.x, y: 1 - point.y } : point;
+  });
+  /** True when the picked point is on the half the compact view is not
+   * showing — the switch strip then carries a dot so it isn't lost. */
+  readonly pointOnHiddenHalf = computed(() => {
+    const point = this.displayPoint();
+    if (!this.compactView() || point === null) {
+      return false;
+    }
+    return (point.x < 0.5 ? 'left' : 'right') !== this.viewSide();
+  });
+
+  /** Compact view only: an out-of-bounds landing on the losing side's end
+   * of the court. The losing side hit the shot that went out, so it
+   * almost always comes down past the SCORING side's lines — this usually
+   * means the scorer tapped the margin of the half that happened to be in
+   * view. Recorded as tapped (it's still a valid out), but flagged with a
+   * one-tap way over to the other half. */
+  readonly outOnLosingSide = computed(() => {
+    const point = this.selectedPoint();
+    if (!this.compactView() || point === null || this.landingSide() !== 'out') {
+      return false;
+    }
+    return (point.x < 0.5 ? 'A' : 'B') === this.losingTeam();
+  });
+
+  /** Where the drawn court sits inside the visible window, in % of that
+   * window, plus the window's own aspect ratio. Pointer math never uses
+   * this: it measures the court's own box, so any window works. */
+  readonly courtGeometry = computed<CourtViewGeometry>(() => {
+    const viewHeight = OUT_MARGIN + COURT_WIDTH + OUT_MARGIN;
+    const compact = this.compactView();
+    const viewWidth = compact
+      ? OUT_MARGIN + COURT_LENGTH / 2 + PEEK
+      : OUT_MARGIN + COURT_LENGTH + OUT_MARGIN;
+    // Right-hand half in view: put the net PEEK in from the left edge.
+    const courtLeft = compact && this.viewSide() === 'right' ? PEEK - COURT_LENGTH / 2 : OUT_MARGIN;
+    const pct = (value: number, of: number) => (value / of) * 100;
+    return {
+      aspect: viewWidth / viewHeight,
+      courtLeftPct: pct(courtLeft, viewWidth),
+      courtTopPct: pct(OUT_MARGIN, viewHeight),
+      courtWidthPct: pct(COURT_LENGTH, viewWidth),
+      courtHeightPct: pct(COURT_WIDTH, viewHeight),
+      peekSide: compact ? (this.viewSide() === 'left' ? 'right' : 'left') : null,
+      peekWidthPct: compact ? pct(PEEK, viewWidth) : 0,
+      outMarginTopPct: pct(OUT_MARGIN, viewHeight),
+    };
+  });
+
+  /** The team colour each visible baseline is edged with, so the scorer
+   * can tell whose half they are looking at. */
+  teamColor(team: Team): string {
+    return team === 'A' ? 'var(--color-team-a-bg)' : 'var(--color-team-b-bg)';
+  }
+  readonly leftEdgeColor = computed<string | null>(() => {
+    if (this.compactView()) {
+      return this.viewSide() === 'left' ? this.teamColor(this.viewTeam()) : null;
+    }
+    return this.teamColor(this.leftTeam());
+  });
+  readonly rightEdgeColor = computed<string | null>(() => {
+    if (this.compactView()) {
+      return this.viewSide() === 'right' ? this.teamColor(this.viewTeam()) : null;
+    }
+    return this.teamColor(this.leftTeam() === 'A' ? 'B' : 'A');
+  });
+
+  /** One player group is enough once the ending type says who the rally
+   * was about: the scoring player for a winner, the player at fault for
+   * every error. The other group folds away behind a one-line toggle
+   * (still one tap to open). With no ending type yet — or while the
+   * landing conflicts — both groups show, as before. */
+  readonly primaryRole = computed<PlayerRole | null>(() => {
+    const ending = this.endingType();
+    if (ending === null || this.landingConflict()) {
+      return null;
+    }
+    return ending === 'winner' ? 'scoring' : 'losing';
+  });
+  readonly secondaryExpanded = signal(false);
+  readonly showScoringPlayers = computed(
+    () => this.primaryRole() !== 'losing' || this.secondaryExpanded(),
+  );
+  readonly showLosingPlayers = computed(
+    () => this.primaryRole() !== 'scoring' || this.secondaryExpanded(),
+  );
+  /** The folded group's current pick, shown on its toggle so a
+   * pre-selected player (singles, or the server on a serve fault) is
+   * visible without opening it. */
+  readonly secondarySelectedNickname = computed<string | null>(() => {
+    const role = this.primaryRole();
+    if (role === null) {
+      return null;
+    }
+    const id = role === 'scoring' ? this.selectedLosingRosterEntryId() : this.selectedRosterEntryId();
+    return this.participants().find((p) => p.roster_entry_id === id)?.nickname ?? null;
+  });
+
+  /** True while the losing pick is the server, filled in by a serve
+   * fault rather than tapped — dropped again if the ending type moves
+   * away from a serve fault. */
+  private readonly losingPickedFromServe = signal(false);
 
   private longPressTimer?: ReturnType<typeof setTimeout>;
   private activePointerId: number | null = null;
@@ -425,23 +599,45 @@ export class ShotPlacementPickerComponent {
     effect(() => {
       const manual = this.manualEndingType();
       if (manual != null && this.disabledEndingTypes().includes(manual)) {
+        // Stay on the half the scorer is looking at: dropping the pick
+        // would otherwise send the view back to the automatic half and
+        // hide the point that was just placed.
+        this.viewOverride.set(untracked(() => this.viewTeam()));
         this.manualEndingType.set(undefined);
       }
     });
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('resize', this.handleWindowResize);
-      inject(DestroyRef).onDestroy(() => {
-        window.removeEventListener('resize', this.handleWindowResize);
-      });
+    // A serve fault is always the server's own fault: pre-select them as
+    // the player at fault. Only fills an empty pick, never replaces one the
+    // scorer made, and undoes itself if the ending type moves away again.
+    effect(() => {
+      const serveFault = this.endingType() === 'serve_fault';
+      const server = this.servingRosterEntryId();
+      const pool = this.losingPlayers();
+      const current = untracked(() => this.selectedLosingRosterEntryId());
+      const fromServe = untracked(() => this.losingPickedFromServe());
+      if (serveFault && server !== null && pool.some((p) => p.roster_entry_id === server)) {
+        if (current === null) {
+          this.selectedLosingRosterEntryId.set(server);
+          this.losingPickedFromServe.set(true);
+        }
+      } else if (fromServe) {
+        this.losingPickedFromServe.set(false);
+        // A singles pool's only player stays picked either way.
+        if (current === server && pool.length !== 1) {
+          this.selectedLosingRosterEntryId.set(null);
+        }
+      }
+    });
+
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      const query = window.matchMedia(COMPACT_VIEW_QUERY);
+      this.compactView.set(query.matches);
+      const onChange = (event: MediaQueryListEvent) => this.compactView.set(event.matches);
+      query.addEventListener('change', onChange);
+      inject(DestroyRef).onDestroy(() => query.removeEventListener('change', onChange));
     }
   }
-
-  private readonly handleWindowResize = (): void => {
-    if (this.dialog().nativeElement.open) {
-      this.recomputeLayoutMode();
-    }
-  };
 
   open(): void {
     this.selectedPoint.set(null);
@@ -449,57 +645,28 @@ export class ShotPlacementPickerComponent {
     this.selectedLosingRosterEntryId.set(null);
     this.manualEndingType.set(undefined);
     this.magnifierVisible.set(false);
-    this.useTabs.set(false);
-    this.activeTab.set('landing');
-    this.contentMaxHeightPx.set(null);
+    this.viewOverride.set(null);
+    this.secondaryExpanded.set(false);
+    this.losingPickedFromServe.set(false);
     // jsdom (unit tests) doesn't implement <dialog> — same guard as
     // ConfirmDialogComponent.
     const nativeDialog = this.dialog().nativeElement;
     if (typeof nativeDialog.showModal === 'function') {
       nativeDialog.showModal();
     }
-    // Measure after the dialog has actually laid out its (still untabbed)
-    // content — a plain function call here would run before the browser
-    // paints the newly-opened dialog.
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => this.recomputeLayoutMode());
-    }
+    // showModal() focuses the first focusable element, which is the
+    // cancel-score button in the header, where a stray Enter would undo
+    // the point. Start on the court instead.
+    // focusVisible: false — the ring is for keyboard users; a scorer who
+    // just tapped "+" doesn't need the whole court outlined. Browsers
+    // without the option simply ignore it.
+    this.courtArea().nativeElement.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
   }
 
-  /** Decides whether the court + both player sections fit together, or
-   * whether the dialog needs to switch to a two-tab layout instead.
-   *
-   * `contentEl.scrollHeight` always reports `.content`'s full natural
-   * height (both sections' combined size) regardless of any max-height cap
-   * already applied to it — the DOM's `scrollHeight` ignores clipping by
-   * design — EXCEPT for a section currently hidden via the `[hidden]`
-   * attribute (which removes it from layout entirely, contributing 0);
-   * `.measuring-full` (see the stylesheet) temporarily overrides that so a
-   * window enlarge can be detected too, not just a shrink.
-   *
-   * `chromeHeight` (h2 + tabs-bar-if-shown + actions + paddings) is derived
-   * by subtracting `.content`'s own currently-rendered height from the
-   * dialog's — since the dialog itself is never height-constrained, this
-   * stays accurate whether or not a cap is currently applied to `.content`. */
-  private recomputeLayoutMode(): void {
-    const dialogEl = this.dialog().nativeElement;
-    const contentEl = this.content().nativeElement;
-    const wasTabs = this.useTabs();
-    if (wasTabs) {
-      contentEl.classList.add('measuring-full');
-    }
-
-    const chromeHeight = dialogEl.getBoundingClientRect().height - contentEl.clientHeight;
-    const viewportBudget = Math.min(720, window.innerHeight * 0.92);
-    const availableForContent = Math.max(0, viewportBudget - chromeHeight);
-    const overflowing = contentEl.scrollHeight > availableForContent + 1;
-
-    if (wasTabs) {
-      contentEl.classList.remove('measuring-full');
-    }
-
-    this.useTabs.set(overflowing);
-    this.contentMaxHeightPx.set(overflowing ? Math.floor(availableForContent) : null);
+  /** Compact view: show the other half of the court. Never records a
+   * point on its own. */
+  switchHalf(): void {
+    this.viewOverride.set(this.viewTeam() === 'A' ? 'B' : 'A');
   }
 
   /** FR-003: re-pressing anywhere on the court (or its out-of-bounds
@@ -549,7 +716,13 @@ export class ShotPlacementPickerComponent {
    * usable default rather than leaving keyboard users with no way to
    * proceed. No magnifier involved — nothing to aim with a fingertip here. */
   pickCenterPoint(): void {
-    this.selectedPoint.set({ x: 0.5, y: 0.5 });
+    if (!this.compactView()) {
+      this.selectedPoint.set({ x: 0.5, y: 0.5 });
+      return;
+    }
+    // The half view has no net in the middle: pick the middle of the half
+    // that is actually in view.
+    this.selectedPoint.set({ x: this.viewTeam() === 'A' ? 0.25 : 0.75, y: 0.5 });
   }
 
   /** FR-003: re-selecting another player before confirming just replaces
@@ -560,6 +733,7 @@ export class ShotPlacementPickerComponent {
 
   pickLosingPlayer(rosterEntryId: string): void {
     this.selectedLosingRosterEntryId.set(rosterEntryId);
+    this.losingPickedFromServe.set(false);
   }
 
   /** 035: tap a chip to pick it; tap the pressed one again to unselect
@@ -571,6 +745,8 @@ export class ShotPlacementPickerComponent {
       return;
     }
     this.manualEndingType.set(this.endingType() === kind ? null : kind);
+    // A tapped ending type says where to look again (autoViewTeam).
+    this.viewOverride.set(null);
   }
 
   /** 032-optional-shot-placement-detail: sends whatever the scorer actually
@@ -610,16 +786,40 @@ export class ShotPlacementPickerComponent {
     this.closeIfSupported();
   }
 
-  private updatePointFromClient(clientX: number, clientY: number): void {
+  private updatePointFromClient(rawClientX: number, rawClientY: number): void {
+    const [clientX, clientY] = this.clampToVisibleWindow(rawClientX, rawClientY);
     const rect = this.court().nativeElement.getBoundingClientRect();
+    const drawnX = (clientX - rect.left) / rect.width;
+    const drawnY = (clientY - rect.top) / rect.height;
+    const rotated = this.rotated();
     this.selectedPoint.set({
-      x: this.clampToLandingRange((clientX - rect.left) / rect.width),
-      y: this.clampToLandingRange((clientY - rect.top) / rect.height),
+      x: this.clampToLandingRange(rotated ? 1 - drawnX : drawnX),
+      y: this.clampToLandingRange(rotated ? 1 - drawnY : drawnY),
     });
   }
 
   private updateMagnifierLensPosition(clientX: number, clientY: number): void {
     this.magnifierLensPosition.set({ x: clientX, y: clientY - MAGNIFIER_VERTICAL_OFFSET_PX });
+  }
+
+  /** A long-press drag keeps reporting positions after the finger leaves
+   * the court window (pointer capture). Keep the point inside what is
+   * actually drawn — the window minus the other half's switch strip — so
+   * it never ends up somewhere the scorer can't see. */
+  private clampToVisibleWindow(clientX: number, clientY: number): [number, number] {
+    const area = this.courtArea().nativeElement.getBoundingClientRect();
+    if (area.width === 0 || area.height === 0) {
+      // Not laid out (e.g. jsdom): nothing to clamp against.
+      return [clientX, clientY];
+    }
+    const geometry = this.courtGeometry();
+    const peek = (area.width * geometry.peekWidthPct) / 100;
+    const left = area.left + (geometry.peekSide === 'left' ? peek : 0);
+    const right = area.right - (geometry.peekSide === 'right' ? peek : 0);
+    return [
+      Math.min(right, Math.max(left, clientX)),
+      Math.min(area.bottom, Math.max(area.top, clientY)),
+    ];
   }
 
   private clampToLandingRange(value: number): number {

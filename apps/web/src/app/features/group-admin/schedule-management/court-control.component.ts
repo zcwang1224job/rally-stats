@@ -145,22 +145,22 @@ export class CourtControlComponent implements OnInit {
   /** feature/control-panel-scoreboard-style: resolves one of the four
    * station slots for `team`'s top/bottom pill — mirrors
    * ControlPanelComponent's identical method (see its comment for why
-   * `slot` is a fixed screen position, mapped per-team rather than
-   * per-screen-half, to correctly mirror each team's own left/right
-   * service court across the net). */
+   * `slot` is a fixed screen position whose left/right court depends on
+   * which screen half the team is drawn in). */
   serveRosterId(match: MatchSummary, team: Team, slot: 'top' | 'bottom'): string | null {
     const serve = match.serve;
     if (!serve) {
       return null;
     }
+    // Teams face each other across the net, so a team's right-hand court
+    // is at the bottom of the screen when it plays from the left, and at
+    // the top when it plays from the right.
+    const rightCourtSlot = team === this.leftTeam() ? 'bottom' : 'top';
+    const takesRightCourt = slot === rightCourtSlot;
     if (team === 'A') {
-      return slot === 'top'
-        ? serve.team_a_left_roster_entry_id
-        : serve.team_a_right_roster_entry_id;
+      return takesRightCourt ? serve.team_a_right_roster_entry_id : serve.team_a_left_roster_entry_id;
     }
-    return slot === 'top'
-      ? serve.team_b_right_roster_entry_id
-      : serve.team_b_left_roster_entry_id;
+    return takesRightCourt ? serve.team_b_right_roster_entry_id : serve.team_b_left_roster_entry_id;
   }
 
   /** A station pill is a fixed-size chip in a court corner, not a name

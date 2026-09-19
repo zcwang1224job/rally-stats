@@ -134,6 +134,7 @@
           [scoringTeam]="pendingScoringSide()"
           [servingTeam]="pendingServingTeam()"
           [servingScore]="pendingServingScore()"
+          [servingRosterEntryId]="pendingServingRosterEntryId()"
           (confirmed)="onShotPlacementConfirmed($event)"
           (scoreCancelled)="onShotPlacementCancelled()"
           (closed)="onShotPlacementClosed()"

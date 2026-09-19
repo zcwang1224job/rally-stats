@@ -1,127 +1,152 @@
-<dialog #dialog class="dialog dialog--xl shot-placement-dialog">
-  <h2>{{ 'shotPlacement.title' | translate }}</h2>
+<dialog #dialog class="dialog dialog--xl shot-placement-dialog" [class.shot-placement-dialog--compact]="compactView()">
+  <!-- Cancel-score sits up here, away from the confirm button under the
+       thumb: it undoes the point itself, so it must never be hit by
+       accident while reaching for confirm. -->
+  <div class="picker-header">
+    <h2>{{ 'shotPlacement.title' | translate }}</h2>
+    <button type="button" class="btn btn--danger-outline cancel-score-button" (click)="cancelScore()">
+      {{ 'shotPlacement.cancelScore' | translate }}
+    </button>
+  </div>
 
-  <!-- 032: only shown once recomputeLayoutMode() (component.ts) has
-       determined the full content doesn't fit the dialog on this screen. -->
-  @if (useTabs()) {
-    <div class="tabs" role="tablist">
-      <button
-        type="button"
-        class="tab"
-        role="tab"
-        [attr.aria-selected]="activeTab() === 'landing'"
-        [class.tab--active]="activeTab() === 'landing'"
-        (click)="activeTab.set('landing')"
-      >
-        {{ 'shotPlacement.tabLanding' | translate }}
-      </button>
-      <button
-        type="button"
-        class="tab"
-        role="tab"
-        [attr.aria-selected]="activeTab() === 'players'"
-        [class.tab--active]="activeTab() === 'players'"
-        (click)="activeTab.set('players')"
-      >
-        {{ 'shotPlacement.tabPlayers' | translate }}
-      </button>
-    </div>
-  }
+  <!-- One screen, no tabs: .picker-body is a column (a two-column grid in
+       short landscape) where only the court stage shrinks, so the ending
+       chips, players and actions always stay in view (035 FR-013). -->
+  <div class="picker-body">
+    <section class="landing-section">
+      <!-- The stage takes whatever height is left; the window inside keeps
+           its own aspect ratio (courtGeometry()) and is as large as fits. -->
+      <div class="court-stage" [style.--court-aspect]="courtGeometry().aspect">
+        <div
+          class="court-viewport"
+          [style.--edge-left]="leftEdgeColor()"
+          [style.--edge-right]="rightEdgeColor()"
+          [class.court-viewport--edge-left]="leftEdgeColor() !== null"
+          [class.court-viewport--edge-right]="rightEdgeColor() !== null"
+        >
+          <!-- FR-010: a landing MUST be markable outside the court boundary
+               too (e.g. an out shot) — .court-area is the actual
+               pointer/keyboard target and covers the whole window, margin
+               included; .court (nested inside) stays the reference
+               rectangle the pointer math and the drawn lines are relative
+               to, so a tap in the margin yields x/y outside [0, 1]. A quick
+               tap places the point; holding past the long-press threshold
+               also raises the magnifier lens below. -->
+          <div
+            #courtArea
+            class="court-area"
+            role="button"
+            tabindex="0"
+            [attr.aria-label]="'shotPlacement.selectLanding' | translate"
+            (pointerdown)="onCourtPointerDown($event)"
+            (pointermove)="onCourtPointerMove($event)"
+            (pointerup)="onCourtPointerUp($event)"
+            (pointercancel)="onCourtPointerUp($event)"
+            (keydown.enter)="pickCenterPoint()"
+            (keydown.space)="pickCenterPoint()"
+          >
+            <!-- `#court` resolves to CourtDiagramComponent's host element
+                 (component.ts reads it with `{ read: ElementRef }`); its box
+                 is placed by courtGeometry(), and in the compact view part
+                 of it sits outside the window, clipped away. -->
+            <app-court-diagram
+              #court
+              class="court"
+              [style.left.%]="courtGeometry().courtLeftPct"
+              [style.top.%]="courtGeometry().courtTopPct"
+              [style.width.%]="courtGeometry().courtWidthPct"
+              [style.height.%]="courtGeometry().courtHeightPct"
+              [isSinglesMatch]="isSinglesMatch()"
+              [landingX]="displayPoint()?.x ?? null"
+              [landingY]="displayPoint()?.y ?? null"
+            />
+          </div>
 
-  <div #content class="content" [style.max-height.px]="contentMaxHeightPx()">
-    <section class="landing-section" [hidden]="useTabs() && activeTab() !== 'landing'">
-      <p class="hint">{{ 'shotPlacement.selectLanding' | translate }}</p>
-      <!-- FR-010: a landing MUST be markable outside the court boundary too
-           (e.g. an out shot) — .court-area is the actual pointer/keyboard
-           target and includes a margin around the drawn court for exactly
-           that; .court itself (nested inside) stays the reference rectangle
-           that the pointer handlers' coordinate math and the drawn lines
-           are relative to, so a tap in the margin naturally yields x/y
-           outside [0, 1]. Pointer (not click) events: a quick tap places
-           the point immediately (unchanged from before); holding past the
-           long-press threshold also raises the magnifier lens below for
-           fine-aiming while still held. -->
-      <div
-        #courtArea
-        class="court-area"
-        role="button"
-        tabindex="0"
-        [attr.aria-label]="'shotPlacement.selectLanding' | translate"
-        (pointerdown)="onCourtPointerDown($event)"
-        (pointermove)="onCourtPointerMove($event)"
-        (pointerup)="onCourtPointerUp($event)"
-        (pointercancel)="onCourtPointerUp($event)"
-        (keydown.enter)="pickCenterPoint()"
-        (keydown.space)="pickCenterPoint()"
-      >
-        <!-- 032-match-record-scoring-stats (research.md Decision 5): the
-             pure court drawing lives in the shared CourtDiagramComponent —
-             `#court` now resolves to ITS host element (see component.ts's
-             `{ read: ElementRef }`), so the pointer math above is unchanged. -->
-        <!-- class="court" kept for existing tests/selectors that look up
-             this element by that class — the actual box styling now comes
-             from CourtDiagramComponent's own :host rule (this class no
-             longer carries CSS meaning of its own here). -->
-        <app-court-diagram
-          #court
-          class="court"
-          [isSinglesMatch]="isSinglesMatch()"
-          [landingX]="selectedPoint()?.x ?? null"
-          [landingY]="selectedPoint()?.y ?? null"
-        />
+          <!-- One line of status in the out-of-bounds margin above the
+               court, so nothing below ever moves: the landing hint until a
+               point is placed, then a warning when there is one. Kept clear
+               of the switch strip, and pointer-events: none, so taps there
+               still place a point. -->
+          @if (landingConflict()) {
+            <!-- An in-bounds landing on the credited side's own half
+                 contradicts it having scored (official rules), so both
+                 player pools are empty until the landing moves. -->
+            <p
+              class="court-notice hint hint--warning"
+              data-landing-conflict
+              role="status"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+              [style.left.%]="courtGeometry().peekSide === 'left' ? courtGeometry().peekWidthPct : 0"
+              [style.right.%]="courtGeometry().peekSide === 'right' ? courtGeometry().peekWidthPct : 0"
+            >
+              {{ 'shotPlacement.landingConflict' | translate }}
+            </p>
+          } @else if (outOnLosingSide()) {
+            <p
+              class="court-notice court-notice--attention"
+              data-out-on-losing-side
+              role="status"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+              [style.left.%]="courtGeometry().peekSide === 'left' ? courtGeometry().peekWidthPct : 0"
+              [style.right.%]="courtGeometry().peekSide === 'right' ? courtGeometry().peekWidthPct : 0"
+            >
+              {{ 'shotPlacement.outOnLosingSide' | translate }}
+            </p>
+          } @else if (selectedPoint() === null) {
+            <p
+              class="court-notice"
+              aria-hidden="true"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+              [style.left.%]="courtGeometry().peekSide === 'left' ? courtGeometry().peekWidthPct : 0"
+              [style.right.%]="courtGeometry().peekSide === 'right' ? courtGeometry().peekWidthPct : 0"
+            >
+              {{ 'shotPlacement.selectLanding' | translate }}
+            </p>
+          }
+
+          @if (compactView()) {
+            <span
+              class="half-label"
+              [class.half-label--left]="viewSide() === 'left'"
+              [class.half-label--right]="viewSide() === 'right'"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+            >
+              {{ (viewTeam() === scoringTeam() ? 'shotPlacement.halfScoring' : 'shotPlacement.halfLosing') | translate }}
+            </span>
+            <!-- The strip of the other half past the net: tap to look at
+                 that half instead. A sibling of .court-area (not inside
+                 it), so it never places a point. -->
+            <button
+              type="button"
+              class="half-switch"
+              [class.half-switch--attention]="outOnLosingSide()"
+              [class.half-switch--left]="courtGeometry().peekSide === 'left'"
+              [class.half-switch--right]="courtGeometry().peekSide === 'right'"
+              [style.width.%]="courtGeometry().peekWidthPct"
+              [attr.aria-label]="'shotPlacement.switchHalf' | translate"
+              (click)="switchHalf()"
+            >
+              <app-icon name="swap" />
+              <span class="half-switch__label">{{ 'shotPlacement.switchHalfShort' | translate }}</span>
+              @if (pointOnHiddenHalf()) {
+                <span class="half-switch__dot" data-point-on-hidden-half></span>
+              }
+            </button>
+          }
+        </div>
       </div>
 
-      <!-- The magnifier lens: `position: fixed` (viewport coordinates from
-           the pointer event map directly), floats above the finger so it
-           isn't covered by it. `pointer-events: none` — purely a visual
-           aid, never an interaction target itself. -->
-      @if (magnifierVisible() && magnifierContentStyle(); as content) {
-        <div
-          class="magnifier"
-          [style.left.px]="magnifierLensPosition().x"
-          [style.top.px]="magnifierLensPosition().y"
-        >
-          <div class="magnifier-content court" [style.width]="content.width" [style.height]="content.height" [style.transform]="content.transform">
-            @if (isSinglesMatch()) {
-              <div class="out-of-play-band out-of-play-band--top"></div>
-              <div class="out-of-play-band out-of-play-band--bottom"></div>
-            }
-            @if (selectedPoint(); as point) {
-              <span
-                class="landing-marker"
-                [style.left.%]="point.x * 100"
-                [style.top.%]="point.y * 100"
-              ></span>
-            }
-          </div>
-        </div>
-      }
 
-      <!-- landingConflict() also shown here (not only on the players tab
-           below) — this IS the landing tab, and the fix (re-tapping the
-           court) happens here, so the scorer must not have to switch tabs
-           first to learn why nothing can be confirmed (see the class doc
-           comment on `landingConflict`). -->
-      @if (landingConflict()) {
-        <p class="hint hint--warning" data-landing-conflict>
-          {{ 'shotPlacement.landingConflict' | translate }}
-        </p>
-      }
+    </section>
 
-      <!-- 035-point-ending-type: how the rally ended — one row of chips
-           right under the court (it belongs with the landing, which is
-           what pre-selects it). Auto-filled where the landing leaves no
-           doubt, one tap otherwise, never required (FR-013). A chip the
-           landing contradicts is aria-disabled with its reason (kept
-           focusable), see disabledEndingTypes() in component.ts. The row
-           scrolls sideways on a narrow screen instead of wrapping, so it
-           never pushes the actions below out of view (SC-011). -->
-      <p class="hint ending-hint">
-        {{ 'shotPlacement.ending.label' | translate }}
-        @if (endingTypeIsAuto()) {
-          <span class="ending-auto-hint">{{ 'shotPlacement.ending.autoHint' | translate }}</span>
-        }
-      </p>
+    <div class="detail-column">
+      <!-- 035-point-ending-type: how the rally ended. Auto-filled where the
+           landing leaves no doubt, one tap otherwise, never required
+           (FR-013). A chip the landing contradicts is aria-disabled with its
+           reason (kept focusable), see disabledEndingTypes() in
+           component.ts. All five fit one row (a fixed five-column grid;
+           long labels wrap inside their chip), so none hides off-screen. -->
+      <p class="caption ending-hint">{{ 'shotPlacement.ending.label' | translate }}</p>
       <div class="ending-chips" role="group" [attr.aria-label]="'shotPlacement.ending.label' | translate">
         @for (kind of endingTypes; track kind) {
           <button
@@ -143,74 +168,135 @@
             (click)="pickEndingType(kind)"
           >
             {{ 'shotPlacement.ending.' + kind | translate }}
-          </button>
-        }
-      </div>
-    </section>
-
-    <!-- 032-score-then-record: the scoring team is already fixed
-         (scoringTeam input) — scoringPlayers()/losingPlayers() (component.ts)
-         just narrow each list to that team and its opponent, one player
-         picker per side. An in-bounds landing on the credited side's own
-         half would contradict it having scored (official badminton rules),
-         so landingConflict() empties both lists in that case — the hint
-         below explains why nothing is selectable rather than leaving it a
-         silent dead end. -->
-    <section class="players-section" [hidden]="useTabs() && activeTab() !== 'players'">
-      @if (landingConflict()) {
-        <p class="hint hint--warning">{{ 'shotPlacement.landingConflict' | translate }}</p>
-      }
-      <p class="hint">{{ 'shotPlacement.selectScoringPlayer' | translate }}</p>
-      <div class="players">
-        @for (participant of scoringPlayers(); track participant.roster_entry_id) {
-          <button
-            type="button"
-            class="btn btn--secondary player"
-            [class.player--selected]="selectedRosterEntryId() === participant.roster_entry_id"
-            (click)="pickScoringPlayer(participant.roster_entry_id)"
-          >
-            {{ participant.nickname }}
+            <!-- Auto-filled from the landing: a corner badge on the chip
+                 itself, so the label line above never grows a second row. -->
+            @if (endingTypeIsAuto() && endingType() === kind) {
+              <span class="ending-auto-hint" [attr.title]="'shotPlacement.ending.autoHint' | translate">
+                {{ 'shotPlacement.ending.autoBadge' | translate }}
+              </span>
+            }
           </button>
         }
       </div>
 
-      <p class="hint losing-player-hint">
-        {{ 'shotPlacement.selectLosingPlayer' | translate }}
-        @if (isServeFault()) {
-          <span class="status-badge status-badge--muted">{{ 'shotPlacement.serveFault' | translate }}</span>
-        }
-      </p>
-      <div class="players">
-        @for (participant of losingPlayers(); track participant.roster_entry_id) {
-          <button
-            type="button"
-            class="btn btn--secondary player"
-            [class.player--selected]="selectedLosingRosterEntryId() === participant.roster_entry_id"
-            (click)="pickLosingPlayer(participant.roster_entry_id)"
+      <!-- 032-score-then-record: the scoring team is already fixed
+           (scoringTeam input) — scoringPlayers()/losingPlayers() just narrow
+           each list to that team and its opponent. Both groups are always
+           in the DOM, scoring first; the one the ending type makes
+           secondary (primaryRole()) folds its buttons behind one full-width
+           toggle of the same height, so folding never moves the court.
+           An empty pool (landing conflict) keeps its row height too. -->
+      <section class="players-section">
+        <div class="team-block">
+          <p class="caption team-block__header">
+            <span class="team-swatch" [style.background]="teamColor(scoringTeam())"></span>
+            {{ 'shotPlacement.sideScoring' | translate }}
+          </p>
+          <div
+            class="players"
+            role="group"
+            [hidden]="!showScoringPlayers()"
+            [attr.aria-label]="'shotPlacement.selectScoringPlayer' | translate"
           >
-            {{ participant.nickname }}
-          </button>
-        }
+            @for (participant of scoringPlayers(); track participant.roster_entry_id) {
+              <button
+                type="button"
+                class="btn btn--secondary player"
+                [class.player--selected]="selectedRosterEntryId() === participant.roster_entry_id"
+                [attr.aria-pressed]="selectedRosterEntryId() === participant.roster_entry_id"
+                (click)="pickScoringPlayer(participant.roster_entry_id)"
+              >
+                <span class="player__name">{{ participant.nickname }}</span>
+              </button>
+            }
+          </div>
+          @if (primaryRole() === 'losing' && !secondaryExpanded()) {
+            <button type="button" class="secondary-toggle" (click)="secondaryExpanded.set(true)">
+              {{ 'shotPlacement.addScoringPlayer' | translate }}
+              @if (secondarySelectedNickname(); as nickname) {
+                <span class="secondary-toggle__value">{{ nickname }}</span>
+              }
+            </button>
+          }
+        </div>
+
+        <div class="team-block">
+          <p class="caption team-block__header losing-player-hint">
+            <span class="team-swatch" [style.background]="teamColor(losingTeam())"></span>
+            {{ 'shotPlacement.sideLosing' | translate }}
+            @if (isServeFault()) {
+              <span class="status-badge status-badge--muted">{{ 'shotPlacement.serveFault' | translate }}</span>
+            }
+          </p>
+          <div
+            class="players"
+            role="group"
+            [hidden]="!showLosingPlayers()"
+            [attr.aria-label]="'shotPlacement.selectLosingPlayer' | translate"
+          >
+            @for (participant of losingPlayers(); track participant.roster_entry_id) {
+              <button
+                type="button"
+                class="btn btn--secondary player"
+                [class.player--selected]="selectedLosingRosterEntryId() === participant.roster_entry_id"
+                [attr.aria-pressed]="selectedLosingRosterEntryId() === participant.roster_entry_id"
+                (click)="pickLosingPlayer(participant.roster_entry_id)"
+              >
+                <span class="player__name">{{ participant.nickname }}</span>
+              </button>
+            }
+          </div>
+          @if (primaryRole() === 'scoring' && !secondaryExpanded()) {
+            <button type="button" class="secondary-toggle" (click)="secondaryExpanded.set(true)">
+              {{ 'shotPlacement.addLosingPlayer' | translate }}
+              @if (secondarySelectedNickname(); as nickname) {
+                <span class="secondary-toggle__value">{{ nickname }}</span>
+              }
+            </button>
+          }
+        </div>
+
+      </section>
+
+      <!-- 032-optional-shot-placement-detail: confirm() records whatever's
+           been picked, disabled only by an actual data conflict
+           (canConfirm() = !landingConflict()), never by incomplete
+           selection; skip() keeps the score and drops the detail. Confirm
+           is the wide primary button at the bottom, under the thumb. -->
+      <div class="actions">
+        <button type="button" class="btn btn--secondary skip-button" (click)="skip()">
+          {{ 'shotPlacement.skip' | translate }}
+        </button>
+        <button type="button" class="btn confirm-button" [disabled]="!canConfirm()" (click)="confirm()">
+          {{ 'shotPlacement.confirm' | translate }}
+        </button>
       </div>
-    </section>
+    </div>
   </div>
 
-  <!-- 032-optional-shot-placement-detail / 032-cancel-score: three distinct
-       actions now that the score itself is already applied by the time this
-       dialog is open (see the class doc comment) — skip() leaves the score
-       standing and discards any picked detail; cancelScore() undoes the
-       point itself (the caller applies the matching -1); confirm() records
-       whatever's been picked, disabled only by an actual data conflict
-       (canConfirm() = !landingConflict()), never by incomplete selection. -->
-  <div class="actions">
-    <button type="button" class="btn btn--secondary" (click)="skip()">
-      {{ 'shotPlacement.skip' | translate }}
-    </button>
-    <button type="button" class="btn btn--danger" (click)="cancelScore()">
-      {{ 'shotPlacement.cancelScore' | translate }}
-    </button>
-    <button type="button" class="btn" [disabled]="!canConfirm()" (click)="confirm()">
-      {{ 'shotPlacement.confirm' | translate }}
-    </button>
-  </div>
+  <!-- The magnifier lens: `position: fixed` (viewport coordinates from
+       the pointer event map directly), floats above the finger so it
+       isn't covered by it. `pointer-events: none` — purely a visual
+       aid, never an interaction target itself. A direct child of the
+       dialog: inside a size container some browsers would position it
+       against that container instead of the screen. -->
+  @if (magnifierVisible() && magnifierContentStyle(); as content) {
+    <div
+      class="magnifier"
+      [style.left.px]="magnifierLensPosition().x"
+      [style.top.px]="magnifierLensPosition().y"
+    >
+      <!-- The same court drawing as the court itself, scaled up — so the
+           lines, singles shading and marker always match it. -->
+      <app-court-diagram
+        class="magnifier-content"
+        [style.width]="content.width"
+        [style.height]="content.height"
+        [style.transform]="content.transform"
+        [isSinglesMatch]="isSinglesMatch()"
+        [landingX]="displayPoint()?.x ?? null"
+        [landingY]="displayPoint()?.y ?? null"
+      />
+    </div>
+  }
 </dialog>

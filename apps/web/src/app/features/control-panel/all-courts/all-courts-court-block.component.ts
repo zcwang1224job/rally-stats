@@ -123,6 +123,10 @@ export class AllCourtsCourtBlockComponent implements OnInit {
    * `pendingServingTeam` — the picker's `servingScore` input, whose
    * parity says which service court was the serve's legal target. */
   readonly pendingServingScore = signal<number | null>(null);
+  /** The player who served this rally, captured with
+   * `pendingServingTeam` — the picker pre-selects them as the player
+   * at fault on a serve fault. */
+  readonly pendingServingRosterEntryId = signal<string | null>(null);
   // The point the picker is recording detail for — captured once, right
   // when "+" is tapped: onShotPlacementConfirmed()/onShotPlacementCancelled()
   // below target it rather than re-deriving "the current match" from
@@ -158,6 +162,7 @@ export class AllCourtsCourtBlockComponent implements OnInit {
     this.pendingPoint = point;
     this.pendingScoringSide.set(side);
     this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
+    this.pendingServingRosterEntryId.set(currentMatch.serve?.server_roster_entry_id ?? null);
     this.pendingServingScore.set(
       !currentMatch.serve
         ? null

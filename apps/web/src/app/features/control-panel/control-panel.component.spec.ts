@@ -126,6 +126,10 @@ describe('ControlPanelComponent score-board layout (scoreboard-style)', () => {
  * not which screen half currently renders that team, since toggleSwap()
  * only moves a team sideways and never changes which direction it faces. */
 describe('ControlPanelComponent mirrors each team\'s own left/right service court (station top/bottom)', () => {
+  // toggleSwap() persists the preference per court (localStorage); start
+  // every test here unswapped so no test depends on the order they run in.
+  beforeEach(() => localStorage.clear());
+
   const doublesServe = {
     server_roster_entry_id: 'p1',
     server_team: 'A' as const,
@@ -210,19 +214,19 @@ describe('ControlPanelComponent mirrors each team\'s own left/right service cour
     expect(teamB.querySelector('.station--bottom').textContent).toContain('李丁'); // team_b_left
   });
 
-  it('swapped: the mapping follows each team, not the screen half it now renders in', () => {
+  it('swapped: the whole court turns around, so each team\'s right court changes slot', () => {
     const fixture = setupWithServe();
     fixture.componentInstance.toggleSwap();
     fixture.detectChanges();
 
-    // Team B now renders on the left, team A on the right — but each
-    // team's own top/bottom mapping must stay exactly as before.
+    // Team B now plays from the left (right court at the bottom), team A
+    // from the right (right court at the top).
     const teamA = fixture.nativeElement.querySelector('.team--a');
     const teamB = fixture.nativeElement.querySelector('.team--b');
-    expect(teamB.querySelector('.station--top').textContent).toContain('徐丙'); // team_b_right
-    expect(teamB.querySelector('.station--bottom').textContent).toContain('李丁'); // team_b_left
-    expect(teamA.querySelector('.station--top').textContent).toContain('劉乙'); // team_a_left
-    expect(teamA.querySelector('.station--bottom').textContent).toContain('陳甲'); // team_a_right
+    expect(teamB.querySelector('.station--top').textContent).toContain('李丁'); // team_b_left
+    expect(teamB.querySelector('.station--bottom').textContent).toContain('徐丙'); // team_b_right
+    expect(teamA.querySelector('.station--top').textContent).toContain('陳甲'); // team_a_right
+    expect(teamA.querySelector('.station--bottom').textContent).toContain('劉乙'); // team_a_left
   });
 
   it('truncates a long nickname to its first 2 characters, keeping the full name as the pill\'s aria-label', () => {
