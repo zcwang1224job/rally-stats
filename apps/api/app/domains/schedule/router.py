@@ -17,6 +17,7 @@ from app.domains.group.models import Group
 from app.domains.group.security import require_admin
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule import service
+from app.domains.schedule.rest import set_rest_state
 from app.domains.schedule.schemas import (
     AutoNextRoundRequest,
     AutoNextRoundResponse,
@@ -34,6 +35,8 @@ from app.domains.schedule.schemas import (
     RecordShotPlacementRequest,
     RegenerateGuestLinkResponse,
     ReorderPlannedMatchesRequest,
+    RestStateRequest,
+    RestStateResponse,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
@@ -385,6 +388,37 @@ async def kick_member(
         raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
     updated = await service.kick_member(session, group, entry)
     return KickMemberResponse(roster_entry_id=str(updated.id), status=updated.status)
+
+
+@router.put(
+    "/groups/{group_id}/members/{roster_entry_id}/rest-state", response_model=RestStateResponse
+)
+async def set_member_rest_state(
+    group_id: uuid.UUID,
+    roster_entry_id: uuid.UUID,
+    payload: RestStateRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RestStateResponse:
+    """037-rest-ready-toggle US4 (FR-003): an admin puts any player in the
+    group on rest or back — including the creator, unlike kicking (resting
+    removes nobody). Same rules as the player doing it themself;
+    `guest_session_token` is ignored. Errors: `ADMIN_TOKEN_INVALID`,
+    `ROSTER_ENTRY_NOT_FOUND` (missing, in another group, or no longer
+    active), `GROUP_DISBANDED`, `REST_ENDS_ROUND`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    entry = result.scalar_one_or_none()
+    if entry is None or entry.group_id != group.id or entry.status != "active":
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    return await set_rest_state(
+        session,
+        group,
+        entry,
+        resting=payload.resting,
+        confirm_round_end=payload.confirm_round_end,
+    )
 
 
 @router.post(

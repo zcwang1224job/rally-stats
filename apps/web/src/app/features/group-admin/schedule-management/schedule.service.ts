@@ -8,6 +8,7 @@ import {
   MatchDetailResponse,
   PartnershipsResponse,
   RegenerateGuestLinkResponse,
+  RestStateResponse,
   RoundMatchesResponse,
   ScheduleResponse,
   ScoreMutationResult,
@@ -236,6 +237,22 @@ export class ScheduleService {
   kickMember(groupId: string, rosterEntryId: string): Observable<KickMemberResponse> {
     return this.api.delete<KickMemberResponse>(
       `/groups/${groupId}/members/${rosterEntryId}`,
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 037-rest-ready-toggle US4: an admin puts any player on rest or back.
+   * `resting` is the target state; `confirmRoundEnd` resends a rest the
+   * backend refused with REST_ENDS_ROUND once the admin has confirmed. */
+  setMemberRestState(
+    groupId: string,
+    rosterEntryId: string,
+    resting: boolean,
+    confirmRoundEnd = false,
+  ): Observable<RestStateResponse> {
+    return this.api.put<RestStateResponse>(
+      `/groups/${groupId}/members/${rosterEntryId}/rest-state`,
+      { resting, confirm_round_end: confirmRoundEnd },
       this.authHeader(groupId),
     );
   }

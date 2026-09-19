@@ -260,6 +260,9 @@
               @if (regenerateGuestLinkErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
+              @if (restErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
               @if (schedule(); as sched) {
                 <ul class="roster-list">
                   @for (member of sched.roster; track member.roster_entry_id) {
@@ -288,6 +291,15 @@
                           [nickname]="member.nickname"
                         />
                       }
+                      <!-- 037: every row, the creator's too — resting removes nobody. -->
+                      <app-rest-toggle-button
+                        [resting]="!!member.resting"
+                        [currentlyPlaying]="member.currently_playing"
+                        [pending]="restPendingIds().has(member.roster_entry_id)"
+                        [compact]="true"
+                        [nickname]="member.nickname"
+                        (toggled)="setMemberRest(member.roster_entry_id, member.nickname, $event)"
+                      />
                       @if (member.is_guest) {
                         <button
                           type="button"
@@ -626,4 +638,15 @@
   "
   [body]="'scheduleManagement.kickMemberConfirmBody' | translate"
   (confirmed)="confirmKickMember()"
+/>
+
+<app-confirm-dialog
+  #restEndsRoundDialog
+  [title]="'restToggle.endsRound.title' | translate"
+  [body]="
+    'restToggle.endsRound.adminBody'
+      | translate: { nickname: restEndsRoundTarget()?.nickname, count: restEndsRoundTarget()?.count }
+  "
+  [confirmLabel]="'restToggle.endsRound.confirm' | translate"
+  (confirmed)="confirmRestEndingRound()"
 />

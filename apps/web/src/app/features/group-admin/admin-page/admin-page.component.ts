@@ -10,6 +10,8 @@ import { copyTextToClipboard } from '../../../core/clipboard';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
+import { restEndsRoundCount } from '../../../core/rest-toggle-button/rest-ends-round';
+import { RestToggleButtonComponent } from '../../../core/rest-toggle-button/rest-toggle-button.component';
 import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
@@ -68,6 +70,7 @@ type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'settings';
     CourtControlComponent,
     RoundMatchesListComponent,
     AddFriendButtonComponent,
+    RestToggleButtonComponent,
   ],
   templateUrl: './admin-page.component.html',
   styleUrl: './admin-page.component.scss',
@@ -150,6 +153,17 @@ export class AdminPageComponent {
   readonly kickMemberDialog = viewChild.required<ConfirmDialogComponent>('kickMemberDialog');
   readonly kickMemberTarget = signal<{ rosterEntryId: string; nickname: string } | null>(null);
   readonly kickMemberErrorKey = signal<string | null>(null);
+
+  // 037-rest-ready-toggle US4: per-row pending, so one slow request doesn't
+  // lock every row; the round-ending prompt names the player it's about.
+  readonly restPendingIds = signal<ReadonlySet<string>>(new Set());
+  readonly restErrorKey = signal<string | null>(null);
+  readonly restEndsRoundDialog = viewChild.required<ConfirmDialogComponent>('restEndsRoundDialog');
+  readonly restEndsRoundTarget = signal<{
+    rosterEntryId: string;
+    nickname: string;
+    count: number;
+  } | null>(null);
 
   readonly addGuestNicknameInput =
     viewChild.required<ElementRef<HTMLInputElement>>('addGuestNicknameInput');
@@ -814,6 +828,57 @@ export class AdminPageComponent {
         this.kickMemberErrorKey.set(error.i18nKey);
       },
     });
+  }
+
+  /** 037-rest-ready-toggle US4: put a player on rest or back. No
+   * confirmation — except a rest the backend refuses with REST_ENDS_ROUND
+   * (it would end the round on the spot), which asks first, naming them. */
+  setMemberRest(
+    rosterEntryId: string,
+    nickname: string,
+    resting: boolean,
+    confirmRoundEnd = false,
+  ): void {
+    if (this.restPendingIds().has(rosterEntryId)) {
+      return;
+    }
+    this.restErrorKey.set(null);
+    this.restPendingIds.update((ids) => new Set(ids).add(rosterEntryId));
+    const done = () =>
+      this.restPendingIds.update((ids) => {
+        const next = new Set(ids);
+        next.delete(rosterEntryId);
+        return next;
+      });
+    this.scheduleService
+      .setMemberRestState(this.groupId, rosterEntryId, resting, confirmRoundEnd)
+      .subscribe({
+        next: () => {
+          done();
+          this.loadSchedule();
+        },
+        error: (error: ApiError) => {
+          done();
+          if (error.status === 401) {
+            this.handleAuthFailure(error);
+            return;
+          }
+          const count = restEndsRoundCount(error);
+          if (count !== null && !confirmRoundEnd) {
+            this.restEndsRoundTarget.set({ rosterEntryId, nickname, count });
+            this.restEndsRoundDialog().open();
+            return;
+          }
+          this.restErrorKey.set(error.i18nKey);
+        },
+      });
+  }
+
+  confirmRestEndingRound(): void {
+    const target = this.restEndsRoundTarget();
+    if (target) {
+      this.setMemberRest(target.rosterEntryId, target.nickname, true, true);
+    }
   }
 
   addGuest(): void {

@@ -226,6 +226,12 @@ export class RoundMatchesListComponent {
     );
   }
 
+  /** 037 FR-029: marks a resting player in the swap and change pickers;
+   * they stay selectable — the admin has the final say. */
+  isResting(rosterEntryId: string): boolean {
+    return this.roster().some((entry) => entry.roster_entry_id === rosterEntryId && !!entry.resting);
+  }
+
   isSelected(matchId: string, rosterEntryId: string): boolean {
     const first = this.firstPick();
     return first !== null && first.matchId === matchId && first.rosterEntryId === rosterEntryId;

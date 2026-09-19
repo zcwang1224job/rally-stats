@@ -449,6 +449,126 @@ async def test_a_rest_that_would_end_the_round_is_refused_until_confirmed(
     assert after["current_round_number"] == 2
 
 
+# --- the admin endpoint (US4, FR-003) ---
+
+
+async def test_an_admin_puts_anyone_on_rest_including_the_creator(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    created = await _create_group(client, valid_turnstile_token)
+    group_id = created["group_id"]
+    guest = await _join_guest(client, group_id, "小美")
+    headers = await _login_member(client, db_session, "rest-d@example.com", valid_turnstile_token)
+    member = (await client.post(f"/groups/{group_id}/join", headers=headers, json={})).json()
+
+    everyone = (guest["roster_entry_id"], member["roster_entry_id"], created["roster_entry_id"])
+    for roster_entry_id in everyone:
+        response = await client.put(
+            _admin_url(group_id, roster_entry_id), headers=_admin(created), json={"resting": True}
+        )
+        assert response.status_code == 200
+        assert response.json()["resting"] is True
+
+    own_view = (
+        await client.get(
+            f"/groups/{group_id}/member-schedule",
+            params={"guest_session_token": guest["guest_session_token"]},
+        )
+    ).json()
+    resting = {r["roster_entry_id"]: r["resting"] for r in own_view["roster"]}
+    assert resting[guest["roster_entry_id"]] is True
+
+
+async def test_the_admin_endpoint_ignores_a_guest_token(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    created = await _create_group(client, valid_turnstile_token)
+    guest = await _join_guest(client, created["group_id"], "小美")
+
+    response = await client.put(
+        _admin_url(created["group_id"], guest["roster_entry_id"]),
+        headers=_admin(created),
+        json={"resting": True, "guest_session_token": "anything"},
+    )
+    assert response.status_code == 200
+
+
+async def test_the_admin_endpoint_needs_this_groups_admin(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    created = await _create_group(client, valid_turnstile_token)
+    guest = await _join_guest(client, created["group_id"], "小美")
+    other = await _create_group(client, valid_turnstile_token, name="Other")
+    url = _admin_url(created["group_id"], guest["roster_entry_id"])
+
+    missing = await client.put(url, json={"resting": True})
+    foreign = await client.put(url, headers=_admin(other), json={"resting": True})
+    as_guest = await client.put(
+        url,
+        headers={"Authorization": f"Bearer {guest['guest_session_token']}"},
+        json={"resting": True},
+    )
+
+    for response in (missing, foreign, as_guest):
+        assert response.status_code == 401
+        assert response.json()["error_code"] == "ADMIN_TOKEN_INVALID"
+
+
+async def test_link_tokens_cannot_change_anyones_rest(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    """Constitution IV: scoreboard / court control / all-courts links are
+    unauthenticated screens — no admin action reachable through them."""
+    created = await _create_group(client, valid_turnstile_token)
+    group_id = created["group_id"]
+    guest = await _join_guest(client, group_id, "小美")
+    await client.post(f"/groups/{group_id}/courts", headers=_admin(created), json={"name": "2號場"})
+    court = (await _admin_get(client, created, "courts"))["courts"][0]
+    admin_view = await _admin_get(client, created, "admin")
+    link_tokens = [
+        court["scoreboard_token"],
+        court["control_panel_token"],
+        admin_view["all_courts_control_panel_token"],
+    ]
+
+    for token in link_tokens:
+        for url in (
+            _admin_url(group_id, guest["roster_entry_id"]),
+            _own_url(group_id, guest["roster_entry_id"]),
+        ):
+            response = await client.put(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                json={"resting": True, "guest_session_token": token},
+            )
+            assert response.status_code in (401, 404)
+
+
+async def test_the_admin_endpoint_refuses_departed_and_foreign_entries(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    created = await _create_group(client, valid_turnstile_token)
+    group_id = created["group_id"]
+    departed = await _join_guest(client, group_id, "小明")
+    await client.post(
+        f"/groups/{group_id}/roster/{departed['roster_entry_id']}/leave",
+        json={"guest_session_token": departed["guest_session_token"]},
+    )
+    elsewhere = await _create_group(client, valid_turnstile_token, name="Elsewhere")
+    stranger = await _join_guest(client, elsewhere["group_id"], "路人")
+
+    for roster_entry_id in (
+        departed["roster_entry_id"],
+        stranger["roster_entry_id"],
+        str(uuid.uuid4()),
+    ):
+        response = await client.put(
+            _admin_url(group_id, roster_entry_id), headers=_admin(created), json={"resting": True}
+        )
+        assert response.status_code == 404
+        assert response.json()["error_code"] == "ROSTER_ENTRY_NOT_FOUND"
+
+
 async def test_records_carry_no_rest_fields(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
 ) -> None:

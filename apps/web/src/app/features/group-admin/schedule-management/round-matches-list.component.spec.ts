@@ -109,6 +109,24 @@ describe('RoundMatchesListComponent', () => {
 
       expect(fixture.nativeElement.querySelector('.rest-banner')).toBeNull();
     });
+
+    it('marks resting players in the pickers but keeps them selectable (FR-029)', () => {
+      const { fixture } = setup([response(1, [match('m1', 'queued')])]);
+      fixture.componentRef.setInput('roster', [
+        { roster_entry_id: 'm1-a', nickname: 'm1A', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+        { roster_entry_id: 'm1-b', nickname: 'm1B', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+        { roster_entry_id: 'x', nickname: '候補', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+      ]);
+      fixture.detectChanges();
+
+      const pickButtons = fixture.nativeElement.querySelectorAll('.player-adjust > button');
+      expect(pickButtons[0].textContent).toContain('scheduleManagement.restingSuffix');
+      expect(pickButtons[1].textContent).not.toContain('scheduleManagement.restingSuffix');
+      const option = fixture.nativeElement.querySelector('.change-select option[value="x"]');
+      expect(option.textContent).toContain('scheduleManagement.restingSuffix');
+      expect(fixture.componentInstance.changeCandidates(fixture.componentInstance.matches()[0])
+        .map((c) => c.roster_entry_id)).toContain('x');
+    });
   });
 
   it('reloads quietly when the parent refetches the schedule', () => {
