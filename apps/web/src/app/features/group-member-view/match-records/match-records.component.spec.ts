@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { GroupMatchRecordsResponse } from '../../../core/api/group-member-view.models';
@@ -6,6 +7,7 @@ import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import { GroupMemberViewService } from '../group-member-view.service';
+import { MatchCardComponent } from '../../../shared/match-card/match-card.component';
 import { MatchRecordsComponent } from './match-records.component';
 
 const recordsResponse: GroupMatchRecordsResponse = {
@@ -89,13 +91,13 @@ describe('MatchRecordsComponent winner-by-name', () => {
   it('names the winning side\'s players when team A won', () => {
     const fixture = setup();
 
-    expect(fixture.componentInstance.winnerNames(recordsResponse.matches[0])).toBe('小明、小華');
+    expect(fixture.debugElement.queryAll(By.directive(MatchCardComponent))[0].componentInstance.winnerNames()).toBe('小明、小華');
   });
 
   it('names the winning side\'s players when team B won', () => {
     const fixture = setup();
 
-    expect(fixture.componentInstance.winnerNames(recordsResponse.matches[1])).toBe('小美');
+    expect(fixture.debugElement.queryAll(By.directive(MatchCardComponent))[1].componentInstance.winnerNames()).toBe('小美');
   });
 
   it('renders the winner label with player names, not "A方"/"B方"', () => {

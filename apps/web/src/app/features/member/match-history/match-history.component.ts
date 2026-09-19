@@ -1,7 +1,7 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
+import { MatchCardComponent } from '../../../shared/match-card/match-card.component';
 import { RoundTrendChartComponent } from '../../../shared/round-trend-chart/round-trend-chart.component';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
@@ -32,10 +32,8 @@ import {
   MatchupRecordsComponent,
   MatchupRole,
 } from '../../../core/matchup-records/matchup-records.component';
-import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
-import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { MatchMode } from '../../group-admin/group-admin.models';
 import { GroupBenchmarkComponent } from './group-benchmark/group-benchmark.component';
@@ -54,14 +52,12 @@ interface PerformanceTier {
 @Component({
   selector: 'app-match-history',
   imports: [
+    MatchCardComponent,
     RoundTrendChartComponent,
     PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
-    DatePipe,
     MatchRecordDetailDialogComponent,
-    NicknameComponent,
-    AddFriendButtonComponent,
     PlayerDashboardComponent,
     PlayerInsightsComponent,
     MatchupRecordsComponent,
@@ -419,6 +415,9 @@ export class MatchHistoryComponent {
   inviteCandidateFor(memberId: string): InviteCandidateStatus | undefined {
     return this.inviteCandidates().get(memberId);
   }
+
+  /** Bound for the match card's add-friend lookup. */
+  readonly candidateLookup = (memberId: string) => this.inviteCandidateFor(memberId);
 
   /** 016-match-score-timeline: opens the match detail dialog via
    * `AuthService.getMatchRecordDetail()` — the "ever a member" endpoint,

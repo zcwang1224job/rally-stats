@@ -208,55 +208,13 @@
     <ul class="record-list">
       @for (match of r.matches; track match.match_id) {
         <li
-          class="card match-card record-row--clickable"
-          [class.match-card--win]="match.won"
-          [class.match-card--loss]="!match.won"
-          role="button"
-          tabindex="0"
-          (click)="openDetail(match.match_id)"
-          (keydown.enter)="openDetail(match.match_id)"
-          (keydown.space)="openDetail(match.match_id); $event.preventDefault()"
-        >
-          <div class="match-card__meta">
-            <span class="status-badge">{{ match.group_name }}</span>
-            <span class="status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
-            @if (match.started_at && match.ended_at) {
-              <span class="time-range">
-                🕐 {{ match.started_at | date: 'M/d HH:mm' }} - {{ match.ended_at | date: 'HH:mm' }}
-              </span>
-            }
-          </div>
-          <div class="match-card__body">
-            <span class="match-card__team">
-              @for (p of match.team_a; track p.roster_entry_id) {
-                <app-nickname [value]="p.nickname" />
-                @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" [iconStyle]="true" [nickname]="p.nickname" />
-                }
-              }
-            </span>
-            <span class="match-card__score">{{ match.score_a }} : {{ match.score_b }}</span>
-            <span class="match-card__team match-card__team--right">
-              @for (p of match.team_b; track p.roster_entry_id) {
-                <app-nickname [value]="p.nickname" />
-                @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" [iconStyle]="true" [nickname]="p.nickname" />
-                }
-              }
-            </span>
-          </div>
-          <div class="match-card__result">
-            @if (match.won) {
-              <span class="status-badge status-badge--success">
-                🏅 {{ 'member.matchHistory.resultWinBadge' | translate }}
-              </span>
-            } @else {
-              <span class="status-badge status-badge--danger">
-                ✕ {{ 'member.matchHistory.resultLossBadge' | translate }}
-              </span>
-            }
-          </div>
-        </li>
+          app-match-card
+          [match]="match"
+          [result]="match.won ? 'win' : 'loss'"
+          [groupName]="match.group_name"
+          [candidateFor]="candidateLookup"
+          (opened)="openDetail(match.match_id)"
+        ></li>
       }
     </ul>
     <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />

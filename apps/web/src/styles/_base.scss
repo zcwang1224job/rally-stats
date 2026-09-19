@@ -376,6 +376,16 @@ dialog.dialog--xl {
   }
 }
 
+// A vertical list of cards (match records, and similar row lists).
+.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 // "Nothing here yet" for a list or section. On its own inside a card; as
 // `empty-state card` when it stands in for a whole page-level list. Any
 // follow-up action (e.g. "clear filters") goes inside it.

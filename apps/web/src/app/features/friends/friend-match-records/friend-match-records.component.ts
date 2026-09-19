@@ -1,7 +1,7 @@
-import { DatePipe } from '@angular/common';
 import { Component, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { MatchCardComponent } from '../../../shared/match-card/match-card.component';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import {
@@ -18,7 +18,6 @@ import {
   MatchupRecordsComponent,
   MatchupRole,
 } from '../../../core/matchup-records/matchup-records.component';
-import { NicknameComponent } from '../../../core/nickname/nickname.component';
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
 import { AuthService } from '../../auth/auth.service';
@@ -37,11 +36,10 @@ import { FriendComparisonComponent } from './friend-comparison/friend-comparison
 @Component({
   selector: 'app-friend-match-records',
   imports: [
+    MatchCardComponent,
     PaginationComponent,
     TranslatePipe,
-    DatePipe,
     MatchRecordDetailDialogComponent,
-    NicknameComponent,
     PlayerDashboardComponent,
     PlayerInsightsComponent,
     MatchupRecordsComponent,

@@ -1,8 +1,8 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { MatchCardComponent } from '../../../../shared/match-card/match-card.component';
 import { RoundTrendChartComponent } from '../../../../shared/round-trend-chart/round-trend-chart.component';
 import { PaginationComponent } from '../../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../../core/api/api-error';
@@ -11,7 +11,6 @@ import {
   FinalStandingRow,
   MatchRecordDetailResponse,
   MatchRecordScoreComparison,
-  MatchRecordSummary,
   OpponentRecord,
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
@@ -70,11 +69,11 @@ interface PlayerPieSlice {
 @Component({
   selector: 'app-group-history',
   imports: [
+    MatchCardComponent,
     RoundTrendChartComponent,
     PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
-    DatePipe,
     RouterLink,
     MatchRecordDetailDialogComponent,
     NicknameComponent,
@@ -269,10 +268,6 @@ export class GroupHistoryComponent {
   }
 
   /** The winning side's player names, joined. */
-  winnerNames(match: MatchRecordSummary): string {
-    const winners = match.winner_team === 'A' ? match.team_a : match.team_b;
-    return winners.map((p) => p.nickname).join('、');
-  }
 
   /** 016-match-score-timeline: opens the match detail dialog via
    * `AuthService.getMatchRecordDetail()` — the SAME "ever a member"
