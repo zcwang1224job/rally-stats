@@ -600,9 +600,8 @@ describe('AdminPageComponent', () => {
     }
 
     function rowButton(fixture: ReturnType<typeof setup>, index: number): HTMLButtonElement {
-      return fixture.nativeElement
-        .querySelectorAll('.roster-list li')
-        [index].querySelector('app-rest-toggle-button button');
+      const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+      return rows[index].querySelector('app-rest-toggle-button button');
     }
 
     it('gives every row a button, the creator included', () => {
