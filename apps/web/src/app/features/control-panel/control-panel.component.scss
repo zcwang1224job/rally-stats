@@ -11,6 +11,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh; // excludes a phone's browser chrome
   padding: var(--space-lg);
   text-align: center;
   background: var(--scoreboard-bg);
@@ -57,8 +58,8 @@ h1 {
   .swap-teams-button {
     min-width: 0;
     min-height: 0;
-    width: calc(var(--font-size-heading) * 1.6);
-    height: calc(var(--font-size-heading) * 1.6);
+    width: max(var(--touch-target-min), calc(var(--font-size-heading) * 1.6));
+    height: max(var(--touch-target-min), calc(var(--font-size-heading) * 1.6));
     padding: 0;
     font-size: 1.25rem;
   }
@@ -119,7 +120,7 @@ h1 {
 @media (orientation: landscape) and (max-height: 500px) {
   // .board-main's container-query below needs a genuinely definite (not
   // just floored) ancestor height to resolve — confirmed by direct
-  // measurement in a real browser: with only `min-height: 100vh` (the
+  // measurement in a real browser: with only `min-height: 100dvh` (the
   // base rule, a floor content can grow past), the browser can't rule out
   // a sizing cycle through this container-query chain and silently
   // resolves every cqh-based length to 0, collapsing the court instead of
@@ -130,6 +131,7 @@ h1 {
   :host {
     padding: var(--space-sm);
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
   }
 
@@ -141,8 +143,8 @@ h1 {
   // Matches h1/.round-label's own shrink above, so the button stays
   // proportioned to the (now smaller) heading text it's sized against.
   .swap-teams-button {
-    width: calc(var(--font-size-body) * 1.6);
-    height: calc(var(--font-size-body) * 1.6);
+    width: max(var(--touch-target-min), calc(var(--font-size-body) * 1.6));
+    height: max(var(--touch-target-min), calc(var(--font-size-body) * 1.6));
   }
 
   @include court-board.compact-landscape;

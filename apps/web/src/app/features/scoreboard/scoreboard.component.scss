@@ -16,6 +16,7 @@
   flex-direction: column;
   position: relative;
   min-height: 100vh;
+  min-height: 100dvh; // excludes a phone's browser chrome
   padding: var(--space-lg);
   text-align: center;
   background: var(--scoreboard-bg);
@@ -156,7 +157,7 @@ h1 {
 @media (orientation: landscape) and (max-height: 500px) {
   // .board-main's container-query below needs a genuinely definite (not
   // just floored) ancestor height to resolve — confirmed by direct
-  // measurement in a real browser: with only `min-height: 100vh` (the
+  // measurement in a real browser: with only `min-height: 100dvh` (the
   // base rule, a floor content can grow past), the browser can't rule out
   // a sizing cycle through this container-query chain and silently
   // resolves every cqh-based length to 0, collapsing the court instead of
@@ -167,6 +168,7 @@ h1 {
   :host {
     padding: var(--space-sm);
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
   }
 

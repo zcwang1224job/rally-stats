@@ -24,7 +24,11 @@
               [class.notification-item--unread]="!notification.read"
               (click)="open(notification)"
             >
-              <span class="status-badge" [class.status-badge--success]="notification.read">
+              <span
+                class="status-badge"
+                [class.status-badge--brand]="!notification.read"
+                [class.status-badge--muted]="notification.read"
+              >
                 {{
                   (notification.read
                     ? 'notifications.list.readBadge'

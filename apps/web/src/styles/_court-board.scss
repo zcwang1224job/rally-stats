@@ -101,11 +101,12 @@ $sizes: (
 // bright, attention-grabbing shapes, but these controls are for whoever is
 // scoring, not something players and audience watching the board should be
 // drawn to. Blends into the background at rest; hover (or a closer look)
-// reveals it. `$shadow: false` for elements that never had a shadow.
+// reveals it — while the resting label still clears AA contrast (4.5:1).
+// `$shadow: false` for elements that never had a shadow.
 @mixin camouflage($shadow: true) {
   background: var(--scoreboard-bg);
   border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-  color: color-mix(in srgb, var(--color-ink) 55%, white);
+  color: color-mix(in srgb, var(--color-ink) 52%, white);
   @if $shadow {
     box-shadow: none;
   }
@@ -129,7 +130,7 @@ $sizes: (
 @mixin camouflage-danger {
   background: var(--scoreboard-bg);
   border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
-  color: color-mix(in srgb, var(--color-ink) 55%, white);
+  color: color-mix(in srgb, var(--color-ink) 52%, white);
   box-shadow: none;
 
   @media (hover: hover) {
