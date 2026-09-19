@@ -77,8 +77,8 @@ from app.domains.schedule.models import (
     ScoreServeRecord,
     ShotPlacementRecord,
 )
-from app.domains.schedule.schemas import ParticipantSummary, RestStateResponse
 from app.domains.schedule.rest import set_rest_state
+from app.domains.schedule.schemas import ParticipantSummary, RestStateResponse
 from app.domains.schedule.service import (
     handle_member_joined,
     handle_member_left,

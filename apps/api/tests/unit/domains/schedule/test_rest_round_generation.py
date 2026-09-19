@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, Partnership
 from app.domains.schedule.service import (
     auto_pair_on_enter_fixed_partner,
@@ -18,7 +19,6 @@ from app.domains.schedule.service import (
     preview_random_partner_pairing,
     start_planned_round,
 )
-from app.domains.roster.models import RosterEntry
 from tests.unit.domains.schedule._rest_helpers import (
     make_courts,
     make_group,
@@ -91,7 +91,10 @@ async def test_fixed_partner_auto_teams_are_formed_from_ready_players(
     db_session: AsyncSession,
 ) -> None:
     group = await make_group(
-        db_session, match_mode="doubles", scheduling_mechanism="fixed_partner", partner_source="auto"
+        db_session,
+        match_mode="doubles",
+        scheduling_mechanism="fixed_partner",
+        partner_source="auto",
     )
     await make_courts(db_session, group, 2)
     players = await make_players(db_session, group, 8)

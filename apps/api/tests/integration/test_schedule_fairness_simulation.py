@@ -341,3 +341,267 @@ async def test_schedule_fairness(
             assert max(report.opponents.values()) <= scenario.max_opponent_repeat
         if scenario.max_streak is not None:
             assert report.longest_streak <= scenario.max_streak
+
+
+# --- 037-rest-ready-toggle SC-004: resting is not a way to jump the queue ---
+
+REST_PLAYERS = 10
+REST_COURTS = 2
+REST_MINUTES = 360
+# More seeds than SEEDS: roster ids are random uuids, so tie-breaks — and
+# with them each seed's numbers — vary from run to run; pooling six longer
+# sessions keeps that noise well inside the tolerance.
+REST_SEEDS = (1, 2, 3, 4, 5, 6)
+# Only these (by join order) ever rest; everyone else stays ready and is the
+# yardstick a returning player is compared against.
+RESTLESS = (0, 1, 2)
+REST_PROBABILITY = 0.3
+RETURN_PROBABILITY = 0.15
+
+
+@dataclass
+class RestEpisode:
+    player: uuid.UUID
+    wait_before: int | None
+    wait_after: int | None = None
+    # Matches that went on court from the return until the player rested
+    # again or the session ended, and how many of them the player was in.
+    window_matches: int = 0
+    window_plays: int = 0
+    # The same window's play count for every always-ready player.
+    ready_plays: dict[uuid.UUID, int] = field(default_factory=dict)
+    open: bool = True
+    # Index into the recorded stage-1 selections at the moment of return.
+    selection_index: int | None = None
+
+    @property
+    def excess(self) -> float | None:
+        """Share of the window's matches the returning player played, minus
+        the median always-ready player's share — > 0 means they played more
+        than a typical player who never left."""
+        if self.window_matches == 0 or not self.ready_plays:
+            return None
+        rates = sorted(n / self.window_matches for n in self.ready_plays.values())
+        median = rates[len(rates) // 2]
+        return self.window_plays / self.window_matches - median
+
+
+async def _run_with_rests(
+    session: AsyncSession, seed: int, selections: list[tuple[list, list, dict]]
+) -> list[RestEpisode]:
+    """A continuous-rotation session where players in RESTLESS rest and come
+    back at random moments (via the real `set_rest_state()`), recording what
+    SC-004 checks."""
+    from app.domains.schedule.rest import set_rest_state
+
+    rng = random.Random(seed)
+    random.seed(seed)
+    _Clock.current = SESSION_START
+    sc = Scenario("rest", "fair_rotation", "doubles", REST_PLAYERS, REST_COURTS,
+                  continuous_minutes=REST_MINUTES)
+    group, _courts, ids = await _setup(session, sc)
+    group = await service.set_continuous_rotation(session, group, True)
+    group = await service.plan_next_round(session, group)
+    group = await service.start_planned_round(session, group)
+    restless = {ids[i] for i in RESTLESS}
+    always_ready = [pid for pid in ids if pid not in restless]
+    episodes: list[RestEpisode] = []
+    open_by_player: dict[uuid.UUID, RestEpisode] = {}
+    resting: set[uuid.UUID] = set()
+    deadline = SESSION_START + timedelta(minutes=REST_MINUTES)
+    finish_at: dict[uuid.UUID, datetime] = {}
+    counted: set[uuid.UUID] = set()
+
+    async def entry(pid: uuid.UUID) -> RosterEntry:
+        result = await session.execute(select(RosterEntry).where(RosterEntry.id == pid))
+        return result.scalar_one()
+
+    while True:
+        playing = (
+            await session.execute(
+                select(Match).where(Match.group_id == group.id, Match.status == "in_progress")
+            )
+        ).scalars().all()
+        # Count every match that has gone on court into the open windows.
+        for match in playing:
+            if match.id in counted:
+                continue
+            counted.add(match.id)
+            on_court = set(
+                (
+                    await session.execute(
+                        select(MatchParticipant.roster_entry_id).where(
+                            MatchParticipant.match_id == match.id
+                        )
+                    )
+                ).scalars()
+            )
+            for episode in episodes:
+                if episode.open and episode.wait_after is not None:
+                    episode.window_matches += 1
+                    episode.window_plays += episode.player in on_court
+                    for pid in always_ready:
+                        seen = episode.ready_plays.get(pid, 0)
+                        episode.ready_plays[pid] = seen + (pid in on_court)
+        if not playing:
+            return episodes
+        for match in playing:
+            finish_at.setdefault(match.id, _Clock.current + timedelta(minutes=rng.uniform(8, 15)))
+        match = min(playing, key=lambda m: finish_at[m.id])
+        _Clock.current = finish_at[match.id]
+        if _Clock.current > deadline:
+            return episodes
+        await session.execute(
+            update(Match)
+            .where(Match.id == match.id)
+            .values(status="completed", winner_team="A", score_a=21, ended_at=_Clock.current)
+        )
+        await session.commit()
+        await session.refresh(match)
+        await service._advance_after_terminal(session, match)
+        await session.refresh(group)
+
+        busy = set(
+            (
+                await session.execute(
+                    select(MatchParticipant.roster_entry_id)
+                    .join(Match, Match.id == MatchParticipant.match_id)
+                    .where(Match.group_id == group.id, Match.status == "in_progress")
+                )
+            ).scalars()
+        )
+        idle_restless = sorted(pid for pid in restless - resting - busy)
+        if idle_restless and rng.random() < REST_PROBABILITY:
+            pid = rng.choice(idle_restless)
+            player = await entry(pid)
+            episode = RestEpisode(pid, player.wait_count)
+            episodes.append(episode)
+            if pid in open_by_player:
+                open_by_player[pid].open = False
+            open_by_player[pid] = episode
+            resting.add(pid)
+            await set_rest_state(session, group, player, resting=True)
+        elif resting and rng.random() < RETURN_PROBABILITY:
+            pid = rng.choice(sorted(resting))
+            resting.discard(pid)
+            episode = open_by_player[pid]
+            episode.selection_index = len(selections)
+            await set_rest_state(session, group, await entry(pid), resting=False)
+            episode.wait_after = (await entry(pid)).wait_count
+        await session.refresh(group)
+
+
+def _patch_rest_clock_and_selection(
+    monkeypatch: pytest.MonkeyPatch, selections: list[tuple[list, list, dict]]
+) -> None:
+    from app.domains.schedule import rest as rest_module
+
+    monkeypatch.setattr(service, "datetime", _Clock)
+    monkeypatch.setattr(rest_module, "datetime", _Clock)
+    real_select = service.stage1_select_players
+
+    def recording_select(roster, n, histories=None, pair_cost=None):  # type: ignore[no-untyped-def]
+        picked = real_select(roster, n, histories, pair_cost)
+        selections.append((list(roster), list(picked), dict(histories or {})))
+        return picked
+
+    monkeypatch.setattr(service, "stage1_select_players", recording_select)
+
+
+def _disable_rest_fixes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """What scheduling did before research.md Decisions 3 and 4: rest counted
+    straight through a break, and no played credit on return. The wait
+    count stays frozen either way (that is T008, not under test here)."""
+    from app.domains.schedule import algorithms
+    from app.domains.schedule import rest as rest_module
+
+    def histories_ignoring_rest(matches, _periods=None):  # type: ignore[no-untyped-def]
+        return algorithms.player_histories(matches)
+
+    monkeypatch.setattr(service, "player_histories", histories_ignoring_rest)
+
+    async def no_credit(*_args: object) -> int:
+        return 0
+
+    monkeypatch.setattr(rest_module, "_returning_credit", no_credit)
+
+
+def _mean_excess(episodes: list[RestEpisode]) -> float:
+    values = [e.excess for e in episodes if e.excess is not None]
+    return sum(values) / len(values) if values else 0.0
+
+
+def _jumped_ahead(episode: RestEpisode, selections: list[tuple[list, list, dict]]) -> bool:
+    """At the first selection after the return that could pick the player:
+    were they picked over someone who had waited strictly longer? (A
+    wait_count of None — never played — outranks any number.)"""
+    assert episode.selection_index is not None
+    for roster, picked, _histories in selections[episode.selection_index:]:
+        waits = {pid: wait for pid, wait, _joined in roster}
+        if episode.player not in waits:
+            continue
+        if episode.player not in picked:
+            return False
+        own = waits[episode.player]
+        return any(
+            pid not in picked and _waited_longer(wait, own)
+            for pid, wait in waits.items()
+            if pid != episode.player
+        )
+    return False
+
+
+def _waited_longer(other: int | None, own: int | None) -> bool:
+    if own is None:
+        return False  # nothing outranks "never played"
+    if other is None:
+        return True
+    return other > own
+
+
+# SC-004 tolerance (tasks.md T018, analyze B1). Mean excess — the returning
+# player's share of the matches after their return minus the median
+# always-ready player's — pooled over REST_SEEDS' returns. Measured
+# 2026-09-19, three repeats, 10 players, 2 courts, 6 hours, REST/RETURN
+# 0.3/0.15:
+#   fixes off (research.md Decisions 3 and 4 disabled): +0.062 +0.053 +0.067
+#   fixes on:                                           -0.003 -0.001 -0.060
+# Worst cases -0.001 on vs +0.053 off; the midpoint, rounded down, is 0.02.
+# An earlier setting (4 hours, 3 seeds, return 0.35) pooled as low as +0.028
+# with the fixes off — rests too short to show much — so the rests were
+# made longer rather than the tolerance squeezed.
+MAX_RETURN_EXCESS = 0.02
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fixes", ["on", "off"])
+async def test_resting_is_not_a_shortcut(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, fixes: str
+) -> None:
+    """With the fixes on, a returning player keeps their wait count, never
+    goes ahead of someone who waited longer, and doesn't then play more than
+    those who never left. With them off, the same measure MUST trip — proof
+    that it can catch the problem at all."""
+    selections: list[tuple[list, list, dict]] = []
+    _patch_rest_clock_and_selection(monkeypatch, selections)
+    if fixes == "off":
+        _disable_rest_fixes(monkeypatch)
+    returned: list[RestEpisode] = []
+    for seed in REST_SEEDS:
+        episodes = await _run_with_rests(db_session, seed, selections)
+        seed_returns = [e for e in episodes if e.wait_after is not None]
+        print(
+            f"\n[fixes {fixes} seed {seed}] rests {len(episodes)}, returns {len(seed_returns)}, "
+            f"mean excess {_mean_excess(seed_returns):+.3f}"
+        )
+        returned.extend(seed_returns)
+
+    assert len(returned) >= 6, "too few returns to say anything"
+    pooled = _mean_excess(returned)
+    if fixes == "off":
+        assert pooled > MAX_RETURN_EXCESS
+        return
+    assert pooled <= MAX_RETURN_EXCESS
+    for episode in returned:
+        assert episode.wait_after == episode.wait_before  # FR-024
+        assert not _jumped_ahead(episode, selections)

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.court.models import Court
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
+
 # groups.created_by_member_id points at members: without this, a module
 # importing only these helpers fails on its own (as most schedule tests do).
 from app.domains.member import models as _member_models  # noqa: F401
@@ -90,6 +91,39 @@ async def finish_match(session: AsyncSession, match: Match, winner: str = "A") -
     return await _advance_after_terminal(session, match)
 
 
+async def played_match(
+    session: AsyncSession,
+    group: Group,
+    team_a: list[RosterEntry],
+    team_b: list[RosterEntry],
+    started_at: datetime,
+    ended_at: datetime | None,
+) -> Match:
+    """A match that went on court at `started_at` (completed at `ended_at`,
+    or still on court when None) — for tests that need rest counted over a
+    known history rather than whatever the clock said."""
+    match = Match(
+        group_id=group.id,
+        round_number=group.current_round_number,
+        status="completed" if ended_at is not None else "in_progress",
+        target_score=group.target_score,
+        deuce_threshold=group.deuce_threshold,
+        cap_score=group.cap_score,
+        detailed_scoring_enabled=False,
+        started_at=started_at,
+        ended_at=ended_at,
+        winner_team="A" if ended_at is not None else None,
+    )
+    session.add(match)
+    await session.flush()
+    session.add_all(
+        [MatchParticipant(match_id=match.id, roster_entry_id=p.id, team="A") for p in team_a]
+        + [MatchParticipant(match_id=match.id, roster_entry_id=p.id, team="B") for p in team_b]
+    )
+    await session.commit()
+    return match
+
+
 async def participants(session: AsyncSession, match_id: object) -> set[object]:
     result = await session.execute(
         select(MatchParticipant.roster_entry_id).where(MatchParticipant.match_id == match_id)
@@ -97,7 +131,9 @@ async def participants(session: AsyncSession, match_id: object) -> set[object]:
     return set(result.scalars())
 
 
-async def round_matches(session: AsyncSession, group: Group, round_number: int | None = None) -> list[Match]:
+async def round_matches(
+    session: AsyncSession, group: Group, round_number: int | None = None
+) -> list[Match]:
     await session.refresh(group)
     result = await session.execute(
         select(Match)

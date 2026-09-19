@@ -22,9 +22,10 @@ from app.core.errors import ApiError
 from app.core.realtime import court_channel, group_notifications_channel, publish
 from app.domains.court.models import Court
 from app.domains.group.models import Group, RoundHistory
-from app.domains.roster.models import RosterEntry
+from app.domains.roster.models import RosterEntry, RosterRestPeriod
 from app.domains.schedule.algorithms import (
     PlayerHistory,
+    RestPeriod,
     pair_doubles_matches,
     pick_next_match,
     player_histories,
@@ -482,7 +483,12 @@ async def _get_player_histories(
     since their last one, current back-to-back run), from every match of
     the group that went on court — including those abandoned mid-play,
     since the players were on court. Rest is counted in matches, not
-    minutes (`player_histories()`)."""
+    minutes (`player_histories()`).
+
+    037-rest-ready-toggle: matches that started while a player was resting
+    aren't counted as rest, and `played` includes `played_credit`. This is
+    the only place credit enters scheduling (research.md Decisions 3, 4).
+    Someone who has never played stays absent — they are a newcomer."""
     result = await session.execute(
         select(Match.id, Match.started_at, Match.ended_at, MatchParticipant.roster_entry_id)
         .join(MatchParticipant, MatchParticipant.match_id == Match.id)
@@ -491,7 +497,34 @@ async def _get_player_histories(
     matches: dict[uuid.UUID, tuple[datetime, datetime | None, list[uuid.UUID]]] = {}
     for match_id, started_at, ended_at, roster_entry_id in result.all():
         matches.setdefault(match_id, (started_at, ended_at, []))[2].append(roster_entry_id)
-    return player_histories(list(matches.values()))
+
+    rest_periods: dict[uuid.UUID, list[RestPeriod]] = {}
+    periods_result = await session.execute(
+        select(
+            RosterRestPeriod.roster_entry_id, RosterRestPeriod.started_at, RosterRestPeriod.ended_at
+        ).where(RosterRestPeriod.group_id == group_id)
+    )
+    for roster_entry_id, started_at, ended_at in periods_result.all():
+        rest_periods.setdefault(roster_entry_id, []).append((started_at, ended_at))
+    entries_result = await session.execute(
+        select(RosterEntry.id, RosterEntry.resting_since, RosterEntry.played_credit).where(
+            RosterEntry.group_id == group_id,
+            or_(RosterEntry.resting_since.is_not(None), RosterEntry.played_credit > 0),
+        )
+    )
+    credits: dict[uuid.UUID, int] = {}
+    for roster_entry_id, resting_since, played_credit in entries_result.all():
+        if resting_since is not None:
+            rest_periods.setdefault(roster_entry_id, []).append((resting_since, None))
+        if played_credit:
+            credits[roster_entry_id] = played_credit
+
+    histories = player_histories(list(matches.values()), rest_periods)
+    for roster_entry_id, credit in credits.items():
+        history = histories.get(roster_entry_id)
+        if history is not None:
+            histories[roster_entry_id] = history._replace(played=history.played + credit)
+    return histories
 
 
 # Whether a match counts as part of someone's round: everything except a

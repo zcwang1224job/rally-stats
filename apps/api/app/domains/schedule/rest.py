@@ -18,6 +18,7 @@ from app.core.realtime import group_notifications_channel, publish
 from app.domains.group.models import Group
 from app.domains.roster.models import RosterEntry, RosterRestPeriod
 from app.domains.schedule import service
+from app.domains.schedule.algorithms import returning_played_credit
 from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.schemas import RestStateResponse
 
@@ -51,7 +52,8 @@ async def set_rest_state(
         return await _response(session, current, changed=False)
 
     now = datetime.now(UTC)
-    if resting:
+    rested_since = current.resting_since
+    if rested_since is None:
         current.resting_since = now
         await session.flush()
         # 037 T023: REST_ENDS_ROUND
@@ -60,11 +62,11 @@ async def set_rest_state(
             RosterRestPeriod(
                 roster_entry_id=current.id,
                 group_id=group.id,
-                started_at=current.resting_since,
-                ended_at=max(now, current.resting_since),
+                started_at=rested_since,
+                ended_at=max(now, rested_since),
             )
         )
-        # 037 T017: played_credit
+        current.played_credit += await _returning_credit(session, group, current)
         current.resting_since = None
         await session.flush()
         # 037 T024: late-joiner matches for this round
@@ -84,6 +86,24 @@ async def set_rest_state(
         {"roster_entry_id": str(current.id), "nickname": current.nickname, "resting": resting},
     )
     return await _response(session, current, changed=True)
+
+
+async def _returning_credit(session: AsyncSession, group: Group, entry: RosterEntry) -> int:
+    """Matches to credit `entry` on coming back (research.md Decision 4):
+    up to the lower median of the other ready players' played count,
+    credit included. Called while `entry` is still resting, so the ready
+    roster doesn't include them. Someone who has never played gets none —
+    they come back a newcomer, which already puts them first."""
+    await session.flush()  # the rest period just added counts in histories
+    histories = await service._get_player_histories(session, group.id)
+    own = histories.get(entry.id)
+    if own is None:
+        return 0
+    others = [
+        histories[pid].played if pid in histories else 0
+        for pid in await service._get_ready_roster_ordered(session, group.id)
+    ]
+    return returning_played_credit(own.played, others)
 
 
 async def _response(
