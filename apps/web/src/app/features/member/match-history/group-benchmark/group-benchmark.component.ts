@@ -1,3 +1,4 @@
+import { formatPercent } from '../../../../core/match-record-detail/ratio-format';
 import { Component, input, output } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import {
@@ -60,7 +61,7 @@ export class GroupBenchmarkComponent {
       return '—';
     }
     return metric.kind === 'rate'
-      ? `${Math.round(metric.group_average * 100)}%`
+      ? formatPercent(metric.group_average)
       : metric.group_average.toFixed(1);
   }
 

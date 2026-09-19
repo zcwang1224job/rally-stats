@@ -1,3 +1,4 @@
+import { formatPercent } from '../match-record-detail/ratio-format';
 import { DashboardInsight, InsightRule } from '../api/player-dashboard.models';
 
 /** 036 US1: which sentence a rule code maps to, and how its numbers are
@@ -55,7 +56,7 @@ export function insightEvidence(insight: DashboardInsight): InsightEvidence {
 /** A share of points or matches, as a whole percentage — the same rounding
  * the metric cards use, so a sentence never disagrees with its card. */
 export function percent(value: number | string | null | undefined): string {
-  return typeof value === 'number' ? `${Math.round(value * 100)}%` : '—';
+  return typeof value === 'number' ? formatPercent(value) : '—';
 }
 
 /** A per-match count or a ratio: one decimal, like the metric cards. */

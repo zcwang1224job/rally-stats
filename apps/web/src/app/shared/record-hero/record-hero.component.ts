@@ -1,5 +1,6 @@
 import { Component, computed, input } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
+import { formatPercent } from '../../core/match-record-detail/ratio-format';
 
 interface PerformanceTier {
   icon: string;
@@ -22,7 +23,7 @@ export class RecordHeroComponent {
   /** 0–1. */
   readonly winRate = input.required<number>();
 
-  readonly winPercent = computed(() => Math.round(this.winRate() * 100));
+  readonly winPercent = computed(() => formatPercent(this.winRate()));
 
   readonly ringGradient = computed(() => {
     if (this.total() === 0) {

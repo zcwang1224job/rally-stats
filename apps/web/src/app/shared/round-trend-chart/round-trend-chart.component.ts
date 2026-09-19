@@ -1,3 +1,4 @@
+import { formatPercent } from '../../core/match-record-detail/ratio-format';
 import { Component, computed, inject, input } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
@@ -61,7 +62,7 @@ export class RoundTrendChartComponent {
         round: round.round_number,
       }),
       value: round.win_rate,
-      display: `${Math.round(round.win_rate * 100)}%`,
+      display: formatPercent(round.win_rate),
       detail: `${round.wins}/${round.wins + round.losses}`,
     }));
   });

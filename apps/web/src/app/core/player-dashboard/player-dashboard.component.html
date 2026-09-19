@@ -81,7 +81,7 @@
                       <th scope="row">{{ 'playerDashboard.errorBreakdown.kind.' + row.kind | translate }}</th>
                       <td class="error-breakdown__count">{{ row.count }}</td>
                       <td class="error-breakdown__share">
-                        <span class="error-breakdown__percent">{{ (row.share * 100).toFixed(0) }}%</span>
+                        <span class="error-breakdown__percent">{{ row.share | ratioPercent }}</span>
                         <span class="error-breakdown__bar" aria-hidden="true">
                           <span class="error-breakdown__fill" [style.width.%]="row.share * 100"></span>
                         </span>

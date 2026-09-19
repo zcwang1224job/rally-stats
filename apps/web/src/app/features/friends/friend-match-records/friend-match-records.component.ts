@@ -1,3 +1,4 @@
+import { RatioPercentPipe } from '../../../shared/percent/ratio-percent.pipe';
 import { Component, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -36,6 +37,7 @@ import { FriendComparisonComponent } from './friend-comparison/friend-comparison
 @Component({
   selector: 'app-friend-match-records',
   imports: [
+    RatioPercentPipe,
     MatchCardComponent,
     PaginationComponent,
     TranslatePipe,
