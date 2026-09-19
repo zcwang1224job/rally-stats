@@ -3,7 +3,7 @@
 } @else if (member(); as m) {
   <section class="card">
     <div class="member-identity">
-      <span class="friend-row__avatar" aria-hidden="true">{{ (m.nickname || m.user_number).charAt(0) }}</span>
+      <span class="avatar" aria-hidden="true">{{ (m.nickname || m.user_number).charAt(0) }}</span>
       <div>
         <h1>{{ m.nickname || m.user_number }}</h1>
         <p class="user-number">{{ 'auth.userNumber' | translate }}: {{ m.user_number }}</p>

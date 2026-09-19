@@ -53,28 +53,12 @@
   </section>
 
   <h2 class="section-title">{{ 'member.matchHistory.myStatsTitle' | translate }}</h2>
-  <section class="card hero-card">
-    <div class="hero-card__ring-wrap">
-      <div class="donut-chart" [style.background]="winLossGradient()"></div>
-      <div class="hero-card__ring-label">
-        <span class="hero-card__ring-value">{{ (h.my_stats.win_rate * 100).toFixed(0) }}%</span>
-        <span class="hero-card__ring-caption">{{ 'member.matchHistory.stats.winRate' | translate }}</span>
-      </div>
-    </div>
-    <div class="hero-card__info">
-      @if (performanceTier(); as tier) {
-        <span class="tier-badge">{{ tier.icon }} {{ tier.labelKey | translate }}</span>
-      }
-      <div class="hero-card__record">
-        <span class="hero-card__record-wins">{{ h.my_stats.total_wins }}{{ 'member.matchHistory.stats.winShort' | translate }}</span>
-        <span class="hero-card__record-sep">–</span>
-        <span class="hero-card__record-losses">{{ h.my_stats.total_losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}</span>
-      </div>
-      <p class="hero-card__total">
-        {{ 'member.matchHistory.stats.totalSuffix' | translate: { total: h.my_stats.total_matches } }}
-      </p>
-    </div>
-  </section>
+  <app-record-hero
+    [wins]="h.my_stats.total_wins"
+    [losses]="h.my_stats.total_losses"
+    [total]="h.my_stats.total_matches"
+    [winRate]="h.my_stats.win_rate"
+  />
 
   @if (h.my_stats.total_matches > 0) {
     <section class="card chart-card">

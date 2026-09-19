@@ -117,28 +117,12 @@
 @if (errorKey()) {
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (records(); as r) {
-  <section class="card hero-card">
-    <div class="hero-card__ring-wrap">
-      <div class="donut-chart" [style.background]="winLossGradient()"></div>
-      <div class="hero-card__ring-label">
-        <span class="hero-card__ring-value">{{ (r.win_rate * 100).toFixed(0) }}%</span>
-        <span class="hero-card__ring-caption">{{ 'member.matchHistory.stats.winRate' | translate }}</span>
-      </div>
-    </div>
-    <div class="hero-card__info">
-      @if (performanceTier(); as tier) {
-        <span class="tier-badge">{{ tier.icon }} {{ tier.labelKey | translate }}</span>
-      }
-      <div class="hero-card__record">
-        <span class="hero-card__record-wins">{{ r.total_wins }}{{ 'member.matchHistory.stats.winShort' | translate }}</span>
-        <span class="hero-card__record-sep">–</span>
-        <span class="hero-card__record-losses">{{ r.total_losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}</span>
-      </div>
-      <p class="hero-card__total">
-        {{ 'member.matchHistory.stats.totalSuffix' | translate: { total: r.total_matches } }}
-      </p>
-    </div>
-  </section>
+  <app-record-hero
+    [wins]="r.total_wins"
+    [losses]="r.total_losses"
+    [total]="r.total_matches"
+    [winRate]="r.win_rate"
+  />
 
   <!-- 036 US1: the conclusions first, the numbers behind them right below.
        Rides on the dashboard response, so it follows the same filters and

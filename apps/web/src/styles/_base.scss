@@ -376,6 +376,23 @@ dialog.dialog--xl {
   }
 }
 
+// A person's initial in a brand-colored circle (member hub, friend list,
+// my groups, group rosters). The text is decorative: pair it with the
+// visible name and mark it aria-hidden.
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
+}
+
 // A vertical list of cards (match records, and similar row lists).
 .record-list {
   display: flex;

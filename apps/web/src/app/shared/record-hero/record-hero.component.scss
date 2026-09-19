@@ -1,0 +1,100 @@
+:host {
+  display: block;
+}
+
+// The "athlete card" hero: a big win-rate ring plus a scoreboard-style
+// W–L record, standing in for the old plain stat-card grid — one focal
+// number (the ring) reads faster than four equally-weighted tiles, and the
+// tier badge gives it a "your profile card" feel rather than a report.
+.hero-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-lg);
+}
+
+.hero-card__ring-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 148px;
+  height: 148px;
+}
+
+.hero-card__ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.hero-card__ring-value {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+}
+
+.hero-card__ring-caption {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
+.hero-card__info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-xs);
+}
+
+.tier-badge {
+  display: inline-flex;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-brand-primary) 12%, white);
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-caption);
+}
+
+.hero-card__record {
+  display: flex;
+  font-variant-numeric: tabular-nums;
+  align-items: baseline;
+  gap: var(--space-xs);
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-black);
+  line-height: 1;
+}
+
+.hero-card__record-wins {
+  color: var(--color-positive);
+}
+
+.hero-card__record-losses {
+  color: var(--color-negative);
+}
+
+.hero-card__record-sep {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-heading);
+}
+
+.hero-card__total {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.donut-chart {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  // A plain conic-gradient ring reads as a pie chart with a hollow center
+  // punched out via mask, giving it the more legible donut shape without a
+  // second stacked element.
+  mask: radial-gradient(farthest-side, transparent calc(100% - 30px), #000 calc(100% - 30px));
+}

@@ -19,7 +19,7 @@
             (click)="openGroupHistory(group)"
             [attr.aria-label]="'myGroups.viewHistoryAriaLabel' | translate: { name: group.name }"
           >
-            <span class="friend-row__avatar" aria-hidden="true">{{ group.name.charAt(0) }}</span>
+            <span class="avatar" aria-hidden="true">{{ group.name.charAt(0) }}</span>
             <span class="group-row-main__identity">
               <span class="group-name">{{ group.name }}</span>
               <span class="group-number">{{ group.group_number }}</span>
