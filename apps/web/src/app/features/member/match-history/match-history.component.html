@@ -179,39 +179,7 @@
   @if (r.total_matches > 0) {
     <section class="card chart-card">
       <h2>{{ 'member.matchHistory.charts.roundTrendTitle' | translate }}</h2>
-      @if (roundTrendPoints().length > 0) {
-        <svg
-          class="trend-chart"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          role="img"
-          [attr.aria-label]="'member.matchHistory.charts.roundTrendTitle' | translate"
-        >
-          <defs>
-            <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" class="trend-chart__stop-start" />
-              <stop offset="100%" class="trend-chart__stop-end" />
-            </linearGradient>
-          </defs>
-          <line x1="0" y1="50" x2="100" y2="50" class="trend-chart__midline" />
-          <polygon [attr.points]="roundTrendAreaPoints()" class="trend-chart__area" />
-          <polyline [attr.points]="roundTrendPolyline()" class="trend-chart__line" />
-          @for (point of roundTrendPoints(); track point.round) {
-            <circle [attr.cx]="point.x" [attr.cy]="point.y" r="2.5" class="trend-chart__dot" />
-          }
-        </svg>
-        <ul class="trend-legend">
-          @for (point of roundTrendPoints(); track point.round) {
-            <li>
-              {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: point.round } }}：{{
-                (point.winRate * 100).toFixed(0)
-              }}%
-            </li>
-          }
-        </ul>
-      } @else {
-        <p class="chart-empty">{{ 'member.matchHistory.charts.roundTrendEmpty' | translate }}</p>
-      }
+      <app-round-trend-chart [rounds]="r.round_win_rates" />
     </section>
 
     <!-- 036 US2: replaces the opponent ranking. Partners first — "who do I

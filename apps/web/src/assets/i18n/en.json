@@ -279,7 +279,9 @@
       },
       "charts": {
         "roundTrendTitle": "Win Rate Trend by Round",
-        "roundTrendEmpty": "No round data available to chart"
+        "roundTrendEmpty": "No round data available to chart",
+        "roundTrendRound": "Round",
+        "roundTrendSummary": "Win rate by round across {{count}} rounds, from {{from}} to {{to}}"
       },
       "opponentRanking": {
         "title": "Opponent Records",

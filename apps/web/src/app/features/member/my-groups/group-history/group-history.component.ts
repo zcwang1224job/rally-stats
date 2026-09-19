@@ -3,6 +3,7 @@ import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { RoundTrendChartComponent } from '../../../../shared/round-trend-chart/round-trend-chart.component';
 import { PaginationComponent } from '../../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../../core/api/api-error';
 import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
@@ -18,12 +19,6 @@ import { NicknameComponent } from '../../../../core/nickname/nickname.component'
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
 
-interface RoundTrendPoint {
-  round: number;
-  x: number;
-  y: number;
-  winRate: number;
-}
 
 interface PerformanceTier {
   icon: string;
@@ -75,6 +70,7 @@ interface PlayerPieSlice {
 @Component({
   selector: 'app-group-history',
   imports: [
+    RoundTrendChartComponent,
     PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
@@ -138,35 +134,7 @@ export class GroupHistoryComponent {
     );
   });
 
-  readonly roundTrendPoints = computed<RoundTrendPoint[]>(() => {
-    const buckets = this.history()?.my_stats.round_win_rates ?? [];
-    if (buckets.length === 0) {
-      return [];
-    }
-    const step = buckets.length > 1 ? 100 / (buckets.length - 1) : 0;
-    return buckets.map((bucket, index) => ({
-      round: bucket.round_number,
-      x: buckets.length > 1 ? index * step : 50,
-      y: 100 - bucket.win_rate * 100,
-      winRate: bucket.win_rate,
-    }));
-  });
 
-  readonly roundTrendPolyline = computed(() =>
-    this.roundTrendPoints()
-      .map((point) => `${point.x},${point.y}`)
-      .join(' '),
-  );
-
-  readonly roundTrendAreaPoints = computed(() => {
-    const points = this.roundTrendPoints();
-    if (points.length === 0) {
-      return '';
-    }
-    const line = points.map((point) => `${point.x},${point.y}`).join(' ');
-    const lastX = points[points.length - 1].x;
-    return `0,100 ${line} ${lastX},100`;
-  });
 
   readonly performanceTier = computed<PerformanceTier | null>(() => {
     const stats = this.history()?.my_stats;

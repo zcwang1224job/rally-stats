@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
+import { RoundTrendChartComponent } from '../../../shared/round-trend-chart/round-trend-chart.component';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
@@ -40,12 +41,6 @@ import { MatchMode } from '../../group-admin/group-admin.models';
 import { GroupBenchmarkComponent } from './group-benchmark/group-benchmark.component';
 import { FriendsService } from '../../friends/friends.service';
 
-interface RoundTrendPoint {
-  round: number;
-  x: number;
-  y: number;
-  winRate: number;
-}
 
 interface PerformanceTier {
   icon: string;
@@ -59,6 +54,7 @@ interface PerformanceTier {
 @Component({
   selector: 'app-match-history',
   imports: [
+    RoundTrendChartComponent,
     PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
@@ -264,40 +260,7 @@ export class MatchHistoryComponent {
     );
   });
 
-  /** Round-by-round win-rate trend, laid out on a 0..100 x 0..100 viewBox —
-   * x spaced evenly across however many round buckets came back, y
-   * inverted (100% win rate at the top, y=0). */
-  readonly roundTrendPoints = computed<RoundTrendPoint[]>(() => {
-    const buckets = this.records()?.round_win_rates ?? [];
-    if (buckets.length === 0) {
-      return [];
-    }
-    const step = buckets.length > 1 ? 100 / (buckets.length - 1) : 0;
-    return buckets.map((bucket, index) => ({
-      round: bucket.round_number,
-      x: buckets.length > 1 ? index * step : 50,
-      y: 100 - bucket.win_rate * 100,
-      winRate: bucket.win_rate,
-    }));
-  });
 
-  readonly roundTrendPolyline = computed(() =>
-    this.roundTrendPoints()
-      .map((point) => `${point.x},${point.y}`)
-      .join(' '),
-  );
-
-  /** Same line, closed down to the baseline — fills the area under the
-   * trend line for a "broadcast graphic" feel instead of a bare line. */
-  readonly roundTrendAreaPoints = computed(() => {
-    const points = this.roundTrendPoints();
-    if (points.length === 0) {
-      return '';
-    }
-    const line = points.map((point) => `${point.x},${point.y}`).join(' ');
-    const lastX = points[points.length - 1].x;
-    return `0,100 ${line} ${lastX},100`;
-  });
 
   /** A lightweight "athlete rank" read on the member's win rate — purely a
    * motivational framing device (no gameplay effect), gated on having
