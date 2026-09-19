@@ -1,6 +1,13 @@
 <nav class="nav-shell">
-  <a class="nav-shell__brand tap-target" routerLink="/" (click)="closeMenu()">
-    {{ 'nav.home' | translate }}
+  <!-- The product name, like the home page's own title; it still announces
+       where it goes. -->
+  <a
+    class="nav-shell__brand tap-target"
+    routerLink="/"
+    [attr.aria-label]="'nav.home' | translate"
+    (click)="closeMenu()"
+  >
+    {{ 'home.title' | translate }}
   </a>
 
   @if (loggedIn()) {
