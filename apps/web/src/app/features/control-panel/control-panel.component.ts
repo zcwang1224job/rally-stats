@@ -199,25 +199,24 @@ export class ControlPanelComponent {
    * ScoreboardComponent.html's identical comment): binding `_right` to
    * the bottom slot for A but to the TOP slot for B (and vice versa) is
    * what keeps a station's left/right consistent with the real court.
-   * This mapping is per-TEAM, not per-screen-half — control-panel
-   * additionally lets the scorer swap which half each team renders in
-   * (`leftTeam()`/`rightTeam()`), but swapping only moves a team
-   * sideways, it never changes which direction that team actually
-   * faces, so the top/bottom mirroring must follow the team, not the
-   * slot it's currently drawn in. */
+   * The mapping follows the screen half, not the team: swapping sides
+   * (`leftTeam()`/`rightTeam()`) is what the scorer sees after the teams
+   * change ends, which turns the whole court around. The team now drawn
+   * on the right faces left, so its own right court is the TOP slot. */
   serveRosterId(match: MatchLiveDetail, team: Team, slot: 'top' | 'bottom'): string | null {
     const serve = match.serve;
     if (!serve) {
       return null;
     }
+    // Teams face each other across the net, so a team's right-hand court
+    // is at the bottom of the screen when it plays from the left, and at
+    // the top when it plays from the right.
+    const rightCourtSlot = team === this.leftTeam() ? 'bottom' : 'top';
+    const takesRightCourt = slot === rightCourtSlot;
     if (team === 'A') {
-      return slot === 'top'
-        ? serve.team_a_left_roster_entry_id
-        : serve.team_a_right_roster_entry_id;
+      return takesRightCourt ? serve.team_a_right_roster_entry_id : serve.team_a_left_roster_entry_id;
     }
-    return slot === 'top'
-      ? serve.team_b_right_roster_entry_id
-      : serve.team_b_left_roster_entry_id;
+    return takesRightCourt ? serve.team_b_right_roster_entry_id : serve.team_b_left_roster_entry_id;
   }
 
   /** A station pill is a fixed-size chip in a court corner, not a name

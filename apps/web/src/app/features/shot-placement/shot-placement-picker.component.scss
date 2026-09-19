@@ -68,20 +68,25 @@
 // Court. .court-stage asks for the height the court needs at full width
 // but may shrink below it; .court-viewport is then the largest box of the
 // right aspect ratio that fits the stage (container units of the stage).
+//
+// Without container queries (iOS 15 and older) the court simply takes the
+// full width at its own aspect ratio and doesn't shrink. The cq rules sit
+// behind @supports because they use var(): a browser that can't resolve
+// the units would not fall back to an earlier declaration, it would drop
+// to `width: auto` — a zero-width court, since everything inside it is
+// absolutely positioned.
 // ---------------------------------------------------------------------------
 .court-stage {
   flex: 0 1 auto;
-  height: calc(100cqw / var(--court-aspect));
   min-height: 160px;
   display: flex;
   align-items: center;
   justify-content: center;
-  container-type: size;
 }
 
 .court-viewport {
   position: relative;
-  width: min(100cqw, 100cqh * var(--court-aspect));
+  width: 100%;
   aspect-ratio: var(--court-aspect);
   overflow: hidden;
   border: 2px dashed var(--color-border);
@@ -115,6 +120,17 @@
   }
 }
 
+@supports (width: 1cqw) {
+  .court-stage {
+    height: calc(100cqw / var(--court-aspect));
+    container-type: size;
+  }
+
+  .court-viewport {
+    width: min(100cqw, 100cqh * var(--court-aspect));
+  }
+}
+
 // FR-010: the whole window is the pointer/keyboard target, out-of-bounds
 // margin included (see the component's doc comment).
 .court-area {
@@ -138,7 +154,7 @@
   aspect-ratio: auto;
 }
 
-.court-hint,
+.court-notice,
 .half-label {
   position: absolute;
   display: flex;
@@ -150,11 +166,28 @@
   z-index: 1;
 }
 
-.court-hint {
+// Fixed to the top out-of-bounds margin (height from courtGeometry()), so
+// a warning appearing or going away never moves the court or anything
+// below it. Two short lines at most.
+.court-notice {
   top: 0;
-  left: 0;
-  right: 0;
   justify-content: center;
+  padding: 0 var(--space-sm);
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  text-align: center;
+  text-wrap: balance;
+
+  &.hint--warning {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  }
+}
+
+.court-notice--attention {
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
 }
 
 .half-label {
@@ -204,6 +237,14 @@
   }
 }
 
+// Points the scorer at the strip while the out-on-the-wrong-side notice
+// is up.
+.half-switch--attention {
+  background: color-mix(in srgb, var(--color-brand-primary) 18%, var(--color-surface));
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+}
+
 .half-switch--left {
   left: 0;
   border-right: 1px solid var(--color-border);
@@ -226,12 +267,9 @@
 // ---------------------------------------------------------------------------
 // Magnifier: a held-and-dragged tap raises this fixed circular lens above
 // the finger (component.ts MAGNIFIER_VERTICAL_OFFSET_PX) so the fingertip
-// never covers the spot it's magnifying. .magnifier-content is a full-size,
-// scaled-up copy of the court drawing (magnifierContentStyle()), so it
-// carries the same regulation lines as CourtDiagramComponent: net, short
-// service lines (35.224% = 4.72/13.4), doubles long service lines
-// (5.672% = 0.76/13.4), singles sidelines (7.541% = 0.46/6.1) and the two
-// back-portion centre lines.
+// never covers the spot it's magnifying. .magnifier-content is a second
+// CourtDiagramComponent at the court's own pixel size, scaled up around
+// the point (magnifierContentStyle()).
 // ---------------------------------------------------------------------------
 .magnifier {
   position: fixed;
@@ -248,77 +286,7 @@
 }
 
 .magnifier-content {
-  position: relative;
   transform-origin: 0 0;
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background-color: var(--color-surface-alt);
-  background-image:
-    linear-gradient(var(--color-text-muted), var(--color-text-muted)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border)),
-    linear-gradient(var(--color-border), var(--color-border));
-  background-repeat: no-repeat;
-  background-size:
-    2px 100%,
-    2px 100%,
-    2px 100%,
-    2px 100%,
-    2px 100%,
-    100% 2px,
-    100% 2px,
-    35.224% 2px,
-    35.224% 2px;
-  background-position:
-    center center,
-    35.224% center,
-    64.776% center,
-    5.672% center,
-    94.328% center,
-    center 7.541%,
-    center 92.459%,
-    left center,
-    right center;
-}
-
-.out-of-play-band {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 7.541%;
-  background: repeating-linear-gradient(
-    45deg,
-    color-mix(in srgb, var(--color-text-muted) 18%, transparent),
-    color-mix(in srgb, var(--color-text-muted) 18%, transparent) 6px,
-    transparent 6px,
-    transparent 12px
-  );
-  pointer-events: none;
-}
-
-.out-of-play-band--top {
-  top: 0;
-}
-
-.out-of-play-band--bottom {
-  bottom: 0;
-}
-
-.landing-marker {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  margin-left: -8px;
-  margin-top: -8px;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  border: 2px solid var(--color-surface);
-  pointer-events: none;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,8 +314,20 @@
   flex-wrap: wrap;
 }
 
+// "Auto" badge in the top-right corner of an auto-filled chip — out of
+// the flow, so the chip keeps its size.
 .ending-auto-hint {
-  color: var(--color-brand-primary);
+  position: absolute;
+  top: -6px;
+  right: -2px;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-ink-text);
+  font-size: 0.625rem;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 // 035: all five chips in one fixed row — nothing scrolls out of sight and
@@ -359,6 +339,7 @@
 }
 
 .ending-chip {
+  position: relative;
   min-width: 0;
   // Tight sides: a four-character label fits one line on a 360px phone.
   padding: var(--space-xs) 2px;
@@ -387,11 +368,19 @@
   box-shadow: none;
 }
 
+// A fixed height: the serve-fault badge appearing in the losing side's
+// header must not push the rows below (and so resize the court).
 .team-block__header {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
+  height: 1.5rem;
   font-weight: var(--font-weight-bold);
+
+  .status-badge {
+    padding: 0 var(--space-xs);
+    line-height: 1.4;
+  }
 }
 
 .team-swatch {
@@ -408,6 +397,13 @@
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
   gap: var(--space-sm);
+  // An empty pool (landing conflict) keeps one row's height, so the court
+  // above doesn't grow and shrink while the scorer fixes the landing.
+  min-height: var(--touch-target-min);
+
+  &[hidden] {
+    display: none;
+  }
 }
 
 .player {
@@ -421,16 +417,18 @@
   white-space: nowrap;
 }
 
-// The folded player group: one line, one tap to open.
+// The folded player group: one full-width button, exactly one button row
+// tall — the same height as the players it stands in for.
 .secondary-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  align-self: flex-start;
+  justify-content: center;
   gap: var(--space-xs);
+  width: 100%;
   min-height: var(--touch-target-min);
-  margin-top: var(--space-xs);
-  padding: 0;
-  border: none;
+  padding: 0 var(--space-md);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
   background: none;
   color: var(--color-brand-primary);
   font-family: var(--font-family-base);

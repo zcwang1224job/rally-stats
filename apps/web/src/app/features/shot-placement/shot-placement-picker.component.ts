@@ -173,9 +173,9 @@ export class ShotPlacementPickerComponent {
   /** Which team the host screen currently draws on the left (the control
    * panels let the scorer swap sides). The court here is drawn the same
    * way round so a tap lands where the scorer sees it on the board.
-   * Swapping only mirrors left/right: a team's own right court stays on
-   * the same sideline, exactly like the board (see
-   * ControlPanelComponent.serveRosterId), so y is never flipped. */
+   * Swapped sides are the court seen after the teams change ends — the
+   * whole court turned around, so both x and y flip (the board's station
+   * pills do the same, see ControlPanelComponent.serveRosterId). */
   readonly leftTeam = input<Team>('A');
   readonly confirmed = output<ShotPlacementConfirmed>();
   /** 032-cancel-score: the caller applies the matching -1 correction — this
@@ -444,15 +444,17 @@ export class ShotPlacementPickerComponent {
   readonly viewSide = computed<'left' | 'right'>(() =>
     this.viewTeam() === this.leftTeam() ? 'left' : 'right',
   );
-  readonly mirrored = computed(() => this.leftTeam() === 'B');
-  /** `selectedPoint` as drawn: x is flipped when the host has B on the
-   * left. Everything recorded stays in the data coordinates. */
+  /** True when the host draws B on the left: the court is shown turned
+   * around (see `leftTeam`). */
+  readonly rotated = computed(() => this.leftTeam() === 'B');
+  /** `selectedPoint` as drawn. Everything recorded stays in the data
+   * coordinates; only the drawing turns. */
   readonly displayPoint = computed(() => {
     const point = this.selectedPoint();
     if (point === null) {
       return null;
     }
-    return { x: this.mirrored() ? 1 - point.x : point.x, y: point.y };
+    return this.rotated() ? { x: 1 - point.x, y: 1 - point.y } : point;
   });
   /** True when the picked point is on the half the compact view is not
    * showing — the switch strip then carries a dot so it isn't lost. */
@@ -462,6 +464,20 @@ export class ShotPlacementPickerComponent {
       return false;
     }
     return (point.x < 0.5 ? 'left' : 'right') !== this.viewSide();
+  });
+
+  /** Compact view only: an out-of-bounds landing on the losing side's end
+   * of the court. The losing side hit the shot that went out, so it
+   * almost always comes down past the SCORING side's lines — this usually
+   * means the scorer tapped the margin of the half that happened to be in
+   * view. Recorded as tapped (it's still a valid out), but flagged with a
+   * one-tap way over to the other half. */
+  readonly outOnLosingSide = computed(() => {
+    const point = this.selectedPoint();
+    if (!this.compactView() || point === null || this.landingSide() !== 'out') {
+      return false;
+    }
+    return (point.x < 0.5 ? 'A' : 'B') === this.losingTeam();
   });
 
   /** Where the drawn court sits inside the visible window, in % of that
@@ -583,6 +599,10 @@ export class ShotPlacementPickerComponent {
     effect(() => {
       const manual = this.manualEndingType();
       if (manual != null && this.disabledEndingTypes().includes(manual)) {
+        // Stay on the half the scorer is looking at: dropping the pick
+        // would otherwise send the view back to the automatic half and
+        // hide the point that was just placed.
+        this.viewOverride.set(untracked(() => this.viewTeam()));
         this.manualEndingType.set(undefined);
       }
     });
@@ -637,7 +657,10 @@ export class ShotPlacementPickerComponent {
     // showModal() focuses the first focusable element, which is the
     // cancel-score button in the header, where a stray Enter would undo
     // the point. Start on the court instead.
-    this.courtArea().nativeElement.focus({ preventScroll: true });
+    // focusVisible: false — the ring is for keyboard users; a scorer who
+    // just tapped "+" doesn't need the whole court outlined. Browsers
+    // without the option simply ignore it.
+    this.courtArea().nativeElement.focus({ preventScroll: true, focusVisible: false } as FocusOptions);
   }
 
   /** Compact view: show the other half of the court. Never records a
@@ -763,17 +786,40 @@ export class ShotPlacementPickerComponent {
     this.closeIfSupported();
   }
 
-  private updatePointFromClient(clientX: number, clientY: number): void {
+  private updatePointFromClient(rawClientX: number, rawClientY: number): void {
+    const [clientX, clientY] = this.clampToVisibleWindow(rawClientX, rawClientY);
     const rect = this.court().nativeElement.getBoundingClientRect();
     const drawnX = (clientX - rect.left) / rect.width;
+    const drawnY = (clientY - rect.top) / rect.height;
+    const rotated = this.rotated();
     this.selectedPoint.set({
-      x: this.clampToLandingRange(this.mirrored() ? 1 - drawnX : drawnX),
-      y: this.clampToLandingRange((clientY - rect.top) / rect.height),
+      x: this.clampToLandingRange(rotated ? 1 - drawnX : drawnX),
+      y: this.clampToLandingRange(rotated ? 1 - drawnY : drawnY),
     });
   }
 
   private updateMagnifierLensPosition(clientX: number, clientY: number): void {
     this.magnifierLensPosition.set({ x: clientX, y: clientY - MAGNIFIER_VERTICAL_OFFSET_PX });
+  }
+
+  /** A long-press drag keeps reporting positions after the finger leaves
+   * the court window (pointer capture). Keep the point inside what is
+   * actually drawn — the window minus the other half's switch strip — so
+   * it never ends up somewhere the scorer can't see. */
+  private clampToVisibleWindow(clientX: number, clientY: number): [number, number] {
+    const area = this.courtArea().nativeElement.getBoundingClientRect();
+    if (area.width === 0 || area.height === 0) {
+      // Not laid out (e.g. jsdom): nothing to clamp against.
+      return [clientX, clientY];
+    }
+    const geometry = this.courtGeometry();
+    const peek = (area.width * geometry.peekWidthPct) / 100;
+    const left = area.left + (geometry.peekSide === 'left' ? peek : 0);
+    const right = area.right - (geometry.peekSide === 'right' ? peek : 0);
+    return [
+      Math.min(right, Math.max(left, clientX)),
+      Math.min(area.bottom, Math.max(area.top, clientY)),
+    ];
   }
 
   private clampToLandingRange(value: number): number {

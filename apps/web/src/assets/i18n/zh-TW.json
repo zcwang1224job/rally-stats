@@ -545,6 +545,7 @@
     "switchHalf": "切換到另一個半場",
     "switchHalfShort": "對面",
     "landingConflict": "此落點與已得分的隊伍矛盾，請重新標示落點",
+    "outOnLosingSide": "出界球通常落在得分方那一側，點「對面」切換半場",
     "serveFault": "⚠ 發球失誤",
     "skip": "跳過",
     "cancelScore": "取消得分",
@@ -552,6 +553,7 @@
     "ending": {
       "label": "這一分怎麼結束的",
       "autoHint": "已依落點自動帶入，可再改",
+      "autoBadge": "自動",
       "winner": "主動得分",
       "out": "對手出界",
       "net": "對手掛網",

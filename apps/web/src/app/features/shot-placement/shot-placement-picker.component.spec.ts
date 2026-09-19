@@ -845,7 +845,7 @@ describe('ShotPlacementPickerComponent', () => {
     });
   });
 
-  describe('mirrored court (host draws B on the left)', () => {
+  describe('turned-around court (host draws B on the left)', () => {
     it('records the data coordinate while drawing the point where it was tapped', () => {
       const { fixture, courtAreaEl } = setup(participants, 'B', null, null, { leftTeam: 'B' });
 
@@ -859,7 +859,41 @@ describe('ShotPlacementPickerComponent', () => {
       expect(marker.style.left).toBe('25%');
     });
 
-    it('confirm() sends the unmirrored coordinate', () => {
+    it('turns y around too: the far sideline on screen is the near one in the data', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', null, null, { leftTeam: 'B' });
+
+      tap(courtAreaEl, 100, 45); // drawn x=0.25, y=0.2
+      fixture.detectChanges();
+
+      const point = fixture.componentInstance.selectedPoint()!;
+      expect(point.x).toBeCloseTo(0.75, 9);
+      expect(point.y).toBeCloseTo(0.8, 9);
+      const marker = fixture.nativeElement.querySelector('.court .landing-marker') as HTMLElement;
+      expect(parseFloat(marker.style.left)).toBeCloseTo(25, 6);
+      expect(parseFloat(marker.style.top)).toBeCloseTo(20, 6);
+    });
+
+    it('judges serve-fault courts in data coordinates, whichever way round the court is drawn', () => {
+      // B served from an even score: the legal target is A's right court,
+      // data y > 0.5. With B drawn on the left the court is turned around,
+      // so A's half is the right-hand drawing and A's right court is drawn
+      // at the TOP.
+      const { fixture, courtAreaEl } = setup(participants, 'A', 'B', 4, { leftTeam: 'B' });
+
+      tap(courtAreaEl, 185, 105); // drawn (0.675, 0.8) -> data (0.325, 0.2): A's left court
+      fixture.detectChanges();
+      const point = fixture.componentInstance.selectedPoint()!;
+      expect(point.x).toBeCloseTo(0.325, 9);
+      expect(point.y).toBeCloseTo(0.2, 9);
+      expect(fixture.componentInstance.isServeFault()).toBe(true);
+
+      tap(courtAreaEl, 185, 45); // drawn (0.675, 0.2) -> data (0.325, 0.8): the legal court
+      fixture.detectChanges();
+      expect(fixture.componentInstance.isServeFault()).toBe(false);
+      expect(fixture.componentInstance.landingConflict()).toBe(true);
+    });
+
+    it('confirm() sends the data coordinate', () => {
       const { fixture, courtAreaEl } = setup(participants, 'A', null, null, { leftTeam: 'B' });
       const confirmedSpy = vi.fn();
       fixture.componentInstance.confirmed.subscribe(confirmedSpy);
@@ -879,9 +913,106 @@ describe('ShotPlacementPickerComponent', () => {
     });
   });
 
+  describe('out-of-bounds tap next to the losing side\'s own half (phones)', () => {
+    it('flags it and points at the switch strip', () => {
+      // A credited, so the view opens on B's half; (256, 75) -> x=1.03,
+      // past B's baseline.
+      const { fixture, courtAreaEl } = setup(participants, 'A', null, null, { compact: true });
+
+      tap(courtAreaEl, 256, 75);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.landingSide()).toBe('out');
+      expect(fixture.nativeElement.querySelector('[data-out-on-losing-side]')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.half-switch--attention')).not.toBeNull();
+      // Still a valid out: recorded as tapped, confirm stays available.
+      expect(fixture.componentInstance.endingType()).toBe('out');
+      expect(fixture.componentInstance.canConfirm()).toBe(true);
+    });
+
+    it('says nothing for an out past the scoring side\'s lines', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', null, null, { compact: true });
+
+      tap(courtAreaEl, 40, 75); // x=-0.05, past A's baseline
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-out-on-losing-side]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.half-switch--attention')).toBeNull();
+    });
+
+    it('says nothing on a wide screen, where both halves are in view', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A');
+
+      tap(courtAreaEl, 256, 75);
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('[data-out-on-losing-side]')).toBeNull();
+    });
+  });
+
+  it('stays on the current half when the landing clears a hand-picked ending type', () => {
+    const { fixture, courtAreaEl } = setup(participants, 'A', 'A', null, { compact: true });
+    fixture.nativeElement.querySelectorAll('.ending-chips .ending-chip')[ENDING_TYPES.indexOf('out')].click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.viewTeam()).toBe('A');
+
+    tap(courtAreaEl, 100, 75); // in bounds on A's own half: a conflict, "out" is dropped
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.manualEndingType()).toBeUndefined();
+    expect(fixture.componentInstance.viewTeam()).toBe('A');
+  });
+
+  describe('dragging past the court window', () => {
+    function mockWindow(courtAreaEl: HTMLElement, left: number, top: number, width: number, height: number) {
+      vi.spyOn(courtAreaEl, 'getBoundingClientRect').mockReturnValue({
+        left, top, width, height, right: left + width, bottom: top + height, x: left, y: top,
+        toJSON: () => '',
+      });
+    }
+
+    it('keeps the point at the edge of what is drawn', () => {
+      const { fixture, courtAreaEl } = setup();
+      mockWindow(courtAreaEl, 35, 10, 230, 130); // right 265, bottom 140
+
+      pointerDown(courtAreaEl, 150, 75);
+      pointerMove(courtAreaEl, 400, 300);
+      pointerUp(courtAreaEl, 400, 300);
+
+      expect(fixture.componentInstance.selectedPoint()).toEqual({ x: 1.075, y: 1.15 });
+    });
+
+    it('never slides under the other half\'s switch strip', () => {
+      const { fixture, courtAreaEl } = setup(participants, 'A', null, null, { compact: true });
+      fixture.detectChanges();
+      mockWindow(courtAreaEl, 0, 0, 300, 290);
+      const geometry = fixture.componentInstance.courtGeometry();
+      expect(geometry.peekSide).toBe('left');
+      const stripRight = (300 * geometry.peekWidthPct) / 100;
+
+      pointerDown(courtAreaEl, 150, 75);
+      pointerMove(courtAreaEl, 0, 75);
+      pointerUp(courtAreaEl, 0, 75);
+
+      expect(fixture.componentInstance.selectedPoint()!.x).toBeCloseTo((stripRight - 50) / 200, 6);
+    });
+  });
+
+  it('renders the magnifier straight under the dialog, outside every size container', () => {
+    const { fixture } = setup();
+    fixture.componentInstance.selectedPoint.set({ x: 0.3, y: 0.4 });
+    fixture.componentInstance.magnifierVisible.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('dialog > .magnifier')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.picker-body .magnifier')).toBeNull();
+  });
+
   describe('one player group at a time', () => {
+    /** Whether each group's player buttons are showing (scoring first). A
+     * folded group keeps its header and shows a same-height toggle. */
     const blocks = (fixture: { nativeElement: HTMLElement }) =>
-      Array.from(fixture.nativeElement.querySelectorAll<HTMLElement>('.team-block'));
+      Array.from(fixture.nativeElement.querySelectorAll<HTMLElement>('.team-block .players'));
     const toggle = (fixture: { nativeElement: HTMLElement }) =>
       fixture.nativeElement.querySelector('.secondary-toggle') as HTMLButtonElement | null;
     const endingChip = (fixture: { nativeElement: HTMLElement }, kind: EndingType) =>
@@ -902,6 +1033,10 @@ describe('ShotPlacementPickerComponent', () => {
       endingChip(fixture, 'winner').click();
       fixture.detectChanges();
       expect(blocks(fixture).map((b) => b.hidden)).toEqual([false, true]);
+      // The toggle stands in the folded (losing) group's own place.
+      const groups = fixture.nativeElement.querySelectorAll('.team-block');
+      expect(groups[1].querySelector('.secondary-toggle')).not.toBeNull();
+      expect(groups[0].querySelector('.secondary-toggle')).toBeNull();
       expect(toggle(fixture)!.textContent).toContain('shotPlacement.addLosingPlayer');
 
       toggle(fixture)!.click();
@@ -1317,6 +1452,9 @@ describe('ShotPlacementPickerComponent', () => {
       tap(courtAreaEl, 20, 10);
       fixture.detectChanges();
       expect(hint()).not.toBeNull();
+      // A badge on the auto-filled chip itself, not a line above the row.
+      expect(chip(fixture, 'out').contains(hint())).toBe(true);
+      expect(fixture.nativeElement.querySelector('.ending-hint .ending-auto-hint')).toBeNull();
 
       chip(fixture, 'net').click();
       fixture.detectChanges();
@@ -1347,12 +1485,13 @@ describe('ShotPlacementPickerComponent', () => {
       expect(confirmButton(fixture).disabled).toBe(true);
     });
 
-    it('shows the landing-conflict warning right under the court, once', () => {
+    it('shows the landing-conflict warning once, in the court\'s own top margin', () => {
       const { fixture, courtAreaEl } = setup(participants, 'A', 'A');
 
       tap(courtAreaEl, 100, 75);
       fixture.detectChanges();
 
+      expect(fixture.nativeElement.querySelector('.court-viewport [data-landing-conflict]')).not.toBeNull();
       const landingSection = fixture.nativeElement.querySelector('.landing-section')!;
       expect(landingSection.querySelector('[data-landing-conflict]')).not.toBeNull();
       expect(landingSection.textContent).toContain('shotPlacement.landingConflict');

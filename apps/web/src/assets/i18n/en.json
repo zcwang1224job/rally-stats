@@ -545,6 +545,7 @@
     "switchHalf": "Show the other half of the court",
     "switchHalfShort": "Other half",
     "landingConflict": "This landing conflicts with the side that scored — please re-tap the spot",
+    "outOnLosingSide": "Outs usually land on the scoring side. Tap “Other half” to switch.",
     "serveFault": "⚠ Service fault",
     "skip": "Skip",
     "cancelScore": "Cancel score",
@@ -552,6 +553,7 @@
     "ending": {
       "label": "How the rally ended",
       "autoHint": "Pre-filled from the landing — tap to change",
+      "autoBadge": "Auto",
       "winner": "Winner",
       "out": "Opponent out",
       "net": "Opponent net",

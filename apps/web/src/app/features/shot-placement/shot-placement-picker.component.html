@@ -62,10 +62,44 @@
             />
           </div>
 
-          <!-- Replaces the old hint paragraph: sits in the out-of-bounds
-               margin above the court until a point is placed. -->
-          @if (selectedPoint() === null) {
-            <p class="court-hint" [style.height.%]="courtGeometry().outMarginTopPct" aria-hidden="true">
+          <!-- One line of status in the out-of-bounds margin above the
+               court, so nothing below ever moves: the landing hint until a
+               point is placed, then a warning when there is one. Kept clear
+               of the switch strip, and pointer-events: none, so taps there
+               still place a point. -->
+          @if (landingConflict()) {
+            <!-- An in-bounds landing on the credited side's own half
+                 contradicts it having scored (official rules), so both
+                 player pools are empty until the landing moves. -->
+            <p
+              class="court-notice hint hint--warning"
+              data-landing-conflict
+              role="status"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+              [style.left.%]="courtGeometry().peekSide === 'left' ? courtGeometry().peekWidthPct : 0"
+              [style.right.%]="courtGeometry().peekSide === 'right' ? courtGeometry().peekWidthPct : 0"
+            >
+              {{ 'shotPlacement.landingConflict' | translate }}
+            </p>
+          } @else if (outOnLosingSide()) {
+            <p
+              class="court-notice court-notice--attention"
+              data-out-on-losing-side
+              role="status"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+              [style.left.%]="courtGeometry().peekSide === 'left' ? courtGeometry().peekWidthPct : 0"
+              [style.right.%]="courtGeometry().peekSide === 'right' ? courtGeometry().peekWidthPct : 0"
+            >
+              {{ 'shotPlacement.outOnLosingSide' | translate }}
+            </p>
+          } @else if (selectedPoint() === null) {
+            <p
+              class="court-notice"
+              aria-hidden="true"
+              [style.height.%]="courtGeometry().outMarginTopPct"
+              [style.left.%]="courtGeometry().peekSide === 'left' ? courtGeometry().peekWidthPct : 0"
+              [style.right.%]="courtGeometry().peekSide === 'right' ? courtGeometry().peekWidthPct : 0"
+            >
               {{ 'shotPlacement.selectLanding' | translate }}
             </p>
           }
@@ -85,6 +119,7 @@
             <button
               type="button"
               class="half-switch"
+              [class.half-switch--attention]="outOnLosingSide()"
               [class.half-switch--left]="courtGeometry().peekSide === 'left'"
               [class.half-switch--right]="courtGeometry().peekSide === 'right'"
               [style.width.%]="courtGeometry().peekWidthPct"
@@ -101,41 +136,7 @@
         </div>
       </div>
 
-      <!-- The magnifier lens: `position: fixed` (viewport coordinates from
-           the pointer event map directly), floats above the finger so it
-           isn't covered by it. `pointer-events: none` — purely a visual
-           aid, never an interaction target itself. -->
-      @if (magnifierVisible() && magnifierContentStyle(); as content) {
-        <div
-          class="magnifier"
-          [style.left.px]="magnifierLensPosition().x"
-          [style.top.px]="magnifierLensPosition().y"
-        >
-          <div class="magnifier-content" [style.width]="content.width" [style.height]="content.height" [style.transform]="content.transform">
-            @if (isSinglesMatch()) {
-              <div class="out-of-play-band out-of-play-band--top"></div>
-              <div class="out-of-play-band out-of-play-band--bottom"></div>
-            }
-            @if (displayPoint(); as point) {
-              <span
-                class="landing-marker"
-                [style.left.%]="point.x * 100"
-                [style.top.%]="point.y * 100"
-              ></span>
-            }
-          </div>
-        </div>
-      }
 
-      <!-- Right under the court, where the fix (re-tapping it) happens. An
-           in-bounds landing on the credited side's own half contradicts it
-           having scored (official rules), so both player pools are empty
-           until the landing moves. -->
-      @if (landingConflict()) {
-        <p class="hint hint--warning" data-landing-conflict>
-          {{ 'shotPlacement.landingConflict' | translate }}
-        </p>
-      }
     </section>
 
     <div class="detail-column">
@@ -145,12 +146,7 @@
            reason (kept focusable), see disabledEndingTypes() in
            component.ts. All five fit one row (a fixed five-column grid;
            long labels wrap inside their chip), so none hides off-screen. -->
-      <p class="caption ending-hint">
-        {{ 'shotPlacement.ending.label' | translate }}
-        @if (endingTypeIsAuto()) {
-          <span class="ending-auto-hint">{{ 'shotPlacement.ending.autoHint' | translate }}</span>
-        }
-      </p>
+      <p class="caption ending-hint">{{ 'shotPlacement.ending.label' | translate }}</p>
       <div class="ending-chips" role="group" [attr.aria-label]="'shotPlacement.ending.label' | translate">
         @for (kind of endingTypes; track kind) {
           <button
@@ -172,6 +168,13 @@
             (click)="pickEndingType(kind)"
           >
             {{ 'shotPlacement.ending.' + kind | translate }}
+            <!-- Auto-filled from the landing: a corner badge on the chip
+                 itself, so the label line above never grows a second row. -->
+            @if (endingTypeIsAuto() && endingType() === kind) {
+              <span class="ending-auto-hint" [attr.title]="'shotPlacement.ending.autoHint' | translate">
+                {{ 'shotPlacement.ending.autoBadge' | translate }}
+              </span>
+            }
           </button>
         }
       </div>
@@ -180,14 +183,21 @@
            (scoringTeam input) — scoringPlayers()/losingPlayers() just narrow
            each list to that team and its opponent. Both groups are always
            in the DOM, scoring first; the one the ending type makes
-           secondary (primaryRole()) is folded behind a one-line toggle. -->
+           secondary (primaryRole()) folds its buttons behind one full-width
+           toggle of the same height, so folding never moves the court.
+           An empty pool (landing conflict) keeps its row height too. -->
       <section class="players-section">
-        <div class="team-block" [hidden]="!showScoringPlayers()">
+        <div class="team-block">
           <p class="caption team-block__header">
             <span class="team-swatch" [style.background]="teamColor(scoringTeam())"></span>
             {{ 'shotPlacement.sideScoring' | translate }}
           </p>
-          <div class="players" role="group" [attr.aria-label]="'shotPlacement.selectScoringPlayer' | translate">
+          <div
+            class="players"
+            role="group"
+            [hidden]="!showScoringPlayers()"
+            [attr.aria-label]="'shotPlacement.selectScoringPlayer' | translate"
+          >
             @for (participant of scoringPlayers(); track participant.roster_entry_id) {
               <button
                 type="button"
@@ -200,9 +210,17 @@
               </button>
             }
           </div>
+          @if (primaryRole() === 'losing' && !secondaryExpanded()) {
+            <button type="button" class="secondary-toggle" (click)="secondaryExpanded.set(true)">
+              {{ 'shotPlacement.addScoringPlayer' | translate }}
+              @if (secondarySelectedNickname(); as nickname) {
+                <span class="secondary-toggle__value">{{ nickname }}</span>
+              }
+            </button>
+          }
         </div>
 
-        <div class="team-block" [hidden]="!showLosingPlayers()">
+        <div class="team-block">
           <p class="caption team-block__header losing-player-hint">
             <span class="team-swatch" [style.background]="teamColor(losingTeam())"></span>
             {{ 'shotPlacement.sideLosing' | translate }}
@@ -210,7 +228,12 @@
               <span class="status-badge status-badge--muted">{{ 'shotPlacement.serveFault' | translate }}</span>
             }
           </p>
-          <div class="players" role="group" [attr.aria-label]="'shotPlacement.selectLosingPlayer' | translate">
+          <div
+            class="players"
+            role="group"
+            [hidden]="!showLosingPlayers()"
+            [attr.aria-label]="'shotPlacement.selectLosingPlayer' | translate"
+          >
             @for (participant of losingPlayers(); track participant.roster_entry_id) {
               <button
                 type="button"
@@ -223,16 +246,16 @@
               </button>
             }
           </div>
+          @if (primaryRole() === 'scoring' && !secondaryExpanded()) {
+            <button type="button" class="secondary-toggle" (click)="secondaryExpanded.set(true)">
+              {{ 'shotPlacement.addLosingPlayer' | translate }}
+              @if (secondarySelectedNickname(); as nickname) {
+                <span class="secondary-toggle__value">{{ nickname }}</span>
+              }
+            </button>
+          }
         </div>
 
-        @if (primaryRole() !== null && !secondaryExpanded()) {
-          <button type="button" class="secondary-toggle" (click)="secondaryExpanded.set(true)">
-            {{ (primaryRole() === 'scoring' ? 'shotPlacement.addLosingPlayer' : 'shotPlacement.addScoringPlayer') | translate }}
-            @if (secondarySelectedNickname(); as nickname) {
-              <span class="secondary-toggle__value">{{ nickname }}</span>
-            }
-          </button>
-        }
       </section>
 
       <!-- 032-optional-shot-placement-detail: confirm() records whatever's
@@ -250,4 +273,30 @@
       </div>
     </div>
   </div>
+
+  <!-- The magnifier lens: `position: fixed` (viewport coordinates from
+       the pointer event map directly), floats above the finger so it
+       isn't covered by it. `pointer-events: none` — purely a visual
+       aid, never an interaction target itself. A direct child of the
+       dialog: inside a size container some browsers would position it
+       against that container instead of the screen. -->
+  @if (magnifierVisible() && magnifierContentStyle(); as content) {
+    <div
+      class="magnifier"
+      [style.left.px]="magnifierLensPosition().x"
+      [style.top.px]="magnifierLensPosition().y"
+    >
+      <!-- The same court drawing as the court itself, scaled up — so the
+           lines, singles shading and marker always match it. -->
+      <app-court-diagram
+        class="magnifier-content"
+        [style.width]="content.width"
+        [style.height]="content.height"
+        [style.transform]="content.transform"
+        [isSinglesMatch]="isSinglesMatch()"
+        [landingX]="displayPoint()?.x ?? null"
+        [landingY]="displayPoint()?.y ?? null"
+      />
+    </div>
+  }
 </dialog>
