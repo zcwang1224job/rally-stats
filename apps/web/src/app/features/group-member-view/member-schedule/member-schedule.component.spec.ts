@@ -524,11 +524,26 @@ describe('MemberScheduleComponent rest/ready', () => {
       fixture.detectChanges();
 
       expect(fixture.nativeElement.querySelector('.self-rest [role="alert"]')).toBeNull();
-      expect(fixture.componentInstance.endsRoundCount()).toBe(2);
+      expect(fixture.componentInstance.endsRound()).toEqual({ count: 2, immediate: true });
       expect(fixture.nativeElement.querySelector('app-confirm-dialog').textContent).toContain(
         'restToggle.endsRound.body',
       );
       expect(fixture.componentInstance.restPending()).toBe(false);
+    });
+
+    it('asks with the "if you are not back in time" wording when nothing ends yet', () => {
+      const fixture = setup({
+        selfRosterEntryId: 'cp3',
+        setOwnRestState: () =>
+          throwError(() => ({ ...endsRound, detail: { matches_to_cancel: 2, immediate: false } })),
+      });
+
+      fixture.nativeElement.querySelector('app-rest-toggle-button button').click();
+      fixture.detectChanges();
+
+      const dialog = fixture.nativeElement.querySelector('app-confirm-dialog').textContent;
+      expect(dialog).toContain('restToggle.endsRound.laterTitle');
+      expect(dialog).toContain('restToggle.endsRound.laterBody');
     });
 
     it('resends with the confirmation once confirmed', () => {

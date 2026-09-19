@@ -267,7 +267,7 @@ async def test_a_rest_that_would_end_the_round_asks_first_and_changes_nothing(
 
     assert caught.value.error_code == "REST_ENDS_ROUND"
     assert caught.value.status_code == 409
-    assert caught.value.detail == {"matches_to_cancel": 2}
+    assert caught.value.detail == {"matches_to_cancel": 2, "immediate": True}
     entry = await _fresh(db_session, roster[0])
     assert entry.resting_since is None
     await db_session.refresh(group)
@@ -313,17 +313,82 @@ async def test_a_confirmation_is_not_an_order(db_session: AsyncSession, publishe
 
 
 @pytest.mark.asyncio
-async def test_no_reminder_while_a_match_is_on_court(
+async def test_held_matches_that_may_be_cancelled_later_ask_first_too(
+    db_session: AsyncSession, published: list
+) -> None:
+    """User decision 2026-09-19: remind on pressing rest whenever the
+    player's kept matches would be cancelled if the round ends before they
+    are back — not only when it ends on the spot. A match is on court, so
+    nothing ends now (`immediate: False`), and only their own matches
+    count."""
+    group, roster, court = await _singles_waiting_on(db_session, players=5)
+    await _on_court(db_session, group, court.id, [roster[3]], [roster[4]])
+    await _queue(db_session, group, [roster[1]], [roster[2]])
+
+    with pytest.raises(ApiError) as caught:
+        await set_rest_state(db_session, group, roster[0], resting=True)
+
+    assert caught.value.error_code == "REST_ENDS_ROUND"
+    assert caught.value.detail == {"matches_to_cancel": 2, "immediate": False}
+    await db_session.refresh(roster[0])
+    assert roster[0].resting_since is None
+    await db_session.refresh(group)  # the refusal rolled the session back
+
+    response = await set_rest_state(
+        db_session, group, roster[0], resting=True, confirm_round_end=True
+    )
+    assert response.resting is True
+    await db_session.refresh(group)
+    assert group.current_round_number == 1  # nothing ends yet
+
+
+@pytest.mark.asyncio
+async def test_fixed_partners_are_reminded_too(db_session: AsyncSession, published: list) -> None:
+    group = await make_group(
+        db_session,
+        scheduling_mechanism="fixed_partner",
+        partner_source="auto",
+        auto_next_round=True,
+    )
+    [court] = await make_courts(db_session, group, 1)
+    a, b, c, d, e, f, g, h = await make_players(db_session, group, 8)
+    await _on_court(db_session, group, court.id, [e, f], [g, h])
+    await _queue(db_session, group, [a, b], [c, d])
+
+    with pytest.raises(ApiError) as caught:
+        await set_rest_state(db_session, group, a, resting=True)
+    assert caught.value.detail == {"matches_to_cancel": 1, "immediate": False}
+
+
+@pytest.mark.asyncio
+async def test_no_reminder_where_a_substitute_would_play(
+    db_session: AsyncSession, published: list
+) -> None:
+    """Individual-mixed and fair-rotation doubles substitute instead of
+    cancelling, so there's nothing to warn about."""
+    group = await make_group(
+        db_session, scheduling_mechanism="individual_mixed", auto_next_round=True
+    )
+    [court] = await make_courts(db_session, group, 1)
+    a, b, c, d, e, f, g, h = await make_players(db_session, group, 8)
+    await _on_court(db_session, group, court.id, [e, f], [g, h])
+    await _queue(db_session, group, [a, b], [c, d])
+
+    response = await set_rest_state(db_session, group, a, resting=True)
+
+    assert response.resting is True
+
+
+@pytest.mark.asyncio
+async def test_no_reminder_without_matches_to_lose(
     db_session: AsyncSession, published: list
 ) -> None:
     group, roster, court = await _singles_waiting_on(db_session, players=5)
     await _on_court(db_session, group, court.id, [roster[3]], [roster[4]])
 
-    response = await set_rest_state(db_session, group, roster[0], resting=True)
+    response = await set_rest_state(db_session, group, roster[3], resting=True)
 
-    assert response.resting is True
-    await db_session.refresh(group)
-    assert group.current_round_number == 1
+    assert response.resting is True  # on court now, nothing queued
 
 
 @pytest.mark.asyncio
@@ -373,7 +438,11 @@ async def test_the_reminder_and_the_advance_share_one_rule(
     monkeypatch: pytest.MonkeyPatch,
     would_advance: bool,
 ) -> None:
-    group, roster, court = await _singles_waiting_on(db_session, players=5)
+    # Auto Next Round off, so only the "ends on the spot" rule (the one
+    # shared with the advance) can ask — not the "cancelled later" one.
+    group, roster, court = await _singles_waiting_on(
+        db_session, players=5, auto_next_round=False
+    )
     await _on_court(db_session, group, court.id, [roster[3]], [roster[4]])
 
     async def fixed(*_args: object, **_kwargs: object) -> bool:

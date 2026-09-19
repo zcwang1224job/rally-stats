@@ -678,6 +678,9 @@ describe('AdminPageComponent', () => {
         rosterEntryId: 'r2',
         nickname: '小華',
         count: 3,
+        immediate: true,
+        title: 'restToggle.endsRound.title',
+        body: 'restToggle.endsRound.adminBody',
       });
       expect(fixture.nativeElement.textContent).not.toContain('errors.REST_ENDS_ROUND');
 

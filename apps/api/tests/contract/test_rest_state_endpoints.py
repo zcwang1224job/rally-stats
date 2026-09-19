@@ -426,7 +426,10 @@ async def test_a_rest_that_would_end_the_round_is_refused_until_confirmed(
 
     refused = await _rest(client, group_id, g0)
     assert refused.status_code == 409
-    assert refused.json() == {"error_code": "REST_ENDS_ROUND", "detail": {"matches_to_cancel": 2}}
+    assert refused.json() == {
+        "error_code": "REST_ENDS_ROUND",
+        "detail": {"matches_to_cancel": 2, "immediate": True},
+    }
     view = (
         await client.get(
             f"/groups/{group_id}/member-schedule",

@@ -131,8 +131,8 @@
 }
 <app-confirm-dialog
   #endsRoundDialog
-  [title]="'restToggle.endsRound.title' | translate"
-  [body]="'restToggle.endsRound.body' | translate: { count: endsRoundCount() }"
+  [title]="endsRoundText().title | translate"
+  [body]="endsRoundText().body | translate: { count: endsRound().count }"
   [confirmLabel]="'restToggle.endsRound.confirm' | translate"
   (confirmed)="confirmRestEndingRound()"
 />

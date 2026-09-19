@@ -154,7 +154,7 @@ async def test_a_round_stalled_by_rest_moves_on_and_the_player_rejoins(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
 ) -> None:
     """Singles round-robin, auto next round: Z rests while another match is
-    on court (no reminder); when it ends only Z's matches are left, so the
+    on court (after the reminder); when it ends only Z's matches are left, so the
     round moves on without Z; Z comes back and is added to the new round."""
     created, (g0, g1), headers, court = await _group(
         client, valid_turnstile_token, mechanism="fair_rotation", mode="singles", guests=2
@@ -172,8 +172,13 @@ async def test_a_round_stalled_by_rest_moves_on_and_the_player_rejoins(
     z = next(p for p in everyone if p["roster_entry_id"] not in on_court)
     others = {p["roster_entry_id"] for p in everyone} - {z["roster_entry_id"]}
 
-    rested = await _set_rest(client, group_id, z, True)
-    assert rested.status_code == 200  # a match is on court: no reminder
+    # A match is on court, so nothing ends now — but Z's two matches would
+    # be cancelled if the round ends before Z is back: remind first.
+    reminded = await _set_rest(client, group_id, z, True)
+    assert reminded.status_code == 409
+    assert reminded.json()["detail"] == {"matches_to_cancel": 2, "immediate": False}
+    rested = await _set_rest(client, group_id, z, True, confirm_round_end=True)
+    assert rested.status_code == 200
 
     await _finish_current(client, court)
 
@@ -217,7 +222,10 @@ async def test_a_rest_that_would_end_the_round_asks_first(
 
     refused = await _set_rest(client, group_id, g0, True)
     assert refused.status_code == 409
-    assert refused.json() == {"error_code": "REST_ENDS_ROUND", "detail": {"matches_to_cancel": 1}}
+    assert refused.json() == {
+        "error_code": "REST_ENDS_ROUND",
+        "detail": {"matches_to_cancel": 1, "immediate": True},
+    }
     unchanged = (await client.get(f"/groups/{group_id}/schedule", headers=headers)).json()
     assert unchanged["current_round_number"] == 1
     resting = {r["roster_entry_id"]: r["resting"] for r in unchanged["roster"]}

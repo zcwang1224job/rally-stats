@@ -642,9 +642,9 @@
 
 <app-confirm-dialog
   #restEndsRoundDialog
-  [title]="'restToggle.endsRound.title' | translate"
+  [title]="(restEndsRoundTarget()?.title ?? 'restToggle.endsRound.title') | translate"
   [body]="
-    'restToggle.endsRound.adminBody'
+    (restEndsRoundTarget()?.body ?? 'restToggle.endsRound.adminBody')
       | translate: { nickname: restEndsRoundTarget()?.nickname, count: restEndsRoundTarget()?.count }
   "
   [confirmLabel]="'restToggle.endsRound.confirm' | translate"

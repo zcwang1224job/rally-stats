@@ -15,7 +15,11 @@ import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
-import { restEndsRoundCount } from '../../../core/rest-toggle-button/rest-ends-round';
+import {
+  RestEndsRound,
+  restEndsRound,
+  restEndsRoundKeys,
+} from '../../../core/rest-toggle-button/rest-ends-round';
 import { RestToggleButtonComponent } from '../../../core/rest-toggle-button/rest-toggle-button.component';
 import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
@@ -95,8 +99,10 @@ export class MemberScheduleComponent {
 
   readonly waitingReasonKey = waitingReasonKey;
 
-  /** 037 FR-032: matches a round-ending rest would cancel, for the prompt. */
-  readonly endsRoundCount = signal(0);
+  /** 037 FR-032: what resting would cost, for the prompt — the round
+   * ending now, or their kept matches if they're not back in time. */
+  readonly endsRound = signal<RestEndsRound>({ count: 0, immediate: true });
+  readonly endsRoundText = computed(() => restEndsRoundKeys(this.endsRound()));
   private readonly endsRoundDialog = viewChild.required<ConfirmDialogComponent>('endsRoundDialog');
 
   private readonly subscribedCourtChannels = new Set<string>();
@@ -187,9 +193,9 @@ export class MemberScheduleComponent {
       },
       error: (error: ApiError) => {
         this.restPending.set(false);
-        const toCancel = restEndsRoundCount(error);
-        if (toCancel !== null && !confirmRoundEnd) {
-          this.endsRoundCount.set(toCancel);
+        const refusal = restEndsRound(error);
+        if (refusal !== null && !confirmRoundEnd) {
+          this.endsRound.set(refusal);
           this.endsRoundDialog().open();
           return;
         }

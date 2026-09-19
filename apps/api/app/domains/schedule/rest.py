@@ -61,7 +61,7 @@ async def set_rest_state(
         current.resting_since = now
         await session.flush()
         if not confirm_round_end:
-            await _refuse_if_round_would_end(session, group)
+            await _refuse_if_round_would_end(session, group, current)
     else:
         session.add(
             RosterRestPeriod(
@@ -99,28 +99,56 @@ async def set_rest_state(
     return await _response(session, current, changed=True)
 
 
-async def _refuse_if_round_would_end(session: AsyncSession, group: Group) -> None:
-    """FR-031: with the rest already flushed, would Auto Next Round now end
-    the round and cancel matches? Then undo everything and ask first
-    (REST_ENDS_ROUND) — the player confirms and resends. Same rule as the
-    advance itself (`service.round_would_auto_advance()`), and only when
-    there's something to cancel: ending a round that's already over costs
-    nobody a match."""
-    if not await service.round_would_auto_advance(session, group, triggered_by_rest_change=True):
+async def _refuse_if_round_would_end(
+    session: AsyncSession, group: Group, entry: RosterEntry
+) -> None:
+    """FR-031: with the rest already flushed, would it cost matches? Then
+    undo everything and ask first (REST_ENDS_ROUND) — the player confirms
+    and resends. Two cases, told apart by `immediate`:
+
+    - The round ends on the spot: Auto Next Round now advances (the same
+      rule as the advance itself, `service.round_would_auto_advance()`)
+      and cancels every queued match of the round.
+    - Their own kept matches would be cancelled if the round ends before
+      they're back (user decision 2026-09-19: remind on pressing rest, not
+      only when it ends right away). Only where resting keeps matches
+      instead of substituting (singles round-robin, fixed partners), with
+      Auto Next Round on, and when the rest could still play the next
+      round — otherwise a stuck round doesn't advance and nothing is lost.
+
+    Nothing to cancel, nothing to ask."""
+    round_queued = (
+        Match.group_id == group.id,
+        Match.round_number == group.current_round_number,
+        Match.status == "queued",
+    )
+    if await service.round_would_auto_advance(session, group, triggered_by_rest_change=True):
+        result = await session.execute(select(func.count()).select_from(Match).where(*round_queued))
+        await _refuse(session, result.scalar_one(), immediate=True)
+    if (
+        group.scheduling_mechanism == "manual"
+        or not group.auto_next_round
+        or service._substitutes_for_rest(group.scheduling_mechanism, group.match_mode)
+        or not await service._can_generate_any_match(session, group)
+    ):
         return
-    to_cancel = await session.execute(
+    result = await session.execute(
         select(func.count())
         .select_from(Match)
-        .where(
-            Match.group_id == group.id,
-            Match.round_number == group.current_round_number,
-            Match.status == "queued",
-        )
+        .join(MatchParticipant, MatchParticipant.match_id == Match.id)
+        .where(*round_queued, MatchParticipant.roster_entry_id == entry.id)
     )
-    count = to_cancel.scalar_one()
+    await _refuse(session, result.scalar_one(), immediate=False)
+
+
+async def _refuse(session: AsyncSession, count: int, *, immediate: bool) -> None:
     if count:
         await session.rollback()
-        raise ApiError("REST_ENDS_ROUND", status_code=409, detail={"matches_to_cancel": count})
+        raise ApiError(
+            "REST_ENDS_ROUND",
+            status_code=409,
+            detail={"matches_to_cancel": count, "immediate": immediate},
+        )
 
 
 async def _returning_credit(session: AsyncSession, group: Group, entry: RosterEntry) -> int:

@@ -10,7 +10,7 @@ import { copyTextToClipboard } from '../../../core/clipboard';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
-import { restEndsRoundCount } from '../../../core/rest-toggle-button/rest-ends-round';
+import { restEndsRound, restEndsRoundKeys } from '../../../core/rest-toggle-button/rest-ends-round';
 import { RestToggleButtonComponent } from '../../../core/rest-toggle-button/rest-toggle-button.component';
 import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
@@ -163,6 +163,9 @@ export class AdminPageComponent {
     rosterEntryId: string;
     nickname: string;
     count: number;
+    immediate: boolean;
+    title: string;
+    body: string;
   } | null>(null);
 
   readonly addGuestNicknameInput =
@@ -863,9 +866,14 @@ export class AdminPageComponent {
             this.handleAuthFailure(error);
             return;
           }
-          const count = restEndsRoundCount(error);
-          if (count !== null && !confirmRoundEnd) {
-            this.restEndsRoundTarget.set({ rosterEntryId, nickname, count });
+          const refusal = restEndsRound(error);
+          if (refusal !== null && !confirmRoundEnd) {
+            this.restEndsRoundTarget.set({
+              rosterEntryId,
+              nickname,
+              ...refusal,
+              ...restEndsRoundKeys(refusal, true),
+            });
             this.restEndsRoundDialog().open();
             return;
           }

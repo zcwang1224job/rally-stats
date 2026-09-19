@@ -584,6 +584,9 @@
       "title": "Take a break and end this round?",
       "body": "The {{count}} matches not yet played this round will be cancelled, and the next round starts.",
       "adminBody": "Putting {{nickname}} on a break cancels the {{count}} matches not yet played this round, and the next round starts.",
+      "laterTitle": "Take a break?",
+      "laterBody": "If you're not back before this round ends, your {{count}} matches not yet played will be cancelled and the next round starts.",
+      "laterAdminBody": "If {{nickname}} isn't back before this round ends, their {{count}} matches not yet played will be cancelled and the next round starts.",
       "confirm": "Take a break"
     }
   },
