@@ -117,28 +117,12 @@
 @if (errorKey()) {
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (records(); as r) {
-  <section class="card hero-card">
-    <div class="hero-card__ring-wrap">
-      <div class="donut-chart" [style.background]="winLossGradient()"></div>
-      <div class="hero-card__ring-label">
-        <span class="hero-card__ring-value">{{ (r.win_rate * 100).toFixed(0) }}%</span>
-        <span class="hero-card__ring-caption">{{ 'member.matchHistory.stats.winRate' | translate }}</span>
-      </div>
-    </div>
-    <div class="hero-card__info">
-      @if (performanceTier(); as tier) {
-        <span class="tier-badge">{{ tier.icon }} {{ tier.labelKey | translate }}</span>
-      }
-      <div class="hero-card__record">
-        <span class="hero-card__record-wins">{{ r.total_wins }}{{ 'member.matchHistory.stats.winShort' | translate }}</span>
-        <span class="hero-card__record-sep">–</span>
-        <span class="hero-card__record-losses">{{ r.total_losses }}{{ 'member.matchHistory.stats.lossShort' | translate }}</span>
-      </div>
-      <p class="hero-card__total">
-        {{ 'member.matchHistory.stats.totalSuffix' | translate: { total: r.total_matches } }}
-      </p>
-    </div>
-  </section>
+  <app-record-hero
+    [wins]="r.total_wins"
+    [losses]="r.total_losses"
+    [total]="r.total_matches"
+    [winRate]="r.win_rate"
+  />
 
   <!-- 036 US1: the conclusions first, the numbers behind them right below.
        Rides on the dashboard response, so it follows the same filters and
@@ -179,39 +163,7 @@
   @if (r.total_matches > 0) {
     <section class="card chart-card">
       <h2>{{ 'member.matchHistory.charts.roundTrendTitle' | translate }}</h2>
-      @if (roundTrendPoints().length > 0) {
-        <svg
-          class="trend-chart"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          role="img"
-          [attr.aria-label]="'member.matchHistory.charts.roundTrendTitle' | translate"
-        >
-          <defs>
-            <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" class="trend-chart__stop-start" />
-              <stop offset="100%" class="trend-chart__stop-end" />
-            </linearGradient>
-          </defs>
-          <line x1="0" y1="50" x2="100" y2="50" class="trend-chart__midline" />
-          <polygon [attr.points]="roundTrendAreaPoints()" class="trend-chart__area" />
-          <polyline [attr.points]="roundTrendPolyline()" class="trend-chart__line" />
-          @for (point of roundTrendPoints(); track point.round) {
-            <circle [attr.cx]="point.x" [attr.cy]="point.y" r="2.5" class="trend-chart__dot" />
-          }
-        </svg>
-        <ul class="trend-legend">
-          @for (point of roundTrendPoints(); track point.round) {
-            <li>
-              {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: point.round } }}：{{
-                (point.winRate * 100).toFixed(0)
-              }}%
-            </li>
-          }
-        </ul>
-      } @else {
-        <p class="chart-empty">{{ 'member.matchHistory.charts.roundTrendEmpty' | translate }}</p>
-      }
+      <app-round-trend-chart [rounds]="r.round_win_rates" />
     </section>
 
     <!-- 036 US2: replaces the opponent ranking. Partners first — "who do I
@@ -240,55 +192,13 @@
     <ul class="record-list">
       @for (match of r.matches; track match.match_id) {
         <li
-          class="card match-card record-row--clickable"
-          [class.match-card--win]="match.won"
-          [class.match-card--loss]="!match.won"
-          role="button"
-          tabindex="0"
-          (click)="openDetail(match.match_id)"
-          (keydown.enter)="openDetail(match.match_id)"
-          (keydown.space)="openDetail(match.match_id); $event.preventDefault()"
-        >
-          <div class="match-card__meta">
-            <span class="status-badge">{{ match.group_name }}</span>
-            <span class="status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
-            @if (match.started_at && match.ended_at) {
-              <span class="time-range">
-                🕐 {{ match.started_at | date: 'M/d HH:mm' }} - {{ match.ended_at | date: 'HH:mm' }}
-              </span>
-            }
-          </div>
-          <div class="match-card__body">
-            <span class="match-card__team">
-              @for (p of match.team_a; track p.roster_entry_id) {
-                <app-nickname [value]="p.nickname" />
-                @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" [iconStyle]="true" [nickname]="p.nickname" />
-                }
-              }
-            </span>
-            <span class="match-card__score">{{ match.score_a }} : {{ match.score_b }}</span>
-            <span class="match-card__team match-card__team--right">
-              @for (p of match.team_b; track p.roster_entry_id) {
-                <app-nickname [value]="p.nickname" />
-                @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                  <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" [iconStyle]="true" [nickname]="p.nickname" />
-                }
-              }
-            </span>
-          </div>
-          <div class="match-card__result">
-            @if (match.won) {
-              <span class="status-badge status-badge--success">
-                🏅 {{ 'member.matchHistory.resultWinBadge' | translate }}
-              </span>
-            } @else {
-              <span class="status-badge status-badge--danger">
-                ✕ {{ 'member.matchHistory.resultLossBadge' | translate }}
-              </span>
-            }
-          </div>
-        </li>
+          app-match-card
+          [match]="match"
+          [result]="match.won ? 'win' : 'loss'"
+          [groupName]="match.group_name"
+          [candidateFor]="candidateLookup"
+          (opened)="openDetail(match.match_id)"
+        ></li>
       }
     </ul>
     <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />

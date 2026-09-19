@@ -55,7 +55,7 @@
                 <span class="court-name">{{ match.court_name }}</span>
               }
               @if (match.status === 'completed' || match.status === 'in_progress') {
-                <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+                <span class="round-matches-list__score">{{ match.score_a }} : {{ match.score_b }}</span>
               }
             </li>
           }
@@ -69,7 +69,7 @@
     <ul class="roster-list">
       @for (member of s.roster; track member.roster_entry_id) {
         <li class="card friend-row">
-          <span class="friend-row__avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
+          <span class="avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
           <span class="friend-row__identity">
             <span class="nickname">{{ member.nickname }}</span>
             @if (member.currently_playing) {

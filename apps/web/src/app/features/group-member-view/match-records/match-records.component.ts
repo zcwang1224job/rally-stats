@@ -1,17 +1,14 @@
-import { DatePipe } from '@angular/common';
 import { Component, effect, inject, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
+import { MatchCardComponent } from '../../../shared/match-card/match-card.component';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import {
   GroupMatchRecordsResponse,
   MatchRecordDetailResponse,
-  MatchRecordSummary,
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
-import { NicknameComponent } from '../../../core/nickname/nickname.component';
-import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import { GroupMemberViewService } from '../group-member-view.service';
@@ -23,12 +20,10 @@ import { GroupMemberViewService } from '../group-member-view.service';
 @Component({
   selector: 'app-match-records',
   imports: [
+    MatchCardComponent,
     PaginationComponent,
     TranslatePipe,
-    DatePipe,
     MatchRecordDetailDialogComponent,
-    NicknameComponent,
-    AddFriendButtonComponent,
   ],
   templateUrl: './match-records.component.html',
   styleUrl: './match-records.component.scss',
@@ -106,6 +101,9 @@ export class MatchRecordsComponent {
     return this.inviteCandidates().get(memberId);
   }
 
+  /** Bound for the match card's add-friend lookup. */
+  readonly candidateLookup = (memberId: string) => this.inviteCandidateFor(memberId);
+
   goToPage(page: number): void {
     this.page.set(page);
   }
@@ -130,8 +128,4 @@ export class MatchRecordsComponent {
   /** The winning side's player names, joined — shown instead of a bare
    * "A方獲勝"/"B方獲勝": a Guest/Member reading their own group's history
    * cares who won, not which internal team letter was assigned to them. */
-  winnerNames(match: MatchRecordSummary): string {
-    const winners = match.winner_team === 'A' ? match.team_a : match.team_b;
-    return winners.map((p) => p.nickname).join('、');
-  }
 }

@@ -24,22 +24,6 @@
   font-size: var(--font-size-caption);
 }
 
-// Same collapsible treatment as the match detail's derived blocks.
-.dashboard-group {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-
-  > summary {
-    cursor: pointer;
-    font-weight: var(--font-weight-bold);
-    padding: var(--space-xs) 0;
-  }
-
-  &[open] > summary {
-    margin-bottom: var(--space-sm);
-  }
-}
 
 .dashboard-group__note {
   margin: 0 0 var(--space-sm);

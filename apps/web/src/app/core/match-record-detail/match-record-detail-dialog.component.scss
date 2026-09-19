@@ -126,25 +126,6 @@
   gap: var(--space-sm);
 }
 
-.chart-card,
-.event-list,
-.player-stats-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-
-  > summary {
-    cursor: pointer;
-    font-size: var(--font-size-body);
-    font-weight: var(--font-weight-bold);
-    padding: var(--space-xs) 0;
-  }
-
-  &[open] > summary {
-    margin-bottom: var(--space-sm);
-  }
-}
-
 // dataviz skill: a readout synced to hover/touch, sitting above the plot
 // (see interaction.md) — fixed height reserved via the hint's own line-box
 // so revealing it never shifts the chart below.

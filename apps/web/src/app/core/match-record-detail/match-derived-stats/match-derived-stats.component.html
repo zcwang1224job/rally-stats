@@ -1,6 +1,6 @@
 @let d = detail();
 
-<details class="derived-section" data-section="serve">
+<details class="disclosure derived-section" data-section="serve">
   <summary>{{ 'matchRecordDetail.derived.serve.title' | translate }}</summary>
   @if (d.serve_stats; as serve) {
     <table class="derived-table" data-table="teams">
@@ -89,7 +89,7 @@
   }
 </details>
 
-<details class="derived-section" data-section="momentum">
+<details class="disclosure derived-section" data-section="momentum">
   <summary>{{ 'matchRecordDetail.derived.momentum.title' | translate }}</summary>
   @if (d.momentum_stats; as momentum) {
     <dl class="derived-facts">
@@ -167,19 +167,19 @@
   }
 </details>
 
-<details class="derived-section" data-section="clutch">
+<details class="disclosure derived-section" data-section="clutch">
   <summary>{{ 'matchRecordDetail.clutch.title' | translate }}</summary>
   <!-- `?? null`: a backend that predates 034 omits the field entirely. -->
   <app-match-clutch-stats [clutchStats]="d.clutch_stats ?? null" />
 </details>
 
-<details class="derived-section" data-section="ending">
+<details class="disclosure derived-section" data-section="ending">
   <summary>{{ 'matchRecordDetail.ending.title' | translate }}</summary>
   <!-- 035: `?? null` for the same reason as the clutch block above. -->
   <app-match-ending-stats [endingStats]="d.ending_stats ?? null" />
 </details>
 
-<details class="derived-section" data-section="tempo">
+<details class="disclosure derived-section" data-section="tempo">
   <summary>{{ 'matchRecordDetail.derived.tempo.title' | translate }}</summary>
   @if (d.tempo_stats; as tempo) {
     @let average = duration(tempo.average_seconds);
@@ -204,7 +204,7 @@
   }
 </details>
 
-<details class="derived-section" data-section="landing">
+<details class="disclosure derived-section" data-section="landing">
   <summary>{{ 'matchRecordDetail.derived.landing.title' | translate }}</summary>
   @if (selectedPlayer(); as player) {
     <div

@@ -242,7 +242,7 @@
                 <ul class="roster-list">
                   @for (member of sched.roster; track member.roster_entry_id) {
                     <li class="card friend-row">
-                      <span class="friend-row__avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
+                      <span class="avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
                       <span class="friend-row__identity">
                         <span class="nickname">{{ member.nickname }}</span>
                         @if (member.currently_playing) {
@@ -313,7 +313,7 @@
                   <ul class="invite-friend-list">
                     @for (friend of friends; track friend.member_id) {
                       <li class="card friend-row">
-                        <span class="friend-row__avatar" aria-hidden="true">{{ (friend.nickname || friend.user_number).charAt(0) }}</span>
+                        <span class="avatar" aria-hidden="true">{{ (friend.nickname || friend.user_number).charAt(0) }}</span>
                         <span class="friend-row__identity">
                           <span class="nickname">{{ friend.nickname }}</span>
                           <span

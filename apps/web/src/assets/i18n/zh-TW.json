@@ -279,7 +279,9 @@
       },
       "charts": {
         "roundTrendTitle": "各輪勝率趨勢",
-        "roundTrendEmpty": "尚無可繪製的輪次資料"
+        "roundTrendEmpty": "尚無可繪製的輪次資料",
+        "roundTrendRound": "輪次",
+        "roundTrendSummary": "各輪勝率趨勢，共 {{count}} 輪，從 {{from}} 到 {{to}}"
       },
       "opponentRanking": {
         "title": "對戰對象戰績排行",

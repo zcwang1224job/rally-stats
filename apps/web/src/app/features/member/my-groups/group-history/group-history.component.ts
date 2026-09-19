@@ -1,8 +1,10 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { RecordHeroComponent } from '../../../../shared/record-hero/record-hero.component';
+import { MatchCardComponent } from '../../../../shared/match-card/match-card.component';
+import { RoundTrendChartComponent } from '../../../../shared/round-trend-chart/round-trend-chart.component';
 import { PaginationComponent } from '../../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../../core/api/api-error';
 import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
@@ -10,25 +12,12 @@ import {
   FinalStandingRow,
   MatchRecordDetailResponse,
   MatchRecordScoreComparison,
-  MatchRecordSummary,
   OpponentRecord,
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
 import { NicknameComponent } from '../../../../core/nickname/nickname.component';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
-
-interface RoundTrendPoint {
-  round: number;
-  x: number;
-  y: number;
-  winRate: number;
-}
-
-interface PerformanceTier {
-  icon: string;
-  labelKey: string;
-}
 
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -75,10 +64,12 @@ interface PlayerPieSlice {
 @Component({
   selector: 'app-group-history',
   imports: [
+    RecordHeroComponent,
+    MatchCardComponent,
+    RoundTrendChartComponent,
     PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
-    DatePipe,
     RouterLink,
     MatchRecordDetailDialogComponent,
     NicknameComponent,
@@ -126,65 +117,6 @@ export class GroupHistoryComponent {
   /** Win/loss donut's CSS conic-gradient stops — same convention as the
    * cross-group match-history page. Always reflects `my_stats` (personal,
    * unfiltered). */
-  readonly winLossGradient = computed(() => {
-    const stats = this.history()?.my_stats;
-    if (!stats || stats.total_matches === 0) {
-      return 'conic-gradient(var(--color-border) 0 100%)';
-    }
-    const winPercent = stats.win_rate * 100;
-    return (
-      `conic-gradient(var(--color-positive) 0 ${winPercent}%, ` +
-      `var(--color-negative) ${winPercent}% 100%)`
-    );
-  });
-
-  readonly roundTrendPoints = computed<RoundTrendPoint[]>(() => {
-    const buckets = this.history()?.my_stats.round_win_rates ?? [];
-    if (buckets.length === 0) {
-      return [];
-    }
-    const step = buckets.length > 1 ? 100 / (buckets.length - 1) : 0;
-    return buckets.map((bucket, index) => ({
-      round: bucket.round_number,
-      x: buckets.length > 1 ? index * step : 50,
-      y: 100 - bucket.win_rate * 100,
-      winRate: bucket.win_rate,
-    }));
-  });
-
-  readonly roundTrendPolyline = computed(() =>
-    this.roundTrendPoints()
-      .map((point) => `${point.x},${point.y}`)
-      .join(' '),
-  );
-
-  readonly roundTrendAreaPoints = computed(() => {
-    const points = this.roundTrendPoints();
-    if (points.length === 0) {
-      return '';
-    }
-    const line = points.map((point) => `${point.x},${point.y}`).join(' ');
-    const lastX = points[points.length - 1].x;
-    return `0,100 ${line} ${lastX},100`;
-  });
-
-  readonly performanceTier = computed<PerformanceTier | null>(() => {
-    const stats = this.history()?.my_stats;
-    if (!stats || stats.total_matches === 0) {
-      return null;
-    }
-    const rate = stats.win_rate;
-    if (rate >= 0.7) {
-      return { icon: '🏆', labelKey: 'member.matchHistory.tier.elite' };
-    }
-    if (rate >= 0.5) {
-      return { icon: '🔥', labelKey: 'member.matchHistory.tier.strong' };
-    }
-    if (rate >= 0.3) {
-      return { icon: '📈', labelKey: 'member.matchHistory.tier.rising' };
-    }
-    return { icon: '💪', labelKey: 'member.matchHistory.tier.building' };
-  });
 
   /** FR-008: the whole "最終團隊排名" block shows one overall empty-state
    * message instead of a table full of redundant per-row "尚無比賽紀錄"
@@ -301,10 +233,6 @@ export class GroupHistoryComponent {
   }
 
   /** The winning side's player names, joined. */
-  winnerNames(match: MatchRecordSummary): string {
-    const winners = match.winner_team === 'A' ? match.team_a : match.team_b;
-    return winners.map((p) => p.nickname).join('、');
-  }
 
   /** 016-match-score-timeline: opens the match detail dialog via
    * `AuthService.getMatchRecordDetail()` — the SAME "ever a member"

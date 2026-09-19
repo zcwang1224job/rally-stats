@@ -17,6 +17,7 @@
 .derived-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: var(--font-size-caption);
   font-variant-numeric: tabular-nums;
 
   & + & {

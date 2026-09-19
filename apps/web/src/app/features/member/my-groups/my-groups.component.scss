@@ -37,23 +37,6 @@
   min-height: var(--touch-target-min);
 }
 
-// Same avatar treatment as friend-list's/admin-page's .friend-row__avatar
-// (component-scoped styles don't leak across components, so it's copied
-// rather than shared) — an initial-letter circle, reused here so every
-// "list of things you can tap into" on this page reads consistently.
-.friend-row__avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-primary-contrast);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-body);
-}
 
 .group-row-main__identity {
   flex: 1;
@@ -99,7 +82,7 @@
     color: var(--color-text-muted);
   }
 
-  .friend-row__avatar {
+  .avatar {
     background: var(--color-text-muted);
   }
 }

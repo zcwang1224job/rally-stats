@@ -73,7 +73,7 @@
            the reader picks what they want to look at rather than being
            handed everything open at once. -->
       <div class="match-detail-sections">
-        <details class="chart-card">
+        <details class="disclosure chart-card">
           <summary>{{ 'matchRecordDetail.chart.title' | translate }}</summary>
 
           <!-- dataviz skill, interaction.md: a synced readout above the plot
@@ -171,7 +171,7 @@
           </ul>
         </details>
 
-        <details class="event-list">
+        <details class="disclosure event-list">
           <summary>{{ 'matchRecordDetail.eventList.title' | translate }}</summary>
           <ul class="record-list">
             @for (event of d.events; track $index) {
@@ -252,7 +252,7 @@
           </ul>
         </details>
 
-        <details class="player-stats-card">
+        <details class="disclosure player-stats-card">
           <summary>{{ 'matchRecordDetail.playerStats.title' | translate }}</summary>
           @if (d.player_stats.length === 0) {
             <p class="player-stats-empty">{{ 'matchRecordDetail.playerStats.empty' | translate }}</p>

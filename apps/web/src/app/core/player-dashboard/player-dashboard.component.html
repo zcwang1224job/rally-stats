@@ -42,7 +42,7 @@
       }
 
       @for (group of groups; track group; let first = $first) {
-        <details class="dashboard-group" [attr.data-group]="group" [open]="first">
+        <details class="disclosure dashboard-group" [attr.data-group]="group" [open]="first">
           <summary>{{ 'playerDashboard.group.' + group | translate }}</summary>
           @if (group === 'serve') {
             <p class="dashboard-group__note">{{ 'playerDashboard.serveExclusionNote' | translate }}</p>
@@ -105,7 +105,7 @@
         </details>
       }
 
-      <details class="dashboard-group" data-group="landing">
+      <details class="disclosure dashboard-group" data-group="landing">
         <summary>{{ 'playerDashboard.group.landing' | translate }}</summary>
         @if (landingView(); as view) {
           <!-- 035: the all/recent switch moved up to the dashboard level

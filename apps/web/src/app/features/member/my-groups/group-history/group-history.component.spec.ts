@@ -175,7 +175,7 @@ describe('GroupHistoryComponent', () => {
     const { fixture } = setup();
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.trend-chart')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('app-round-trend-chart .trend__line')).not.toBeNull();
     expect(fixture.nativeElement.querySelectorAll('.ranking-row').length).toBe(1);
     expect(fixture.nativeElement.querySelector('.ranking-row__name').textContent).toContain(
       '小華',

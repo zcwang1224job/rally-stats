@@ -376,6 +376,54 @@ dialog.dialog--xl {
   }
 }
 
+// A collapsible block nested inside a card or dialog (dashboard metric
+// groups, the match detail's charts and derived stats): hairline frame, a
+// bold summary row, and room under it once open.
+details.disclosure {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm) var(--space-md);
+
+  > summary {
+    cursor: pointer;
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-bold);
+    // A comfortable touch target without making a collapsed list tall.
+    padding: var(--space-xs) 0;
+  }
+
+  &[open] > summary {
+    margin-bottom: var(--space-sm);
+  }
+}
+
+// A person's initial in a brand-colored circle (member hub, friend list,
+// my groups, group rosters). The text is decorative: pair it with the
+// visible name and mark it aria-hidden.
+.avatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-body);
+}
+
+// A vertical list of cards (match records, and similar row lists).
+.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 // "Nothing here yet" for a list or section. On its own inside a card; as
 // `empty-state card` when it stands in for a whole page-level list. Any
 // follow-up action (e.g. "clear filters") goes inside it.

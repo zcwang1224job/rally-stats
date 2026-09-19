@@ -1,21 +1,12 @@
-@use '../../../styles/breakpoints';
+@use '../../../styles/court-board';
 
-// Scoreboard-only dark theme (010-app-wide-ui-redesign research.md
-// Decision 1) — every other screen keeps 008's light theme unchanged;
-// this component is the one screen the source mockup
-// (ui/ScoreBoardUI.drawio, "計分板" page) draws with a dark background.
-// The surface reuses --color-ink (the same navy the nav-shell chrome sits
-// on) instead of pure black, and --color-ink-text/-muted (already defined
-// for text on that surface) instead of ad-hoc grays, so this is a shade
-// of the app's one dark surface rather than a second, unrelated palette.
-// Team colors alias the shared --color-team-* tokens (_tokens.scss).
+// The public scoreboard — the screen the source mockup
+// (ui/ScoreBoardUI.drawio, "計分板" page) draws with a dark background. The
+// court, its dark theme and the camouflaged controls come from
+// styles/_court-board.scss (shared with the control panel and the admin
+// page's inline court control); this file only lays out the page around it.
 :host {
-  --scoreboard-bg: var(--color-ink);
-  --color-focus-ring: var(--color-ink-text); // dark board: light focus ring
-  --scoreboard-team-a-bg: var(--color-team-a-bg);
-  --scoreboard-team-a-border: var(--color-team-a-border);
-  --scoreboard-team-b-bg: var(--color-team-b-bg);
-  --scoreboard-team-b-border: var(--color-team-b-border);
+  @include court-board.theme;
 
   // A flex column so .board-main (the court) can claim the leftover
   // vertical space between the header above and the scoring controls/
@@ -82,283 +73,7 @@ h1 {
   min-height: 0;
 }
 
-.score-board {
-  display: flex;
-  justify-content: center;
-  align-items: stretch;
-  gap: var(--space-md);
-  // Treats the scoreboard itself as the court, viewed from above: team A's
-  // block is the left half, team B's the right half, and each team's two
-  // players sit at the top/bottom edge of their half — together the four
-  // station elements land in the four corners (top-left/bottom-left for A,
-  // top-right/bottom-right for B), matching real match court positions.
-  min-height: 60vh;
-  // Anchors the net (::before below), which sits over the gap between the
-  // two team blocks.
-  position: relative;
-}
-
-// The net dividing the court's two halves — sits exactly over the flex
-// gap between .team--a/.team--b (absolutely positioned, so it never
-// participates in the flex layout itself). A solid top tape plus a
-// crosshatched mesh pattern reads as netting at a glance without an image
-// asset, same lines-only technique as .team's court markings above.
-.score-board::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: var(--space-md);
-  transform: translateX(-50%);
-  pointer-events: none;
-  background-repeat: no-repeat, repeat, repeat;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 70%), rgba(255, 255, 255, 70%)),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255, 255, 255, 35%) 0 1px,
-      transparent 1px 8px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 35%) 0 1px,
-      transparent 1px 8px
-    );
-  background-size:
-    100% 6px,
-    auto,
-    auto;
-  background-position:
-    top,
-    0 0,
-    0 0;
-}
-
-.team {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  // .team-center is taken out of this flex flow entirely (position:
-  // absolute below) and centered against .team's own box instead, so this
-  // anchors that. The remaining flex children are just the (0-2) station
-  // pills — .station--bottom's own margin-top: auto pushes it to the
-  // block's bottom edge (see below); .station--top needs no rule since a
-  // flex item with no auto margin already sits at the block's top edge by
-  // default. Doing this per-station, instead of a shared
-  // justify-content: space-between, keeps each station pinned to its
-  // correct edge regardless of whether the other one renders (singles,
-  // FR-006, renders only one of the two).
-  position: relative;
-  gap: var(--space-md);
-  padding: var(--space-lg);
-  border-radius: var(--radius-md);
-  border: 4px solid transparent;
-
-  // Faint white badminton court markings drawn on top of the team's own
-  // color (set separately via background-color below, so it layers under
-  // these rather than replacing them). Solid-color gradients are a
-  // deliberate lines-only technique — no SVG/image asset needed. Reads as a
-  // stylized half-court: a center line splitting the block's top/bottom
-  // station slots (matching where the two players actually stand, see
-  // .team--a/.team--b's align-items above), a short/long service line pair,
-  // and two singles sidelines.
-  background-repeat: no-repeat;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
-    linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%));
-  background-size:
-    70% 5px,
-    100% 5px,
-    100% 5px,
-    5px 100%,
-    5px 100%;
-  background-position:
-    center 50%,
-    center 20%,
-    center 80%,
-    15% center,
-    85% center;
-}
-
-// Each team's stations hug the outer edge of the whole score-board (away
-// from the shared center divide) rather than sitting centered above the
-// score — together with .station--bottom's margin-top: auto below, this
-// lands all four station pills in the score-board's outermost four corners,
-// matching where the four players actually stand on a real court.
-.team--a {
-  align-items: flex-start;
-}
-
-.team--b {
-  align-items: flex-end;
-}
-
-// Centered against .team's own box (position: absolute + inset: 0) rather
-// than being a flex sibling of the stations — a flex "auto margin" centering
-// trick only balances around whatever station siblings happen to be
-// present, so singles (only one of .station--top/--bottom renders,
-// FR-006) or two differently-sized stations (e.g. one has the server
-// border) would pull the score off true-center. Sizing centering to .team
-// itself keeps the score dead-center regardless of the stations around it.
-.team-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  // The box spans the whole team block (including the corners where the
-  // station pills sit), so it must not steal taps meant for them — nothing
-  // inside it is interactive any more (.buttons lives in .scoring-controls,
-  // below the court, since FR requires the +/- controls never draw on top
-  // of the court itself).
-  pointer-events: none;
-}
-
-// The pill's own background/border below already separates it from either
-// saturated team block, so its text can stay plain white/ink for maximum
-// contrast rather than needing a tinted color of its own.
-.team--a,
-.team--b {
-  .station {
-    color: var(--color-ink-text);
-  }
-}
-
-.team--a {
-  // background-color (not the background shorthand) so it layers under
-  // .team's court-line gradients above instead of overwriting them.
-  background-color: var(--scoreboard-team-a-bg);
-  border-color: var(--scoreboard-team-a-border);
-  // Squares off the net-facing (right) corners — a real court is one sharp
-  // rectangle split by the net, not two independently rounded boxes; the
-  // outer (left) corners keep the rounding for a friendlier overall shape.
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-
-.team--b {
-  background-color: var(--scoreboard-team-b-bg);
-  border-color: var(--scoreboard-team-b-border);
-  // Mirrors .team--a above: squares off the net-facing (left) corners,
-  // keeps the outer (right) corners rounded.
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-}
-
-// 029-serve-rotation-display: each team's up-to-two station slots (right/left
-// service court) — replaces the old single stacked-names list so each
-// participant occupies their own, independently addressable slot (FR-004),
-// pinned to the top/bottom of their team's block (.station--bottom's
-// margin-top: auto above) so the four stations land in the scoreboard's
-// four corners. Singles renders only one of the two (the other's @if
-// simply doesn't render, FR-006) — no empty placeholder box is left
-// behind, and .team-center's absolute centering above keeps the score
-// dead-center regardless of which station(s) are present.
-// Oval "pill" so each nickname reads as its own chip against the team
-// block rather than floating text — background is a dark ink tint (not a
-// third off-palette color) so it sits happily on top of either saturated
-// team-a/team-b bg, matching the scoreboard's dark-theme register.
-.station {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-lg);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-ink) 45%, transparent);
-  // Nicknames are mixed CJK/Latin text, so they stay on the app's regular UI
-  // font (--font-family-base, inherited from :host/body) rather than the
-  // score's numeral-oriented stack below — that stack's monospace fonts
-  // don't carry a matching Chinese glyph set and would silently fall back.
-  font-family: var(--font-family-base);
-  font-size: 1.75rem;
-  font-weight: var(--font-weight-bold);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    font-size: 2.25rem;
-    padding: var(--space-md) var(--space-xl);
-  }
-}
-
-// Pushes this station to .team's bottom edge by consuming all remaining
-// flex space above it — see .team's comment above for why this is done
-// per-station rather than via justify-content: space-between on .team.
-.station--bottom {
-  margin-top: auto;
-}
-
-// FR-005/Constitution VII: the server marker MUST NOT rely on color alone —
-// the large icon below (server-badge) is the actual signal. This modifier
-// only nudges the pill's own border/weight for extra emphasis; a solid
-// saturated fill here read as too jarring against the pill's dark tint, so
-// it stays a subtle outline instead of a color block.
-.station--server {
-  border: 3px solid var(--color-brand-primary);
-  font-weight: var(--font-weight-black);
-}
-
-.server-badge {
-  display: inline-flex;
-  align-items: center;
-  // Icon-only (no label text) — sized well above the nickname so it reads
-  // as the primary "who's serving" signal from across the court.
-  font-size: 2rem;
-  line-height: 1;
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    font-size: 2.5rem;
-  }
-}
-
-// FR-001: read from across a court — the largest, boldest element on
-// screen by a wide margin. Digits-only, so they use --font-family-score
-// (tabular monospace) instead of the nickname's UI sans — stable digit
-// width means the score doesn't shift width as it changes, and the blockier
-// numeral shapes read more like a dedicated scoreboard display.
-.score {
-  display: inline-block;
-  font-family: var(--font-family-score);
-  font-variant-numeric: tabular-nums;
-  font-size: 7rem;
-  font-weight: var(--font-weight-black);
-  line-height: 1;
-  color: var(--color-ink-text);
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    font-size: 12rem;
-  }
-}
-
-// A brief pop + color flash when a point lands, so the change is visible to
-// anyone watching the board (not just whoever tapped +/-) instead of the
-// digit silently jumping to a new value. Retriggered from TS (see
-// ScoreboardComponent.triggerScorePulse) rather than a plain persistent
-// class, since a CSS animation only plays once per class application.
-@keyframes score-pulse {
-  0% {
-    transform: scale(1.2);
-    color: var(--color-brand-primary);
-  }
-
-  100% {
-    transform: scale(1);
-    color: var(--color-ink-text);
-  }
-}
-
-.score--pulse {
-  animation: score-pulse 1.2s ease-out;
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
-  }
-}
+@include court-board.court(scoreboard);
 
 // FR-003: corner "即將登場" indicator — repositioned from the previous
 // inline placement (below the score) to a fixed screen corner, per
@@ -400,50 +115,13 @@ h1 {
     min-width: 64px;
     min-height: 64px;
     font-size: var(--font-size-heading);
-    // Same camouflage as .fullscreen-toggle below: the default .btn (solid
-    // brand orange) and .btn--secondary (light-theme white pill) both read
-    // as bright, attention-grabbing shapes on this dark scoreboard — but
-    // this control is for whoever is scoring, not something the players
-    // and audience watching the board should be drawn to. Blends into the
-    // background at rest; the hover state (or a closer look) is what
-    // reveals it's there.
-    background: var(--scoreboard-bg);
-    border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-    color: color-mix(in srgb, var(--color-ink) 55%, white);
-    box-shadow: none;
-
-    @media (hover: hover) {
-      &:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-        border-color: var(--color-ink-text);
-        color: var(--color-ink-text);
-        box-shadow: none;
-      }
-    }
+    @include court-board.camouflage;
   }
 }
 
 .end-match-button {
   margin-top: var(--space-lg);
-  // Same reasoning as .buttons .btn above — .btn--danger's solid red is the
-  // most attention-grabbing element on the whole board, which is the
-  // opposite of what a rarely-used "end early" control should be. A faint
-  // red-tinted border (rather than no color hint at all) keeps a trace of
-  // "this one is destructive" for whoever looks closely, without shouting
-  // for attention from a distance the way the filled danger button did.
-  background: var(--scoreboard-bg);
-  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
-  color: color-mix(in srgb, var(--color-ink) 55%, white);
-  box-shadow: none;
-
-  @media (hover: hover) {
-    &:hover:not(:disabled) {
-      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-      border-color: var(--color-danger);
-      color: var(--color-ink-text);
-      box-shadow: none;
-    }
-  }
+  @include court-board.camouflage-danger;
 }
 
 // Mirrors .next-up's fixed corner placement (opposite corner, so the two
@@ -464,17 +142,7 @@ h1 {
   // standing at the edge of the court can't spot it from a distance — it
   // only becomes readable up close, or once the brighter hover state below
   // confirms it's interactive.
-  background: var(--scoreboard-bg);
-  border-color: color-mix(in srgb, var(--color-ink) 75%, white);
-  color: color-mix(in srgb, var(--color-ink) 55%, white);
-
-  @media (hover: hover) {
-    &:hover:not(:disabled) {
-      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
-      border-color: var(--color-ink-text);
-      color: var(--color-ink-text);
-    }
-  }
+  @include court-board.camouflage($shadow: false);
 }
 
 // A phone rotated to landscape is wide enough to cross $breakpoint-tablet
@@ -507,70 +175,6 @@ h1 {
     font-size: var(--font-size-body);
   }
 
-  // A wide-but-short phone screen let .score-board stretch edge-to-edge
-  // while staying short, so the drawn court ended up a much wider/flatter
-  // rectangle than a real badminton court. A guessed max-height (a plain vh
-  // fraction) was tried first and confirmed — via an actual headless-
-  // browser measurement, not just reasoning — to backfire: combined with
-  // aspect-ratio + width:auto on this flex item, the browser sized off
-  // .team's tiny natural content width instead, collapsing the court to a
-  // sliver regardless of screen size. Container query units fix that
-  // correctly: .board-main becomes a size container (its own height is
-  // already fixed by the flex column above, independent of its children,
-  // so this can't create a sizing loop), and .score-board's width is
-  // min(100%, 100cqh × the real court's own length:width ratio — 13.4m /
-  // 6.1m, see shot-placement-picker.component.ts's identical dimensions) —
-  // the largest size that both preserves the ratio and fits within
-  // whatever space this screen actually leaves free, letterboxing only
-  // when the screen is wider or narrower than that ratio calls for.
-  .board-main {
-    container-type: size;
-  }
+  @include court-board.compact-landscape;
 
-  .score-board {
-    min-height: 0;
-    aspect-ratio: 13.4 / 6.1;
-    width: min(100%, 100cqh * (13.4 / 6.1));
-    height: auto;
-    margin: 0 auto;
-  }
-
-  .team {
-    padding: var(--space-sm);
-    gap: var(--space-sm);
-  }
-
-  .station {
-    padding: var(--space-xs) var(--space-sm);
-    font-size: var(--font-size-body);
-  }
-
-  .server-badge {
-    font-size: var(--font-size-heading);
-  }
-
-  .score {
-    font-size: 3rem;
-  }
-
-  .scoring-controls {
-    margin-top: var(--space-xs);
-    gap: var(--space-lg);
-  }
-
-  .buttons {
-    .btn {
-      min-width: var(--touch-target-min);
-      min-height: var(--touch-target-min);
-      font-size: var(--font-size-body);
-    }
-  }
-
-  .end-match-button {
-    margin-top: var(--space-sm);
-  }
-
-  .waiting-message {
-    margin-top: var(--space-sm);
-  }
 }
