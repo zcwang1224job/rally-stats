@@ -7,7 +7,7 @@ import random
 import secrets
 import statistics
 import uuid
-from collections.abc import Awaitable, Callable, Collection, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast, get_args
@@ -24,10 +24,10 @@ from app.domains.court.models import Court
 from app.domains.group.models import Group, RoundHistory
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.algorithms import (
-    PlayStats,
-    current_run,
+    PlayerHistory,
     pair_doubles_matches,
     pick_next_match,
+    player_histories,
     random_pair_units,
     round_robin_pairs,
     stage1_select_players,
@@ -466,56 +466,23 @@ def _count_planned_match(
             counts.setdefault(frozenset((a, b)), [0, 0])[1] += 1
 
 
-async def _get_play_stats(
+async def _get_player_histories(
     session: AsyncSession, group_id: uuid.UUID
-) -> dict[uuid.UUID, PlayStats]:
-    """roster_entry_id -> (matches that took a court in this group, when the
-    latest of them ended). Counts matches abandoned mid-play too, since the
-    players were on court. The end time, not the start, since every match
-    of a round starts together but they finish at different times, and
-    whoever finished first has rested longest."""
+) -> dict[uuid.UUID, PlayerHistory]:
+    """roster_entry_id -> `PlayerHistory` (matches played, matches sat out
+    since their last one, current back-to-back run), from every match of
+    the group that went on court — including those abandoned mid-play,
+    since the players were on court. Rest is counted in matches, not
+    minutes (`player_histories()`)."""
     result = await session.execute(
-        select(
-            MatchParticipant.roster_entry_id,
-            func.count(),
-            func.max(Match.ended_at),
-        )
-        .join(Match, Match.id == MatchParticipant.match_id)
+        select(Match.id, Match.started_at, Match.ended_at, MatchParticipant.roster_entry_id)
+        .join(MatchParticipant, MatchParticipant.match_id == Match.id)
         .where(Match.group_id == group_id, Match.started_at.is_not(None))
-        .group_by(MatchParticipant.roster_entry_id)
     )
-    return {row[0]: (row[1], row[2]) for row in result.all()}
-
-
-async def _get_current_runs(
-    session: AsyncSession, group_id: uuid.UUID, player_ids: Collection[uuid.UUID] | None = None
-) -> dict[uuid.UUID, tuple[datetime, int]]:
-    """roster_entry_id -> (when their current run of back-to-back matches
-    began, how many matches it holds), from their finished matches in this
-    group (`current_run()`). Limited to `player_ids` when given."""
-    query = (
-        select(MatchParticipant.roster_entry_id, Match.started_at, Match.ended_at)
-        .join(Match, Match.id == MatchParticipant.match_id)
-        .where(
-            Match.group_id == group_id,
-            Match.started_at.is_not(None),
-            Match.ended_at.is_not(None),
-        )
-    )
-    if player_ids is not None:
-        query = query.where(MatchParticipant.roster_entry_id.in_(player_ids))
-    spans: dict[uuid.UUID, list[tuple[datetime, datetime]]] = {}
-    for roster_entry_id, started_at, ended_at in (await session.execute(query)).all():
-        spans.setdefault(roster_entry_id, []).append((started_at, ended_at))
-    return {
-        pid: run
-        for pid, player_spans in spans.items()
-        if (run := current_run(player_spans)) is not None
-    }
-
-
-def _run_lengths(runs: dict[uuid.UUID, tuple[datetime, int]]) -> dict[uuid.UUID, int]:
-    return {pid: length for pid, (_start, length) in runs.items()}
+    matches: dict[uuid.UUID, tuple[datetime, datetime | None, list[uuid.UUID]]] = {}
+    for match_id, started_at, ended_at, roster_entry_id in result.all():
+        matches.setdefault(match_id, (started_at, ended_at, []))[2].append(roster_entry_id)
+    return player_histories(list(matches.values()))
 
 
 # Whether a match counts as part of someone's round: everything except a
@@ -550,8 +517,9 @@ async def _choose_next_queued_match(
     with anyone already `in_progress` elsewhere in the group are skipped —
     otherwise the same person could end up "playing" on two courts at once.
     Among the rest, `pick_next_match()` prefers the match whose players
-    have rested longest, falling back to call-up order once everyone has
-    rested enough."""
+    have sat out the most matches since their last one, falling back to
+    call-up order once everyone has sat out at least
+    `RESTED_AFTER_MATCHES`."""
     query = (
         select(Match)
         .where(
@@ -582,27 +550,10 @@ async def _choose_next_queued_match(
     players_by_match: dict[uuid.UUID, list[uuid.UUID]] = {}
     for match_id, roster_entry_id in participants_result.all():
         players_by_match.setdefault(match_id, []).append(roster_entry_id)
-    all_players = {pid for players in players_by_match.values() for pid in players}
-
-    last_ended_result = await session.execute(
-        select(MatchParticipant.roster_entry_id, func.max(Match.ended_at))
-        .join(Match, Match.id == MatchParticipant.match_id)
-        .where(
-            Match.group_id == group_id,
-            Match.started_at.is_not(None),
-            Match.ended_at.is_not(None),
-            MatchParticipant.roster_entry_id.in_(all_players),
-        )
-        .group_by(MatchParticipant.roster_entry_id)
-    )
-    last_ended = {row[0]: row[1] for row in last_ended_result.all()}
-    runs = await _get_current_runs(session, group_id, all_players)
 
     return pick_next_match(
         [(m, players_by_match.get(m.id, [])) for m in candidates],
-        last_ended,
-        datetime.now(UTC),
-        on_court_since={pid: start for pid, (start, _length) in runs.items()},
+        await _get_player_histories(session, group_id),
     )
 
 
@@ -705,16 +656,15 @@ async def _generate_fair_rotation_matches(
         return
 
     roster = await _get_active_roster_for_selection(session, group.id)
-    play_stats = await _get_play_stats(session, group.id)
+    histories = await _get_player_histories(session, group.id)
     counts = await _load_pair_counts(session, group.id)
     capacity = len(courts) * _DOUBLES_PER_MATCH
     # Only whole matches are seated, so select that many up front: the
     # ones trimmed afterwards would otherwise have influenced (via
     # _met_count) who else got picked.
     seats = min(capacity, len(roster) // _DOUBLES_PER_MATCH * _DOUBLES_PER_MATCH)
-    run_lengths = _run_lengths(await _get_current_runs(session, group.id))
     selected_ids = _whole_doubles_matches(
-        stage1_select_players(roster, seats, play_stats, _met_count(counts), run_lengths)
+        stage1_select_players(roster, seats, histories, _met_count(counts))
     )
     await apply_wait_count_updates(session, group.id, selected_ids)
 
@@ -962,9 +912,14 @@ async def _choose_bye(
     latest joiner (`candidates` is in join order). This used to be a hard
     error (FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT) that blocked the whole
     round until the admin found one more player or sent one home."""
-    play_stats = await _get_play_stats(session, group_id)
+    histories = await _get_player_histories(session, group_id)
     order = {pid: index for index, pid in enumerate(candidates)}
-    return max(candidates, key=lambda pid: (play_stats.get(pid, (0, None))[0], order[pid]))
+
+    def played(pid: uuid.UUID) -> int:
+        history = histories.get(pid)
+        return history.played if history is not None else 0
+
+    return max(candidates, key=lambda pid: (played(pid), order[pid]))
 
 
 async def _resolve_manual_fixed_partner_teams(
@@ -1609,8 +1564,9 @@ async def reorder_planned_matches(
     `queued` call-up order — same `queue_position` write as
     `_shuffle_round_match_order` (random.shuffle), just admin-driven instead
     of random. The order is what a freed court follows once everyone
-    involved has rested `REST_SATURATION`; before that, a candidate whose
-    players rested longer can go first (`_choose_next_queued_match()`).
+    involved has sat out `RESTED_AFTER_MATCHES` since their last match;
+    before that, a candidate whose players sat out more can go first
+    (`_choose_next_queued_match()`).
     Follow-up requirement: this now works whether the round is still fully
     `awaiting_start` or already `in_progress` (some matches already on
     courts, the rest still queued) — only a match that hasn't been pulled
@@ -1732,14 +1688,12 @@ async def _seat_waiting_players_on_court(
     busy = set(busy_result.scalars())
     active_roster = await _get_active_roster_for_selection(session, group.id)
     idle_roster = [row for row in active_roster if row[0] not in busy]
-    play_stats = await _get_play_stats(session, group.id)
     counts = await _load_pair_counts(session, group.id)
     selected = stage1_select_players(
         idle_roster,
         _DOUBLES_PER_MATCH,
-        play_stats,
+        await _get_player_histories(session, group.id),
         _met_count(counts),
-        _run_lengths(await _get_current_runs(session, group.id)),
     )
     if len(selected) < _DOUBLES_PER_MATCH:
         return None

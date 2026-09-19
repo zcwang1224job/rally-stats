@@ -10,42 +10,61 @@ pairs, or already-formed teams to form match-ups)."""
 import math
 import random
 import uuid
+from bisect import bisect_left
 from collections.abc import Callable, Collection, Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import cache
 from itertools import combinations
-from typing import TypeVar, cast
+from typing import NamedTuple, TypeVar, cast
 
 T = TypeVar("T")
 
-# (matches actually played in this group, when the latest of them ended)
-PlayStats = tuple[int, datetime | None]
+
+class PlayerHistory(NamedTuple):
+    """A player's record in the group, all in match counts — never in
+    minutes, so a scorer who ends a match late (or a slow or quick game)
+    doesn't change who counts as rested.
+    - played: matches they have been on court for.
+    - rest: matches that went on court after their latest match ended, i.e.
+      how many they have sat out since (0 = just came off, or still on
+      court). A match that started on another court while they were still
+      playing doesn't count as rest.
+    - run: matches in their current back-to-back run — two of their matches
+      are back to back when no other match went on court in between."""
+
+    played: int
+    rest: int
+    run: int
+
+
+# A played match as `player_histories()` reads it: when it went on court,
+# when it ended (None while still on court), and who played.
+PlayedMatch = tuple[datetime, datetime | None, Collection[uuid.UUID]]
 
 
 def stage1_select_players(
     roster: Sequence[tuple[uuid.UUID, int | None, datetime]],
     n: int,
-    play_stats: Mapping[uuid.UUID, PlayStats] | None = None,
+    histories: Mapping[uuid.UUID, PlayerHistory] | None = None,
     pair_cost: Callable[[uuid.UUID, uuid.UUID], int] | None = None,
-    run_lengths: Mapping[uuid.UUID, int] | None = None,
 ) -> list[uuid.UUID]:
     """FR-005: top `n` roster entries by wait_count DESC (None = infinite,
     i.e. never played — always outranks any finite count). `roster` items
     are (roster_entry_id, wait_count, joined_at) tuples.
 
     Ties on wait_count go to whoever has played fewer matches, then to
-    whoever finished their last match earliest (has rested longest), and
-    only then to joined_at ASC. Right after a round, everyone who played
-    shares wait_count 0, so a bare joined_at tie-break handed the leftover
-    seats to the earliest joiners every single round whenever the roster
-    wasn't a multiple of the round's capacity (10 players on 2 courts: the
-    first 6 played every round, the last 4 every other round). `play_stats`
-    maps roster_entry_id to `PlayStats`; a missing entry means "never
-    played".
+    whoever has sat out more matches since their last one (has rested
+    longest), and only then to joined_at ASC. Right after a round, everyone
+    who played shares wait_count 0, so a bare joined_at tie-break handed
+    the leftover seats to the earliest joiners every single round whenever
+    the roster wasn't a multiple of the round's capacity (10 players on 2
+    courts: the first 6 played every round, the last 4 every other round).
+    `histories` maps roster_entry_id to `PlayerHistory` (all match counts,
+    no clock time); a missing entry means "never played".
 
-    Players who finished the same match share that end time; among them,
-    whoever has played the most matches in a row without a break
-    (`run_lengths`, see `current_run()`) goes last. Without it the one who
+    Players who finished the same match have sat out the same number
+    since; among them, whoever has played the most matches in a row
+    without a break (`PlayerHistory.run`) goes last. Without it the one who
     sat out was arbitrary, and in a simulated 9-player continuous rotation
     (8 on court, 1 resting) one player went 14 matches in a row without a
     break. Runs up to `_RUN_TOLERANCE` matches count as equal: two players
@@ -63,20 +82,23 @@ def stage1_select_players(
     opponents 11 times while others met once. The match count itself is
     never loosened for this: treating counts one apart as equal mixed
     people up better still, but let a player fall two matches behind."""
-    stats = play_stats or {}
-    runs = run_lengths or {}
+    known = histories or {}
 
     def priority(
         item: tuple[uuid.UUID, int | None, datetime],
     ) -> tuple[bool, int, int, float, int]:
         roster_entry_id, wait_count, _joined_at = item
-        played, last_ended = stats.get(roster_entry_id, (0, None))
+        history = known.get(roster_entry_id)
+        if history is None:
+            played, sat_out, run = 0, math.inf, 0
+        else:
+            played, sat_out, run = history.played, history.rest, history.run
         return (
             wait_count is not None,
             -(wait_count or 0),
             played,
-            last_ended.timestamp() if last_ended is not None else float("-inf"),
-            max(runs.get(roster_entry_id, 0) - _RUN_TOLERANCE, 0),
+            -sat_out,
+            max(run - _RUN_TOLERANCE, 0),
         )
 
     ordered = sorted(roster, key=lambda item: (priority(item), item[2]))
@@ -229,89 +251,92 @@ def stage2_pair_players(
     return min_cost_pairing(player_ids, pair_count)
 
 
-# How long a player needs to have been off court before the next match
-# stops preferring someone who has rested longer. Beyond this, candidates
-# count as equally rested and the admin's call-up order decides. Chosen by
-# simulation: 5 minutes removes as many back-to-back matches as ranking on
-# raw rest time does, while leaving the admin's order alone far more often.
-REST_SATURATION = timedelta(minutes=5)
+def player_histories(matches: Sequence[PlayedMatch]) -> dict[uuid.UUID, PlayerHistory]:
+    """`PlayerHistory` for everyone in `matches` — every match of the group
+    that went on court. Timestamps are only used to put matches in order,
+    never to measure how long anyone rested. A player absent from the
+    result has never played."""
+    starts = sorted(started for started, _ended, _players in matches)
+
+    def started_between(since: datetime, before: datetime | None) -> int:
+        """Matches that went on court from `since` on (and before `before`).
+        `since` is inclusive: a court freeing up starts its next match in
+        the same moment the last one ended, and those two timestamps can be
+        identical — a match that went on court as the player came off is
+        one they sat out."""
+        low = bisect_left(starts, since)
+        high = len(starts) if before is None else bisect_left(starts, before)
+        return max(high - low, 0)
+
+    spans: dict[uuid.UUID, list[tuple[datetime, datetime | None]]] = {}
+    for started, ended, players in matches:
+        for player in players:
+            spans.setdefault(player, []).append((started, ended))
+
+    histories: dict[uuid.UUID, PlayerHistory] = {}
+    for player, player_spans in spans.items():
+        player_spans.sort(key=lambda span: span[0])
+        _last_start, last_end = player_spans[-1]
+        rest = 0 if last_end is None else started_between(last_end, None)
+        run = 1
+        for (_prev_start, prev_end), (next_start, _next_end) in zip(
+            reversed(player_spans[:-1]), reversed(player_spans[1:]), strict=False
+        ):
+            if prev_end is None or started_between(prev_end, next_start) > 0:
+                break
+            run += 1
+        histories[player] = PlayerHistory(len(player_spans), rest, run)
+    return histories
+
+
+# Matches a player needs to have sat out before the next match stops
+# preferring someone who has sat out more. Beyond this, candidates count as
+# equally rested and the admin's call-up order decides.
+RESTED_AFTER_MATCHES = 1
 
 
 def pick_next_match(
     candidates: Sequence[tuple[T, Collection[uuid.UUID]]],
-    last_ended: Mapping[uuid.UUID, datetime],
-    now: datetime,
-    saturation: timedelta = REST_SATURATION,
-    on_court_since: Mapping[uuid.UUID, datetime] | None = None,
+    histories: Mapping[uuid.UUID, PlayerHistory],
+    rested_after: int = RESTED_AFTER_MATCHES,
 ) -> T | None:
     """Chooses which queued match a freed court should take next.
     `candidates` are (match, participant ids) in call-up order, already
-    filtered to matches with nobody currently on another court; `last_ended`
-    maps a player to when their latest played match ended (absent = hasn't
-    played yet). Each candidate is scored by the shortest rest among its
-    players, capped at `saturation`; the highest score wins. Taking the
+    filtered to matches with nobody currently on another court. Each
+    candidate is scored by the least rest among its players — matches sat
+    out since their last one (`PlayerHistory.rest`; never played = fully
+    rested), capped at `rested_after`; the highest score wins. Taking the
     earliest candidate unconditionally made the same people play several
     matches in a row while others waited through long gaps: in a simulated
     12-player, 4-court singles round, 55 back-to-back starts and a
-    45-minute longest wait, versus 17 and 19 minutes with this rule.
+    45-minute longest wait, versus 17 and 19 minutes with a rest rule.
 
-    When even the best candidate needs someone who hasn't rested yet (a
-    small roster, where every queued match involves someone who just came
-    off), that shortest rest is the same for everyone and used to fall
-    straight through to call-up order — which kept the same player on court
-    8 matches running in a simulated 6-player individual_mixed round. So
-    ties go to the candidate with fewer unrested players, then to the one
-    whose unrested players have been on court for the shortest unbroken
-    stretch (`on_court_since`: when each player's current run of matches
-    without a real rest began), and only then to call-up order."""
-    since = on_court_since or {}
+    When even the best candidate needs someone who hasn't rested (a small
+    roster, where every queued match involves someone who just came off),
+    that score is the same for everyone and used to fall straight through
+    to call-up order — which kept the same player on court 8 matches
+    running in a simulated 6-player individual_mixed round. So ties go to
+    the candidate with fewer unrested players, then to the one whose
+    unrested players have the shortest back-to-back run
+    (`PlayerHistory.run`), and only then to call-up order."""
     best: T | None = None
-    best_score: tuple[timedelta, int, timedelta] | None = None
+    best_score: tuple[int, int, int] | None = None
     for item, players in candidates:
-        rest = saturation
+        rest = rested_after
         unrested = 0
-        longest_run = timedelta(0)
+        longest_run = 0
         for player in players:
-            ended = last_ended.get(player)
-            if ended is None:
+            history = histories.get(player)
+            if history is None:
                 continue
-            player_rest = max(now - ended, timedelta(0))
-            rest = min(rest, player_rest)
-            if player_rest < saturation:
+            rest = min(rest, history.rest)
+            if history.rest < rested_after:
                 unrested += 1
-                longest_run = max(longest_run, now - since.get(player, now))
+                longest_run = max(longest_run, history.run)
         score = (rest, -unrested, -longest_run)
         if best_score is None or score > best_score:
             best, best_score = item, score
     return best
-
-
-# Two matches count as one unbroken run when the second started less than
-# this long after the first ended — i.e. the player went straight back on.
-# Sitting out even one match takes several minutes, so this separates
-# "rested" from "didn't" without depending on how long matches last.
-RUN_BREAK = timedelta(minutes=1)
-
-
-def current_run(
-    spans: Sequence[tuple[datetime, datetime]], gap: timedelta = RUN_BREAK
-) -> tuple[datetime, int] | None:
-    """A player's current unbroken run of matches: when it began and how
-    many matches it holds. `spans` are their played matches' (started,
-    ended). None without any played match."""
-    ordered = sorted(spans)
-    if not ordered:
-        return None
-    start = ordered[-1][0]
-    length = 1
-    for (prev_start, prev_end), (next_start, _next_end) in zip(
-        reversed(ordered[:-1]), reversed(ordered[1:]), strict=False
-    ):
-        if next_start - prev_end >= gap:
-            break
-        start = prev_start
-        length += 1
-    return start, length
 
 
 TeamCandidate = tuple[tuple[uuid.UUID, uuid.UUID], int | None, int | None, datetime, datetime]

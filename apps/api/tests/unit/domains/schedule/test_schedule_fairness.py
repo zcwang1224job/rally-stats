@@ -24,11 +24,12 @@ from app.domains.group.security import hash_admin_pin
 from app.domains.member import models as member_models
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.algorithms import (
-    current_run,
+    PlayerHistory,
     greedy_pair_by_cost,
     min_cost_pairing,
     pair_doubles_matches,
     pick_next_match,
+    player_histories,
     stage1_select_players,
 )
 from app.domains.schedule.models import Match, MatchParticipant, PairHistory, Partnership
@@ -140,20 +141,21 @@ async def _pair_row(
     return (row[0], row[1]) if row else (0, 0)
 
 
-async def _finished_match(
+async def _played_match(
     session: AsyncSession,
     group: Group,
     team_a: list[uuid.UUID],
     team_b: list[uuid.UUID],
-    ended_ago: timedelta,
+    started_at: datetime,
+    ended_at: datetime,
 ) -> Match:
-    """A completed match that ended `ended_ago` before now."""
+    """A completed match with the given start and end (only their order
+    matters to scheduling)."""
     match = await create_match_with_participants(
         session, group, court_id=None, round_number=1, status="completed",
         team_a=team_a, team_b=team_b,
     )
-    ended_at = datetime.now(UTC) - ended_ago
-    match.started_at = ended_at - timedelta(minutes=12)
+    match.started_at = started_at
     match.ended_at = ended_at
     await session.commit()
     return match
@@ -162,7 +164,7 @@ async def _finished_match(
 # ------------------------------------------------------- pure algorithms
 
 
-def test_stage1_ties_go_to_fewest_matches_played_then_least_recent() -> None:
+def test_stage1_ties_go_to_fewest_matches_played_then_most_sat_out() -> None:
     joined = datetime(2026, 1, 1, tzinfo=UTC)
     early, middle, late = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     roster = [
@@ -170,23 +172,23 @@ def test_stage1_ties_go_to_fewest_matches_played_then_least_recent() -> None:
         (middle, 0, joined + timedelta(minutes=1)),
         (late, 0, joined + timedelta(minutes=2)),
     ]
-    stats = {
-        early: (3, joined + timedelta(hours=2)),
-        middle: (2, joined + timedelta(hours=2)),
-        late: (2, joined + timedelta(hours=1)),
+    histories = {
+        early: PlayerHistory(played=3, rest=5, run=1),
+        middle: PlayerHistory(played=2, rest=0, run=1),
+        late: PlayerHistory(played=2, rest=1, run=1),
     }
-    # Without stats the earliest joiner wins the tie, as before.
+    # Without histories the earliest joiner wins the tie, as before.
     assert stage1_select_players(roster, 1) == [early]
-    # With them: fewest played first (middle/late), then least recent (late).
-    assert stage1_select_players(roster, 3, stats) == [late, middle, early]
+    # With them: fewest played first (middle/late), then most sat out (late).
+    assert stage1_select_players(roster, 3, histories) == [late, middle, early]
 
 
-def test_stage1_wait_count_still_outranks_play_stats() -> None:
+def test_stage1_wait_count_still_outranks_histories() -> None:
     joined = datetime(2026, 1, 1, tzinfo=UTC)
     waited, fresh = uuid.uuid4(), uuid.uuid4()
     roster = [(fresh, 0, joined), (waited, 1, joined)]
-    stats = {waited: (10, joined), fresh: (0, None)}
-    assert stage1_select_players(roster, 1, stats) == [waited]
+    histories = {waited: PlayerHistory(played=10, rest=0, run=3)}
+    assert stage1_select_players(roster, 1, histories) == [waited]
 
 
 def test_min_cost_pairing_finds_what_greedy_misses() -> None:
@@ -224,13 +226,13 @@ def test_stage1_splits_players_who_keep_meeting() -> None:
     t = datetime(2026, 1, 1, tzinfo=UTC)
     a, b, c, d, waiting = (uuid.uuid4() for _ in range(5))
     roster = [(pid, 0, t) for pid in (a, b, c, d)] + [(waiting, 1, t)]
-    stats = {pid: (3, t + timedelta(hours=1)) for pid in (a, b, c, d)}
+    histories = {pid: PlayerHistory(played=3, rest=0, run=1) for pid in (a, b, c, d)}
     met = {frozenset((a, b)): 9}
 
     def cost(x: uuid.UUID, y: uuid.UUID) -> int:
         return met.get(frozenset((x, y)), 0)
 
-    picked = stage1_select_players(roster, 3, stats, cost)
+    picked = stage1_select_players(roster, 3, histories, cost)
     assert picked[0] == waiting
     assert not {a, b} <= set(picked)
     assert not {a, b} <= {a, b, c, d} - set(picked)
@@ -240,23 +242,50 @@ def test_stage1_rests_whoever_has_played_most_in_a_row() -> None:
     t = datetime(2026, 1, 1, tzinfo=UTC)
     a, b = uuid.uuid4(), uuid.uuid4()
     roster = [(a, 0, t), (b, 0, t + timedelta(minutes=1))]
-    stats = {a: (5, t), b: (5, t)}
-    assert stage1_select_players(roster, 1, stats, run_lengths={a: 6, b: 1}) == [b]
+    long_run = {a: PlayerHistory(5, 0, 6), b: PlayerHistory(5, 0, 1)}
+    assert stage1_select_players(roster, 1, long_run) == [b]
     # Short runs count as equal: join order decides.
-    assert stage1_select_players(roster, 1, stats, run_lengths={a: 2, b: 1}) == [a]
+    short_runs = {a: PlayerHistory(5, 0, 2), b: PlayerHistory(5, 0, 1)}
+    assert stage1_select_players(roster, 1, short_runs) == [a]
 
 
-def test_current_run_counts_back_to_back_matches_only() -> None:
+def test_player_histories_count_rest_and_runs_in_matches() -> None:
+    """Two courts. P played matches 1, 3 and 4; match 2 went on court on the
+    other court while P was still playing match 1, so it isn't rest."""
     t = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
-    spans = [
-        (t, t + timedelta(minutes=10)),
-        # 8-minute rest breaks the run
-        (t + timedelta(minutes=18), t + timedelta(minutes=30)),
-        (t + timedelta(minutes=30), t + timedelta(minutes=41)),
-        (t + timedelta(minutes=41, seconds=20), t + timedelta(minutes=52)),
+    p, q, r = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    def at(minute: int) -> datetime:
+        return t + timedelta(minutes=minute)
+
+    matches = [
+        (at(0), at(10), [p]),   # 1: P
+        (at(5), at(15), [q]),   # 2: other court, starts while P plays
+        (at(10), at(20), [p]),  # 3: P straight back on -> run 2
+        (at(20), at(30), [p]),  # 4: P straight back on -> run 3
+        (at(31), at(40), [q]),  # 5: goes on after P came off -> P rest 1
+        (at(40), None, [r]),    # 6: still on court -> P rest 2
     ]
-    assert current_run(spans) == (t + timedelta(minutes=18), 3)
-    assert current_run([]) is None
+    histories = player_histories(matches)
+    assert histories[p] == PlayerHistory(played=3, rest=2, run=3)
+    assert histories[q].run == 1  # matches 3 and 4 went on between its two
+    assert histories[r] == PlayerHistory(played=1, rest=0, run=1)
+
+
+def test_player_histories_ignore_how_long_anyone_waited() -> None:
+    """Rest is matches sat out, not minutes: three hours with nothing else
+    going on court is still no rest, and one match going on court ten
+    seconds later already is."""
+    t = datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+    idle, other = uuid.uuid4(), uuid.uuid4()
+    long_gap = player_histories([(t, t + timedelta(minutes=10), [idle])])
+    assert long_gap[idle].rest == 0
+
+    quick = player_histories([
+        (t, t + timedelta(minutes=10), [idle]),
+        (t + timedelta(minutes=10, seconds=10), None, [other]),
+    ])
+    assert quick[idle].rest == 1
 
 
 def test_pair_doubles_matches_avoids_repeat_opponents_too() -> None:
@@ -275,29 +304,31 @@ def test_pair_doubles_matches_avoids_repeat_opponents_too() -> None:
 
 
 def test_pick_next_match_among_unrested_prefers_fewer_and_shorter_runs() -> None:
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     long_run, short_run, fresh_1, fresh_2, other = (uuid.uuid4() for _ in range(5))
-    just_now = now - timedelta(seconds=10)
-    last_ended = {long_run: just_now, short_run: just_now, other: just_now}
-    since = {long_run: now - timedelta(hours=1), short_run: now - timedelta(minutes=12),
-             other: now - timedelta(minutes=12)}
+    histories = {
+        long_run: PlayerHistory(played=6, rest=0, run=5),
+        short_run: PlayerHistory(played=6, rest=0, run=1),
+        other: PlayerHistory(played=6, rest=0, run=1),
+    }
     candidates = [
         ("two_unrested", [long_run, other, fresh_1, fresh_2]),
         ("long_run", [long_run, fresh_1, fresh_2]),
         ("short_run", [short_run, fresh_1, fresh_2]),
     ]
-    assert pick_next_match(candidates, last_ended, now, on_court_since=since) == "short_run"
+    assert pick_next_match(candidates, histories) == "short_run"
 
 
 def test_pick_next_match_prefers_rested_players_then_queue_order() -> None:
-    now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     tired, rested, fresh = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    last_ended = {tired: now - timedelta(seconds=30), rested: now - timedelta(minutes=20)}
+    histories = {
+        tired: PlayerHistory(played=4, rest=0, run=2),
+        rested: PlayerHistory(played=4, rest=3, run=1),
+    }
     candidates = [("first", [tired, fresh]), ("second", [rested, fresh]), ("third", [fresh])]
-    assert pick_next_match(candidates, last_ended, now) == "second"
-    # Everyone rested past the saturation point: plain call-up order.
-    assert pick_next_match(candidates[1:], last_ended, now) == "second"
-    assert pick_next_match([], last_ended, now) is None
+    assert pick_next_match(candidates, histories) == "second"
+    # Everyone has sat out at least one match: plain call-up order.
+    assert pick_next_match(candidates[1:], histories) == "second"
+    assert pick_next_match([], histories) is None
 
 
 # ------------------------------------------- fair_rotation doubles stage 1
@@ -352,11 +383,16 @@ async def test_small_roster_only_resets_players_who_were_seated(
 
 
 @pytest.mark.asyncio
-async def test_pull_skips_a_match_whose_player_just_finished(db_session: AsyncSession) -> None:
+async def test_pull_skips_a_match_whose_player_has_sat_out_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """A finished three hours ago, but no match has gone on court since:
+    counted in matches A hasn't rested, so the court takes b-vs-c first."""
     group = await _make_group(db_session, match_mode="singles")
     [court] = await _make_courts(db_session, group, 1)
     a, b, c, d = (e.id for e in await _make_entries(db_session, group, 4))
-    await _finished_match(db_session, group, [a], [d], ended_ago=timedelta(seconds=20))
+    long_ago = datetime.now(UTC) - timedelta(hours=3)
+    await _played_match(db_session, group, [a], [d], long_ago, long_ago + timedelta(minutes=12))
 
     first = await create_match_with_participants(
         db_session, group, court_id=None, round_number=1, status="queued",
@@ -376,13 +412,21 @@ async def test_pull_skips_a_match_whose_player_just_finished(db_session: AsyncSe
 
 
 @pytest.mark.asyncio
-async def test_pull_follows_queue_order_once_everyone_has_rested(
+async def test_pull_follows_queue_order_once_everyone_has_sat_out_a_match(
     db_session: AsyncSession,
 ) -> None:
+    """A finished seconds ago, but another match went on court since: A has
+    sat out one match, which counts as rested, so call-up order decides."""
     group = await _make_group(db_session, match_mode="singles")
     [court] = await _make_courts(db_session, group, 1)
-    a, b, c, d = (e.id for e in await _make_entries(db_session, group, 4))
-    await _finished_match(db_session, group, [a], [d], ended_ago=timedelta(minutes=30))
+    a, b, c, d, e = (entry.id for entry in await _make_entries(db_session, group, 5))
+    now = datetime.now(UTC)
+    await _played_match(
+        db_session, group, [a], [d], now - timedelta(minutes=1), now - timedelta(seconds=20)
+    )
+    await _played_match(
+        db_session, group, [e], [d], now - timedelta(seconds=15), now - timedelta(seconds=5)
+    )
 
     first = await create_match_with_participants(
         db_session, group, court_id=None, round_number=1, status="queued",
