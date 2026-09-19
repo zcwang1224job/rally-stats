@@ -101,7 +101,8 @@
     "moreFilters": "進階篩選",
     "applyFilters": "套用篩選",
     "clearFilters": "清除篩選",
-    "emptyState": "目前沒有符合條件的揪團"
+    "emptyState": "目前沒有符合條件的揪團",
+    "capacity": "{{current}} / {{max}} 人"
   },
   "guestBinding": {
     "title": "建立帳號並綁定戰績",
@@ -489,6 +490,8 @@
     "disband": "解散團",
     "disbandConfirmTitle": "確認解散此團？",
     "disbandConfirmBody": "解散後所有連結將立即失效，此操作無法復原。",
+    "groupLinksTitle": "團層級連結",
+    "joinLinkTitle": "加入連結",
     "disbandedNotice": "此團已解散"
   },
   "controlPanel": {

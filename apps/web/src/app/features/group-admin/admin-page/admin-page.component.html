@@ -51,12 +51,12 @@
         @switch (activeSection()) {
           @case ('courts') {
             <section class="card links-section">
-              <h2>{{ 'reauth.groupNumber' | translate }} / 團層級連結</h2>
+              <h2>{{ 'adminPage.groupLinksTitle' | translate }}</h2>
               @if (copyLinkErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
               <div class="link-section">
-                <p>加入連結</p>
+                <h3>{{ 'adminPage.joinLinkTitle' | translate }}</h3>
                 <qrcode [qrdata]="joinLinkUrl()" [width]="128" errorCorrectionLevel="M" />
                 <input type="text" readonly [value]="joinLinkUrl()" />
                 <button type="button" class="btn btn--secondary" (click)="copyJoinLink()">
@@ -67,7 +67,7 @@
                 </button>
               </div>
               <div class="link-section">
-                <p>{{ 'courtManagement.allCourtsTitle' | translate }}</p>
+                <h3>{{ 'courtManagement.allCourtsTitle' | translate }}</h3>
                 <qrcode [qrdata]="allCourtsLinkUrl()" [width]="128" errorCorrectionLevel="M" />
                 <input type="text" readonly [value]="allCourtsLinkUrl()" />
                 <button type="button" class="btn btn--secondary" (click)="copyAllCourtsLink()">

@@ -101,7 +101,8 @@
     "moreFilters": "More Filters",
     "applyFilters": "Apply Filters",
     "clearFilters": "Clear Filters",
-    "emptyState": "No groups match the current filters"
+    "emptyState": "No groups match the current filters",
+    "capacity": "{{current}} / {{max}} members"
   },
   "guestBinding": {
     "title": "Create an account and save your stats",
@@ -489,6 +490,8 @@
     "disband": "Disband Group",
     "disbandConfirmTitle": "Disband this group?",
     "disbandConfirmBody": "All links will be invalidated immediately. This cannot be undone.",
+    "groupLinksTitle": "Group links",
+    "joinLinkTitle": "Join link",
     "disbandedNotice": "This group has been disbanded"
   },
   "controlPanel": {

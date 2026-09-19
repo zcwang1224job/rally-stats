@@ -143,7 +143,10 @@
             <div class="capacity-bar">
               <div class="capacity-bar__fill" [style.width.%]="capacityPercent(group)"></div>
             </div>
-            <span class="capacity-label">{{ group.current_member_count }} / {{ group.max_members }} 人</span>
+            <span class="capacity-label">{{
+              'groupJoin.capacity'
+                | translate: { current: group.current_member_count, max: group.max_members }
+            }}</span>
           </div>
 
           <div class="group-card__footer">
