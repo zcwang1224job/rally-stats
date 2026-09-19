@@ -46,7 +46,7 @@
   }
 
   @if (loading()) {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (items().length === 0) {
     <div class="empty-state card">
       <p>{{ 'friends.emptyList' | translate }}</p>
@@ -71,7 +71,7 @@
           </a>
           <button
             type="button"
-            class="btn btn--danger btn--icon"
+            class="btn btn--danger-outline btn--icon"
             (click)="openUnfriendDialog(friend)"
             [attr.aria-label]="'friends.unfriendButtonAriaLabel' | translate: { nickname: friend.nickname }"
             [attr.title]="'friends.unfriendButton' | translate"
@@ -87,15 +87,7 @@
       }
     </ul>
 
-    @if (totalPages() > 1) {
-      <nav class="pagination">
-        @for (p of pageNumbers(); track p) {
-          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
-            {{ p }}
-          </button>
-        }
-      </nav>
-    }
+    <app-pagination [page]="page()" [totalPages]="totalPages()" (pageChange)="goToPage($event)" />
   }
 </main>
 

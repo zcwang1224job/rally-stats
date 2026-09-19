@@ -129,15 +129,6 @@
   max-width: 7em;
 }
 
-// 同 partnership-settings 的「點兩人互換」慣例：勾選符號 + aria-pressed
-// 才是實際的選取依據，顏色變化只是輔助（constitution VII）。
-.match-teams .btn.is-selected {
-  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
-  border-color: var(--color-brand-primary);
-  color: var(--color-brand-primary);
-  font-weight: var(--font-weight-bold);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
-}
 
 .vs {
   margin: 0;

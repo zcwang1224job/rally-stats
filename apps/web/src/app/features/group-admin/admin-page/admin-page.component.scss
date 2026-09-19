@@ -42,56 +42,6 @@ section.card {
   }
 }
 
-.admin-nav {
-  display: flex;
-  overflow-x: auto;
-  gap: var(--space-xs);
-  padding-bottom: var(--space-xs);
-
-  // Below $breakpoint-tablet the nav is a horizontally-scrolling strip with
-  // no scrollbar and a hard-cut last button — nothing hints there's more
-  // to scroll. A pure-CSS edge fade (no JS scroll-position tracking) fixes
-  // that; it's reset at tablet+ below, where the axis flips to a vertical
-  // sidebar and a left/right fade would instead clip each button's text.
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black var(--space-md),
-    black calc(100% - var(--space-md)),
-    transparent 100%
-  );
-
-  button {
-    flex: 0 0 auto;
-    min-height: var(--touch-target-min);
-    padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface);
-    color: var(--color-text-primary);
-    font-weight: var(--font-weight-bold);
-    white-space: nowrap;
-
-    &.is-active {
-      background: var(--color-brand-primary);
-      border-color: var(--color-brand-primary);
-      color: var(--color-brand-primary-contrast);
-    }
-  }
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    flex-direction: column;
-    overflow-x: visible;
-    flex: 0 0 200px;
-    mask-image: none;
-
-    button {
-      width: 100%;
-      text-align: left;
-    }
-  }
-}
-
 .admin-content {
   flex: 1;
   min-width: 0;

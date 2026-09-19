@@ -23,7 +23,7 @@
         >
           <button
             type="button"
-            class="dashboard-range__button"
+            class="chip dashboard-range__button"
             [attr.aria-pressed]="effectiveRange() === 'all'"
             (click)="range.set('all')"
           >
@@ -31,7 +31,7 @@
           </button>
           <button
             type="button"
-            class="dashboard-range__button"
+            class="chip dashboard-range__button"
             [attr.aria-pressed]="effectiveRange() === 'recent'"
             (click)="range.set('recent')"
           >

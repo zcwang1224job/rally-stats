@@ -36,7 +36,7 @@
       @for (option of sorts; track option) {
         <button
           type="button"
-          class="matchups__sort-button"
+          class="chip matchups__sort-button"
           [attr.data-sort]="option"
           [attr.aria-pressed]="sort() === option"
           (click)="sort.set(option)"

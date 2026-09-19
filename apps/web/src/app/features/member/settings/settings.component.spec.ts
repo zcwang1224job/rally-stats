@@ -152,7 +152,7 @@ describe('SettingsComponent', () => {
     const { fixture } = setup();
 
     const basicTab = fixture.nativeElement.querySelector('.settings-tab[data-section="basic"]');
-    expect(basicTab.classList.contains('settings-tab--active')).toBe(true);
+    expect(basicTab.getAttribute('aria-selected')).toBe('true');
     expect(fixture.nativeElement.querySelector('input[formControlName="nickname"]')).not.toBeNull();
   });
 
@@ -363,9 +363,11 @@ describe('SettingsComponent', () => {
       timestampPattern,
     );
 
-    const [prevButton, nextButton] = Array.from<HTMLButtonElement>(
+    const buttons = Array.from<HTMLButtonElement>(
       fixture.nativeElement.querySelectorAll('.pagination button'),
     );
+    const prevButton = buttons[0];
+    const nextButton = buttons[buttons.length - 1];
     expect(prevButton.disabled).toBe(true);
     expect(nextButton.disabled).toBe(false);
   });

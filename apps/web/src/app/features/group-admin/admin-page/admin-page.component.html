@@ -5,7 +5,7 @@
 }
 
 @if (loading()) {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 } @else if (errorKey(); as key) {
   <p role="alert">{{ key | translate }}</p>
 } @else if (adminView(); as view) {
@@ -17,22 +17,22 @@
   }
 
   <div class="admin-shell">
-    <nav class="admin-nav">
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'courts'" (click)="activeSection.set('courts')">
+    <nav class="admin-nav tabs tabs--sidebar">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'courts' ? 'page' : null" (click)="activeSection.set('courts')">
         {{ 'adminPage.section.courts' | translate }}
       </button>
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'schedule'" (click)="activeSection.set('schedule')">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'schedule' ? 'page' : null" (click)="activeSection.set('schedule')">
         {{ 'adminPage.section.schedule' | translate }}
       </button>
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'roster'" (click)="activeSection.set('roster')">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'roster' ? 'page' : null" (click)="activeSection.set('roster')">
         {{ 'adminPage.section.roster' | translate }}
       </button>
       @if (view.group.created_by_member) {
-        <button type="button" class="tap-target" [class.is-active]="activeSection() === 'invites'" (click)="activeSection.set('invites')">
+        <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'invites' ? 'page' : null" (click)="activeSection.set('invites')">
           {{ 'adminPage.section.invites' | translate }}
         </button>
       }
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'settings'" (click)="activeSection.set('settings')">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'settings' ? 'page' : null" (click)="activeSection.set('settings')">
         {{ 'adminPage.section.settings' | translate }}
       </button>
     </nav>
@@ -339,7 +339,7 @@
                   </ul>
                 }
               } @else {
-                <p>{{ 'common.loading' | translate }}</p>
+                <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
               }
             </section>
           }
@@ -569,6 +569,7 @@
 
 <app-confirm-dialog
   #nextRoundDialog
+  variant="primary"
   [title]="
     (hasUnfinishedMatches()
       ? 'scheduleManagement.nextRoundConfirmTitle'
@@ -586,6 +587,7 @@
 
 <app-confirm-dialog
   #endRoundDialog
+  variant="primary"
   [title]="'scheduleManagement.endRoundConfirmTitle' | translate"
   [body]="'scheduleManagement.endRoundConfirmBody' | translate"
   (confirmed)="confirmEndRound()"

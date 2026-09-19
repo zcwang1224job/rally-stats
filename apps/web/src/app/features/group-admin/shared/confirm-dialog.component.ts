@@ -2,29 +2,38 @@ import { Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 
 /** Generic two-step confirmation dialog (constitution V — destructive actions
- * require confirmation) used by both the disband and regenerate-PIN flows. */
+ * require confirmation). `variant` sets the confirm button: `danger` (the
+ * default) for destructive actions — disband, kick, unfriend, regenerate a
+ * link that invalidates the old one — and `primary` for an ordinary step
+ * that only wants a second look (next round, end match), so red keeps
+ * meaning "this destroys something". */
 @Component({
   selector: 'app-confirm-dialog',
   imports: [TranslatePipe],
   template: `
-    <dialog #dialog>
+    <dialog #dialog class="dialog dialog--sm">
       <h2>{{ title() }}</h2>
       <p>{{ body() }}</p>
       <div class="actions">
         <button type="button" class="btn btn--secondary" (click)="cancel()">
           {{ 'common.cancel' | translate }}
         </button>
-        <button type="button" class="btn btn--danger" (click)="confirm()">
+        <button
+          type="button"
+          class="btn"
+          [class.btn--danger]="variant() === 'danger'"
+          (click)="confirm()"
+        >
           {{ 'common.confirm' | translate }}
         </button>
       </div>
     </dialog>
   `,
-  styleUrl: './confirm-dialog.component.scss',
 })
 export class ConfirmDialogComponent {
   readonly title = input.required<string>();
   readonly body = input.required<string>();
+  readonly variant = input<'danger' | 'primary'>('danger');
   readonly confirmed = output<void>();
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');

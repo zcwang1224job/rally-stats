@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
+import { Component, effect, inject, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import {
@@ -22,6 +23,7 @@ import { GroupMemberViewService } from '../group-member-view.service';
 @Component({
   selector: 'app-match-records',
   imports: [
+    PaginationComponent,
     TranslatePipe,
     DatePipe,
     MatchRecordDetailDialogComponent,
@@ -49,10 +51,6 @@ export class MatchRecordsComponent {
   readonly records = signal<GroupMatchRecordsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
-  readonly pageNumbers = computed(() => {
-    const totalPages = this.records()?.total_pages ?? 1;
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  });
 
   private readonly detailDialogRef =
     viewChild.required<MatchRecordDetailDialogComponent>('detailDialog');

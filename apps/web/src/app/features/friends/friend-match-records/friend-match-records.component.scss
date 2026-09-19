@@ -46,12 +46,6 @@
   font-weight: var(--font-weight-bold);
 }
 
-.empty-state {
-  color: var(--color-text-muted);
-  padding: var(--space-lg) 0;
-  text-align: center;
-}
-
 // 沿用既有 match-history.component.scss 的對戰卡片/分頁樣式慣例。
 .record-list {
   list-style: none;
@@ -119,13 +113,6 @@
   justify-content: flex-end;
 }
 
-.pagination {
-  display: flex;
-  gap: var(--space-xs);
-  margin-top: var(--space-md);
-  flex-wrap: wrap;
-}
-
 .record-row--clickable {
   cursor: pointer;
 
@@ -138,11 +125,5 @@
 // 036 US4
 .compare-toggle {
   margin: 0 0 var(--space-md);
-
-  // Pressed is said by the border and weight as well as the fill.
-  [aria-pressed='true'] {
-    border-width: 2px;
-    font-weight: var(--font-weight-bold);
-  }
 }
 

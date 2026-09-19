@@ -6,9 +6,9 @@
   }
 
   @if (loading()) {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (groups().length === 0) {
-    <p>{{ 'myGroups.empty' | translate }}</p>
+    <p class="empty-state card">{{ 'myGroups.empty' | translate }}</p>
   } @else {
     <ul class="group-list">
       @for (group of groups(); track group.group_id) {
@@ -53,6 +53,7 @@
 
 <app-confirm-dialog
   #forgotPinDialog
+  variant="primary"
   [title]="'myGroups.forgotPinConfirmTitle' | translate"
   [body]="'myGroups.forgotPinConfirmBody' | translate"
   (confirmed)="confirmForgotPin()"

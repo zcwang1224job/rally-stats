@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import {
@@ -58,6 +59,7 @@ interface PerformanceTier {
 @Component({
   selector: 'app-match-history',
   imports: [
+    PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
     DatePipe,
@@ -103,10 +105,6 @@ export class MatchHistoryComponent {
   readonly records = signal<MemberMatchRecordsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
-  readonly pageNumbers = computed(() => {
-    const totalPages = this.records()?.total_pages ?? 1;
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
-  });
 
   readonly filterForm = this.fb.nonNullable.group({
     opponent1: [''],

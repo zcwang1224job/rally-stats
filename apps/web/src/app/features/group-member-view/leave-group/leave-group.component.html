@@ -1,7 +1,7 @@
 @if (errorKey()) {
   <p role="alert">{{ errorKey()! | translate }}</p>
 }
-<button type="button" class="tap-target leave-btn" (click)="openDialog()">
+<button type="button" class="btn btn--danger-outline leave-btn" (click)="openDialog()">
   {{ 'groupMemberView.nav.leaveGroup' | translate }}
 </button>
 <app-confirm-dialog
