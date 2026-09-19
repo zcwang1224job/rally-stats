@@ -574,7 +574,18 @@
     "adminRest": "Rest",
     "adminReady": "Ready",
     "adminAriaLabel": "Put {{nickname}} on a break",
-    "adminReadyAriaLabel": "Mark {{nickname}} as ready"
+    "adminReadyAriaLabel": "Mark {{nickname}} as ready",
+    "substitutionNote": "{{substitute}} plays for {{resting}} (on a break)",
+    "partnerResting": "Your partner is on a break — your matches are on hold",
+    "effectHeld": "Kept for their return",
+    "effectSubstitute": "A substitute plays when it's up",
+    "heldNote": "You have {{count}} matches on hold; they're cancelled if you're not back before this round ends",
+    "endsRound": {
+      "title": "Take a break and end this round?",
+      "body": "The {{count}} matches not yet played this round will be cancelled, and the next round starts.",
+      "adminBody": "Putting {{nickname}} on a break cancels the {{count}} matches not yet played this round, and the next round starts.",
+      "confirm": "Take a break"
+    }
   },
   "scheduleManagement": {
     "sectionTitle": "Court Control",
@@ -623,6 +634,11 @@
     "waitCountLabel": "Waited {{count}} rounds",
     "currentlyPlaying": "Playing",
     "restingBadge": "☕ Resting",
+    "restingSuffix": " (on a break)",
+    "waitingHeldForRest": "Waiting for players on a break",
+    "waitingNotEnoughReady": "Not enough players ready",
+    "waitingOnRest": "{{count}} matches are waiting for players on a break: {{names}}",
+    "waitingOnRestHint": "You can mark them ready, or end this round",
     "kickMember": "Remove",
     "kickMemberAriaLabel": "Remove {{nickname}}",
     "regenerateGuestLink": "Regenerate Link",
@@ -1159,6 +1175,7 @@
     "DUPLICATE_PARTICIPANT": "The same member can't be selected more than once",
     "AUTO_NEXT_ROUND_NOT_SUPPORTED_IN_MANUAL_MODE": "Manual assignment mode doesn't support auto-advancing to the next round",
     "ROSTER_ENTRY_NOT_FOUND": "Rotation roster entry not found",
+    "REST_ENDS_ROUND": "Resting would end this round and cancel the matches not yet played — confirm and try again",
     "PARTNERSHIP_NOT_FOUND": "This member has no formal partnership right now",
     "ROSTER_ENTRY_ALREADY_LEFT": "This member has already left or been removed",
     "ROSTER_ENTRY_ALREADY_BOUND": "This link is already linked to an account — try logging in instead",

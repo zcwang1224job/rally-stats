@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -10,6 +10,7 @@ import {
   RoundMatchesResponse,
   RoundMatchSummary,
   Team,
+  WaitingOnRest,
 } from './schedule.models';
 import { ScheduleService } from './schedule.service';
 
@@ -79,6 +80,17 @@ export class RoundMatchesListComponent {
   readonly estimatedRemainingMinutes = signal<number | null>(null);
   readonly sittingOutNames = signal<string | null>(null);
 
+  /** 037-rest-ready-toggle FR-021: queued matches waiting on resting
+   * players. `stalled` = the round can't go on without them. */
+  readonly waitingOnRest = signal<WaitingOnRest | null>(null);
+  readonly waitingOnRestNames = computed(
+    () => this.waitingOnRest()?.players.map((p) => p.nickname).join(', ') ?? '',
+  );
+  /** Whether the group auto-advances: a stalled round then moves on by
+   * itself, so the "mark them ready or end the round" hint is only for
+   * groups where the admin has to act. */
+  readonly autoNextRound = input(false);
+
   private applyResponse(response: RoundMatchesResponse): void {
     this.roundNumber.set(response.round_number);
     this.matches.set(response.matches);
@@ -86,6 +98,18 @@ export class RoundMatchesListComponent {
     this.estimatedRemainingMinutes.set(response.estimated_remaining_minutes);
     const names = response.sitting_out.map((entry) => entry.nickname);
     this.sittingOutNames.set(names.length > 0 ? names.join(', ') : null);
+    this.waitingOnRest.set(response.waiting_on_rest ?? null);
+  }
+
+  restEffectKey(match: RoundMatchSummary): string | null {
+    switch (match.rest_effect) {
+      case 'held':
+        return 'restToggle.effectHeld';
+      case 'substitute':
+        return 'restToggle.effectSubstitute';
+      default:
+        return null;
+    }
   }
 
   private flashSuccess(): void {

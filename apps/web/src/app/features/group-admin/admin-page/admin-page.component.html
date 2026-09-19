@@ -96,6 +96,7 @@
                     [roundPhase]="sched.round_phase"
                     [roster]="sched.roster"
                     [refreshKey]="scheduleVersion()"
+                    [autoNextRound]="sched.auto_next_round"
                   />
                 }
 
@@ -128,8 +129,16 @@
                                   }
                           }}
                         </p>
+                        @for (swap of next.substitutions ?? []; track swap.resting.roster_entry_id) {
+                          <p class="next-up__substitution">
+                            {{
+                              'restToggle.substitutionNote'
+                                | translate: { substitute: swap.substitute.nickname, resting: swap.resting.nickname }
+                            }}
+                          </p>
+                        }
                       } @else {
-                        <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+                        <p>{{ waitingReasonKey(court.waiting_reason) | translate }}</p>
                       }
                     </div>
                   }

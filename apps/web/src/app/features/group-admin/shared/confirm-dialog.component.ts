@@ -24,7 +24,7 @@ import { TranslatePipe } from '@ngx-translate/core';
           [class.btn--danger]="variant() === 'danger'"
           (click)="confirm()"
         >
-          {{ 'common.confirm' | translate }}
+          {{ confirmLabel() ?? ('common.confirm' | translate) }}
         </button>
       </div>
     </dialog>
@@ -34,6 +34,9 @@ export class ConfirmDialogComponent {
   readonly title = input.required<string>();
   readonly body = input.required<string>();
   readonly variant = input<'danger' | 'primary'>('danger');
+  /** Already-translated text for the confirm button, when "確認" alone
+   * wouldn't say what it does (037: "確認休息"). */
+  readonly confirmLabel = input<string | null>(null);
   readonly confirmed = output<void>();
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');

@@ -10,6 +10,7 @@ import { copyTextToClipboard } from '../../../core/clipboard';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
+import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
@@ -291,6 +292,7 @@ export class AdminPageComponent {
 
   /** 每次重新讀取賽程就加一，傳給本輪賽程清單讓它跟著更新。 */
   readonly scheduleVersion = signal(0);
+  readonly waitingReasonKey = waitingReasonKey;
 
   // 即時事件觸發的重新讀取：同一件事常同時送出好幾個事件（例如一場打完會有
   // match.ended、rotation.updated），合併成一次讀取。

@@ -102,7 +102,7 @@
     } @else if (s.waiting_reason === 'manual_assignment') {
       <p>{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
     } @else {
-      <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+      <p>{{ waitingReasonKey(s.waiting_reason) | translate }}</p>
     }
   } @else {
     <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>

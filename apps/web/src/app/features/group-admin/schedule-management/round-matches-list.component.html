@@ -31,6 +31,20 @@
         @if (sittingOutNames(); as names) {
           <p class="round-progress">{{ 'scheduleManagement.roundSittingOut' | translate: { names } }}</p>
         }
+        @if (waitingOnRest(); as waiting) {
+          <div class="rest-banner" [class.rest-banner--stalled]="waiting.stalled" role="status">
+            <p>
+              <span aria-hidden="true">{{ waiting.stalled ? '⚠' : '☕' }} </span>
+              {{
+                'scheduleManagement.waitingOnRest'
+                  | translate: { count: waiting.match_count, names: waitingOnRestNames() }
+              }}
+            </p>
+            @if (waiting.stalled && !autoNextRound()) {
+              <p>{{ 'scheduleManagement.waitingOnRestHint' | translate }}</p>
+            }
+          </div>
+        }
       }
 
       @if (actionErrorKey(); as key) {
@@ -66,6 +80,9 @@
                 }
                 @if (match.status === 'completed' || match.status === 'in_progress') {
                   <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+                }
+                @if (restEffectKey(match); as key) {
+                  <span class="status-badge status-badge--muted">{{ key | translate }}</span>
                 }
               </div>
 

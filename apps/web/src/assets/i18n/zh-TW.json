@@ -574,7 +574,18 @@
     "adminRest": "休息",
     "adminReady": "準備好了",
     "adminAriaLabel": "將 {{nickname}} 設為休息中",
-    "adminReadyAriaLabel": "將 {{nickname}} 設為準備好了"
+    "adminReadyAriaLabel": "將 {{nickname}} 設為準備好了",
+    "substitutionNote": "{{substitute}} 代替 {{resting}}（休息中）",
+    "partnerResting": "搭檔休息中，你們的場次暫緩",
+    "effectHeld": "保留，等他回來",
+    "effectSubstitute": "輪到時由替補上場",
+    "heldNote": "你還有 {{count}} 場保留中，這一輪結束前沒回來會被取消",
+    "endsRound": {
+      "title": "要休息並結束這一輪嗎？",
+      "body": "本輪還沒打的 {{count}} 場比賽會被取消，並直接進入下一輪。",
+      "adminBody": "將 {{nickname}} 設為休息中，會取消本輪還沒打的 {{count}} 場比賽，並直接進入下一輪。",
+      "confirm": "確認休息"
+    }
   },
   "scheduleManagement": {
     "sectionTitle": "場地控制",
@@ -623,6 +634,11 @@
     "waitCountLabel": "已等待 {{count}} 輪",
     "currentlyPlaying": "比賽中",
     "restingBadge": "☕ 休息中",
+    "restingSuffix": "（休息中）",
+    "waitingHeldForRest": "等待休息中的球員",
+    "waitingNotEnoughReady": "準備中的球員不足",
+    "waitingOnRest": "剩下 {{count}} 場在等休息中的球員：{{names}}",
+    "waitingOnRestHint": "可以幫他按「準備好了」，或結束這一輪",
     "kickMember": "踢除",
     "kickMemberAriaLabel": "踢除 {{nickname}}",
     "regenerateGuestLink": "重新產生連結",
@@ -1159,6 +1175,7 @@
     "DUPLICATE_PARTICIPANT": "同一位成員不可重複選取",
     "AUTO_NEXT_ROUND_NOT_SUPPORTED_IN_MANUAL_MODE": "手動安排模式不支援自動進入下一輪",
     "ROSTER_ENTRY_NOT_FOUND": "找不到此輪替名單成員",
+    "REST_ENDS_ROUND": "休息會結束這一輪並取消還沒打的比賽，請確認後再試一次",
     "PARTNERSHIP_NOT_FOUND": "此成員目前沒有正式搭檔",
     "ROSTER_ENTRY_ALREADY_LEFT": "此成員已離開或已被踢除",
     "ROSTER_ENTRY_ALREADY_BOUND": "這個連結已綁定過帳號，請改用登入",

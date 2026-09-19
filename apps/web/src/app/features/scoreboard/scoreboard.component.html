@@ -163,7 +163,7 @@
         @if (state.waiting_reason === 'manual_assignment') {
           <p class="waiting-message">{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
         } @else if (!state.next_up) {
-          <p class="waiting-message">{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+          <p class="waiting-message">{{ waitingReasonKey(state.waiting_reason) | translate }}</p>
         }
       }
     }

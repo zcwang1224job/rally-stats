@@ -42,7 +42,22 @@ const REST_TOGGLE_I18N_KEYS = [
   'restToggle.adminReady',
   'restToggle.adminAriaLabel',
   'restToggle.adminReadyAriaLabel',
+  'restToggle.substitutionNote',
+  'restToggle.partnerResting',
+  'restToggle.effectHeld',
+  'restToggle.effectSubstitute',
+  'restToggle.heldNote',
+  'restToggle.endsRound.title',
+  'restToggle.endsRound.body',
+  'restToggle.endsRound.adminBody',
+  'restToggle.endsRound.confirm',
   'scheduleManagement.restingBadge',
+  'scheduleManagement.restingSuffix',
+  'scheduleManagement.waitingHeldForRest',
+  'scheduleManagement.waitingNotEnoughReady',
+  'scheduleManagement.waitingOnRest',
+  'scheduleManagement.waitingOnRestHint',
+  'errors.REST_ENDS_ROUND',
 ];
 
 describe('RestToggleButtonComponent', () => {

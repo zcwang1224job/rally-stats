@@ -22,10 +22,8 @@
             <li>{{ participant.nickname }}（{{ participant.team }}）</li>
           }
         </ul>
-      } @else if (court.waiting_reason === 'manual_assignment') {
-        <p class="status-badge">{{ 'groupMemberView.schedule.waitingManualAssignment' | translate }}</p>
       } @else {
-        <p class="status-badge">{{ 'groupMemberView.schedule.waitingNoQueuedMatch' | translate }}</p>
+        <p class="status-badge">{{ waitingReasonKey(court.waiting_reason, 'member') | translate }}</p>
       }
       @if (court.next_up; as nextUp) {
         <p class="next-up">
@@ -34,6 +32,14 @@
             {{ participant.nickname }}（{{ participant.team }}）
           }
         </p>
+        @for (swap of nextUp.substitutions ?? []; track swap.resting.roster_entry_id) {
+          <p class="next-up__substitution">
+            {{
+              'restToggle.substitutionNote'
+                | translate: { substitute: swap.substitute.nickname, resting: swap.resting.nickname }
+            }}
+          </p>
+        }
       }
     </section>
   }
@@ -57,6 +63,11 @@
               @if (match.status === 'completed' || match.status === 'in_progress') {
                 <span class="round-matches-list__score">{{ match.score_a }} : {{ match.score_b }}</span>
               }
+              @if (match.rest_effect; as effect) {
+                <span class="status-badge status-badge--muted">
+                  {{ (effect === 'held' ? 'restToggle.effectHeld' : 'restToggle.effectSubstitute') | translate }}
+                </span>
+              }
             </li>
           }
         </ul>
@@ -76,6 +87,14 @@
         />
         @if (restErrorKey(); as key) {
           <p role="alert">{{ key | translate }}</p>
+        }
+        @if (partnerResting()) {
+          <p class="self-rest__note" role="status">{{ 'restToggle.partnerResting' | translate }}</p>
+        }
+        @if (me.resting && heldCount() > 0) {
+          <p class="self-rest__note" role="status">
+            {{ 'restToggle.heldNote' | translate: { count: heldCount() } }}
+          </p>
         }
       </div>
     }
@@ -110,3 +129,10 @@
 } @else {
   <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 }
+<app-confirm-dialog
+  #endsRoundDialog
+  [title]="'restToggle.endsRound.title' | translate"
+  [body]="'restToggle.endsRound.body' | translate: { count: endsRoundCount() }"
+  [confirmLabel]="'restToggle.endsRound.confirm' | translate"
+  (confirmed)="confirmRestEndingRound()"
+/>

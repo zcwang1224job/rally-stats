@@ -1,9 +1,13 @@
 // Mirrors apps/api/app/domains/schedule/schemas.py — see contracts/schedule-api.md.
 
-import type { ServeStationInfo } from '../../../core/api/court-live-state.models';
+import type {
+  ServeStationInfo,
+  SubstitutionPreview,
+  WaitingReason,
+} from '../../../core/api/court-live-state.models';
 
+export type { SubstitutionPreview, WaitingReason };
 export type Team = 'A' | 'B';
-export type WaitingReason = 'manual_assignment' | 'no_queued_match';
 // 018-plan-then-start: null for scheduling_mechanism === 'manual', which has
 // no plan/start split.
 export type RoundPhase = 'awaiting_plan' | 'awaiting_start' | 'in_progress';
@@ -22,7 +26,10 @@ export interface ParticipantSummary {
 
 export interface NextUpPreview {
   match_id: string;
+  /** 037: the lineup that will play — substitutes included. */
   participants: ParticipantSummary[];
+  /** 037: optional so an older backend reads as "no substitutes". */
+  substitutions?: SubstitutionPreview[];
 }
 
 export interface MatchSummary {
@@ -150,6 +157,19 @@ export interface RoundMatchSummary {
   score_a: number;
   score_b: number;
   winner_team: Team | null;
+  /** 037：排隊中且含休息中球員的場次——held＝保留等他回來，substitute＝輪到時
+   * 由替補上場；其他情況為 null（舊後端沒有這個欄位）。 */
+  rest_effect?: RestEffect | null;
+}
+
+export type RestEffect = 'held' | 'substitute';
+
+/** 037 FR-021：本輪在等休息中球員的場次。 */
+export interface WaitingOnRest {
+  match_count: number;
+  players: RosterSummary[];
+  /** 這一輪已因此無法繼續（沒有比賽在打、剩下的都叫不到）。 */
+  stalled: boolean;
 }
 
 export interface RoundMatchesResponse {
@@ -159,8 +179,10 @@ export interface RoundMatchesResponse {
   remaining_count: number;
   /** 粗估還要幾分鐘本輪才會打完；沒有剩餘場次時為 null。 */
   estimated_remaining_minutes: number | null;
-  /** 本輪完全沒有排到比賽的現役成員（例如固定搭檔人數為奇數時的輪空）。 */
+  /** 本輪完全沒有排到比賽的現役成員（例如固定搭檔人數為奇數時的輪空）；不含休息中的人。 */
   sitting_out: RosterSummary[];
+  /** 037：沒有場次在等休息中的球員時為 null。 */
+  waiting_on_rest?: WaitingOnRest | null;
 }
 
 // 017-fixed-partner-autofill: 暫時隨機配對——刻意沒有 partnership_id，

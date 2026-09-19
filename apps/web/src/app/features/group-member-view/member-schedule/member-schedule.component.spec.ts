@@ -119,7 +119,12 @@ function setup(
     selfMemberId?: string | null;
     getMemberSchedule?: () => Observable<ScheduleResponse>;
     selfRosterEntryId?: string;
-    setOwnRestState?: (groupId: string, id: string, resting: boolean) => Observable<RestStateResponse>;
+    setOwnRestState?: (
+      groupId: string,
+      id: string,
+      resting: boolean,
+      confirmRoundEnd?: boolean,
+    ) => Observable<RestStateResponse>;
     subscribe?: (channel: string, event: string) => Observable<unknown>;
   } = {},
 ) {
@@ -374,6 +379,183 @@ describe('MemberScheduleComponent rest/ready', () => {
       'restToggle.rest',
     );
     expect(fixture.componentInstance.restPending()).toBe(false);
+  });
+
+  it('says an idle court is waiting for resting players, and falls back for unknown reasons', () => {
+    const idle = (reason: string): ScheduleResponse => ({
+      ...scheduleResponse,
+      courts: [
+        { court_id: 'c1', name: '1號場', current_match: null, next_up: null, waiting_reason: reason as never },
+      ],
+    });
+
+    expect(setup({ schedule: idle('held_for_rest') }).nativeElement.textContent).toContain(
+      'scheduleManagement.waitingHeldForRest',
+    );
+    TestBed.resetTestingModule();
+    expect(setup({ schedule: idle('something_new') }).nativeElement.textContent).toContain(
+      'groupMemberView.schedule.waitingNoQueuedMatch',
+    );
+  });
+
+  it('names the substitute in the next-up preview', () => {
+    const fixture = setup({
+      schedule: {
+        ...scheduleResponse,
+        courts: [
+          {
+            court_id: 'c1',
+            name: '1號場',
+            current_match: null,
+            waiting_reason: 'no_queued_match',
+            next_up: {
+              match_id: 'n1',
+              participants: [{ roster_entry_id: 'cp3', nickname: '訪客', team: 'A' }],
+              substitutions: [
+                {
+                  resting: { roster_entry_id: 'cp2', nickname: '對手' },
+                  substitute: { roster_entry_id: 'cp3', nickname: '訪客' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(fixture.nativeElement.querySelector('.next-up__substitution').textContent).toContain(
+      'restToggle.substitutionNote',
+    );
+  });
+
+  it('labels queued matches that wait on a resting player', () => {
+    const fixture = setup({
+      getRoundMatches: () =>
+        of({
+          ...roundMatchesResponse,
+          matches: [
+            { ...roundMatchesResponse.matches[1], rest_effect: 'held' as const },
+            { ...roundMatchesResponse.matches[1], match_id: 'm3', rest_effect: 'substitute' as const },
+          ],
+        }),
+    });
+
+    const text = fixture.nativeElement.querySelector('.round-matches-list').textContent;
+    expect(text).toContain('restToggle.effectHeld');
+    expect(text).toContain('restToggle.effectSubstitute');
+  });
+
+  it("tells a fixed partner their partner is resting (FR-022)", () => {
+    const fixture = setup({
+      selfRosterEntryId: 'cp1',
+      schedule: withRoster([
+        { partner_roster_entry_id: 'cp2' },
+        { resting: true, partner_roster_entry_id: 'cp1' },
+      ]),
+    });
+
+    expect(fixture.nativeElement.textContent).toContain('restToggle.partnerResting');
+  });
+
+  it('says nothing about the partner while they are ready', () => {
+    const fixture = setup({
+      selfRosterEntryId: 'cp1',
+      schedule: withRoster([{ partner_roster_entry_id: 'cp2' }, {}]),
+    });
+
+    expect(fixture.nativeElement.textContent).not.toContain('restToggle.partnerResting');
+  });
+
+  it('tells a resting viewer how many of their matches are on hold (FR-033)', () => {
+    const fixture = setup({
+      selfRosterEntryId: 'cp3',
+      schedule: withRoster([{}, {}, { resting: true }]),
+      getRoundMatches: () =>
+        of({
+          ...roundMatchesResponse,
+          matches: [
+            {
+              ...roundMatchesResponse.matches[1],
+              participants: [
+                { roster_entry_id: 'cp3', nickname: '訪客', team: 'A' },
+                { roster_entry_id: 'cp2', nickname: '對手', team: 'B' },
+              ],
+              rest_effect: 'held' as const,
+            },
+          ],
+        }),
+    });
+
+    expect(fixture.nativeElement.querySelector('.self-rest').textContent).toContain(
+      'restToggle.heldNote',
+    );
+  });
+
+  describe('a rest that would end the round (FR-031～FR-033)', () => {
+    const endsRound: ApiError = {
+      errorCode: 'REST_ENDS_ROUND',
+      i18nKey: 'errors.REST_ENDS_ROUND',
+      detail: { matches_to_cancel: 2 },
+      status: 409,
+    };
+
+    function refusedFirst(calls: [boolean, boolean | undefined][]) {
+      return setup({
+        selfRosterEntryId: 'cp3',
+        setOwnRestState: (_g, _id, resting, confirm) => {
+          calls.push([resting, confirm]);
+          return confirm ? of(restOk) : throwError(() => endsRound);
+        },
+      });
+    }
+
+    function confirmButton(fixture: ReturnType<typeof setup>): HTMLButtonElement {
+      const buttons = Array.from(
+        fixture.nativeElement.querySelectorAll('app-confirm-dialog button'),
+      ) as HTMLButtonElement[];
+      return buttons.find((b) => b.textContent?.includes('restToggle.endsRound.confirm'))!;
+    }
+
+    it('asks instead of showing an error, with the number of matches', () => {
+      const calls: [boolean, boolean | undefined][] = [];
+      const fixture = refusedFirst(calls);
+
+      fixture.nativeElement.querySelector('app-rest-toggle-button button').click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.self-rest [role="alert"]')).toBeNull();
+      expect(fixture.componentInstance.endsRoundCount()).toBe(2);
+      expect(fixture.nativeElement.querySelector('app-confirm-dialog').textContent).toContain(
+        'restToggle.endsRound.body',
+      );
+      expect(fixture.componentInstance.restPending()).toBe(false);
+    });
+
+    it('resends with the confirmation once confirmed', () => {
+      const calls: [boolean, boolean | undefined][] = [];
+      const fixture = refusedFirst(calls);
+      fixture.nativeElement.querySelector('app-rest-toggle-button button').click();
+      fixture.detectChanges();
+
+      confirmButton(fixture).click();
+
+      expect(calls).toEqual([
+        [true, false],
+        [true, true],
+      ]);
+    });
+
+    it('leaves everything as it was when not confirmed', () => {
+      const calls: [boolean, boolean | undefined][] = [];
+      const fixture = refusedFirst(calls);
+      fixture.nativeElement.querySelector('app-rest-toggle-button button').click();
+      fixture.detectChanges();
+
+      expect(calls).toEqual([[true, false]]);
+      expect(fixture.nativeElement.querySelector('app-rest-toggle-button').textContent).toContain(
+        'restToggle.rest',
+      );
+    });
   });
 
   it('refetches when someone rests or comes back', () => {

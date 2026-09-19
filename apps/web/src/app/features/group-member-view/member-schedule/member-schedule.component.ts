@@ -7,6 +7,7 @@ import {
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -14,10 +15,13 @@ import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
+import { restEndsRoundCount } from '../../../core/rest-toggle-button/rest-ends-round';
 import { RestToggleButtonComponent } from '../../../core/rest-toggle-button/rest-toggle-button.component';
+import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
+import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
 import {
   RosterScheduleStatus,
   RoundMatchesResponse,
@@ -34,7 +38,7 @@ const GROUP_EVENTS = ['member.joined', 'member.left', 'roster.restChanged'];
  * Real-time sync reuses 007's existing Ably channels/events verbatim. */
 @Component({
   selector: 'app-member-schedule',
-  imports: [TranslatePipe, AddFriendButtonComponent, RestToggleButtonComponent],
+  imports: [TranslatePipe, AddFriendButtonComponent, ConfirmDialogComponent, RestToggleButtonComponent],
   templateUrl: './member-schedule.component.html',
   styleUrl: './member-schedule.component.scss',
 })
@@ -69,6 +73,31 @@ export class MemberScheduleComponent {
   readonly restPending = signal(false);
   readonly restErrorKey = signal<string | null>(null);
   private resolvingSelf = false;
+
+  /** 037 FR-022: fixed partners — this round's partner is resting, so the
+   * viewer's own matches are on hold. */
+  readonly partnerResting = computed(() => {
+    const partnerId = this.self()?.partner_roster_entry_id;
+    const roster = this.schedule()?.roster ?? [];
+    return !!partnerId && !!roster.find((row) => row.roster_entry_id === partnerId)?.resting;
+  });
+
+  /** 037 FR-033: the viewer's queued matches kept for their return — they're
+   * cancelled if this round ends first. */
+  readonly heldCount = computed(() => {
+    const selfId = this.selfRosterEntryId();
+    return (this.roundMatches()?.matches ?? []).filter(
+      (match) =>
+        match.rest_effect === 'held' &&
+        match.participants.some((p) => p.roster_entry_id === selfId),
+    ).length;
+  });
+
+  readonly waitingReasonKey = waitingReasonKey;
+
+  /** 037 FR-032: matches a round-ending rest would cancel, for the prompt. */
+  readonly endsRoundCount = signal(0);
+  private readonly endsRoundDialog = viewChild.required<ConfirmDialogComponent>('endsRoundDialog');
 
   private readonly subscribedCourtChannels = new Set<string>();
   private groupChannelSubscribed = false;
@@ -141,24 +170,36 @@ export class MemberScheduleComponent {
   }
 
   /** 037: rest, or come back. `resting` is the target state. The screen
-   * follows the server: reload on success, keep the old state on failure. */
-  setRest(resting: boolean): void {
+   * follows the server: reload on success, keep the old state on failure.
+   * A rest that would end the round on the spot comes back as
+   * REST_ENDS_ROUND — ask first (FR-032), and resend only if confirmed. */
+  setRest(resting: boolean, confirmRoundEnd = false): void {
     const selfId = this.selfRosterEntryId();
     if (!selfId || this.restPending()) {
       return;
     }
     this.restPending.set(true);
     this.restErrorKey.set(null);
-    this.memberView.setOwnRestState(this.groupId(), selfId, resting).subscribe({
+    this.memberView.setOwnRestState(this.groupId(), selfId, resting, confirmRoundEnd).subscribe({
       next: () => {
         this.restPending.set(false);
         this.load();
       },
       error: (error: ApiError) => {
         this.restPending.set(false);
+        const toCancel = restEndsRoundCount(error);
+        if (toCancel !== null && !confirmRoundEnd) {
+          this.endsRoundCount.set(toCancel);
+          this.endsRoundDialog().open();
+          return;
+        }
         this.restErrorKey.set(error.i18nKey);
       },
     });
+  }
+
+  confirmRestEndingRound(): void {
+    this.setRest(true, true);
   }
 
   private resolveSelf(): void {
