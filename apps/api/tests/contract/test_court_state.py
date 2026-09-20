@@ -396,3 +396,48 @@ async def test_get_state_detailed_scoring_enabled_reflects_snapshot_at_creation(
 
     assert response.status_code == 200
     assert response.json()["current_match"]["detailed_scoring_enabled"] is False
+
+
+async def test_get_state_carries_match_scoring_rules(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """039-match-point-confirm: the scoring screens need the match's own
+    target/cap to tell whether the next point would END the match, so they
+    can warn before an irreversible point. deuce_threshold is deliberately
+    NOT exposed — it takes no part in the win test (match_wins())."""
+    _created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    match = response.json()["current_match"]
+    assert match["target_score"] == 21
+    assert match["cap_score"] == 30
+    assert "deuce_threshold" not in match
+
+
+async def test_get_state_scoring_rules_are_a_snapshot_not_a_live_group_read(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """Constitution III: changing the group's scoring settings MUST NOT move
+    an in-progress match's goalposts — otherwise the confirm dialog would
+    start firing at a different score than the one the match is actually
+    played to."""
+    created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+
+    await db_session.execute(
+        text("UPDATE groups SET target_score = 15, cap_score = 21 WHERE id = :id"),
+        {"id": created["group_id"]},
+    )
+    await db_session.commit()
+
+    response = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+
+    assert response.status_code == 200
+    match = response.json()["current_match"]
+    assert match["target_score"] == 21
+    assert match["cap_score"] == 30

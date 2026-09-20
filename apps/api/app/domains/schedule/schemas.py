@@ -86,6 +86,17 @@ class MatchSummary(BaseModel):
     # toggle of the group setting can't change how a match already underway
     # behaves (constitution III).
     detailed_scoring_enabled: bool = False
+    # 039-match-point-confirm: this match's OWN scoring rules, so the scoring
+    # screens can tell whether the next point would END the match and warn
+    # first (simple mode has no way back — see the feature spec). Snapshots,
+    # like detailed_scoring_enabled above, so changing the group setting
+    # mid-match can't move the warning's trigger point (constitution III).
+    # Required, no default: 0 would make every point look like match point.
+    # `deuce_threshold` is deliberately NOT sent — it takes no part in the
+    # win test (see match_wins() in service.py), and exposing it would only
+    # invite someone to use it.
+    target_score: int
+    cap_score: int
 
 
 class CourtScheduleStatus(BaseModel):
@@ -406,6 +417,11 @@ class MatchLiveDetail(BaseModel):
     # contracts/score-detailed-api.md. Tells the frontend which scoring UI
     # (plain +1/-1 vs. tap-the-court) to render for this specific match.
     detailed_scoring_enabled: bool = False
+    # 039-match-point-confirm: this match's own scoring rules — see the
+    # identical pair on MatchSummary above for why they're snapshots, why
+    # they have no default, and why deuce_threshold is deliberately absent.
+    target_score: int
+    cap_score: int
 
 
 class CourtLiveState(BaseModel):

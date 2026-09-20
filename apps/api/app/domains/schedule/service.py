@@ -2069,6 +2069,8 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
                 score_b=entry[0].score_b,
                 serve=await _build_serve_station(session, entry[0]),
                 detailed_scoring_enabled=entry[0].detailed_scoring_enabled,
+                target_score=entry[0].target_score,
+                cap_score=entry[0].cap_score,
             )
             waiting_reason = None
         else:
@@ -3912,6 +3914,8 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
             participants=[ParticipantSummary(**p) for p in participants],
             serve=await _build_serve_station(session, match),
             detailed_scoring_enabled=match.detailed_scoring_enabled,
+            target_score=match.target_score,
+            cap_score=match.cap_score,
         )
     else:
         waiting_reason, next_up = await _idle_court_status(session, group, court.id)
