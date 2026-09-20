@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../../../core/api/api-client';
+import { EndingType, ShotPlacementAttachResponse } from '../../../core/api/court-live-state.models';
 import { JoinGroupResponse } from '../../../core/api/group-join.models';
 import { GroupAdminService } from '../group-admin.service';
 import {
@@ -230,6 +231,52 @@ export class ScheduleService {
     return this.api.post<ScoreMutationResult>(
       `/groups/${groupId}/courts/${courtId}/matches/${matchId}/end`,
       {},
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 038-admin-detailed-scoring: admin counterpart to
+   * CourtControlService.recordShotPlacement() — attaches landing/player
+   * detail to a `+1` that scoreMatch() has already applied, so the match's
+   * pace never waits on the detail dialog. Same business rules as the
+   * public-link path, reached through the admin PIN session instead. */
+  recordShotPlacement(
+    groupId: string,
+    courtId: string,
+    matchId: string,
+    scoreEventId: string,
+    rosterEntryId: string | null,
+    losingRosterEntryId: string | null,
+    landingX: number | null,
+    landingY: number | null,
+    endingType: EndingType | null,
+  ): Observable<ShotPlacementAttachResponse> {
+    return this.api.post<ShotPlacementAttachResponse>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/shot-placement`,
+      {
+        score_event_id: scoreEventId,
+        roster_entry_id: rosterEntryId,
+        losing_roster_entry_id: losingRosterEntryId,
+        landing_x: landingX,
+        landing_y: landingY,
+        ending_type: endingType,
+      },
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 038-admin-detailed-scoring: cancelling a point that ENDED the match
+   * needs this rather than the plain -1 the "-1" button uses — the match
+   * completion itself has to be undone too. */
+  undoMatchCompletion(
+    groupId: string,
+    courtId: string,
+    matchId: string,
+    side: Team,
+  ): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/undo-completion`,
+      { side },
       this.authHeader(groupId),
     );
   }

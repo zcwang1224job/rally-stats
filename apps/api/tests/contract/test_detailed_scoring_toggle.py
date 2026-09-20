@@ -16,8 +16,11 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _create_group_with_active_match(
-    client: AsyncClient, session: AsyncSession, token: str
+    client: AsyncClient, session: AsyncSession, token: str, detailed: bool = False
 ) -> tuple[dict, dict]:
+    """`detailed=True` flips the group's toggle BEFORE the round is started,
+    so the match below snapshots it as enabled (038-admin-detailed-scoring —
+    matches.detailed_scoring_enabled is copied at creation, never read live)."""
     group_response = await client.post(
         "/groups",
         json={
@@ -31,6 +34,12 @@ async def _create_group_with_active_match(
     )
     created = group_response.json()
     headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    if detailed:
+        await client.patch(
+            f"/groups/{created['group_id']}/detailed-scoring",
+            headers=headers,
+            json={"enabled": True},
+        )
     courts_response = await client.get(f"/groups/{created['group_id']}/courts", headers=headers)
     court = courts_response.json()["courts"][0]
 
@@ -150,3 +159,59 @@ async def test_toggling_detailed_scoring_broadcasts_to_every_court(
     channel, event, _payload = calls[0]
     assert channel == f"court:{created['group_id']}:{court['court_id']}"
     assert event == "match.nextRound"
+
+
+async def _current_match(client: AsyncClient, group_id: str, headers: dict) -> dict:
+    """The one in-progress match in the admin schedule snapshot."""
+    response = await client.get(f"/groups/{group_id}/schedule", headers=headers)
+    assert response.status_code == 200
+    courts = [c for c in response.json()["courts"] if c["current_match"] is not None]
+    assert len(courts) == 1
+    match: dict = courts[0]["current_match"]
+    return match
+
+
+async def test_schedule_snapshot_reports_match_detailed_scoring_flag(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """038: the admin page's court-control block picks its scoring UI from
+    this field, so GET /schedule MUST carry the match's own snapshot."""
+    enabled_group, _ = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token, detailed=True
+    )
+    enabled_headers = {"Authorization": f"Bearer {enabled_group['admin_token']}"}
+    match = await _current_match(client, enabled_group["group_id"], enabled_headers)
+    assert match["detailed_scoring_enabled"] is True
+
+    plain_group, _ = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+    plain_headers = {"Authorization": f"Bearer {plain_group['admin_token']}"}
+    plain_match = await _current_match(client, plain_group["group_id"], plain_headers)
+    assert plain_match["detailed_scoring_enabled"] is False
+
+
+async def test_schedule_snapshot_flag_does_not_follow_a_mid_match_group_toggle(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """Constitution III: a group-setting change MUST NOT retroactively alter a
+    match already underway. Turning the group toggle OFF mid-match leaves the
+    running match in detailed mode — the admin board keeps offering the detail
+    dialog for it, and only the NEXT match starts plain."""
+    created, _ = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token, detailed=True
+    )
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+    before = await _current_match(client, created["group_id"], headers)
+    assert before["detailed_scoring_enabled"] is True
+
+    disable = await client.patch(
+        f"/groups/{created['group_id']}/detailed-scoring",
+        headers=headers,
+        json={"enabled": False},
+    )
+    assert disable.status_code == 200
+    assert disable.json()["detailed_scoring_enabled"] is False
+
+    still_detailed = await _current_match(client, created["group_id"], headers)
+    assert still_detailed["detailed_scoring_enabled"] is True
