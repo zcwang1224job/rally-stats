@@ -246,9 +246,25 @@
                   <p>{{ 'scheduleManagement.addGuest.shareLinkHint' | translate }}</p>
                   <qrcode [qrdata]="guest.link" [width]="128" errorCorrectionLevel="M" />
                   <input type="text" readonly [value]="guest.link" />
-                  <button type="button" class="btn btn--secondary" (click)="copyAddedGuestLink()">
-                    {{ (copiedGuestLink() ? 'common.copied' : 'common.copy') | translate }}
-                  </button>
+                  <div class="link-actions">
+                    <button type="button" class="btn btn--secondary" (click)="copyAddedGuestLink()">
+                      {{ (copiedGuestLink() ? 'common.copied' : 'common.copy') | translate }}
+                    </button>
+                    <a
+                      class="btn btn--line"
+                      target="_blank"
+                      rel="noopener"
+                      [href]="
+                        lineShareUrl(
+                          guest.link,
+                          'scheduleManagement.addGuest.lineShareMessage'
+                            | translate: { nickname: guest.nickname }
+                        )
+                      "
+                    >
+                      {{ 'scheduleManagement.addGuest.shareToLine' | translate }}
+                    </a>
+                  </div>
                   @if (copyGuestLinkErrorKey(); as key) {
                     <p role="alert">{{ key | translate }}</p>
                   }

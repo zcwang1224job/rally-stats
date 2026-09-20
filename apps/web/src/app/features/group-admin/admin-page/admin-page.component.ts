@@ -7,6 +7,7 @@ import { QRCodeComponent } from 'angularx-qrcode';
 import { Subject, debounceTime, interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
+import { buildLineShareUrl } from '../../../core/line-share';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
@@ -941,6 +942,12 @@ export class AdminPageComponent {
         this.regenerateGuestLinkErrorKey.set(error.i18nKey);
       },
     });
+  }
+
+  /** 訊息文字由 template 用 translate pipe 組好再傳進來（而不是在這裡
+   * `translate.instant`），切語言時 href 才會跟著重算。 */
+  lineShareUrl(link: string, message: string): string {
+    return buildLineShareUrl(link, message);
   }
 
   async copyAddedGuestLink(): Promise<void> {

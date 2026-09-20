@@ -127,6 +127,20 @@ h3 {
   }
 }
 
+// 分享到 LINE 的按鈕：用 LINE brand guideline 指定的品牌綠 #06C755 寫死，
+// 不走主題 token——這是第三方品牌色，跟著我們的配色變就不像 LINE 的按鈕了。
+.btn--line {
+  background: #06c755;
+  border-color: #06c755;
+  color: #fff;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: #05b34c;
+    }
+  }
+}
+
 // A destructive action that isn't the page's main action (log out, leave a
 // group, remove a friend from a list row): red text and border on the
 // surface, so one of these per row doesn't flood the page with solid red.

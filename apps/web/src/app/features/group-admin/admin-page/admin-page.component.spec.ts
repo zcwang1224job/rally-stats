@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { provideTranslateService } from '@ngx-translate/core';
+import { TranslateService, provideTranslateService } from '@ngx-translate/core';
 import type * as Ably from 'ably';
 import { Subject, of, throwError } from 'rxjs';
 import { CourtManagementService } from '../court-management/court-management.service';
@@ -517,6 +517,54 @@ describe('AdminPageComponent', () => {
     const link = fixture.nativeElement.querySelector('.link-section input[readonly]');
     expect(link.value).toContain('/guest-access/tok-abc');
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareLinkTitle');
+  });
+
+  it('the share panel offers a LINE share link alongside copy', () => {
+    const fixture = setup(false, {}, {
+      addGuest: () =>
+        of({ roster_entry_id: 'r1', nickname: '小明', guest_session_token: 'tok-abc', created_new: true }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    const share = fixture.nativeElement.querySelector('.link-section a.btn--line');
+    // lineit/share（而不是 line.me/R/… 那組 App scheme）——桌機點下去才不會
+    // 只停在 LINE 官網。
+    expect(share.getAttribute('href')).toContain('https://social-plugins.line.me/lineit/share?url=');
+    // 開新分頁，才不會把 團長 正在用的管理頁面推走。
+    expect(share.getAttribute('target')).toBe('_blank');
+    expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareToLine');
+  });
+
+  it('the LINE share message carries the guest\'s nickname and link', () => {
+    const fixture = setup(false, {}, {
+      addGuest: () =>
+        of({ roster_entry_id: 'r1', nickname: '小明', guest_session_token: 'tok-abc', created_new: true }),
+    });
+    const translate = TestBed.inject(TranslateService);
+    translate.setTranslation(
+      'zh-TW',
+      { scheduleManagement: { addGuest: { lineShareMessage: '{{nickname}} 你好' } } },
+      true,
+    );
+    translate.use('zh-TW');
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    const share = fixture.nativeElement.querySelector('.link-section a.btn--line');
+    const params = new URL(share.getAttribute('href')).searchParams;
+
+    // 訊息帶暱稱，連結走 `url` 參數（LINE 會把它接在訊息後面送出）。
+    expect(params.get('text')).toBe('小明 你好');
+    expect(params.get('url')).toContain('/guest-access/tok-abc');
   });
 
   // 026-match-record-friend-invite (roster-list redesign)

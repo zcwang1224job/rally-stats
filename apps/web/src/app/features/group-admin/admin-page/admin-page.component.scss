@@ -72,6 +72,13 @@ section.card {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
   }
+
+  // 複製連結／分享到 LINE 並排，窄畫面放不下才換行。
+  .link-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
 }
 
 // 賽程分頁的每一塊（本輪賽程清單、各場地控制、checkbox、動作按鈕、搭檔

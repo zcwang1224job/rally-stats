@@ -654,7 +654,9 @@
       "nicknamePlaceholder": "輸入訪客暱稱",
       "submit": "新增訪客",
       "shareLinkTitle": "分享給 {{nickname}}",
-      "shareLinkHint": "把這組連結或 QR code 交給對方，即可用自己的手機查看賽況"
+      "shareLinkHint": "把這組連結或 QR code 交給對方，即可用自己的手機查看賽況",
+      "shareToLine": "分享到 LINE",
+      "lineShareMessage": "{{nickname}} 你好，這是你今天球敘的專屬連結，點開就能看賽況"
     }
   },
   "groupMemberView": {
