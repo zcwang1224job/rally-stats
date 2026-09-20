@@ -634,3 +634,111 @@ describe('ControlPanelComponent passes the ending type through (035)', () => {
     expect(recordSpy).toHaveBeenCalledWith('tok', 'm1', 'ev1', null, null, null, null, 'net');
   });
 });
+
+/** 039-match-point-confirm: simple mode has no way back from the point that
+ * ends a match, so it gets asked first. */
+describe('ControlPanelComponent match-point confirmation', () => {
+  function setupAt(scoreA: number, scoreB: number, scoreSpy = vi.fn(), detailed = false) {
+    TestBed.configureTestingModule({
+      imports: [ControlPanelComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { paramMap: convertToParamMap({ courtToken: 'tok' }) } },
+        },
+        {
+          provide: LinkHeartbeatService,
+          useValue: { watchCourtLink: () => of(courtStateResponse) },
+        },
+        { provide: RealtimeService, useFactory: realtimeStub },
+        { provide: ReconnectRefetchService, useFactory: reconnectStub },
+        {
+          provide: CourtControlService,
+          useValue: {
+            getState: () =>
+              of({
+                ...courtStateResponse,
+                current_match: {
+                  ...currentMatch,
+                  score_a: scoreA,
+                  score_b: scoreB,
+                  detailed_scoring_enabled: detailed,
+                  target_score: 21,
+                  cap_score: 30,
+                },
+              }),
+            score: scoreSpy,
+          },
+        },
+        { provide: ApiClient, useValue: {} },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => false,
+            getSupportedLanguages: () => of({ languages: ['zh-TW', 'en'] }),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ControlPanelComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('asks before the point that would end the match', () => {
+    const scoreSpy = vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' }));
+    const fixture = setupAt(20, 15, scoreSpy);
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(scoreSpy).not.toHaveBeenCalled();
+  });
+
+  it('scores once the scorer confirms', () => {
+    const scoreSpy = vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' }));
+    const fixture = setupAt(20, 15, scoreSpy);
+
+    fixture.componentInstance.plusPressed('A');
+    fixture.componentInstance.onMatchPointConfirmed();
+
+    expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+  });
+
+  it('DEUCE: 20-20 does not ask — 21-20 leads by one', () => {
+    const scoreSpy = vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' }));
+    const fixture = setupAt(20, 20, scoreSpy);
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+  });
+
+  it('detailed mode keeps its picker and adds no second prompt', () => {
+    const scoreSpy = vi
+      .fn()
+      .mockReturnValue(of({ applied: true, match_id: 'm1', score_event_id: 'ev1' }));
+    const fixture = setupAt(20, 15, scoreSpy, true);
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+    const pickerSpy = vi.spyOn(fixture.componentInstance.shotPlacementPicker()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+
+    expect(pickerSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('double-tapping at match point opens one dialog', () => {
+    const fixture = setupAt(20, 15);
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+    fixture.componentInstance.plusPressed('A');
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+  });
+});

@@ -921,3 +921,77 @@ describe('ScoreboardComponent', () => {
     expect(fixture.nativeElement.querySelector('.station--server').textContent).toContain('徐丙');
   });
 });
+
+/** 039-match-point-confirm: simple mode has no way back from the point that
+ * ends a match, so it gets asked first. This board never swaps sides, so
+ * plusPressed takes 'A' / 'B' directly. */
+describe('ScoreboardComponent match-point confirmation', () => {
+  function stateAt(scoreA: number, scoreB: number, detailed = false) {
+    return {
+      court_id: 'c1',
+      round_number: 1,
+      scoreboard_scoring_enabled: true,
+      current_match: {
+        match_id: 'm1',
+        status: 'in_progress',
+        score_a: scoreA,
+        score_b: scoreB,
+        detailed_scoring_enabled: detailed,
+        target_score: 21,
+        cap_score: 30,
+        participants: [
+          { roster_entry_id: 'p1', nickname: '陳甲', team: 'A' },
+          { roster_entry_id: 'p2', nickname: '徐丙', team: 'B' },
+        ],
+      },
+      waiting_reason: null,
+      next_up: null,
+    };
+  }
+
+  it('asks before the point that would end the match', () => {
+    const scoreSpy = vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' }));
+    const fixture = setup(stateAt(20, 15), true, { score: scoreSpy });
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(scoreSpy).not.toHaveBeenCalled();
+  });
+
+  it('scores once the scorer confirms', () => {
+    const scoreSpy = vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' }));
+    const fixture = setup(stateAt(20, 15), true, { score: scoreSpy });
+
+    fixture.componentInstance.plusPressed('A');
+    fixture.componentInstance.onMatchPointConfirmed();
+
+    expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+  });
+
+  it('DEUCE: 20-20 does not ask — 21-20 leads by one', () => {
+    const scoreSpy = vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' }));
+    const fixture = setup(stateAt(20, 20), true, { score: scoreSpy });
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(scoreSpy).toHaveBeenCalledWith('tok', 'm1', 'A', 1);
+  });
+
+  it('CAP: 29-29 asks on both sides', () => {
+    const fixture = setup(stateAt(29, 29), true, {
+      score: vi.fn().mockReturnValue(of({ applied: true, match_id: 'm1' })),
+    });
+    const openSpy = vi.spyOn(fixture.componentInstance.matchPointDialog()!, 'open');
+
+    fixture.componentInstance.plusPressed('A');
+    fixture.componentInstance.onMatchPointDialogClosed();
+    fixture.componentInstance.plusPressed('B');
+
+    expect(openSpy).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.pendingMatchPointSide()).toBe('B');
+  });
+});
