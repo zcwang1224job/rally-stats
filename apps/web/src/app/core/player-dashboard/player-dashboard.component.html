@@ -25,7 +25,7 @@
             type="button"
             class="chip dashboard-range__button"
             [attr.aria-pressed]="effectiveRange() === 'all'"
-            (click)="range.set('all')"
+            (click)="setRange('all')"
           >
             {{ 'playerDashboard.range.all' | translate }}
           </button>
@@ -33,7 +33,7 @@
             type="button"
             class="chip dashboard-range__button"
             [attr.aria-pressed]="effectiveRange() === 'recent'"
-            (click)="range.set('recent')"
+            (click)="setRange('recent')"
           >
             {{ 'playerDashboard.range.recent' | translate: { window: d.recent_window } }}
           </button>
