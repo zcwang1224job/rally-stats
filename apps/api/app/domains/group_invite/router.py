@@ -19,6 +19,7 @@ from app.domains.group.security import require_admin
 from app.domains.group_invite import service
 from app.domains.group_invite.schemas import (
     AcceptGroupInviteResponse,
+    CancelGroupInviteResponse,
     DeclineGroupInviteResponse,
     GroupInviteDetailResponse,
     InvitableFriendsResponse,
@@ -63,6 +64,22 @@ async def send_invite(
     )
 
 
+@router.post("/{group_id}/invites/{invite_id}/cancel", response_model=CancelGroupInviteResponse)
+async def cancel_invite(
+    group_id: uuid.UUID,
+    invite_id: uuid.UUID,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CancelGroupInviteResponse:
+    """Errors: `ADMIN_TOKEN_INVALID`, `GROUP_NOT_MEMBER_CREATED`,
+    `GROUP_INVITE_NOT_FOUND`, `GROUP_INVITE_NOT_PENDING`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    if group.created_by_member_id is None:
+        raise ApiError("GROUP_NOT_MEMBER_CREATED", status_code=403)
+    return await service.cancel_invite(session, group.id, invite_id)
+
+
 @invite_router.get("/{invite_id}", response_model=GroupInviteDetailResponse)
 async def get_invite_detail(
     invite_id: uuid.UUID,
@@ -79,9 +96,9 @@ async def accept_invite(
     member: Annotated[Member, Depends(require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AcceptGroupInviteResponse:
-    """Errors: `GROUP_INVITE_NOT_FOUND`, `GROUP_INVITE_NOT_PENDING`,
-    `GROUP_DISBANDED`, `GROUP_FULL`, `ALREADY_ACTIVE_IN_ANOTHER_GROUP`,
-    `MEMBER_NICKNAME_NOT_SET`."""
+    """Errors: `GROUP_INVITE_NOT_FOUND`, `GROUP_INVITE_CANCELLED`,
+    `GROUP_INVITE_NOT_PENDING`, `GROUP_DISBANDED`, `GROUP_FULL`,
+    `ALREADY_ACTIVE_IN_ANOTHER_GROUP`, `MEMBER_NICKNAME_NOT_SET`."""
     return await service.accept_invite(session, member, invite_id)
 
 

@@ -372,12 +372,21 @@
                           <span
                             class="status-badge"
                             [class.status-badge--success]="friend.invite_status === 'accepted' || friend.invite_status === 'already_member'"
-                            [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated'"
+                            [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated' || friend.invite_status === 'cancelled'"
                           >
                             {{ ('inviteSection.status.' + friend.invite_status) | translate }}
                           </span>
                         </span>
-                        @if (friend.invite_status === 'not_invited' || friend.invite_status === 'declined' || friend.invite_status === 'invalidated') {
+                        @if (friend.invite_status === 'pending') {
+                          <button
+                            type="button"
+                            class="btn btn--secondary"
+                            [disabled]="cancellingInviteId() === friend.invite_id"
+                            (click)="cancelInvite(friend)"
+                          >
+                            {{ 'inviteSection.cancelButton' | translate }}
+                          </button>
+                        } @else if (friend.invite_status !== 'accepted' && friend.invite_status !== 'already_member') {
                           <button
                             type="button"
                             class="btn btn--secondary"

@@ -6,9 +6,15 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-GroupInviteStatus = Literal["pending", "accepted", "declined", "invalidated"]
+GroupInviteStatus = Literal["pending", "accepted", "declined", "invalidated", "cancelled"]
 InviteStatusForFriend = Literal[
-    "not_invited", "pending", "accepted", "declined", "invalidated", "already_member"
+    "not_invited",
+    "pending",
+    "accepted",
+    "declined",
+    "invalidated",
+    "cancelled",
+    "already_member",
 ]
 
 
@@ -50,3 +56,8 @@ class AcceptGroupInviteResponse(BaseModel):
 class DeclineGroupInviteResponse(BaseModel):
     invite_id: str
     status: Literal["declined"]
+
+
+class CancelGroupInviteResponse(BaseModel):
+    invite_id: str
+    status: Literal["cancelled"]

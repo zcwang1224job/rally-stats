@@ -168,6 +168,7 @@
       "pending": "待回覆",
       "accepted": "已接受",
       "declined": "已拒絕",
+      "cancelled": "團長已取消",
       "invalidated": "已失效"
     },
     "acceptButton": "接受邀請",
@@ -178,11 +179,13 @@
     "title": "邀請好友加入",
     "empty": "尚無好友可邀請",
     "inviteButton": "送出邀請",
+    "cancelButton": "取消邀請",
     "status": {
       "not_invited": "尚未邀請",
       "pending": "待回覆",
       "accepted": "已接受",
       "declined": "已拒絕",
+      "cancelled": "已取消邀請",
       "invalidated": "已失效",
       "already_member": "已在團內"
     }
@@ -1229,6 +1232,7 @@
     "INVITE_ALREADY_PENDING": "已對此好友送出過邀請，正在等待回覆中",
     "GROUP_INVITE_NOT_FOUND": "找不到此組團邀請",
     "GROUP_INVITE_NOT_PENDING": "此邀請已被處理過",
+    "GROUP_INVITE_CANCELLED": "團長已取消這則邀請，無法再加入此團",
     "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄",
     "INVALID_PLAYER_KEY": "球員識別碼格式不正確，請重新整理後再試一次"
   }

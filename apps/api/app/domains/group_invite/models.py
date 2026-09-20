@@ -1,7 +1,11 @@
-"""GroupInvite — a single-row four-state state machine per
+"""GroupInvite — a single-row five-state state machine per
 specs/013-group-invite-friends/data-model.md: pending -> accepted /
-declined / invalidated. `pending` is the only non-terminal state; the other
-three are terminal and never transition further. `inviter_member_id` is a
+declined / invalidated / cancelled. `pending` is the only non-terminal
+state; the other four are terminal and never transition further.
+`cancelled` is the creator withdrawing the invite before the invitee
+answers (so a later accept hits the same `GROUP_INVITE_NOT_PENDING` guard
+as any other terminal state); `invalidated` stays reserved for the system
+retiring an invite (group disbanded / friendship dissolved). `inviter_member_id` is a
 denormalized copy of `Group.created_by_member_id` (query convenience, not a
 second source of truth — always written from that same value at creation
 time)."""
@@ -33,7 +37,7 @@ class GroupInvite(Base):
         UUID(as_uuid=True), ForeignKey("members.id"), nullable=False, index=True
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
-    # pending | accepted | declined | invalidated
+    # pending | accepted | declined | invalidated | cancelled
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

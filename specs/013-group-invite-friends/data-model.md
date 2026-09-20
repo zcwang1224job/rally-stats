@@ -15,7 +15,7 @@ migration。另修改 2 個既有回應形狀（`GroupPublicResponse` 新增欄�
 | `group_id` | `UUID` (FK → `groups.id`) | 所屬團。 |
 | `inviter_member_id` | `UUID` (FK → `members.id`) | 送出邀請的團長——恆等於 `group.created_by_member_id`（FR-001），獨立存欄位是為了查詢方便，不需每次都 join `groups` 表。 |
 | `invitee_member_id` | `UUID` (FK → `members.id`) | 受邀好友。 |
-| `status` | `String(16)` | `pending`／`accepted`／`declined`／`invalidated`（research.md #5）。 |
+| `status` | `String(16)` | `pending`／`accepted`／`declined`／`cancelled`／`invalidated`（research.md #5）。 |
 | `created_at` | `TIMESTAMPTZ` | |
 | `updated_at` | `TIMESTAMPTZ` | 狀態轉換時更新，比照 `FriendRequest` 既有慣例。 |
 
@@ -32,13 +32,23 @@ migration。另修改 2 個既有回應形狀（`GroupPublicResponse` 新增欄�
                     ▼
                 pending ──接受成功──────────→ accepted
                     │
-                    ├──拒絕────────────────→ declined
+                    ├──受邀人拒絕──────────→ declined
+                    │
+                    ├──團長收回邀請────────→ cancelled
                     │
                     └──好友關係解除／團解散──→ invalidated
 ```
 
-`pending` 為唯一非終態；其餘三者皆為終態，不可逆轉換。接受時因額滿而
+`pending` 為唯一非終態；其餘四者皆為終態，不可逆轉換。接受時因額滿而
 失敗（FR-013）**不**觸發狀態轉換，`pending` 原地不動。
+
+`cancelled` 是團長在受邀人回覆之前主動收回（見下方 `POST
+/groups/{group_id}/invites/{invite_id}/cancel`）：受邀人之後按下「接受
+邀請」時，既有的 `pending` 檢查就會擋下來，只是回傳專屬的
+`GROUP_INVITE_CANCELLED` 好讓對方知道原因。`invalidated` 仍專指系統自動
+讓邀請失效（好友關係解除／團解散），兩者刻意分開，UI 文案才講得清楚。
+`cancelled` 與 `declined` 一樣不擋未來重邀——partial unique index 只涵蓋
+`pending`。
 
 ## 既有實體（本 feature 讀取／擴充，定義權屬其他 spec）
 
@@ -91,7 +101,7 @@ schemas 模組，新增 `GroupInviteNotificationDetail` 巢狀欄位
 | `member_id` | `str` | |
 | `nickname` | `str \| null` | |
 | `user_number` | `str` | |
-| `invite_status` | `"not_invited" \| "pending" \| "accepted" \| "declined" \| "invalidated" \| "already_member"` | research.md #8 之組合判斷結果。 |
+| `invite_status` | `"not_invited" \| "pending" \| "accepted" \| "declined" \| "cancelled" \| "invalidated" \| "already_member"` | research.md #8 之組合判斷結果。 |
 | `invite_id` | `str \| null` | 對應的 `GroupInvite.id`（`not_invited`/`already_member`——且從未被邀請過——時為 `null`）。 |
 
 ### `GroupInviteDetailResponse`（`GET /group-invites/{invite_id}`，受邀好友視角）
@@ -125,8 +135,9 @@ schemas 模組，新增 `GroupInviteNotificationDetail` 巢狀欄位
 
 ## Key Entities 對照 spec.md
 
-- **GroupInvite（組團邀請）**：對應上方新增實體，四態狀態機即 spec
-  Key Entities 段落所述「待回覆／已接受／已拒絕／已失效」的具體實作。
+- **GroupInvite（組團邀請）**：對應上方新增實體，五態狀態機即 spec
+  Key Entities 段落所述「待回覆／已接受／已拒絕／已失效」的具體實作，
+  外加後來補上的「團長已取消」。
 - **Group（團）**：唯讀 + `GroupPublicResponse` 的一個新增旗標欄位。
 - **Member（會員）**：唯讀，定義權屬 006。
 - **FriendRequest / 好友關係**：唯讀 + 一個新增的可選 hook 參數，定義權

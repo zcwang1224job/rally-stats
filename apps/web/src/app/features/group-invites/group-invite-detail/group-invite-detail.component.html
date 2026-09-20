@@ -14,7 +14,7 @@
       <span
         class="status-badge"
         [class.status-badge--success]="d.status === 'accepted'"
-        [class.status-badge--danger]="d.status === 'declined' || d.status === 'invalidated'"
+        [class.status-badge--danger]="d.status === 'declined' || d.status === 'invalidated' || d.status === 'cancelled'"
       >
         {{ ('groupInvite.status.' + d.status) | translate }}
       </span>
