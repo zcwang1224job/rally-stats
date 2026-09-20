@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
+import { isMatchPoint } from '../../core/match-point';
 import { waitingReasonKey } from '../../core/waiting-reason-label';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
@@ -272,12 +273,64 @@ export class ScoreboardComponent {
    * "+" and the picker's "cancel score". */
   private readonly scoreGuard = new ScoreTapGuard();
 
-  score(side: Team, delta: 1 | -1): void {
+  /** 039-match-point-confirm: which side the open match-point dialog is
+   * confirming for; doubles as the re-entrancy flag. Cleared by the
+   * dialog's `closed` output, which covers Esc too. */
+  readonly pendingMatchPointSide = signal<Team | null>(null);
+  readonly matchPointDialog = viewChild<ConfirmDialogComponent>('matchPointDialog');
+
+  /** Every "+" goes through here (039) — see CourtControlComponent's
+   * identical method for why the ScoreTapGuard is deliberately not taken
+   * here and why the re-entrancy check doesn't rely on the dialog's
+   * modality. This board never swaps sides, so callers pass 'A' / 'B'. */
+  plusPressed(side: Team): void {
+    if (this.pendingMatchPointSide() !== null) {
+      return;
+    }
+    const match = this.displayState()?.current_match;
+    if (!match) {
+      return;
+    }
+    if (match.detailed_scoring_enabled) {
+      this.scoreThenOpenPicker(side);
+      return;
+    }
+    const own = side === 'A' ? match.score_a : match.score_b;
+    const other = side === 'A' ? match.score_b : match.score_a;
+    if (!isMatchPoint(own, other, match.target_score, match.cap_score)) {
+      this.score(side, 1);
+      return;
+    }
+    this.pendingMatchPointSide.set(side);
+    this.matchPointDialog()?.open();
+  }
+
+  onMatchPointConfirmed(): void {
+    const side = this.pendingMatchPointSide();
+    if (side === null) {
+      return;
+    }
+    this.score(side, 1, true);
+  }
+
+  onMatchPointDialogClosed(): void {
+    this.pendingMatchPointSide.set(null);
+  }
+
+  /** `force` (039): the confirmed match-point dialog is a deliberate second
+   * decision, not a possible double-tap, so it must not be dropped by a
+   * leftover cooldown. See CourtControlComponent.score(). */
+  score(side: Team, delta: 1 | -1, force = false): void {
     if (this.connectionState() !== 'connected') {
       return;
     }
     const matchId = this.liveState()?.current_match?.match_id;
-    if (!matchId || !this.scoreGuard.tryAcquire()) {
+    if (!matchId) {
+      return;
+    }
+    if (force) {
+      this.scoreGuard.hold();
+    } else if (!this.scoreGuard.tryAcquire()) {
       return;
     }
     this.courtControl

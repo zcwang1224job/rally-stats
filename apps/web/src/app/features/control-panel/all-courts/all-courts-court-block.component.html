@@ -17,7 +17,7 @@
               type="button"
               class="btn"
               [disabled]="connectionState() !== 'connected'"
-              (click)="match.detailed_scoring_enabled ? scoreThenOpenPicker(leftTeam()) : score(leftTeam(), 1)"
+              (click)="plusPressed(leftTeam())"
             >
               +1
             </button>
@@ -57,7 +57,7 @@
               type="button"
               class="btn"
               [disabled]="connectionState() !== 'connected'"
-              (click)="match.detailed_scoring_enabled ? scoreThenOpenPicker(rightTeam()) : score(rightTeam(), 1)"
+              (click)="plusPressed(rightTeam())"
             >
               +1
             </button>
@@ -92,6 +92,14 @@
       >
         {{ 'controlPanel.endMatch' | translate }}
       </button>
+      <app-confirm-dialog
+        #matchPointDialog
+        variant="primary"
+        [title]="'controlPanel.matchPointConfirmTitle' | translate"
+        [body]="'controlPanel.matchPointConfirmBody' | translate"
+        (confirmed)="onMatchPointConfirmed()"
+        (closed)="onMatchPointDialogClosed()"
+      />
       <app-confirm-dialog
         #endMatchDialog
         variant="primary"

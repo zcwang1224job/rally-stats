@@ -14,6 +14,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { isMatchPoint } from '../../../core/match-point';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
 import {
@@ -221,12 +222,22 @@ export class CourtControlComponent implements OnInit {
    * here could score twice. */
   private readonly scoreGuard = new ScoreTapGuard();
 
-  score(side: Team, delta: 1 | -1): void {
+  /** `force` (039): the caller is a deliberate second action — the scorer
+   * already confirmed the match-point dialog — not a possible double-tap.
+   * hold() locks unconditionally, where tryAcquire() would refuse inside
+   * the cooldown left by a previous request and drop the point in silence:
+   * the scorer confirms, the match doesn't end, and nothing says why. */
+  score(side: Team, delta: 1 | -1, force = false): void {
     if (this.connectionState() !== 'connected') {
       return; // FR-023
     }
     const matchId = this.displayCourt().current_match?.match_id;
-    if (!matchId || !this.scoreGuard.tryAcquire()) {
+    if (!matchId) {
+      return;
+    }
+    if (force) {
+      this.scoreGuard.hold();
+    } else if (!this.scoreGuard.tryAcquire()) {
       return;
     }
     this.scheduleService
@@ -239,6 +250,65 @@ export class CourtControlComponent implements OnInit {
         },
         error: () => this.scoreGuard.release(),
       });
+  }
+
+  /** 039-match-point-confirm: which side the open match-point dialog is
+   * confirming for — `confirmed` carries no payload, so the side has to be
+   * remembered here. Doubles as the re-entrancy flag (see plusPressed).
+   * Cleared by the dialog's `closed` output, which covers Esc too. */
+  readonly pendingMatchPointSide = signal<Team | null>(null);
+  readonly matchPointDialog = viewChild<ConfirmDialogComponent>('matchPointDialog');
+
+  /** Every "+" goes through here (039). Three ways out:
+   *
+   *   detailed mode          → the shot-placement picker, unchanged (038)
+   *   simple mode + match pt → confirm first; the point is irreversible
+   *   otherwise              → score it, unchanged
+   *
+   * Only simple mode gets the confirmation: detailed mode's picker already
+   * offers "cancel this point", which undoes a match-ending point too.
+   *
+   * Deliberately does NOT take the ScoreTapGuard. tryAcquire() is only
+   * undone by release(), and a cancelled dialog has no release point, so
+   * grabbing it here would leave this court's scoring locked forever after
+   * a single cancel. Scoring takes the guard in score(), as always. */
+  plusPressed(side: Team): void {
+    if (this.pendingMatchPointSide() !== null) {
+      return; // a confirmation is already open — never stack two
+    }
+    const match = this.displayCourt().current_match;
+    if (!match) {
+      return;
+    }
+    if (match.detailed_scoring_enabled) {
+      this.scoreThenOpenPicker(side);
+      return;
+    }
+    const own = side === 'A' ? match.score_a : match.score_b;
+    const other = side === 'A' ? match.score_b : match.score_a;
+    if (!isMatchPoint(own, other, match.target_score, match.cap_score)) {
+      this.score(side, 1);
+      return;
+    }
+    this.pendingMatchPointSide.set(side);
+    this.matchPointDialog()?.open();
+  }
+
+  onMatchPointConfirmed(): void {
+    const side = this.pendingMatchPointSide();
+    if (side === null) {
+      return;
+    }
+    // force: the scorer just confirmed, so this must not be swallowed by a
+    // leftover cooldown. Runs before `closed` clears the side above.
+    this.score(side, 1, true);
+  }
+
+  /** Bound to the dialog's `closed` output — fires for the confirm button,
+   * the cancel button and Esc alike, so the pending side can never be left
+   * set (which would wedge plusPressed's re-entrancy check). */
+  onMatchPointDialogClosed(): void {
+    this.pendingMatchPointSide.set(null);
   }
 
   /** 038-score-then-record: which side the currently-open picker is recording

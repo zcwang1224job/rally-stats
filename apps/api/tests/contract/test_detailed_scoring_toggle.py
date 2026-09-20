@@ -215,3 +215,45 @@ async def test_schedule_snapshot_flag_does_not_follow_a_mid_match_group_toggle(
 
     still_detailed = await _current_match(client, created["group_id"], headers)
     assert still_detailed["detailed_scoring_enabled"] is True
+
+
+async def test_schedule_snapshot_carries_match_scoring_rules(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """039-match-point-confirm: the admin board needs the match's own
+    target/cap to tell whether the next point would END the match.
+    deuce_threshold is deliberately NOT exposed — it takes no part in the
+    win test (match_wins()), and sending it would only invite misuse."""
+    created, _ = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+
+    match = await _current_match(client, created["group_id"], headers)
+
+    assert match["target_score"] == 21
+    assert match["cap_score"] == 30
+    assert "deuce_threshold" not in match
+
+
+async def test_schedule_snapshot_scoring_rules_do_not_follow_the_group(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """Constitution III: changing the group's scoring settings mid-match MUST
+    NOT move an in-progress match's goalposts, or the confirm dialog would
+    fire at a different score than the one being played to."""
+    created, _ = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+    headers = {"Authorization": f"Bearer {created['admin_token']}"}
+
+    await db_session.execute(
+        text("UPDATE groups SET target_score = 15, cap_score = 21 WHERE id = :id"),
+        {"id": created["group_id"]},
+    )
+    await db_session.commit()
+
+    match = await _current_match(client, created["group_id"], headers)
+
+    assert match["target_score"] == 21
+    assert match["cap_score"] == 30

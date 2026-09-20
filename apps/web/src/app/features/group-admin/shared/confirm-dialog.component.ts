@@ -11,7 +11,7 @@ import { TranslatePipe } from '@ngx-translate/core';
   selector: 'app-confirm-dialog',
   imports: [TranslatePipe],
   template: `
-    <dialog #dialog class="dialog dialog--sm">
+    <dialog #dialog class="dialog dialog--sm" (close)="closed.emit()">
       <h2>{{ title() }}</h2>
       <p>{{ body() }}</p>
       <div class="actions">
@@ -38,6 +38,15 @@ export class ConfirmDialogComponent {
    * wouldn't say what it does (037: "確認休息"). */
   readonly confirmLabel = input<string | null>(null);
   readonly confirmed = output<void>();
+  /** 039-match-point-confirm: fires whenever the dialog actually closes —
+   * confirm button, cancel button, or **Esc**. Bound to the native `close`
+   * event rather than emitted from cancel(), because Esc closes a <dialog>
+   * without going through any of this component's methods: a caller that
+   * holds state for the open dialog (which side the confirmation is for)
+   * would otherwise never clear it after an Esc, and would be stuck.
+   * Ordering: confirm() emits `confirmed` BEFORE the close lands, so a
+   * caller can still read that state in its confirm handler. */
+  readonly closed = output<void>();
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
 

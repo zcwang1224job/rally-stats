@@ -46,4 +46,37 @@ describe('ConfirmDialogComponent', () => {
     confirmButton.click();
     expect(count).toBe(1);
   });
+
+  /** 039-match-point-confirm: `closed` hangs off the native `close` event,
+   * not off cancel(), so that Esc — which closes a <dialog> without calling
+   * any of this component's methods — is covered too. jsdom implements
+   * neither showModal() nor close(), so the event is dispatched by hand
+   * here; what's under test is that the binding exists and reaches the
+   * output, which is the part the real browser would otherwise skip. */
+  it('emits closed when the underlying dialog closes, whatever closed it', () => {
+    const { fixture } = setup();
+    let count = 0;
+    fixture.componentInstance.closed.subscribe(() => count++);
+
+    const dialog: HTMLElement = fixture.nativeElement.querySelector('dialog');
+    dialog.dispatchEvent(new Event('close')); // what Esc does in a browser
+
+    expect(count).toBe(1);
+  });
+
+  it('does not emit closed merely because confirm was clicked', () => {
+    // confirmed fires first and independently; closed follows the actual
+    // close. A caller reads its pending state in the confirmed handler and
+    // clears it in the closed handler, so conflating the two would clear
+    // the state before it could be read.
+    const { fixture, confirmButton } = setup();
+    const order: string[] = [];
+    fixture.componentInstance.confirmed.subscribe(() => order.push('confirmed'));
+    fixture.componentInstance.closed.subscribe(() => order.push('closed'));
+
+    confirmButton.click();
+    fixture.nativeElement.querySelector('dialog').dispatchEvent(new Event('close'));
+
+    expect(order).toEqual(['confirmed', 'closed']);
+  });
 });
