@@ -95,7 +95,18 @@
 
 ## 風險與注意事項
 
-1. **模板全面換讀 `displayCourt()`**：`court-control.component.html` 現在有十餘處 `court()`／`match` 引用。漏掉任何一處，凍結就會出現「一半舊、一半新」的畫面。實作時應一次改完並以「檔案中不再出現裸 `court()`（`toggleSwap`/`serveRosterId` 等非顯示用途除外）」作為檢查點。
+1. **換讀 `displayCourt()` 的範圍比想像中小**（2026-09-20 實際清點）：`court-control.component.html` 只有**一處**讀 `court()`——第 6 行的 `@if (court().current_match; as match)`；其後整份模板都用 `match` 別名，站位與比分自然跟著凍結，不需要逐行改。`court-control.component.ts` 則有 6 處，其中只有 3 處與顯示有關、需要改讀 `displayCourt()`：
+
+   | 位置 | 用途 | 處置 |
+   |---|---|---|
+   | `.html` L6 | 外層 `@if` | ✅ 改 `displayCourt()?.current_match` |
+   | `.ts` L81 | 比分跳動 effect | ✅ 改（見 Decision 6） |
+   | `.ts` L194 | `score()` 取 `match_id` | ✅ 改（凍結期間應對凍結的那一場） |
+   | `.ts` L212 | `confirmEndMatch()` 取 `match_id` | ✅ 改（同上） |
+   | `.ts` L103 | realtime 頻道的 `court_id` | ❌ 不改——`court_id` 生命週期內恆定，改了只會在凍結期間多餘地重新求值 |
+   | `.ts` L123/L129 | `getScoreSwapPreference`／`setScoreSwapPreference` 的 `court_id` | ❌ 不改——同上 |
+
+   檢查點不是「檔案中不再出現裸 `court()`」（`court_id` 的讀取本來就該留著），而是「**所有讀 `current_match` 的地方都走 `displayCourt()`**」。
 2. **`ngOnInit` 讀 `court().court_id`**：`court_id` 在元件生命週期內恆定，凍結不影響它，維持讀 `court()` 即可，不需改。
 3. **realtime 訂閱的 effect 也讀 `this.court().court_id`**：同上，維持不變；改成 `displayCourt()` 反而會在凍結期間產生不必要的重新求值。
 4. **`endMatch`／`confirmEndMatch` 讀的是 `court().current_match`**：視窗開啟期間「提前結束」按鈕理論上碰不到（計分者正在 modal 裡），但為求一致仍應改讀 `displayCourt()`，避免凍結期間兩個來源打架。
