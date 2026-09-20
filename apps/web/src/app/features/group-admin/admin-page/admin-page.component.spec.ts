@@ -424,6 +424,33 @@ describe('AdminPageComponent', () => {
     expect(scoring.custom_cap_score.value).toBe(9);
   });
 
+  it('leaves an in-progress settings edit alone when the 30s heartbeat refetches', () => {
+    const fixture = setup();
+    const name = fixture.componentInstance.editForm.controls.name;
+
+    name.setValue('週三晚上團');
+    name.markAsDirty();
+    // 等同 heartbeat 觸發的重新載入（見 HEARTBEAT_INTERVAL_MS）。
+    fixture.componentInstance['load']();
+
+    expect(name.value).toBe('週三晚上團');
+  });
+
+  it('follows the server again once the settings edit has been saved', () => {
+    const fixture = setup(false, {
+      editGroup: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
+    });
+    const name = fixture.componentInstance.editForm.controls.name;
+    name.setValue('週三晚上團');
+    name.markAsDirty();
+
+    fixture.componentInstance.saveGroupSettings();
+
+    // 存完就跟伺服器一致了，後端回來的（可能 trim 過的）值要吃得到。
+    expect(name.value).toBe('週三團');
+    expect(fixture.componentInstance.editForm.pristine).toBe(true);
+  });
+
   it('leaves an in-progress scoring edit alone when the 30s heartbeat refetches', () => {
     const fixture = setup();
     const scoringMode = fixture.componentInstance.scoringForm.controls.scoring_mode;

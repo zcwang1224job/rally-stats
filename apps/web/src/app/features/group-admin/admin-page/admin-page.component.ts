@@ -384,25 +384,28 @@ export class AdminPageComponent {
     });
   }
 
+  /** patchForms() 掛在 30 秒的 heartbeat 上（見 HEARTBEAT_INTERVAL_MS），所以
+   * 兩張表單都只在「使用者還沒動過」時才回填——否則團長改到一半、還沒按儲存
+   * 的輸入會被伺服器回來的值無聲蓋掉（改個團名停下來想一下就中，而且沒有任何
+   * 提示）。存檔成功後由 saveGroupSettings()/saveScoringSettings() 把表單標回
+   * pristine，讓它重新跟著伺服器走。 */
   private patchForms(view: AdminGroupResponse): void {
-    this.editForm.patchValue({
-      name: view.group.name,
-      password: view.password_plaintext ?? '',
-      match_mode: view.group.match_mode,
-      scheduling_mechanism: view.group.scheduling_mechanism,
-      partner_source: view.group.partner_source,
-      max_members: view.group.max_members,
-      activity_time_start: view.group.activity_time_start ?? '',
-      activity_time_end: view.group.activity_time_end ?? '',
-    });
+    if (this.editForm.pristine) {
+      this.editForm.patchValue({
+        name: view.group.name,
+        password: view.password_plaintext ?? '',
+        match_mode: view.group.match_mode,
+        scheduling_mechanism: view.group.scheduling_mechanism,
+        partner_source: view.group.partner_source,
+        max_members: view.group.max_members,
+        activity_time_start: view.group.activity_time_start ?? '',
+        activity_time_end: view.group.activity_time_end ?? '',
+      });
+    }
     // 沒有這段的話，分數制度會永遠停在表單宣告的預設（21pt / 11-10-15），
     // 和開團當下選的制度對不起來；團長若在這區按了儲存，還會把原本的設定
-    // 靜默改成 21pt。
-    //
-    // patchForms() 也掛在 30 秒的 heartbeat 上（見 HEARTBEAT_INTERVAL_MS），
-    // 所以只在使用者還沒動過這張表單時回填，免得改到一半被蓋掉。自訂欄位
-    // 只在 custom 模式下回填，其餘模式沿用表單預設當作切到 custom 時的起始
-    // 值（後端預設展開值 21/20/30 不適合當草稿）。
+    // 靜默改成 21pt。自訂欄位只在 custom 模式下回填，其餘模式沿用表單預設
+    // 當作切到 custom 時的起始值（後端預設展開值 21/20/30 不適合當草稿）。
     if (this.scoringForm.pristine) {
       this.scoringForm.patchValue({
         scoring_mode: view.scoring_mode,
@@ -471,6 +474,9 @@ export class AdminPageComponent {
       .subscribe({
         next: (updated) => {
           this.adminView.set(updated);
+          // 存檔後表單和伺服器一致了，標回 pristine 才會吃到下面這次回填
+          // （後端會 trim 團名等值），也讓後續 heartbeat 重新跟著伺服器走。
+          this.editForm.markAsPristine();
           this.patchForms(updated);
           this.loadSchedule();
           this.saveSuccess.set(true);
@@ -509,6 +515,9 @@ export class AdminPageComponent {
       .subscribe({
         next: (updated) => {
           this.adminView.set(updated);
+          // 同 saveGroupSettings()：存完就跟伺服器一致了，讓 heartbeat 重新
+          // 接手，別人在另一個裝置改了制度這邊才看得到。
+          this.scoringForm.markAsPristine();
           this.scoringSaveSuccess.set(true);
           setTimeout(() => this.scoringSaveSuccess.set(false), 3000);
         },
