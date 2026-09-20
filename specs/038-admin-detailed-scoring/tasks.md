@@ -147,11 +147,11 @@ description: "Task list for 038-admin-detailed-scoring"
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T042 [P] 依 `specs/038-admin-detailed-scoring/quickstart.md` 逐一手動驗證情境 1～9，特別確認情境 5 的「A 場視窗開著時 B 場仍即時更新」（凍結只影響單一場地，不是整頁停更）
+- [ ] T042 [P] **留給使用者在自己的 checkout 上驗收**（本專案流程：使用者 pull feature 分支後自行測試）。自動化測試已涵蓋情境 1～6、8、9 的行為判定；情境 7（離線）與「A 場視窗開著時 B 場仍即時更新」需要真實瀏覽器與 Ably 連線。註：`seed_dashboard_demo` 不會建立場地與進行中的比賽，無法直接用它開出管理頁場地控制板，需自行開團→加場地→加人→排點。依 `specs/038-admin-detailed-scoring/quickstart.md` 逐一驗證情境 1～9，特別確認情境 5 的「A 場視窗開著時 B 場仍即時更新」（凍結只影響單一場地，不是整頁停更）
 - [X] T043 [P] 確認**零新增語系 key**：`git diff origin/ut -- apps/web/src/assets/i18n/` 應為空（FR-020、憲章原則 VIII）
 - [X] T044 [P] 確認**零 migration**：`git diff origin/ut --stat -- apps/api/alembic/` 應為空（data-model.md）
 - [X] T045 比照 `court-control.component.ts` 既有的中文註解風格，補齊新增方法的註解，並在提及凍結與 `PendingPoint` 之處指向 `all-courts-court-block.component.ts` 的對應說明，避免同一套理由在四個元件各寫一次
-- [ ] T046 於 `apps/api` 執行完整後端測試套件（約 1,700+ 測試、20 分鐘，背景執行並把 `-rf` 輸出導到檔案），確認無迴歸
+- [X] T046 於 `apps/api` 執行完整後端測試套件（約 1,700+ 測試、20 分鐘，背景執行並把 `-rf` 輸出導到檔案），確認無迴歸
 - [X] T047 撰寫 PR 說明 `specs/038-admin-detailed-scoring/pr-description.md`，依憲章「技術治理與品質關卡」說明本變更如何維持「伺服器為唯一可信來源」與「設定快照不回溯」邊界，並註明管理員權限路徑未變動
 
 ---
