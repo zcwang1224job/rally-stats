@@ -27,6 +27,7 @@ from app.domains.group.service import (
 from app.domains.member.models import Member
 from app.domains.member.security import hash_password
 from app.domains.member.service import complete_guest_bind
+from app.domains.roster.models import RosterEntry
 from tests.conftest import TEST_DATABASE_URL
 
 pytestmark = pytest.mark.asyncio
@@ -509,3 +510,83 @@ async def test_complete_guest_bind_register_collision_does_not_bind(
     await db_session.refresh(roster_entry)
     assert roster_entry.member_id is None
     assert roster_entry.member_id != existing.id
+
+
+# --- the binder is already on this roster ----------------------------------
+
+
+async def _member_on_roster(session: AsyncSession, group: Group, email: str) -> Member:
+    """A Member holding their own `active` entry in this group — the 團長's
+    own creator entry is this shape too (`member_id` set, no guest token)."""
+    member = await _make_member(session, email)
+    member.nickname = "團長本人"
+    await session.commit()
+    await join_group(session, group, member=member, password=None, nickname=None)
+    return member
+
+
+async def test_bind_refuses_a_member_already_on_this_roster(
+    db_session: AsyncSession,
+) -> None:
+    """The 團長 holds every guest link their own group issues (the share
+    panel prints them, and they can regenerate any of them), so without
+    this guard one account could own two `active` entries in one rotation
+    roster — which also makes `active_roster_entry_for_member()`'s
+    `scalar_one_or_none()` raise, 500ing every member-view endpoint for
+    that account."""
+    group = await _make_group(db_session)
+    owner = await _member_on_roster(db_session, group, "owner@example.com")
+    guest_entry, _ = await join_group(
+        db_session, group, member=None, password=None, nickname="訪客小美"
+    )
+
+    with pytest.raises(ApiError) as exc_info:
+        await bind_roster_entry_to_member(db_session, guest_entry.id, owner.id)
+    assert exc_info.value.error_code == "MEMBER_ALREADY_IN_GROUP"
+    assert exc_info.value.status_code == 409
+
+    await db_session.refresh(guest_entry)
+    assert guest_entry.member_id is None
+
+
+async def test_bind_allowed_when_the_members_own_entry_is_no_longer_active(
+    db_session: AsyncSession,
+) -> None:
+    """Deliberate carve-out: left/kicked leaves no live roster conflict,
+    and 028 spec.md's Edge Cases keep a returning player's separate roster
+    identities bindable."""
+    group = await _make_group(db_session)
+    returning = await _member_on_roster(db_session, group, "left-then-guest@example.com")
+    own_entry = (
+        await db_session.execute(
+            select(RosterEntry).where(
+                RosterEntry.group_id == group.id, RosterEntry.member_id == returning.id
+            )
+        )
+    ).scalar_one()
+    own_entry.status = "left"
+    await db_session.commit()
+
+    guest_entry, _ = await join_group(
+        db_session, group, member=None, password=None, nickname="回鍋的我"
+    )
+    await bind_roster_entry_to_member(db_session, guest_entry.id, returning.id)
+
+    await db_session.refresh(guest_entry)
+    assert guest_entry.member_id == returning.id
+
+
+async def test_bind_guard_is_per_group_not_global(db_session: AsyncSession) -> None:
+    """Being active in SOME group must not block claiming a guest identity
+    in a different one."""
+    other_group = await _make_group(db_session)
+    member = await _member_on_roster(db_session, other_group, "elsewhere@example.com")
+    group = await _make_group(db_session)
+    guest_entry, _ = await join_group(
+        db_session, group, member=None, password=None, nickname="別團的我"
+    )
+
+    await bind_roster_entry_to_member(db_session, guest_entry.id, member.id)
+
+    await db_session.refresh(guest_entry)
+    assert guest_entry.member_id == member.id

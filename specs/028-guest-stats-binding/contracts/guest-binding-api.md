@@ -82,6 +82,12 @@ session，不需要替換 token）：
 - `ROSTER_ENTRY_ALREADY_BOUND`（409）——`token` 對應的名冊身份已被
   （任何帳號）綁定過，`UPDATE ... WHERE member_id IS NULL` 影響 0 rows
   （research.md #4）。
+- `MEMBER_ALREADY_IN_GROUP`（409）——綁定者在這一團已經有一筆 `active`
+  的名冊身份（最典型的是 團長 自己：他手上本來就有自己團每一條訪客連
+  結）。同一個帳號在一團的輪替名單裡只能是一個人；允許之後
+  `active_roster_entry_for_member()` 的 `scalar_one_or_none()` 會讓該帳
+  號的所有 member-view 端點 500。名冊身份為 `left`/`kicked` 時不受此限
+  （同一個人以訪客身份回鍋，spec.md Edge Cases）。
 - `EMAIL_ALREADY_REGISTERED`（409，`mode: "register"` 專屬）——沿用既有
   `register()` 的既有錯誤碼；前端依 spec FR-009 引導改用
   `mode: "login"`。

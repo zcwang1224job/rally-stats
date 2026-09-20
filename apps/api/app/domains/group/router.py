@@ -588,7 +588,7 @@ async def bind_guest_session(
     `group.service`, e.g. `verify_ever_group_member`) since a
     `group/service.py -> member/service.py` import would be circular the
     other way around. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
-    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `MEMBER_ALREADY_IN_GROUP`, `INVALID_REQUEST`, `CAPTCHA_INVALID`,
     `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
     result = await member_service.complete_guest_bind(
         session,

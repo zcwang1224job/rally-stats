@@ -1186,6 +1186,7 @@
     "PARTNERSHIP_NOT_FOUND": "This member has no formal partnership right now",
     "ROSTER_ENTRY_ALREADY_LEFT": "This member has already left or been removed",
     "ROSTER_ENTRY_ALREADY_BOUND": "This link is already linked to an account — try logging in instead",
+    "MEMBER_ALREADY_IN_GROUP": "You're already on this group's roster, so you can't also claim another player's record",
     "INVALID_REQUEST": "The request was incomplete — please try again",
     "CANNOT_KICK_CREATOR": "The group creator can't be removed",
     "NOT_A_GUEST_ENTRY": "This member is a registered member — there's no guest link to regenerate",
