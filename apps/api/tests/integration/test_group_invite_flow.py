@@ -262,3 +262,50 @@ async def test_decline_then_reinvite_full_regression(
 
     accepted = await client.post(f"/group-invites/{second_invite_id}/accept", headers=b_headers)
     assert accepted.status_code == 200
+
+
+async def test_cancelled_invite_still_renders_in_the_notification_list(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """The invitee's `group_invite` notification outlives the invite's
+    `pending` state, so the notification list has to be able to render a
+    `cancelled` one. It previously restated the invite's four states in its
+    own Literal and 500'd on the fifth (bug report: 團長取消邀請後，受邀者
+    點通知鈴鐺會顯示發生未預期的錯誤)."""
+    a_token, _a_number = await _register_verified_and_login(
+        client, db_session, "flow-a5@example.com", "團長", valid_turnstile_token
+    )
+    b_token, b_number = await _register_verified_and_login(
+        client, db_session, "flow-b5@example.com", "小美", valid_turnstile_token
+    )
+    await _become_friends(client, a_token, b_token, b_number)
+    group = await _create_member_group(client, a_token, valid_turnstile_token)
+    admin_headers = {"Authorization": f"Bearer {group['admin_token']}"}
+    invitable = (
+        await client.get(f"/groups/{group['group_id']}/invitable-friends", headers=admin_headers)
+    ).json()
+    invite_id = await _send_invite(
+        client, admin_headers, group["group_id"], invitable["friends"][0]["member_id"]
+    )
+    b_headers = {"Authorization": f"Bearer {b_token}"}
+
+    cancelled = await client.post(
+        f"/groups/{group['group_id']}/invites/{invite_id}/cancel", headers=admin_headers
+    )
+    assert cancelled.status_code == 200
+
+    # The exact sequence from the bug report: the invitee taps 接受邀請,
+    # gets told it was cancelled, and then opens the notification bell.
+    accepted = await client.post(f"/group-invites/{invite_id}/accept", headers=b_headers)
+    assert accepted.status_code == 409
+    assert accepted.json()["error_code"] == "GROUP_INVITE_CANCELLED"
+
+    listed = await client.get("/notifications", headers=b_headers)
+    assert listed.status_code == 200
+    row = next(n for n in listed.json()["notifications"] if n["type"] == "group_invite")
+    assert row["group_invite"]["invite_id"] == invite_id
+    assert row["group_invite"]["status"] == "cancelled"
+
+    # The bell's unread badge reads the same rows through a different
+    # endpoint, so check it survives too.
+    assert (await client.get("/notifications/unread-count", headers=b_headers)).status_code == 200
