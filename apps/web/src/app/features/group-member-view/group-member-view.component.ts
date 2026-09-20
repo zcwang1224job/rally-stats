@@ -90,7 +90,14 @@ export class GroupMemberViewComponent {
           if (status.already_bound) {
             this.groupJoin.clearGuestSessionToken(this.groupId);
             this.showBoundNotice.set(true);
-          } else {
+          } else if (!status.already_in_group) {
+            // `already_in_group`: this browser is logged in as a member who
+            // is already on this roster under their own account — most
+            // often the 團長, who holds every guest link their own group
+            // issues. `POST .../bind` refuses them
+            // (`MEMBER_ALREADY_IN_GROUP`), so offering the entry point at
+            // all would only produce an error. No notice either: they're an
+            // ordinary member here, with nothing to bind.
             this.showBindingCta.set(true);
           }
         },

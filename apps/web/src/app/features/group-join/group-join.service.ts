@@ -91,7 +91,13 @@ export class GroupJoinService {
    * resolveGuestSession() above — this works regardless of whether the
    * roster entry/group are still active. */
   getGuestBindingStatus(token: string): Observable<BindingStatusResponse> {
-    return this.api.get<BindingStatusResponse>(`/groups/guest-token/${token}/binding-status`);
+    // The endpoint is public; the header is optional and only fills in
+    // `already_in_group` (`authHeader()` is `{}` when logged out, which is
+    // the normal 訪客 case).
+    return this.api.get<BindingStatusResponse>(
+      `/groups/guest-token/${token}/binding-status`,
+      this.authHeader(),
+    );
   }
 
   /** contracts/guest-binding-api.md `POST /groups/guest-token/{token}/

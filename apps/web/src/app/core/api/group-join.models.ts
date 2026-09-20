@@ -72,6 +72,12 @@ export interface BindingStatusResponse {
   nickname: string;
   group_status: 'active' | 'disbanded';
   roster_status: 'active' | 'left' | 'kicked';
+  /** The logged-in caller (if any) already has an active roster entry in
+   * this group, so `POST .../bind` would refuse them with
+   * `MEMBER_ALREADY_IN_GROUP` — the binding entry point is left out
+   * entirely rather than offered and then failed. Always false for an
+   * anonymous request, which is the normal 訪客 case. */
+  already_in_group: boolean;
 }
 
 export interface BindRequest {

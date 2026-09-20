@@ -384,6 +384,14 @@ class BindingStatusResponse(BaseModel):
     nickname: str
     group_status: Literal["active", "disbanded"]
     roster_status: Literal["active", "left", "kicked"]
+    # True when the CALLER (an optional `Authorization` header — always
+    # False for an anonymous request, which is the normal 訪客 case) already
+    # holds an `active` roster entry in this group, and so would be refused
+    # `MEMBER_ALREADY_IN_GROUP` by `POST .../bind`. Lets the frontend leave
+    # the binding entry point out entirely rather than render a button whose
+    # only possible outcome is an error — most visibly for the 團長, who
+    # holds every guest link their own group issues.
+    already_in_group: bool = False
 
 
 class BindRequest(BaseModel):

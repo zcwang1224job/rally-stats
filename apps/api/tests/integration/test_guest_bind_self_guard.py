@@ -141,3 +141,54 @@ async def test_a_member_not_on_this_roster_can_still_bind(
     )
     assert bind.status_code == 200, bind.text
     assert bind.json()["bound"] is True
+
+
+async def test_binding_status_flags_a_caller_already_on_the_roster(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """`already_in_group` is what lets the frontend leave the binding entry
+    point out entirely for the 團長, rather than render a button whose only
+    possible outcome is `MEMBER_ALREADY_IN_GROUP`."""
+    owner_headers = await _verified_member_headers(
+        client, db_session, valid_turnstile_token, "status-owner@example.com", "團長本人"
+    )
+    created = await client.post(
+        "/groups",
+        json={
+            "name": "Binding Status Group",
+            "max_members": 8,
+            "match_mode": "doubles",
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "團長本人",
+            "turnstile_token": valid_turnstile_token,
+        },
+        headers=owner_headers,
+    )
+    assert created.status_code == 201, created.text
+    group_id = created.json()["group_id"]
+
+    guest = await client.post(f"/groups/{group_id}/join", json={"nickname": "訪客小美"})
+    assert guest.status_code == 201, guest.text
+    token = guest.json()["guest_session_token"]
+
+    as_owner = await client.get(
+        f"/groups/guest-token/{token}/binding-status", headers=owner_headers
+    )
+    assert as_owner.status_code == 200, as_owner.text
+    assert as_owner.json()["already_in_group"] is True
+    assert as_owner.json()["already_bound"] is False
+
+    # The endpoint stays public, and the normal 訪客 case is anonymous.
+    anonymous = await client.get(f"/groups/guest-token/{token}/binding-status")
+    assert anonymous.status_code == 200, anonymous.text
+    assert anonymous.json()["already_in_group"] is False
+
+    # A logged-in member who is NOT on this roster still gets the entry point.
+    outsider_headers = await _verified_member_headers(
+        client, db_session, valid_turnstile_token, "status-outsider@example.com", "路人"
+    )
+    as_outsider = await client.get(
+        f"/groups/guest-token/{token}/binding-status", headers=outsider_headers
+    )
+    assert as_outsider.status_code == 200, as_outsider.text
+    assert as_outsider.json()["already_in_group"] is False

@@ -13,7 +13,10 @@
 
         @if (s.already_bound) {
           <p role="status">{{ 'guestBinding.boundSuccessNotice' | translate }}</p>
-        } @else {
+        } @else if (!s.already_in_group) {
+          <!-- already_in_group: 目前登入的帳號在這團已經有自己的名冊身份
+               （最常見的是 團長 開自己團的訪客連結）。後端會以
+               MEMBER_ALREADY_IN_GROUP 擋下綁定，所以入口直接不出現。 -->
           <app-guest-binding-cta [guestSessionToken]="guestSessionToken" (bound)="onBound()" />
         }
       </section>

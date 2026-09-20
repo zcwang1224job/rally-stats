@@ -12,13 +12,16 @@
 （research.md #1）。
 
 **權限**：公開端點（訪客本人透過連結本身持有的 `token` 即為授權依據，
-與既有訪客連結信任模型一致）。
+與既有訪客連結信任模型一致）。另掛 `Depends(optional_member)`：
+`Authorization` header 永遠是選填、也永遠不影響能否讀取，只用來填
+`already_in_group`。
 
 **Response 200**：
 
 ```json
 {
   "already_bound": false,
+  "already_in_group": false,
   "roster_entry_id": "uuid",
   "group_id": "uuid",
   "group_name": "string",
@@ -27,6 +30,12 @@
   "roster_status": "active" | "left" | "kicked"
 }
 ```
+
+`already_in_group`——呼叫者（若有帶 token）在這一團已經有一筆 `active`
+名冊身份，也就是 `POST .../bind` 會以 `MEMBER_ALREADY_IN_GROUP` 拒絕他。
+前端據此讓綁定入口整個不出現，而不是先給一顆按鈕、按下去只會拿到錯誤
+（最常見的是 團長 開自己團的訪客連結）。匿名請求——也就是一般訪客的情
+境——恆為 `false`。
 
 **Errors**：`LINK_NOT_FOUND`（404）——`token` 從未存在，或對應的
 `guest_session_token` 已被管理員重新產生而失效。

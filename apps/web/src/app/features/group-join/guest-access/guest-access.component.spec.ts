@@ -26,6 +26,7 @@ const ACTIVE_STATUS: BindingStatusResponse = {
   nickname: '小明',
   group_status: 'active',
   roster_status: 'active',
+  already_in_group: false,
 };
 
 function setup(options: {
@@ -133,6 +134,24 @@ describe('GuestAccessComponent', () => {
     expect(fixture.componentInstance.status()).toBe('summary');
     expect(fixture.nativeElement.textContent).toContain('測試團');
     expect(fixture.nativeElement.textContent).toContain('小明');
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).not.toBeNull();
+  });
+
+  it('非現役未綁定, but the logged-in account is already on this roster: no binding entry point', () => {
+    // 團長 opening a kicked guest's own link from their own group — the
+    // backend would refuse the bind with MEMBER_ALREADY_IN_GROUP, so the
+    // entry point must not be offered in the first place.
+    const { fixture } = setup({
+      status: {
+        ...ACTIVE_STATUS,
+        roster_status: 'kicked' as const,
+        already_in_group: true,
+      },
+    });
+
+    expect(fixture.componentInstance.status()).toBe('summary');
+    expect(fixture.nativeElement.textContent).toContain('測試團');
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).toBeNull();
   });
 
   it('an invalid/expired token shows an error instead of navigating', () => {
