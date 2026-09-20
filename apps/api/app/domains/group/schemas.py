@@ -224,6 +224,15 @@ class AdminGroupResponse(BaseModel):
     # 031-shot-placement-scoring: same admin-only rationale as
     # scoreboard_scoring_enabled above.
     detailed_scoring_enabled: bool
+    # 目前生效的分數制度，讓管理頁的「比賽設定」能顯示團真正的設定，而不是
+    # 表單寫死的預設值（開團選 15pt，管理頁卻顯示 21pt）。與
+    # `EditScoringSettingsRequest` 同名同義；custom 以外的模式，三個數值即
+    # 是該預設的展開值（service._SCORING_PRESETS）。放在 admin 回應而非
+    # `GroupPublicResponse`，理由同 scoreboard_scoring_enabled。
+    scoring_mode: ScoringMode
+    target_score: int
+    deuce_threshold: int
+    cap_score: int
 
 
 class ScoreboardScoringRequest(BaseModel):

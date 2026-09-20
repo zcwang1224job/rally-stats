@@ -82,6 +82,13 @@ export interface AdminGroupResponse {
   scoreboard_scoring_enabled: boolean;
   // 031-shot-placement-scoring: same admin-only rationale as above.
   detailed_scoring_enabled: boolean;
+  // 目前生效的分數制度 —— 管理頁的「比賽設定」據此還原團真正的設定，
+  // 而不是停在表單寫死的預設值。非 custom 模式時，三個數值即是該預設的
+  // 展開值（後端 service._SCORING_PRESETS）。
+  scoring_mode: ScoringMode;
+  target_score: number;
+  deuce_threshold: number;
+  cap_score: number;
 }
 
 export interface EditGroupRequest {
