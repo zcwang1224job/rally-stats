@@ -395,6 +395,26 @@ export class AdminPageComponent {
       activity_time_start: view.group.activity_time_start ?? '',
       activity_time_end: view.group.activity_time_end ?? '',
     });
+    // 沒有這段的話，分數制度會永遠停在表單宣告的預設（21pt / 11-10-15），
+    // 和開團當下選的制度對不起來；團長若在這區按了儲存，還會把原本的設定
+    // 靜默改成 21pt。
+    //
+    // patchForms() 也掛在 30 秒的 heartbeat 上（見 HEARTBEAT_INTERVAL_MS），
+    // 所以只在使用者還沒動過這張表單時回填，免得改到一半被蓋掉。自訂欄位
+    // 只在 custom 模式下回填，其餘模式沿用表單預設當作切到 custom 時的起始
+    // 值（後端預設展開值 21/20/30 不適合當草稿）。
+    if (this.scoringForm.pristine) {
+      this.scoringForm.patchValue({
+        scoring_mode: view.scoring_mode,
+        ...(view.scoring_mode === 'custom'
+          ? {
+              custom_target_score: view.target_score,
+              custom_deuce_threshold: view.deuce_threshold,
+              custom_cap_score: view.cap_score,
+            }
+          : {}),
+      });
+    }
   }
 
   private subscribeToDisbandEvent(): void {

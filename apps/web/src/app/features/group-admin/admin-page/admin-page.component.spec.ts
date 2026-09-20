@@ -40,6 +40,12 @@ const adminGroupResponse: AdminGroupResponse = {
   all_courts_link_version: 1,
   scoreboard_scoring_enabled: false,
   detailed_scoring_enabled: false,
+  // 刻意不是 21pt —— 表單宣告的預設就是 21pt，用它當 fixture 會讓「有沒有
+  // 真的回填」這件事測不出來。
+  scoring_mode: '15pt',
+  target_score: 15,
+  deuce_threshold: 14,
+  cap_score: 21,
 };
 
 const scheduleResponse: ScheduleResponse = {
@@ -391,6 +397,43 @@ describe('AdminPageComponent', () => {
     expect(fixture.componentInstance.saveSuccess()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('errors.VALIDATION_ERROR');
     expect(fixture.nativeElement.textContent).not.toContain('adminPage.saveSuccess');
+  });
+
+  it('shows the group\'s actual scoring mode, not the form\'s 21pt default', () => {
+    const fixture = setup();
+
+    expect(fixture.componentInstance.scoringForm.controls.scoring_mode.value).toBe('15pt');
+  });
+
+  it('restores the saved custom scoring numbers when the group is on 自訂', () => {
+    const fixture = setup(false, {
+      getAdminView: () =>
+        of({
+          ...adminGroupResponse,
+          scoring_mode: 'custom' as const,
+          target_score: 7,
+          deuce_threshold: 6,
+          cap_score: 9,
+        }),
+    });
+
+    const scoring = fixture.componentInstance.scoringForm.controls;
+    expect(scoring.scoring_mode.value).toBe('custom');
+    expect(scoring.custom_target_score.value).toBe(7);
+    expect(scoring.custom_deuce_threshold.value).toBe(6);
+    expect(scoring.custom_cap_score.value).toBe(9);
+  });
+
+  it('leaves an in-progress scoring edit alone when the 30s heartbeat refetches', () => {
+    const fixture = setup();
+    const scoringMode = fixture.componentInstance.scoringForm.controls.scoring_mode;
+
+    scoringMode.setValue('custom');
+    scoringMode.markAsDirty();
+    // 等同 heartbeat 觸發的重新載入（見 HEARTBEAT_INTERVAL_MS）。
+    fixture.componentInstance['load']();
+
+    expect(scoringMode.value).toBe('custom');
   });
 
   it('saving scoring settings shows a success message', () => {

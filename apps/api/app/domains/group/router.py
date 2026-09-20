@@ -121,6 +121,10 @@ def _to_admin_view(group: Group) -> AdminGroupResponse:
         all_courts_link_version=group.all_courts_link_version,
         scoreboard_scoring_enabled=group.scoreboard_scoring_enabled,
         detailed_scoring_enabled=group.detailed_scoring_enabled,
+        scoring_mode=group.scoring_mode,
+        target_score=group.target_score,
+        deuce_threshold=group.deuce_threshold,
+        cap_score=group.cap_score,
     )
 
 
