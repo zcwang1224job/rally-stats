@@ -1,16 +1,19 @@
 import { buildLineShareUrl } from './line-share';
 
 describe('buildLineShareUrl', () => {
-  it('puts the message into LINE\'s share URL scheme', () => {
-    expect(buildLineShareUrl('hello')).toBe('https://line.me/R/share?text=hello');
+  it('sends the link and the message to LINE\'s share endpoint', () => {
+    expect(buildLineShareUrl('https://rally.example/guest-access/tok-abc', 'hello')).toBe(
+      'https://social-plugins.line.me/lineit/share' +
+        '?url=https%3A%2F%2Frally.example%2Fguest-access%2Ftok-abc&text=hello',
+    );
   });
 
-  it('percent-encodes the message so a link inside it survives', () => {
-    const url = buildLineShareUrl('小明 你好：https://rally.example/guest-access/tok-abc');
+  it('percent-encodes both parameters so neither can break the other', () => {
+    const url = buildLineShareUrl('https://rally.example/g?a=1#top', '小明 你好 & 歡迎');
 
-    expect(url.startsWith('https://line.me/R/share?text=')).toBe(true);
-    expect(url).toContain('https%3A%2F%2Frally.example%2Fguest-access%2Ftok-abc');
-    // 訊息裡不能留下沒編碼的 & 或 #，不然會被當成 URL 參數／片段而截斷。
-    expect(url.slice('https://line.me/R/share?text='.length)).not.toMatch(/[&#]/);
+    // 連結裡的 & 和 # 若沒編碼，就會被當成 lineit/share 自己的參數／片段。
+    expect(url).toContain('url=https%3A%2F%2Frally.example%2Fg%3Fa%3D1%23top');
+    expect(url).toContain('text=%E5%B0%8F%E6%98%8E%20%E4%BD%A0%E5%A5%BD%20%26%20%E6%AD%A1%E8%BF%8E');
+    expect(url.split('?')[1].split('&').length).toBe(2);
   });
 });

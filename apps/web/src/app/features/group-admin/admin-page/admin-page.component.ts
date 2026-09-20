@@ -946,8 +946,8 @@ export class AdminPageComponent {
 
   /** 訊息文字由 template 用 translate pipe 組好再傳進來（而不是在這裡
    * `translate.instant`），切語言時 href 才會跟著重算。 */
-  lineShareUrl(message: string): string {
-    return buildLineShareUrl(message);
+  lineShareUrl(link: string, message: string): string {
+    return buildLineShareUrl(link, message);
   }
 
   async copyAddedGuestLink(): Promise<void> {

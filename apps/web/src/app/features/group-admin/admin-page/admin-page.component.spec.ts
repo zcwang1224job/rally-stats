@@ -532,7 +532,9 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
 
     const share = fixture.nativeElement.querySelector('.link-section a.btn--line');
-    expect(share.getAttribute('href')).toContain('https://line.me/R/share?text=');
+    // lineit/share（而不是 line.me/R/… 那組 App scheme）——桌機點下去才不會
+    // 只停在 LINE 官網。
+    expect(share.getAttribute('href')).toContain('https://social-plugins.line.me/lineit/share?url=');
     // 開新分頁，才不會把 團長 正在用的管理頁面推走。
     expect(share.getAttribute('target')).toBe('_blank');
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareToLine');
@@ -546,7 +548,7 @@ describe('AdminPageComponent', () => {
     const translate = TestBed.inject(TranslateService);
     translate.setTranslation(
       'zh-TW',
-      { scheduleManagement: { addGuest: { lineShareMessage: '{{nickname}} 你好：{{link}}' } } },
+      { scheduleManagement: { addGuest: { lineShareMessage: '{{nickname}} 你好' } } },
       true,
     );
     translate.use('zh-TW');
@@ -558,10 +560,11 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
 
     const share = fixture.nativeElement.querySelector('.link-section a.btn--line');
-    const message = decodeURIComponent(share.getAttribute('href').split('?text=')[1]);
+    const params = new URL(share.getAttribute('href')).searchParams;
 
-    expect(message).toContain('小明 你好：');
-    expect(message).toContain('/guest-access/tok-abc');
+    // 訊息帶暱稱，連結走 `url` 參數（LINE 會把它接在訊息後面送出）。
+    expect(params.get('text')).toBe('小明 你好');
+    expect(params.get('url')).toContain('/guest-access/tok-abc');
   });
 
   // 026-match-record-friend-invite (roster-list redesign)
