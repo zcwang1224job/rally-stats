@@ -49,6 +49,10 @@ const GROUP_OF: Record<DashboardMetricKey, MetricGroup> = {
 
 const GROUPS: MetricGroup[] = ['serve', 'clutch', 'scoring', 'ending'];
 
+// The two blocks the range switch drives: the error breakdown (inside the
+// 'ending' group) and the landing map. Both start collapsed.
+const RANGE_DEPENDENT_GROUPS = ['ending', 'landing'] as const;
+
 // Past this many markers they overlap too much to count one by one, so the
 // court switches to its dense style (research.md Decision 11).
 const DENSE_ABOVE = 150;
@@ -156,6 +160,26 @@ export class PlayerDashboardComponent {
   // ---- range (034 US4 landing, 035 error breakdown)
 
   readonly range = signal<Range>('all');
+
+  /** 035: the switch sits above the only two pictures it drives — the error
+   * breakdown and the landing map — and both of those live in `<details>`
+   * that start closed. Setting the signal alone therefore looked like the
+   * press did nothing at all. Open them and bring the first into view, so
+   * every press has a visible answer. */
+  setRange(next: Range): void {
+    this.range.set(next);
+    const root = this.host.nativeElement;
+    for (const group of RANGE_DEPENDENT_GROUPS) {
+      const details = root.querySelector<HTMLDetailsElement>(`details[data-group="${group}"]`);
+      if (details) {
+        details.open = true;
+      }
+    }
+    const target =
+      root.querySelector<HTMLElement>('.error-breakdown__title') ??
+      root.querySelector<HTMLElement>('details[data-group="landing"]');
+    target?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }
 
   /** "Recent" only exists when there is something to compare with. */
   readonly effectiveRange = computed<Range>(() =>

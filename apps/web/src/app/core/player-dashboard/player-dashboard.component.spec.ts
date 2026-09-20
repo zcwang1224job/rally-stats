@@ -356,6 +356,31 @@ describe('PlayerDashboardComponent — winners & errors (035 US3)', () => {
     expect(fixture.componentInstance.errorBreakdownView()?.total).toBe(4);
   });
 
+  it('opens the two blocks it drives, so the press is never invisible', () => {
+    const fixture = setup(dashboardFixture({ landing: landing(5, 3, 2), error_breakdown: breakdown }));
+    const root: HTMLElement = fixture.nativeElement;
+    const scrolled: HTMLElement[] = [];
+    for (const el of Array.from(root.querySelectorAll<HTMLElement>('*'))) {
+      el.scrollIntoView = () => scrolled.push(el);
+    }
+    expect(group(root, 'ending').open).toBe(false);
+    expect(group(root, 'landing').open).toBe(false);
+
+    const [all, recent] = Array.from(root.querySelectorAll<HTMLButtonElement>('.dashboard-range__button'));
+    recent.click();
+    fixture.detectChanges();
+
+    expect(group(root, 'ending').open).toBe(true);
+    expect(group(root, 'landing').open).toBe(true);
+    expect(scrolled.pop()?.classList.contains('error-breakdown__title')).toBe(true);
+
+    // Going back does the same, so neither chip is the silent one.
+    group(root, 'ending').open = false;
+    all.click();
+    fixture.detectChanges();
+    expect(group(root, 'ending').open).toBe(true);
+  });
+
   it('shows the whole range when there is nothing to compare, even if recent is present', () => {
     const root: HTMLElement = setup(
       dashboardFixture({ error_breakdown: { ...breakdown, recent: null }, has_comparison: false, total_matches: 6 }),
