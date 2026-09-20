@@ -62,6 +62,14 @@ export interface MatchLiveDetail {
   // of the group's current setting — decides whether to render the plain
   // +1/-1 buttons or the tap-the-court picker for this specific match.
   detailed_scoring_enabled: boolean;
+  /** 039-match-point-confirm: this match's own scoring rules, so a screen
+   * can tell whether the next point would END the match and warn first.
+   * Snapshots, like detailed_scoring_enabled. Optional so an older backend
+   * reads as `undefined`, which isMatchPoint() treats as "never warn".
+   * `deuce_threshold` is absent on purpose — it takes no part in the win
+   * test (see core/match-point.ts). */
+  target_score?: number;
+  cap_score?: number;
 }
 
 export interface NextUpPreview {

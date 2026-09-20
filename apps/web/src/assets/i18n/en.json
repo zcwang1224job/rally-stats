@@ -498,6 +498,8 @@
     "endMatch": "End Early",
     "endMatchConfirmTitle": "End this match early?",
     "endMatchConfirmBody": "This cannot be undone. This match will be marked as abandoned and won't count toward records.",
+    "matchPointConfirmTitle": "Confirm the point that ends this match?",
+    "matchPointConfirmBody": "This cannot be undone. The match will end and the result will count toward records.",
     "nextUpLabel": "Up next: {{names}}",
     "noQueuedNextUp": "No matches queued for this round",
     "enterFullscreen": "Enter Fullscreen",

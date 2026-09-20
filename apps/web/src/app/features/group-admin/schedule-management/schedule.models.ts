@@ -49,6 +49,14 @@ export interface MatchSummary {
    * scoring UI to render (plain +1/-1 vs. score-then-record). Optional so an
    * older backend reads as "simple mode". */
   detailed_scoring_enabled?: boolean;
+  /** 039-match-point-confirm: this MATCH's own scoring rules, so the board
+   * can tell whether the next point would end the match. Snapshots, like
+   * detailed_scoring_enabled. Optional so an older backend reads as
+   * `undefined`, which isMatchPoint() treats as "never warn".
+   * `deuce_threshold` is absent on purpose — it takes no part in the win
+   * test (see core/match-point.ts). */
+  target_score?: number;
+  cap_score?: number;
 }
 
 export interface CourtScheduleStatus {
