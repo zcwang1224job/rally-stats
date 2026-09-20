@@ -516,6 +516,8 @@ describe('AdminPageComponent', () => {
 
     const link = fixture.nativeElement.querySelector('.link-section input[readonly]');
     expect(link.value).toContain('/guest-access/tok-abc');
+    // 貼進 LINE 後要用手機預設瀏覽器開，不要落進 LINE 內建瀏覽器。
+    expect(link.value).toContain('openExternalBrowser=1');
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareLinkTitle');
   });
 
@@ -565,6 +567,8 @@ describe('AdminPageComponent', () => {
     // 訊息帶暱稱，連結走 `url` 參數（LINE 會把它接在訊息後面送出）。
     expect(params.get('text')).toBe('小明 你好');
     expect(params.get('url')).toContain('/guest-access/tok-abc');
+    // 分享出去的那條連結一樣要能跳出 LINE 內建瀏覽器。
+    expect(params.get('url')).toContain('openExternalBrowser=1');
   });
 
   // 026-match-record-friend-invite (roster-list redesign)
