@@ -552,13 +552,22 @@ async def resolve_guest_session(
 async def get_guest_binding_status(
     token: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    member: Annotated[Member | None, Depends(optional_member)],
 ) -> BindingStatusResponse:
     """028-guest-stats-binding contracts/guest-binding-api.md. Public —
-    authorization is holding the `token` itself (research.md #1). Errors:
+    authorization is holding the `token` itself (research.md #1). The
+    `Authorization` header stays optional and never gates the response; it
+    only fills in `already_in_group`, the mirror of `POST .../bind`'s
+    `MEMBER_ALREADY_IN_GROUP` refusal, so the frontend can drop the binding
+    entry point instead of offering a button that can only fail. Errors:
     `LINK_NOT_FOUND`."""
     roster_entry = await service.resolve_guest_binding_target(session, token)
     group = await service.get_group_by_id(session, roster_entry.group_id)
+    already_in_group = member is not None and (
+        await service.active_roster_entry_for_member(session, group.id, member.id) is not None
+    )
     return BindingStatusResponse(
+        already_in_group=already_in_group,
         already_bound=roster_entry.member_id is not None,
         roster_entry_id=str(roster_entry.id),
         group_id=str(roster_entry.group_id),
@@ -588,7 +597,7 @@ async def bind_guest_session(
     `group.service`, e.g. `verify_ever_group_member`) since a
     `group/service.py -> member/service.py` import would be circular the
     other way around. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
-    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `MEMBER_ALREADY_IN_GROUP`, `INVALID_REQUEST`, `CAPTCHA_INVALID`,
     `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
     result = await member_service.complete_guest_bind(
         session,

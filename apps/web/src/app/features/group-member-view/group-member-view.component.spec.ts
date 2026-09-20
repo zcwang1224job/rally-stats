@@ -56,7 +56,11 @@ function setup(
     /** Server-truth response for getGuestBindingStatus() — only consulted
      * when guestSessionToken is non-null. Defaults to "not yet bound" so
      * existing "CTA renders" tests keep their prior meaning. */
-    bindingStatus?: () => Observable<{ already_bound: boolean; group_id: string }>;
+    bindingStatus?: () => Observable<{
+      already_bound: boolean;
+      group_id: string;
+      already_in_group?: boolean;
+    }>;
   } = {},
 ) {
   const clearGuestSessionTokenCalls: unknown[] = [];
@@ -224,6 +228,30 @@ describe('GroupMemberViewComponent guest binding CTA', () => {
     });
 
     expect(clearGuestSessionTokenCalls).toEqual([['g1']]);
+  });
+
+  // --- 已在名單裡的人（最典型的是 團長）看不到綁定入口 -------------------
+  // 團長 手上有自己團每一條訪客連結，後端會以 MEMBER_ALREADY_IN_GROUP
+  // 擋下綁定，所以入口不該出現——不然按下去只會拿到錯誤訊息。
+
+  it('does NOT render the CTA when the server says this account is already on the roster', () => {
+    const { fixture } = setup({
+      guestSessionToken: 'tok-123',
+      bindingStatus: () => of({ already_bound: false, group_id: 'g1', already_in_group: true }),
+    });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).toBeNull();
+    // 不是「已完成綁定」——這個帳號本來就是這團的一般成員，沒有東西要綁。
+    expect(fixture.nativeElement.textContent).not.toContain('guestBinding.boundBadge');
+  });
+
+  it('still renders the CTA for a genuine guest, who is not on the roster under an account', () => {
+    const { fixture } = setup({
+      guestSessionToken: 'tok-123',
+      bindingStatus: () => of({ already_bound: false, group_id: 'g1', already_in_group: false }),
+    });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).not.toBeNull();
   });
 });
 

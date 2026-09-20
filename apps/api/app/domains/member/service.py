@@ -483,7 +483,7 @@ async def complete_guest_bind(
     body ignored), `mode="register"` (US1), `mode="login"` (US2). The
     fourth (OAuth) is `complete_oauth_callback()`'s `bind_guest_token`
     extension above. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
-    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `MEMBER_ALREADY_IN_GROUP`, `INVALID_REQUEST`, `CAPTCHA_INVALID`,
     `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
     roster_entry = await resolve_guest_binding_target(session, guest_session_token)
 

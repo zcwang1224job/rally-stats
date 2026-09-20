@@ -17,6 +17,7 @@ from typing import Literal
 
 from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
@@ -946,17 +947,69 @@ async def bind_roster_entry_to_member(
     check (a "look then leap" race). `RosterEntry.member_id` transitions
     `NULL -> member_id` exactly once and is never reset (data-model.md §1),
     so `WHERE member_id IS NULL` is both the eligibility check and the
-    write, in one round trip. Errors: `ROSTER_ENTRY_ALREADY_BOUND` — either
-    a genuine double-bind race, or the same request retried after already
-    succeeding once."""
+    write, in one round trip.
+
+    The `NOT EXISTS` clause is the second eligibility check, kept inside
+    the same UPDATE for the same reason: this Member MUST NOT already hold
+    an `active` entry in this same group. Without it a 團長 (whose own
+    creator entry is `active` and already carries `member_id`) could open a
+    guest link from their own group — they hold every one of them, the
+    share panel prints them — and one-click bind it to themselves, ending
+    up as two separate players in one rotation roster. That isn't just odd
+    on paper: `active_roster_entry_for_member()` and through it
+    `resolve_active_roster_membership()` are `scalar_one_or_none()`, so the
+    second active entry turns every member-view endpoint (賽程/戰績/對戰
+    紀錄/退出組團) plus `already_joined`/`joined_by_me` into a 500 for that
+    account — the same `MultipleResultsFound` class of bug 036 research.md
+    Decision 7 already hit once.
+
+    A NON-active entry (left/kicked) deliberately still allows binding:
+    that's the same real person coming back as a guest, and Edge Cases in
+    028's spec.md keep those identities separate rather than refusing them.
+
+    `rowcount == 0` conflates both checks, so the reason is looked up only
+    on the failure path (never before the write — that would be the "look
+    then leap" race research.md #4 warns about). Errors:
+    `MEMBER_ALREADY_IN_GROUP` — the binder is already on this roster under
+    their own account; `ROSTER_ENTRY_ALREADY_BOUND` — either a genuine
+    double-bind race, or the same request retried after already succeeding
+    once."""
+    own_entry = aliased(RosterEntry)
+    already_in_group = (
+        select(own_entry.id)
+        .where(
+            own_entry.group_id == RosterEntry.group_id,
+            own_entry.member_id == member_id,
+            own_entry.status == "active",
+        )
+        .exists()
+    )
     result = await session.execute(
         update(RosterEntry)
-        .where(RosterEntry.id == roster_entry_id, RosterEntry.member_id.is_(None))
+        .where(
+            RosterEntry.id == roster_entry_id,
+            RosterEntry.member_id.is_(None),
+            ~already_in_group,
+        )
         .values(member_id=member_id)
     )
     if result.rowcount == 0:
-        raise ApiError("ROSTER_ENTRY_ALREADY_BOUND", status_code=409)
+        await _raise_bind_refusal(session, roster_entry_id, member_id)
     await session.commit()
+
+
+async def _raise_bind_refusal(
+    session: AsyncSession, roster_entry_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """Which of `bind_roster_entry_to_member()`'s two WHERE conditions
+    refused the write — resolved after the fact, purely to pick the error
+    code. Always raises."""
+    entry = (
+        await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    ).scalar_one_or_none()
+    if entry is not None and entry.member_id is None:
+        raise ApiError("MEMBER_ALREADY_IN_GROUP", status_code=409)
+    raise ApiError("ROSTER_ENTRY_ALREADY_BOUND", status_code=409)
 
 
 async def active_roster_entry_for_member(
