@@ -2068,6 +2068,7 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
                 score_a=entry[0].score_a,
                 score_b=entry[0].score_b,
                 serve=await _build_serve_station(session, entry[0]),
+                detailed_scoring_enabled=entry[0].detailed_scoring_enabled,
             )
             waiting_reason = None
         else:

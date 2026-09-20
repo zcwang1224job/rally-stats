@@ -78,6 +78,14 @@ class MatchSummary(BaseModel):
     # (research.md Decision 4, 029-serve-rotation-display — a match created
     # before 030-score-serve-record's migration).
     serve: ServeStationInfo | None = None
+    # 038-admin-detailed-scoring: the match's OWN snapshot
+    # (matches.detailed_scoring_enabled), not a live read of the group's
+    # current setting — same rule as MatchLiveDetail's identical field below.
+    # Lets the admin page's court-control block pick the scoring UI (plain
+    # +1/-1 vs. score-then-record) for this specific match, so a mid-match
+    # toggle of the group setting can't change how a match already underway
+    # behaves (constitution III).
+    detailed_scoring_enabled: bool = False
 
 
 class CourtScheduleStatus(BaseModel):

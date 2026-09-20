@@ -43,6 +43,12 @@ export interface MatchSummary {
   // null when the match has no serve state yet (a match created before
   // 030-score-serve-record's migration).
   serve: ServeStationInfo | null;
+  /** 038-admin-detailed-scoring: this MATCH's own snapshot of the group
+   * setting, not a live read of it — so a mid-match toggle can't change how
+   * a match already underway behaves. Tells court-control.component which
+   * scoring UI to render (plain +1/-1 vs. score-then-record). Optional so an
+   * older backend reads as "simple mode". */
+  detailed_scoring_enabled?: boolean;
 }
 
 export interface CourtScheduleStatus {
@@ -66,6 +72,12 @@ export interface ScoreMutationResult {
   // match just ended this point (no more serve state to show) or the
   // mutation wasn't applied.
   serve: ServeStationInfo | null;
+  /** 038-admin-detailed-scoring: the ScoreEvent this mutation created — the
+   * backend has always returned it (032-score-then-record), the admin-side
+   * model just never declared it. `null` when `applied` is false, or for a
+   * mutation that isn't a score change (endMatch()). A `+1`'s caller uses it
+   * to attach the shot-placement detail afterwards. */
+  score_event_id?: string | null;
 }
 
 export interface RosterScheduleStatus {
