@@ -7,6 +7,7 @@ import { QRCodeComponent } from 'angularx-qrcode';
 import { Subject, debounceTime, interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
+import { guestAccessLink } from '../../../core/guest-access-link';
 import { buildLineShareUrl } from '../../../core/line-share';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
@@ -899,10 +900,16 @@ export class AdminPageComponent {
     const nickname = this.addGuestForm.getRawValue().nickname;
     this.scheduleService.addGuest(this.groupId, nickname).subscribe({
       next: (response) => {
-        this.addedGuest.set({
-          nickname: response.nickname,
-          link: `${window.location.origin}/guest-access/${response.guest_session_token}`,
-        });
+        // `JoinGroupResponse` 是跟「會員自己加入」共用的型別，那條路徑不
+        // 會有 guest token，所以這欄可為 null。團長 手動新增訪客一定拿得
+        // 到 token，但真的沒拿到時寧可不開分享面板——舊的字串內插會生出
+        // 一條 `/guest-access/null` 的壞連結給 團長 分享出去。訪客本身已
+        // 經加進名單了，需要連結可以用名單列上的「重新產生訪客連結」。
+        this.addedGuest.set(
+          response.guest_session_token
+            ? { nickname: response.nickname, link: guestAccessLink(response.guest_session_token) }
+            : null,
+        );
         this.copiedGuestLink.set(false);
         this.copyGuestLinkErrorKey.set(null);
         this.addGuestForm.reset({ nickname: '' });
@@ -929,7 +936,7 @@ export class AdminPageComponent {
         // resulting UI (link + QR + copy) is identical either way.
         this.addedGuest.set({
           nickname: member.nickname,
-          link: `${window.location.origin}/guest-access/${response.guest_session_token}`,
+          link: guestAccessLink(response.guest_session_token),
         });
         this.copiedGuestLink.set(false);
         this.copyGuestLinkErrorKey.set(null);
