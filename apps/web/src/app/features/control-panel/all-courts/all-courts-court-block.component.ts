@@ -13,6 +13,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
+import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { CourtControlService } from '../../../core/api/court-control.service';
 import { CourtLiveState, Team } from '../../../core/api/court-live-state.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
@@ -40,6 +41,7 @@ import {
   styleUrl: './all-courts-court-block.component.scss',
 })
 export class AllCourtsCourtBlockComponent implements OnInit {
+  readonly waitingReasonKey = waitingReasonKey;
   readonly token = input.required<string>();
   readonly courtId = input.required<string>();
   readonly name = input.required<string>();

@@ -77,7 +77,8 @@ from app.domains.schedule.models import (
     ScoreServeRecord,
     ShotPlacementRecord,
 )
-from app.domains.schedule.schemas import ParticipantSummary
+from app.domains.schedule.rest import set_rest_state
+from app.domains.schedule.schemas import ParticipantSummary, RestStateResponse
 from app.domains.schedule.service import (
     handle_member_joined,
     handle_member_left,
@@ -2026,6 +2027,60 @@ async def build_match_record_detail(
     )
 
 
+async def _require_owned_active_entry(
+    session: AsyncSession,
+    group: Group,
+    roster_entry_id: uuid.UUID,
+    *,
+    guest_session_token: str | None,
+    member_id: uuid.UUID | None,
+) -> RosterEntry:
+    """The caller's own active roster entry in `group`, proven by Guest
+    token or Member identity (a token, when given, decides). Missing, in
+    another group, no longer active, or not theirs: all the same
+    `ROSTER_ENTRY_NOT_FOUND`, so nobody learns whether someone else's entry
+    exists. Shared by leaving and resting (037), so the two can't drift."""
+    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    entry = result.scalar_one_or_none()
+    if entry is None or entry.group_id != group.id or entry.status != "active":
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+
+    if guest_session_token is not None:
+        owns_entry = entry.guest_session_token == guest_session_token
+    elif member_id is not None:
+        owns_entry = entry.member_id == member_id
+    else:
+        owns_entry = False
+    if not owns_entry:
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    return entry
+
+
+async def set_own_rest_state(
+    session: AsyncSession,
+    group: Group,
+    roster_entry_id: uuid.UUID,
+    *,
+    resting: bool,
+    confirm_round_end: bool,
+    guest_session_token: str | None,
+    member_id: uuid.UUID | None,
+) -> RestStateResponse:
+    """037-rest-ready-toggle US1: a player resting or coming back, on their
+    own. Same ownership check as leaving; the rest is
+    `schedule.rest.set_rest_state()`, shared with the admin endpoint."""
+    entry = await _require_owned_active_entry(
+        session,
+        group,
+        roster_entry_id,
+        guest_session_token=guest_session_token,
+        member_id=member_id,
+    )
+    return await set_rest_state(
+        session, group, entry, resting=resting, confirm_round_end=confirm_round_end
+    )
+
+
 async def leave_group(
     session: AsyncSession,
     group: Group,
@@ -2042,19 +2097,13 @@ async def leave_group(
     active entry, is reported identically as `ROSTER_ENTRY_NOT_FOUND` —
     this MUST NOT reveal whether the entry exists to someone who can't
     prove ownership of it."""
-    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
-    entry = result.scalar_one_or_none()
-    if entry is None or entry.group_id != group.id or entry.status != "active":
-        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
-
-    if guest_session_token is not None:
-        owns_entry = entry.guest_session_token == guest_session_token
-    elif member_id is not None:
-        owns_entry = entry.member_id == member_id
-    else:
-        owns_entry = False
-    if not owns_entry:
-        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    entry = await _require_owned_active_entry(
+        session,
+        group,
+        roster_entry_id,
+        guest_session_token=guest_session_token,
+        member_id=member_id,
+    )
 
     await handle_member_left(session, group, entry, new_status="left")
     await session.commit()

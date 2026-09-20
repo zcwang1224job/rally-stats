@@ -1,6 +1,8 @@
 """Unit test: FR-013 manual-assign guard checks — already playing elsewhere,
 already left/kicked, duplicate participant in the same match."""
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -143,3 +145,25 @@ async def test_rejects_roster_entry_from_a_different_group(db_session: AsyncSess
             db_session, group, court, team_a=[p1.id, p2.id], team_b=[p3.id, foreign.id]
         )
     assert exc_info.value.error_code == "PARTICIPANT_NOT_ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_a_resting_player_can_still_be_assigned_and_stays_resting(
+    db_session: AsyncSession,
+) -> None:
+    """037-rest-ready-toggle FR-029: the admin has the final say — a resting
+    player can be put on court by hand, and that doesn't end their rest."""
+    group = await _make_group(db_session)
+    court = await _make_court(db_session, group)
+    p1, p2, p3, p4 = [await _make_roster_entry(db_session, group) for _ in range(4)]
+    since = datetime(2026, 9, 19, 10, 0, tzinfo=UTC)
+    p1.resting_since = since
+    await db_session.commit()
+
+    match = await manual_assign(
+        db_session, group, court, team_a=[p1.id, p2.id], team_b=[p3.id, p4.id]
+    )
+
+    assert match.status == "in_progress"
+    await db_session.refresh(p1)
+    assert p1.resting_since == since

@@ -1,12 +1,17 @@
 """Pydantic request/response schemas for the schedule domain, per
 specs/003-schedule-rotation/contracts/schedule-api.md."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 Team = Literal["A", "B"]
-WaitingReason = Literal["manual_assignment", "no_queued_match"]
+# 037-rest-ready-toggle adds: held_for_rest (every queued match is waiting on
+# a resting player) and not_enough_ready (continuous rotation can't make a
+# four with the ready players while someone rests).
+WaitingReason = Literal["manual_assignment", "no_queued_match", "held_for_rest", "not_enough_ready"]
+RestEffect = Literal["held", "substitute"]
 # 018-plan-then-start: derived (not stored) round state for the algorithmic
 # mechanisms' "規劃賽程安排" -> "Next Round" two-step admin flow — always
 # None for scheduling_mechanism == "manual", which has no plan/start split.
@@ -28,9 +33,23 @@ class ParticipantSummary(BaseModel):
     member_id: str | None = None
 
 
+class RosterSummary(BaseModel):
+    roster_entry_id: str
+    nickname: str
+
+
+class SubstitutionPreview(BaseModel):
+    """037: who plays in place of whom when the previewed match is called."""
+
+    resting: RosterSummary
+    substitute: RosterSummary
+
+
 class NextUpPreview(BaseModel):
     match_id: str
+    # 037: the lineup that will actually play — substitutes included.
     participants: list[ParticipantSummary]
+    substitutions: list[SubstitutionPreview] = []
 
 
 class ServeStationInfo(BaseModel):
@@ -84,6 +103,11 @@ class RosterScheduleStatus(BaseModel):
     # and admin-facing schedule pages, same builder) is the "加好友" entry
     # point's canonical home — None for Guests (mirrors is_guest).
     member_id: str | None = None
+    # 037-rest-ready-toggle: resting players stay on the roster, marked.
+    resting: bool = False
+    resting_since: datetime | None = None
+    # 037: fixed_partner only — who they team with in this round's matches.
+    partner_roster_entry_id: str | None = None
 
 
 class ScheduleResponse(BaseModel):
@@ -111,11 +135,18 @@ class RoundMatchSummary(BaseModel):
     score_a: int
     score_b: int
     winner_team: Team | None
+    # 037-rest-ready-toggle: only for a queued match with a resting player —
+    # "held" (kept for their return) or "substitute" (a substitute plays).
+    rest_effect: RestEffect | None = None
 
 
-class RosterSummary(BaseModel):
-    roster_entry_id: str
-    nickname: str
+class WaitingOnRest(BaseModel):
+    """037 FR-021: queued matches of this round waiting on resting players."""
+
+    match_count: int
+    players: list[RosterSummary]
+    # The round can't go on without them (nothing on court, nothing callable).
+    stalled: bool
 
 
 class RoundMatchesResponse(BaseModel):
@@ -127,8 +158,11 @@ class RoundMatchesResponse(BaseModel):
     # service.py `_estimate_remaining_minutes()`. None when nothing remains.
     estimated_remaining_minutes: int | None = None
     # Active members with no match at all in this round (a bye, or a
-    # fair_rotation doubles player who didn't make the cut).
+    # fair_rotation doubles player who didn't make the cut). Not resting
+    # players: that's their choice, not a bye (037).
     sitting_out: list[RosterSummary] = []
+    # 037: None when no queued match is waiting on a resting player.
+    waiting_on_rest: WaitingOnRest | None = None
 
 
 class AutoNextRoundRequest(BaseModel):
@@ -235,6 +269,28 @@ class MatchDetailResponse(BaseModel):
 class KickMemberResponse(BaseModel):
     roster_entry_id: str
     status: str
+
+
+class RestStateRequest(BaseModel):
+    """037-rest-ready-toggle contracts/rest-state-api.md. The target state,
+    not a toggle, so a double tap or the player and an admin pressing at
+    once can't cancel each other out."""
+
+    resting: bool
+    # Confirms a rest that ends the round on the spot (REST_ENDS_ROUND).
+    confirm_round_end: bool = False
+    # Self-service endpoint only, for a Guest; ignored on the admin one.
+    guest_session_token: str | None = None
+
+
+class RestStateResponse(BaseModel):
+    roster_entry_id: str
+    resting: bool
+    resting_since: datetime | None
+    # With resting: the player is on court now and rests after this match.
+    currently_playing: bool
+    # False when the entry was already in the requested state (no-op).
+    changed: bool
 
 
 class RegenerateGuestLinkResponse(BaseModel):

@@ -85,6 +85,26 @@
   font-size: var(--font-size-caption);
 }
 
+// 037-rest-ready-toggle FR-021: matches waiting on resting players. The
+// stalled variant is the one needing the admin — icon and wording carry it,
+// the tint only reinforces (constitution VII).
+.rest-banner {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-caption);
+
+  p {
+    margin: 0;
+  }
+
+  &--stalled {
+    border-color: color-mix(in srgb, var(--color-danger) 28%, white);
+    background: color-mix(in srgb, var(--color-danger) 8%, white);
+    font-weight: var(--font-weight-bold);
+  }
+}
+
 // 賽程規劃/開打後可調整選手——刻意直向排列（隊伍 A 一行、隊伍 B 一行，
 // 中間夾一個 vs 分隔），而不是把所有人擠在同一行裡：雙打會有到 4 位選手，
 // 每人又各帶一顆「互換」按鈕跟一個「換成」下拉選單，塞成一行會非常擁擠。

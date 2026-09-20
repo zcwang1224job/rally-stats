@@ -11,6 +11,21 @@ h2 {
   margin-top: 0;
 }
 
+// 037: the viewer's own rest/ready button, above the roster it affects.
+.self-rest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.self-rest__note,
+.next-up__substitution {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
 .score-board {
   display: flex;
   gap: var(--space-md);

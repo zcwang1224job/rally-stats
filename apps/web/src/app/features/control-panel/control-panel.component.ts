@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
+import { waitingReasonKey } from '../../core/waiting-reason-label';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
 import {
@@ -34,6 +35,7 @@ import {
   styleUrl: './control-panel.component.scss',
 })
 export class ControlPanelComponent {
+  readonly waitingReasonKey = waitingReasonKey;
   private readonly route = inject(ActivatedRoute);
   private readonly heartbeat = inject(LinkHeartbeatService);
   private readonly realtime = inject(RealtimeService);

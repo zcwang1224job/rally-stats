@@ -4,7 +4,19 @@
 import { CourtLinkType } from './court-link.models';
 
 export type Team = 'A' | 'B';
-export type WaitingReason = 'manual_assignment' | 'no_queued_match';
+/** 037-rest-ready-toggle adds held_for_rest and not_enough_ready. Display
+ * goes through `waitingReasonKey()`, which falls back for unknown values. */
+export type WaitingReason =
+  | 'manual_assignment'
+  | 'no_queued_match'
+  | 'held_for_rest'
+  | 'not_enough_ready';
+
+/** 037: who plays in place of whom when a previewed match is called. */
+export interface SubstitutionPreview {
+  resting: { roster_entry_id: string; nickname: string };
+  substitute: { roster_entry_id: string; nickname: string };
+}
 
 // 035-point-ending-type: how a rally ended — 'winner' is the scorer's doing,
 // the other four are the loser's errors. Mirrors `EndingType` in
@@ -54,7 +66,10 @@ export interface MatchLiveDetail {
 
 export interface NextUpPreview {
   match_id: string;
+  /** 037: the lineup that will play — substitutes included. */
   participants: ParticipantSummary[];
+  /** 037: optional so an older backend reads as "no substitutes". */
+  substitutions?: SubstitutionPreview[];
 }
 
 export interface CourtLiveState {

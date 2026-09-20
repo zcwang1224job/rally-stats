@@ -169,3 +169,10 @@ section.card {
     min-width: 8rem;
   }
 }
+
+// 037-rest-ready-toggle: who substitutes for whom in a court's next match.
+.next-up__substitution {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}

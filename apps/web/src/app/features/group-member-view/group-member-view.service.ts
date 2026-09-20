@@ -8,6 +8,7 @@ import {
   MatchRecordDetailResponse,
 } from '../../core/api/group-member-view.models';
 import {
+  RestStateResponse,
   RoundMatchesResponse,
   ScheduleResponse,
 } from '../group-admin/schedule-management/schedule.models';
@@ -104,6 +105,24 @@ export class GroupMemberViewService {
     return this.api.post<LeaveGroupResponse>(
       `/groups/${groupId}/roster/${rosterEntryId}/leave`,
       { guest_session_token: guestToken },
+      this.authHeader(),
+    );
+  }
+
+  /** 037-rest-ready-toggle: rest or come back. `resting` is the target
+   * state, not a toggle. `confirmRoundEnd` resends a rest the backend
+   * refused with REST_ENDS_ROUND once the player has confirmed. Same
+   * Member-over-Guest identity rule as `leaveGroup()`. */
+  setOwnRestState(
+    groupId: string,
+    rosterEntryId: string,
+    resting: boolean,
+    confirmRoundEnd = false,
+  ): Observable<RestStateResponse> {
+    const guestToken = this.auth.isLoggedIn() ? null : this.groupJoin.getGuestSessionToken(groupId);
+    return this.api.put<RestStateResponse>(
+      `/groups/${groupId}/roster/${rosterEntryId}/rest-state`,
+      { resting, confirm_round_end: confirmRoundEnd, guest_session_token: guestToken },
       this.authHeader(),
     );
   }

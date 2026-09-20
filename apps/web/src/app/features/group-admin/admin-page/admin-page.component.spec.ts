@@ -191,6 +191,53 @@ describe('AdminPageComponent', () => {
     expect(scheduleCalls).toBe(initialCalls + 2);
   });
 
+  // 037-rest-ready-toggle T040
+  it('refetches the schedule when someone rests or comes back', async () => {
+    const restChanged = new Subject<Ably.Message>();
+    let scheduleCalls = 0;
+    setup(
+      false,
+      {},
+      {
+        getSchedule: () => {
+          scheduleCalls += 1;
+          return of(scheduleResponse);
+        },
+      },
+      {},
+      ((channel: string, event: string) =>
+        channel === 'group:g1:notifications' && event === 'roster.restChanged'
+          ? restChanged.asObservable()
+          : of()) as RealtimeService['subscribe'],
+    );
+    const initialCalls = scheduleCalls;
+
+    restChanged.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(scheduleCalls).toBe(initialCalls + 1);
+  });
+
+  it('marks resting players on the roster tab, with text not just colour', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r1', nickname: '小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+            { roster_entry_id: 'r2', nickname: '小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: false },
+          ],
+        }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+    expect(rows[0].textContent).toContain('scheduleManagement.restingBadge');
+    expect(rows[1].textContent).not.toContain('scheduleManagement.restingBadge');
+  });
+
   it('offers the continuous-rotation toggle for fair-rotation doubles and saves it', () => {
     const calls: boolean[] = [];
     const fixture = setup(false, {}, {
@@ -525,6 +572,125 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
+  });
+
+  // 037-rest-ready-toggle US4 (T033)
+  describe('rest/ready on the roster tab', () => {
+    const roster = [
+      { roster_entry_id: 'r0', nickname: '團長', status: 'active', wait_count: null, currently_playing: false, is_creator: true, is_guest: true },
+      { roster_entry_id: 'r1', nickname: '小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+      { roster_entry_id: 'r2', nickname: '小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+    ];
+    const restOk = {
+      roster_entry_id: 'r2',
+      resting: true,
+      resting_since: '2026-09-19T12:00:00Z',
+      currently_playing: false,
+      changed: true,
+    };
+
+    function onRoster(setMemberRestState: ScheduleService['setMemberRestState']) {
+      const fixture = setup(false, {}, {
+        getSchedule: () => of({ ...scheduleResponse, roster }),
+        setMemberRestState,
+      });
+      navButtons(fixture)[2].click();
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function rowButton(fixture: ReturnType<typeof setup>, index: number): HTMLButtonElement {
+      const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+      return rows[index].querySelector('app-rest-toggle-button button');
+    }
+
+    it('gives every row a button, the creator included', () => {
+      const fixture = onRoster(() => of(restOk));
+
+      expect(fixture.nativeElement.querySelectorAll('.roster-list app-rest-toggle-button').length).toBe(3);
+      expect(rowButton(fixture, 1).textContent).toContain('restToggle.adminReady');
+      expect(rowButton(fixture, 2).textContent).toContain('restToggle.adminRest');
+    });
+
+    it('sends the target state for that row', () => {
+      const calls: [string, string, boolean, boolean | undefined][] = [];
+      const fixture = onRoster((groupId, id, resting, confirm) => {
+        calls.push([groupId, id, resting, confirm]);
+        return of(restOk);
+      });
+
+      rowButton(fixture, 2).click();
+      rowButton(fixture, 1).click();
+
+      expect(calls).toEqual([
+        ['g1', 'r2', true, false],
+        ['g1', 'r1', false, false],
+      ]);
+    });
+
+    it('keeps each row pending on its own', () => {
+      const pending = new Subject<typeof restOk>();
+      const fixture = onRoster(() => pending.asObservable());
+
+      rowButton(fixture, 2).click();
+      fixture.detectChanges();
+
+      expect(rowButton(fixture, 2).disabled).toBe(true);
+      expect(rowButton(fixture, 1).disabled).toBe(false);
+    });
+
+    it('shows a failure and leaves the row as it was', () => {
+      const fixture = onRoster(() =>
+        throwError(() => ({
+          errorCode: 'ROSTER_ENTRY_NOT_FOUND',
+          i18nKey: 'errors.ROSTER_ENTRY_NOT_FOUND',
+          detail: null,
+          status: 404,
+        })),
+      );
+
+      rowButton(fixture, 2).click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('errors.ROSTER_ENTRY_NOT_FOUND');
+      expect(rowButton(fixture, 2).textContent).toContain('restToggle.adminRest');
+      expect(rowButton(fixture, 2).disabled).toBe(false);
+    });
+
+    it('asks first when the rest would end the round, naming the player, then resends', () => {
+      const calls: [string, boolean | undefined][] = [];
+      const fixture = onRoster((_g, id, _resting, confirm) => {
+        calls.push([id, confirm]);
+        return confirm
+          ? of(restOk)
+          : throwError(() => ({
+              errorCode: 'REST_ENDS_ROUND',
+              i18nKey: 'errors.REST_ENDS_ROUND',
+              detail: { matches_to_cancel: 3 },
+              status: 409,
+            }));
+      });
+
+      rowButton(fixture, 2).click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.restEndsRoundTarget()).toEqual({
+        rosterEntryId: 'r2',
+        nickname: '小華',
+        count: 3,
+        immediate: true,
+        title: 'restToggle.endsRound.title',
+        body: 'restToggle.endsRound.adminBody',
+      });
+      expect(fixture.nativeElement.textContent).not.toContain('errors.REST_ENDS_ROUND');
+
+      fixture.componentInstance.confirmRestEndingRound();
+
+      expect(calls).toEqual([
+        ['r2', false],
+        ['r2', true],
+      ]);
+    });
   });
 
   it('only shows the regenerate-link button on guest rows, not member rows', () => {

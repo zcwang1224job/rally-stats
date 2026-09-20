@@ -96,6 +96,7 @@
                     [roundPhase]="sched.round_phase"
                     [roster]="sched.roster"
                     [refreshKey]="scheduleVersion()"
+                    [autoNextRound]="sched.auto_next_round"
                   />
                 }
 
@@ -128,8 +129,16 @@
                                   }
                           }}
                         </p>
+                        @for (swap of next.substitutions ?? []; track swap.resting.roster_entry_id) {
+                          <p class="next-up__substitution">
+                            {{
+                              'restToggle.substitutionNote'
+                                | translate: { substitute: swap.substitute.nickname, resting: swap.resting.nickname }
+                            }}
+                          </p>
+                        }
                       } @else {
-                        <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+                        <p>{{ waitingReasonKey(court.waiting_reason) | translate }}</p>
                       }
                     </div>
                   }
@@ -251,6 +260,9 @@
               @if (regenerateGuestLinkErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
+              @if (restErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
               @if (schedule(); as sched) {
                 <ul class="roster-list">
                   @for (member of sched.roster; track member.roster_entry_id) {
@@ -266,6 +278,9 @@
                                scheduling mechanism — only manual mode still updates it. -->
                           <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
                         }
+                        @if (member.resting) {
+                          <span class="status-badge status-badge--muted">{{ 'scheduleManagement.restingBadge' | translate }}</span>
+                        }
                       </span>
                       @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {
                         <app-add-friend-button
@@ -276,6 +291,15 @@
                           [nickname]="member.nickname"
                         />
                       }
+                      <!-- 037: every row, the creator's too — resting removes nobody. -->
+                      <app-rest-toggle-button
+                        [resting]="!!member.resting"
+                        [currentlyPlaying]="member.currently_playing"
+                        [pending]="restPendingIds().has(member.roster_entry_id)"
+                        [compact]="true"
+                        [nickname]="member.nickname"
+                        (toggled)="setMemberRest(member.roster_entry_id, member.nickname, $event)"
+                      />
                       @if (member.is_guest) {
                         <button
                           type="button"
@@ -614,4 +638,15 @@
   "
   [body]="'scheduleManagement.kickMemberConfirmBody' | translate"
   (confirmed)="confirmKickMember()"
+/>
+
+<app-confirm-dialog
+  #restEndsRoundDialog
+  [title]="(restEndsRoundTarget()?.title ?? 'restToggle.endsRound.title') | translate"
+  [body]="
+    (restEndsRoundTarget()?.body ?? 'restToggle.endsRound.adminBody')
+      | translate: { nickname: restEndsRoundTarget()?.nickname, count: restEndsRoundTarget()?.count }
+  "
+  [confirmLabel]="'restToggle.endsRound.confirm' | translate"
+  (confirmed)="confirmRestEndingRound()"
 />

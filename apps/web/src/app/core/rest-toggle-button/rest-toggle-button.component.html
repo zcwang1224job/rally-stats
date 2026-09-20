@@ -1,0 +1,25 @@
+<button
+  type="button"
+  class="btn rest-toggle"
+  [class.btn--secondary]="!resting()"
+  [class.rest-toggle--compact]="compact()"
+  [attr.aria-pressed]="resting()"
+  [disabled]="pending()"
+  [attr.aria-label]="
+    compact() && nickname()
+      ? ((resting() ? 'restToggle.adminReadyAriaLabel' : 'restToggle.adminAriaLabel')
+        | translate: { nickname: nickname() })
+      : null
+  "
+  (click)="press()"
+>
+  <span aria-hidden="true">{{ resting() ? '▶' : '☕' }}</span>
+  @if (compact()) {
+    {{ (resting() ? 'restToggle.adminReady' : 'restToggle.adminRest') | translate }}
+  } @else {
+    {{ (resting() ? 'restToggle.ready' : 'restToggle.rest') | translate }}
+  }
+</button>
+@if (resting() && currentlyPlaying()) {
+  <p class="rest-toggle__note" role="status">{{ 'restToggle.afterThisMatch' | translate }}</p>
+}

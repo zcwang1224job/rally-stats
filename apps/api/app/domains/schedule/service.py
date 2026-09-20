@@ -7,12 +7,12 @@ import random
 import secrets
 import statistics
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast, get_args
 
-from sqlalchemy import delete, exists, or_, select, update
+from sqlalchemy import ColumnElement, Exists, Select, delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,9 +22,10 @@ from app.core.errors import ApiError
 from app.core.realtime import court_channel, group_notifications_channel, publish
 from app.domains.court.models import Court
 from app.domains.group.models import Group, RoundHistory
-from app.domains.roster.models import RosterEntry
+from app.domains.roster.models import RosterEntry, RosterRestPeriod
 from app.domains.schedule.algorithms import (
     PlayerHistory,
+    RestPeriod,
     pair_doubles_matches,
     pick_next_match,
     player_histories,
@@ -53,6 +54,7 @@ from app.domains.schedule.schemas import (
     ParticipantSummary,
     PartnershipsResponse,
     PartnershipSummary,
+    RestEffect,
     RosterScheduleStatus,
     RosterSummary,
     RoundMatchesResponse,
@@ -61,13 +63,21 @@ from app.domains.schedule.schemas import (
     ScheduleResponse,
     ScoreMutationResult,
     ServeStationInfo,
+    SubstitutionPreview,
     Team,
     TemporaryPairing,
     TemporaryPairingsResponse,
+    WaitingOnRest,
     WaitingReason,
 )
 
 _ACTIVE_MATCH_STATUSES = ("queued", "in_progress")
+
+# 037-rest-ready-toggle: a resting player is still in the group (status
+# "active") but isn't picked to play. Every "who can play next" query adds
+# this; queries about who is in the group, or who partners whom, don't
+# (research.md Decision 2).
+_IS_READY = RosterEntry.resting_since.is_(None)
 
 
 async def abandon_group_matches(session: AsyncSession, group_id: uuid.UUID) -> None:
@@ -110,7 +120,8 @@ async def apply_wait_count_updates(
     """FR-007 / research.md #9: selected participants' `wait_count` -> 0;
     every other active roster entry's `wait_count` += 1 (NULL treated as 0
     first, i.e. a never-played member who missed this round has now waited
-    one round). Two bulk UPDATEs, not a per-row Python loop."""
+    one round). Two bulk UPDATEs, not a per-row Python loop. A resting
+    player isn't waiting, so their count stays frozen (037 FR-024)."""
     selected = list(selected_ids)
     if selected:
         await session.execute(
@@ -121,6 +132,7 @@ async def apply_wait_count_updates(
         .where(
             RosterEntry.group_id == group_id,
             RosterEntry.status == "active",
+            _IS_READY,
             RosterEntry.id.notin_(selected),
         )
         .values(wait_count=func.coalesce(RosterEntry.wait_count, 0) + 1)
@@ -398,9 +410,10 @@ async def _get_active_courts_ordered(session: AsyncSession, group_id: uuid.UUID)
 async def _get_active_roster_for_selection(
     session: AsyncSession, group_id: uuid.UUID
 ) -> list[tuple[uuid.UUID, int | None, datetime]]:
+    """Ready players only (037) — both callers pick who plays next."""
     result = await session.execute(
         select(RosterEntry.id, RosterEntry.wait_count, RosterEntry.joined_at).where(
-            RosterEntry.group_id == group_id, RosterEntry.status == "active"
+            RosterEntry.group_id == group_id, RosterEntry.status == "active", _IS_READY
         )
     )
     return [(row.id, row.wait_count, row.joined_at) for row in result.all()]
@@ -411,10 +424,10 @@ async def _get_active_roster_ids(session: AsyncSession, group_id: uuid.UUID) -> 
     generation includes every active member — no wait_count-based subset
     selection (research.md #5), unlike `_get_active_roster_for_selection`
     above, which `stage1_select_players` still needs for fair_rotation
-    doubles (untouched by this feature)."""
+    doubles (untouched by this feature). Ready players only (037)."""
     result = await session.execute(
         select(RosterEntry.id)
-        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active")
+        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active", _IS_READY)
         # Without an ORDER BY the order was whatever the heap returned, and
         # the round-robin generators' anchors and tie-breaks all depend on it.
         .order_by(RosterEntry.joined_at, RosterEntry.id)
@@ -473,7 +486,12 @@ async def _get_player_histories(
     since their last one, current back-to-back run), from every match of
     the group that went on court — including those abandoned mid-play,
     since the players were on court. Rest is counted in matches, not
-    minutes (`player_histories()`)."""
+    minutes (`player_histories()`).
+
+    037-rest-ready-toggle: matches that started while a player was resting
+    aren't counted as rest, and `played` includes `played_credit`. This is
+    the only place credit enters scheduling (research.md Decisions 3, 4).
+    Someone who has never played stays absent — they are a newcomer."""
     result = await session.execute(
         select(Match.id, Match.started_at, Match.ended_at, MatchParticipant.roster_entry_id)
         .join(MatchParticipant, MatchParticipant.match_id == Match.id)
@@ -482,7 +500,34 @@ async def _get_player_histories(
     matches: dict[uuid.UUID, tuple[datetime, datetime | None, list[uuid.UUID]]] = {}
     for match_id, started_at, ended_at, roster_entry_id in result.all():
         matches.setdefault(match_id, (started_at, ended_at, []))[2].append(roster_entry_id)
-    return player_histories(list(matches.values()))
+
+    rest_periods: dict[uuid.UUID, list[RestPeriod]] = {}
+    periods_result = await session.execute(
+        select(
+            RosterRestPeriod.roster_entry_id, RosterRestPeriod.started_at, RosterRestPeriod.ended_at
+        ).where(RosterRestPeriod.group_id == group_id)
+    )
+    for roster_entry_id, started_at, ended_at in periods_result.all():
+        rest_periods.setdefault(roster_entry_id, []).append((started_at, ended_at))
+    entries_result = await session.execute(
+        select(RosterEntry.id, RosterEntry.resting_since, RosterEntry.played_credit).where(
+            RosterEntry.group_id == group_id,
+            or_(RosterEntry.resting_since.is_not(None), RosterEntry.played_credit > 0),
+        )
+    )
+    credits: dict[uuid.UUID, int] = {}
+    for roster_entry_id, resting_since, played_credit in entries_result.all():
+        if resting_since is not None:
+            rest_periods.setdefault(roster_entry_id, []).append((resting_since, None))
+        if played_credit:
+            credits[roster_entry_id] = played_credit
+
+    histories = player_histories(list(matches.values()), rest_periods)
+    for roster_entry_id, credit in credits.items():
+        history = histories.get(roster_entry_id)
+        if history is not None:
+            histories[roster_entry_id] = history._replace(played=history.played + credit)
+    return histories
 
 
 # Whether a match counts as part of someone's round: everything except a
@@ -505,9 +550,36 @@ def _busy_participants_subquery(group_id: uuid.UUID):  # type: ignore[no-untyped
     ).scalar_subquery()
 
 
+@dataclass(frozen=True)
+class NextMatchChoice:
+    """The match a freed court takes next, and — 037-rest-ready-toggle —
+    who substitutes for which resting player when it's called."""
+
+    match: Match
+    # (resting player, substitute) pairs, applied only by the real pull.
+    substitutions: tuple[tuple[uuid.UUID, uuid.UUID], ...] = ()
+
+
+def _has_resting_participant() -> Exists:
+    """037: correlated EXISTS — the match has a resting player in it."""
+    return exists(
+        select(MatchParticipant.id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(MatchParticipant.match_id == Match.id, RosterEntry.resting_since.is_not(None))
+    )
+
+
+def _substitutes_for_rest(mechanism: str, match_mode: str) -> bool:
+    """037 FR-016／FR-018: fair-rotation doubles and individual-mixed call a
+    substitute for a resting player; singles round-robin and fixed partners
+    keep the match — it is that pairing, and a substitute would hand
+    someone else a repeat."""
+    return match_mode == "doubles" and mechanism in ("fair_rotation", "individual_mixed")
+
+
 async def _choose_next_queued_match(
     session: AsyncSession, group_id: uuid.UUID, round_number: int, *, lock: bool
-) -> Match | None:
+) -> NextMatchChoice | None:
     """The match a freed court should take next, shared by the real pull
     and the read-only "next up" preview so the preview never promises a
     different match than the one that actually gets called.
@@ -519,28 +591,45 @@ async def _choose_next_queued_match(
     Among the rest, `pick_next_match()` prefers the match whose players
     have sat out the most matches since their last one, falling back to
     call-up order once everyone has sat out at least
-    `RESTED_AFTER_MATCHES`."""
-    query = (
-        select(Match)
-        .where(
-            Match.group_id == group_id,
-            Match.round_number == round_number,
-            Match.status == "queued",
-            Match.court_id.is_(None),
-            ~exists(
-                select(MatchParticipant.id).where(
-                    MatchParticipant.match_id == Match.id,
-                    MatchParticipant.roster_entry_id.in_(_busy_participants_subquery(group_id)),
-                )
-            ),
+    `RESTED_AFTER_MATCHES`.
+
+    037-rest-ready-toggle (research.md Decision 5): matches with a resting
+    player are skipped too, so everything else goes first. Only when they
+    are all that's left does the mechanism matter: substitutes for a
+    fair-rotation doubles / individual-mixed match, in call-up order, the
+    first one every resting player of which can be replaced by someone free
+    right now; otherwise nothing, and the match waits for them."""
+
+    def queued_and_free(*conditions: ColumnElement[bool]) -> Select[tuple[Match]]:
+        query = (
+            select(Match)
+            .where(
+                Match.group_id == group_id,
+                Match.round_number == round_number,
+                Match.status == "queued",
+                Match.court_id.is_(None),
+                ~exists(
+                    select(MatchParticipant.id).where(
+                        MatchParticipant.match_id == Match.id,
+                        MatchParticipant.roster_entry_id.in_(
+                            _busy_participants_subquery(group_id)
+                        ),
+                    )
+                ),
+                *conditions,
+            )
+            .order_by(*_QUEUE_ORDER)
         )
-        .order_by(*_QUEUE_ORDER)
+        return query.with_for_update(skip_locked=True) if lock else query
+
+    candidates = list(
+        (await session.execute(queued_and_free(~_has_resting_participant()))).scalars()
     )
-    if lock:
-        query = query.with_for_update(skip_locked=True)
-    candidates = list((await session.execute(query)).scalars())
-    if len(candidates) <= 1:
-        return candidates[0] if candidates else None
+    if not candidates:
+        held = list((await session.execute(queued_and_free(_has_resting_participant()))).scalars())
+        return await _choose_substituted_match(session, group_id, held) if held else None
+    if len(candidates) == 1:
+        return NextMatchChoice(candidates[0])
 
     participants_result = await session.execute(
         select(MatchParticipant.match_id, MatchParticipant.roster_entry_id).where(
@@ -551,10 +640,53 @@ async def _choose_next_queued_match(
     for match_id, roster_entry_id in participants_result.all():
         players_by_match.setdefault(match_id, []).append(roster_entry_id)
 
-    return pick_next_match(
+    chosen = pick_next_match(
         [(m, players_by_match.get(m.id, [])) for m in candidates],
         await _get_player_histories(session, group_id),
     )
+    return NextMatchChoice(chosen) if chosen is not None else None
+
+
+async def _choose_substituted_match(
+    session: AsyncSession, group_id: uuid.UUID, held: list[Match]
+) -> NextMatchChoice | None:
+    """037: the first of `held` (in call-up order) whose every resting player
+    gets a different substitute free to play now — or None if the mechanism
+    keeps such matches, or none can be filled. Never half-substitutes."""
+    group = (await session.execute(select(Group).where(Group.id == group_id))).scalar_one()
+    if not _substitutes_for_rest(group.scheduling_mechanism, group.match_mode):
+        return None
+    resting_result = await session.execute(
+        select(MatchParticipant.match_id, MatchParticipant.roster_entry_id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(
+            MatchParticipant.match_id.in_([m.id for m in held]),
+            RosterEntry.resting_since.is_not(None),
+        )
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
+    )
+    resting_by_match: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for match_id, roster_entry_id in resting_result.all():
+        resting_by_match.setdefault(match_id, []).append(roster_entry_id)
+    appearances = await _round_appearances(session, group)
+    for match in held:
+        chosen: list[tuple[uuid.UUID, uuid.UUID]] = []
+        for resting_id in resting_by_match[match.id]:
+            substitute = await _pick_substitute(
+                session,
+                group,
+                match.id,
+                resting_id,
+                appearances,
+                must_be_free=True,
+                exclude=[sub for _resting, sub in chosen],
+            )
+            if substitute is None:
+                break
+            chosen.append((resting_id, substitute))
+        else:
+            return NextMatchChoice(match, tuple(chosen))
+    return None
 
 
 async def pull_queued_match_for_court(
@@ -565,12 +697,47 @@ async def pull_queued_match_for_court(
     distribution (research.md #7) and `advance_court_after_match_ends`
     (US3) — same "pull from the queue" mechanism either way. Which match is
     "next" is `_choose_next_queued_match()`'s call; if none is eligible
-    yet, returns None (court waits)."""
-    match = await _choose_next_queued_match(session, group_id, round_number, lock=True)
-    if match is None:
+    yet, returns None (court waits).
+
+    037: a call-up with substitutes takes the group lock and chooses again
+    under it, so two courts freeing at once can't seat the same substitute
+    twice (continuous rotation seats players under the same lock). The
+    ordinary path takes no extra lock."""
+    choice = await _choose_next_queued_match(session, group_id, round_number, lock=True)
+    if choice is not None and choice.substitutions:
+        await session.execute(select(Group.id).where(Group.id == group_id).with_for_update())
+        choice = await _choose_next_queued_match(session, group_id, round_number, lock=True)
+    if choice is None:
         return None
-    await _start_match(session, match, court_id)
-    return match
+    if choice.substitutions:
+        await _apply_substitutions(session, group_id, choice)
+    await _start_match(session, choice.match, court_id)
+    return choice.match
+
+
+async def _apply_substitutions(
+    session: AsyncSession, group_id: uuid.UUID, choice: NextMatchChoice
+) -> None:
+    """037: puts each substitute in the resting player's seat (same team).
+    In fair rotation the substitute counts as picked, as when substituting
+    for a leaver (FR-027); the resting player's wait count stays frozen."""
+    mechanism = (
+        await session.execute(select(Group.scheduling_mechanism).where(Group.id == group_id))
+    ).scalar_one()
+    for resting_id, substitute_id in choice.substitutions:
+        await session.execute(
+            update(MatchParticipant)
+            .where(
+                MatchParticipant.match_id == choice.match.id,
+                MatchParticipant.roster_entry_id == resting_id,
+            )
+            .values(roster_entry_id=substitute_id)
+        )
+        if mechanism == "fair_rotation":
+            await session.execute(
+                update(RosterEntry).where(RosterEntry.id == substitute_id).values(wait_count=0)
+            )
+    await session.flush()
 
 
 async def _match_participants_payload(
@@ -895,7 +1062,7 @@ async def compute_auto_partner_teams_for_round(
     often each pair has already been teammates (reusing
     `stage2_pair_players`) and never touches `partnerships`. With an odd
     headcount one member sits the round out (`_choose_bye()`)."""
-    active_ids = await _get_active_roster_ordered(session, group_id)
+    active_ids = await _get_ready_roster_ordered(session, group_id)
     if len(active_ids) % 2 == 1:
         bye = await _choose_bye(session, group_id, active_ids)
         active_ids = [pid for pid in active_ids if pid != bye]
@@ -933,12 +1100,18 @@ async def _resolve_manual_fixed_partner_teams(
     清單中出現超過一次（FR-003：該重複成員涉及的組合一律視為無效、一律
     捨棄，MUST NOT 只丟棄後面出現的那一組）的組合皆被捨棄；(3) 對步驟 1+2
     後仍未涵蓋到的現役成員，呼叫 `random_pair_units()` 當場隨機配對補齊
-    （FR-002）；人數為奇數時，先由 `_choose_bye()` 挑一人本輪輪空。"""
-    formal_teams = await _get_active_partnership_teams(session, group.id)
-    covered = {pid for pair in formal_teams for pid in pair}
+    （FR-002）；人數為奇數時，先由 `_choose_bye()` 挑一人本輪輪空。
 
-    active_ids = await _get_active_roster_ordered(session, group.id)
+    037：正式搭檔有一人休息時整隊這一輪不排，另一人也不進自動補位——否則他
+    會被臨時配給別人，休息者一回來就落單（research.md Decision 2）。"""
+    active_ids = await _get_ready_roster_ordered(session, group.id)
     active_set = set(active_ids)
+
+    all_formal_teams = await _get_active_partnership_teams(session, group.id)
+    formal_teams = [
+        team for team in all_formal_teams if team[0] in active_set and team[1] in active_set
+    ]
+    covered = {pid for pair in all_formal_teams for pid in pair}
 
     temp_list = temporary_pairings or []
     member_counts: dict[uuid.UUID, int] = {}
@@ -1721,16 +1894,101 @@ async def _seat_waiting_players_on_court(
     )
 
 
-async def check_round_complete_and_maybe_auto_advance(session: AsyncSession, group: Group) -> bool:
-    """FR-034/035: if Auto Next Round is on, the round has actually finished,
-    and there's at least one court to generate for (FR-030 — zero courts
-    MUST NOT even attempt generation), advance to the next round."""
+async def round_is_stalled_by_rest(session: AsyncSession, group: Group) -> bool:
+    """037-rest-ready-toggle (FR-020): the current round can't go on until a
+    resting player comes back — nothing on court, something queued, every
+    queued match has a resting player, and none of them can be called
+    (the mechanism keeps such matches, or no substitute is free). Such a
+    round never "completes" on its own: its matches stay queued."""
+    round_filter = (
+        Match.group_id == group.id,
+        Match.round_number == group.current_round_number,
+    )
+    live = await session.execute(
+        select(Match.id).where(*round_filter, Match.status == "in_progress").limit(1)
+    )
+    if live.scalar_one_or_none() is not None:
+        return False
+    queued = await session.execute(
+        select(Match.id).where(*round_filter, Match.status == "queued").limit(1)
+    )
+    if queued.scalar_one_or_none() is None:
+        return False
+    callable_now = await session.execute(
+        select(Match.id)
+        .where(*round_filter, Match.status == "queued", ~_has_resting_participant())
+        .limit(1)
+    )
+    if callable_now.scalar_one_or_none() is not None:
+        return False
+    choice = await _choose_next_queued_match(
+        session, group.id, group.current_round_number, lock=False
+    )
+    return choice is None
+
+
+async def _can_generate_any_match(session: AsyncSession, group: Group) -> bool:
+    """037: whether a new round would have at least one match, going by the
+    ready players (FR-011). Guards the rest-driven auto advance: advancing
+    into a round with nothing in it would only abandon the matches kept for
+    a resting player — and each toggle would burn a round number."""
+    ready = await _get_ready_roster_ordered(session, group.id)
+    if group.scheduling_mechanism == "fixed_partner":
+        if group.partner_source == "auto":
+            return len(ready) >= 4
+        ready_set = set(ready)
+        partnerships = await _get_active_partnership_teams(session, group.id)
+        whole_teams = sum(1 for x, y in partnerships if x in ready_set and y in ready_set)
+        partnered = {pid for team in partnerships for pid in team}
+        free = sum(1 for pid in ready if pid not in partnered)
+        return whole_teams + free // 2 >= 2
+    return len(ready) >= (2 if group.match_mode == "singles" else _DOUBLES_PER_MATCH)
+
+
+async def round_would_auto_advance(
+    session: AsyncSession, group: Group, *, triggered_by_rest_change: bool
+) -> bool:
+    """Whether Auto Next Round advances now — the one rule both the advance
+    itself and 037's REST_ENDS_ROUND reminder use, so the player is never
+    warned about an advance that doesn't happen, or not warned about one
+    that does. Reads only.
+
+    - The round finished (every match terminal): advance, as before. After
+      a rest change, only if the next round would have a match — otherwise
+      toggling would spin through empty rounds (037, SC-006) — and only
+      once a round has ever been generated: a group nobody has started
+      yet mustn't start itself because someone pressed "rest".
+    - The round is stalled by rest: advance if the next round would have a
+      match (037 FR-020 and its exception)."""
     if group.scheduling_mechanism == "manual" or not group.auto_next_round:
         return False
-    if not await round_is_complete(session, group.id, group.current_round_number):
+    if not await _get_active_courts_ordered(session, group.id):
         return False
-    courts = await _get_active_courts_ordered(session, group.id)
-    if not courts:
+    if await round_is_complete(session, group.id, group.current_round_number):
+        if not triggered_by_rest_change:
+            return True
+        started = await session.execute(
+            select(RoundHistory.round_number).where(RoundHistory.group_id == group.id).limit(1)
+        )
+        return (
+            started.scalar_one_or_none() is not None
+            and await _can_generate_any_match(session, group)
+        )
+    if await round_is_stalled_by_rest(session, group):
+        return await _can_generate_any_match(session, group)
+    return False
+
+
+async def check_round_complete_and_maybe_auto_advance(
+    session: AsyncSession, group: Group, *, triggered_by_rest_change: bool = False
+) -> bool:
+    """FR-034/035: if Auto Next Round is on, the round has actually finished,
+    and there's at least one court to generate for (FR-030 — zero courts
+    MUST NOT even attempt generation), advance to the next round. 037: also
+    a round stalled by rest (`round_would_auto_advance()`)."""
+    if not await round_would_auto_advance(
+        session, group, triggered_by_rest_change=triggered_by_rest_change
+    ):
         return False
     await generate_next_round(session, group)
     return True
@@ -1814,19 +2072,7 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             waiting_reason = None
         else:
             current_match = None
-            waiting_reason = (
-                "manual_assignment" if group.scheduling_mechanism == "manual" else "no_queued_match"
-            )
-            if group.scheduling_mechanism != "manual":
-                queued = await peek_next_queued_match(
-                    session, group.id, group.current_round_number, court.id
-                )
-                if queued is not None:
-                    participants = await _match_participants_payload(session, queued.id)
-                    next_up = NextUpPreview(
-                        match_id=str(queued.id),
-                        participants=[ParticipantSummary(**p) for p in participants],
-                    )
+            waiting_reason, next_up = await _idle_court_status(session, group, court.id)
         court_statuses.append(
             CourtScheduleStatus(
                 court_id=str(court.id),
@@ -1837,6 +2083,7 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             )
         )
 
+    partners = await _round_partners(session, group)
     roster_result = await session.execute(
         select(RosterEntry)
         .where(RosterEntry.group_id == group.id, RosterEntry.status == "active")
@@ -1857,6 +2104,9 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
             # function/response) instead of next to live-match participants
             # — this is the one place it's populated within this function.
             member_id=str(entry.member_id) if entry.member_id else None,
+            resting=entry.resting_since is not None,
+            resting_since=entry.resting_since,
+            partner_roster_entry_id=partners.get(entry.id),
         )
         for entry in roster_result.scalars()
     ]
@@ -1875,6 +2125,33 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
         courts=court_statuses,
         roster=roster_statuses,
     )
+
+
+async def _round_partners(session: AsyncSession, group: Group) -> dict[uuid.UUID, str]:
+    """037 FR-022: fixed_partner only — who each player teams with in this
+    round's matches, so a player can see their partner is resting. Taken
+    from the matches rather than `partnerships`, so it's right for auto
+    partners and this round's temporary pairings too."""
+    if group.scheduling_mechanism != "fixed_partner":
+        return {}
+    result = await session.execute(
+        select(MatchParticipant.match_id, MatchParticipant.team, MatchParticipant.roster_entry_id)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(
+            Match.group_id == group.id,
+            Match.round_number == group.current_round_number,
+            _COUNTS_TOWARD_ROUND,
+        )
+    )
+    sides: dict[tuple[uuid.UUID, str], list[uuid.UUID]] = {}
+    for match_id, team, roster_entry_id in result.all():
+        sides.setdefault((match_id, team), []).append(roster_entry_id)
+    partners: dict[uuid.UUID, str] = {}
+    for side in sides.values():
+        if len(side) == 2:
+            partners[side[0]] = str(side[1])
+            partners[side[1]] = str(side[0])
+    return partners
 
 
 async def build_round_matches_list(session: AsyncSession, group: Group) -> RoundMatchesResponse:
@@ -1929,9 +2206,10 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
         if match.status != "abandoned" or match.started_at is not None
         for participant in participants_by_match.get(match.id, [])
     }
+    # Resting players have no match by choice, not as a bye (037).
     roster_result = await session.execute(
         select(RosterEntry.id, RosterEntry.nickname)
-        .where(RosterEntry.group_id == group.id, RosterEntry.status == "active")
+        .where(RosterEntry.group_id == group.id, RosterEntry.status == "active", _IS_READY)
         .order_by(RosterEntry.joined_at, RosterEntry.id)
     )
     sitting_out = [
@@ -1939,6 +2217,44 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
         for row in roster_result.all()
         if str(row.id) not in scheduled
     ]
+
+    # 037-rest-ready-toggle: which queued matches wait on a resting player,
+    # and what happens when they come up (FR-016／FR-018, FR-021).
+    resting_result = await session.execute(
+        select(RosterEntry.id, RosterEntry.nickname)
+        .where(
+            RosterEntry.group_id == group.id,
+            RosterEntry.status == "active",
+            RosterEntry.resting_since.is_not(None),
+        )
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
+    )
+    resting = {str(row.id): row.nickname for row in resting_result.all()}
+    effect: RestEffect = (
+        "substitute"
+        if _substitutes_for_rest(group.scheduling_mechanism, group.match_mode)
+        else "held"
+    )
+    rest_effects: dict[uuid.UUID, RestEffect] = {}
+    waiting_on: list[str] = []
+    for match in matches:
+        if match.status != "queued":
+            continue
+        in_match = [p.roster_entry_id for p in participants_by_match.get(match.id, [])]
+        if any(pid in resting for pid in in_match):
+            rest_effects[match.id] = effect
+            waiting_on.extend(pid for pid in in_match if pid in resting and pid not in waiting_on)
+    waiting_on_rest = None
+    if rest_effects:
+        waiting_on_rest = WaitingOnRest(
+            match_count=len(rest_effects),
+            players=[
+                RosterSummary(roster_entry_id=pid, nickname=nickname)
+                for pid, nickname in resting.items()
+                if pid in waiting_on
+            ],
+            stalled=await round_is_stalled_by_rest(session, group),
+        )
 
     return RoundMatchesResponse(
         round_number=group.current_round_number,
@@ -1952,6 +2268,7 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
             ],
         ),
         sitting_out=sitting_out,
+        waiting_on_rest=waiting_on_rest,
         matches=[
             RoundMatchSummary(
                 match_id=str(match.id),
@@ -1961,6 +2278,7 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
                 score_a=match.score_a,
                 score_b=match.score_b,
                 winner_team=cast("Team | None", match.winner_team),
+                rest_effect=rest_effects.get(match.id),
             )
             for match in matches
         ],
@@ -2104,9 +2422,24 @@ async def build_match_detail(
 
 
 async def _get_active_roster_ordered(session: AsyncSession, group_id: uuid.UUID) -> list[uuid.UUID]:
+    """Everyone in the group, resting or not, in join order — for formal
+    partnerships, which resting doesn't affect (037 FR-034). Anything
+    deciding who plays uses `_get_ready_roster_ordered()` instead."""
     result = await session.execute(
         select(RosterEntry.id)
         .where(RosterEntry.group_id == group_id, RosterEntry.status == "active")
+        .order_by(RosterEntry.joined_at, RosterEntry.id)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def _get_ready_roster_ordered(session: AsyncSession, group_id: uuid.UUID) -> list[uuid.UUID]:
+    """037: `_get_active_roster_ordered()` without resting players, for
+    everything that decides who plays — this round's teams, late joiners'
+    matches, substitutes, the temporary pairing preview."""
+    result = await session.execute(
+        select(RosterEntry.id)
+        .where(RosterEntry.group_id == group_id, RosterEntry.status == "active", _IS_READY)
         .order_by(RosterEntry.joined_at, RosterEntry.id)
     )
     return [row[0] for row in result.all()]
@@ -2266,7 +2599,7 @@ async def _schedule_late_joiner_matches(session: AsyncSession, group: Group) -> 
         sides.setdefault((match_id, team), []).append(roster_entry_id)
     scheduled = {pid for ids in sides.values() for pid in ids}
 
-    active = await _get_active_roster_ordered(session, group.id)
+    active = await _get_ready_roster_ordered(session, group.id)
     newcomers = [pid for pid in active if pid not in scheduled]
     if not newcomers:
         return False
@@ -2369,16 +2702,19 @@ async def _teams_for_newcomers(
     """fixed_partner late-joiner teams: formal partnerships whose both
     members are newcomers (manual partner source only), then the rest in
     join order. An odd one out stays unscheduled until someone else
-    arrives."""
+    arrives. A newcomer whose formal partner is resting waits for them
+    instead of being paired with someone else (037 research.md Decision 8)."""
     newcomer_set = set(newcomers)
     teams: list[tuple[uuid.UUID, uuid.UUID]] = []
+    covered: set[uuid.UUID] = set()
     if group.partner_source == "manual":
-        teams = [
-            team
-            for team in await _get_active_partnership_teams(session, group.id)
-            if team[0] in newcomer_set and team[1] in newcomer_set
-        ]
-    covered = {pid for team in teams for pid in team}
+        ready = set(await _get_ready_roster_ordered(session, group.id))
+        for team in await _get_active_partnership_teams(session, group.id):
+            if team[0] in newcomer_set and team[1] in newcomer_set:
+                teams.append(team)
+            elif any(pid not in ready for pid in team):
+                covered.update(team)
+    covered.update(pid for team in teams for pid in team)
     rest = [pid for pid in newcomers if pid not in covered]
     teams.extend(zip(rest[0::2], rest[1::2], strict=False))
     return teams
@@ -2496,21 +2832,36 @@ async def _pick_substitute(
     match_id: uuid.UUID,
     leaving_id: uuid.UUID,
     appearances: dict[uuid.UUID, int],
+    *,
+    must_be_free: bool = False,
+    exclude: Collection[uuid.UUID] = (),
 ) -> uuid.UUID | None:
-    """Who replaces `leaving_id` in queued doubles match `match_id`: an
-    active member not already in it, with the fewest matches this round,
-    then the fewest past meetings with the three who stay, then the
-    earliest joiner. Players busy on another court right now are fine —
-    the match is queued, and won't be called while they're playing."""
+    """Who replaces `leaving_id` in queued doubles match `match_id`: a ready
+    member not already in it, with the fewest matches this round, then the
+    fewest past meetings with the three who stay, then the earliest joiner.
+    Players busy on another court right now are fine for a leaver — the
+    match is queued, and won't be called while they're playing.
+
+    037-rest-ready-toggle: substituting for a resting player happens as the
+    match is called, so `must_be_free` also rules out anyone on court now;
+    `exclude` holds substitutes already picked for the same match."""
     participants_result = await session.execute(
         select(MatchParticipant.roster_entry_id).where(MatchParticipant.match_id == match_id)
     )
     in_match = set(participants_result.scalars())
     staying = [pid for pid in in_match if pid != leaving_id]
+    unavailable = set(exclude)
+    if must_be_free:
+        busy = await session.execute(
+            select(MatchParticipant.roster_entry_id)
+            .join(Match, Match.id == MatchParticipant.match_id)
+            .where(Match.group_id == group.id, Match.status == "in_progress")
+        )
+        unavailable.update(busy.scalars())
     candidates = [
         pid
-        for pid in await _get_active_roster_ordered(session, group.id)
-        if pid != leaving_id and pid not in in_match
+        for pid in await _get_ready_roster_ordered(session, group.id)
+        if pid != leaving_id and pid not in in_match and pid not in unavailable
     ]
     if not candidates:
         return None
@@ -2689,7 +3040,7 @@ async def preview_random_partner_pairing(
     if group.partner_source != "manual":
         raise ApiError("PARTNER_SOURCE_MISMATCH", status_code=409)
 
-    active_ids = await _get_active_roster_ordered(session, group.id)
+    active_ids = await _get_ready_roster_ordered(session, group.id)
     paired = await _get_paired_ids(session, group.id)
     unpaired_ids = [pid for pid in active_ids if pid not in paired]
     pairs = random_pair_units(unpaired_ids)
@@ -2758,13 +3109,12 @@ async def _publish_match_ended(
     """contracts/ably-events.md `match.ended` — `waiting_reason` is `null`
     when `pulled` is not None (a `rotation.updated` is published right after,
     research.md #7), otherwise reports why the court is idle."""
-    waiting_reason = None
+    waiting_reason: WaitingReason | None = None
     if pulled is None:
-        group_result = await session.execute(
-            select(Group.scheduling_mechanism).where(Group.id == match.group_id)
+        group_result = await session.execute(select(Group).where(Group.id == match.group_id))
+        waiting_reason, _next_up = await _idle_court_status(
+            session, group_result.scalar_one(), court.id
         )
-        mechanism = group_result.scalar_one()
-        waiting_reason = "manual_assignment" if mechanism == "manual" else "no_queued_match"
     await publish(
         court_channel(str(match.group_id), str(court.id)),
         "match.ended",
@@ -3521,7 +3871,18 @@ async def peek_next_queued_match(
     跟實際叫到的不一樣。`court_id` 參數目前未用於篩選（同一輪的排隊比賽尚未
     綁定場地），保留供未來場地優先序邏輯使用，並使函式簽章與「這是哪個場地
     的預告」語意保持明確。"""
-    del court_id  # 見上——目前排隊比賽皆未綁定場地，暫不需要以此篩選
+    choice = await peek_next_call(session, group_id, round_number, court_id)
+    return choice.match if choice is not None else None
+
+
+async def peek_next_call(
+    session: AsyncSession, group_id: uuid.UUID, round_number: int, court_id: uuid.UUID
+) -> NextMatchChoice | None:
+    """037-rest-ready-toggle: `peek_next_queued_match()` plus the
+    substitutions the real call-up would make, for the "next up" preview
+    (FR-015: it MUST promise exactly what gets called). Read-only — the
+    queued match's participants don't change until it is called."""
+    del court_id  # 見 peek_next_queued_match()——目前排隊比賽皆未綁定場地
     return await _choose_next_queued_match(session, group_id, round_number, lock=False)
 
 
@@ -3529,12 +3890,8 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
     """組出 `CourtLiveState`（data-model.md）——供公開 `GET .../state` 端點
     與管理頁場地控制區塊共用。`next_up` 由 US3 補上（`peek_next_queued_match`
     尚未接入時恆為 `None`）。"""
-    group_result = await session.execute(
-        select(Group.current_round_number, Group.scheduling_mechanism).where(
-            Group.id == court.group_id
-        )
-    )
-    round_number, mechanism = group_result.one()
+    group = (await session.execute(select(Group).where(Group.id == court.group_id))).scalar_one()
+    round_number = group.current_round_number
 
     match_result = await session.execute(
         select(Match).where(Match.court_id == court.id, Match.status == "in_progress")
@@ -3542,7 +3899,7 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
     match = match_result.scalar_one_or_none()
 
     current_match: MatchLiveDetail | None = None
-    waiting_reason: str | None = None
+    waiting_reason: WaitingReason | None = None
     next_up: NextUpPreview | None = None
     if match is not None:
         participants = await _match_participants_payload(session, match.id)
@@ -3556,20 +3913,107 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
             detailed_scoring_enabled=match.detailed_scoring_enabled,
         )
     else:
-        waiting_reason = "manual_assignment" if mechanism == "manual" else "no_queued_match"
-        if mechanism != "manual":
-            queued = await peek_next_queued_match(session, court.group_id, round_number, court.id)
-            if queued is not None:
-                participants = await _match_participants_payload(session, queued.id)
-                next_up = NextUpPreview(
-                    match_id=str(queued.id),
-                    participants=[ParticipantSummary(**p) for p in participants],
-                )
+        waiting_reason, next_up = await _idle_court_status(session, group, court.id)
 
     return CourtLiveState(
         court_id=str(court.id),
         round_number=round_number,
         current_match=current_match,
-        waiting_reason=cast("WaitingReason | None", waiting_reason),
+        waiting_reason=waiting_reason,
         next_up=next_up,
     )
+
+
+async def _idle_court_status(
+    session: AsyncSession, group: Group, court_id: uuid.UUID
+) -> tuple[WaitingReason, NextUpPreview | None]:
+    """Why an idle court is waiting, and the match it calls next — shared by
+    every view of a court (admin/member schedule, live court state,
+    `match.ended`) so they all say the same thing.
+
+    037-rest-ready-toggle: the preview is what will actually be called,
+    substitutes included (FR-015). When nothing can be called, the reason
+    says whether it's resting players holding things up (FR-011, FR-017)."""
+    if group.scheduling_mechanism == "manual":
+        return "manual_assignment", None
+    choice = await peek_next_call(session, group.id, group.current_round_number, court_id)
+    if choice is not None:
+        return "no_queued_match", await _next_up_preview(session, choice)
+    return await _rest_waiting_reason(session, group), None
+
+
+async def _next_up_preview(session: AsyncSession, choice: NextMatchChoice) -> NextUpPreview:
+    """037: the lineup that will play, each substitute in the seat of the
+    resting player they replace."""
+    participants = await _match_participants_payload(session, choice.match.id)
+    if not choice.substitutions:
+        return NextUpPreview(
+            match_id=str(choice.match.id),
+            participants=[ParticipantSummary(**p) for p in participants],
+        )
+    ids = [pid for pair in choice.substitutions for pid in pair]
+    nickname_result = await session.execute(
+        select(RosterEntry.id, RosterEntry.nickname).where(RosterEntry.id.in_(ids))
+    )
+    nicknames = {str(row.id): row.nickname for row in nickname_result.all()}
+    substitute_for = {str(resting): str(sub) for resting, sub in choice.substitutions}
+    lineup = [
+        ParticipantSummary(
+            roster_entry_id=substitute_for.get(p["roster_entry_id"], p["roster_entry_id"]),
+            nickname=nicknames.get(substitute_for.get(p["roster_entry_id"], ""), p["nickname"]),
+            team=cast("Team", p["team"]),
+        )
+        for p in participants
+    ]
+    return NextUpPreview(
+        match_id=str(choice.match.id),
+        participants=lineup,
+        substitutions=[
+            SubstitutionPreview(
+                resting=RosterSummary(roster_entry_id=resting, nickname=nicknames[resting]),
+                substitute=RosterSummary(roster_entry_id=sub, nickname=nicknames[sub]),
+            )
+            for resting, sub in substitute_for.items()
+        ],
+    )
+
+
+async def _rest_waiting_reason(session: AsyncSession, group: Group) -> WaitingReason:
+    """037: the reason an idle court gives when nothing can be called.
+    - held_for_rest: this round's queued matches all wait on resting players;
+    - not_enough_ready: nothing queued, continuous rotation can't make a
+      four from the idle ready players, and someone is resting;
+    - otherwise the old no_queued_match."""
+    round_filter = (
+        Match.group_id == group.id,
+        Match.round_number == group.current_round_number,
+        Match.status == "queued",
+    )
+    queued = await session.execute(select(Match.id).where(*round_filter).limit(1))
+    if queued.scalar_one_or_none() is not None:
+        playable = await session.execute(
+            select(Match.id).where(*round_filter, ~_has_resting_participant()).limit(1)
+        )
+        return "no_queued_match" if playable.scalar_one_or_none() else "held_for_rest"
+    if not _continuous_rotation_applies(group):
+        return "no_queued_match"
+    anyone_resting = await session.execute(
+        select(RosterEntry.id)
+        .where(
+            RosterEntry.group_id == group.id,
+            RosterEntry.status == "active",
+            RosterEntry.resting_since.is_not(None),
+        )
+        .limit(1)
+    )
+    if anyone_resting.scalar_one_or_none() is None:
+        return "no_queued_match"
+    busy_result = await session.execute(
+        select(MatchParticipant.roster_entry_id)
+        .join(Match, Match.id == MatchParticipant.match_id)
+        .where(Match.group_id == group.id, Match.status == "in_progress")
+    )
+    busy = set(busy_result.scalars())
+    ready = await _get_active_roster_for_selection(session, group.id)
+    idle_ready = [pid for pid, _wait, _joined in ready if pid not in busy]
+    return "not_enough_ready" if len(idle_ready) < _DOUBLES_PER_MATCH else "no_queued_match"

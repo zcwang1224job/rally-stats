@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
+import { waitingReasonKey } from '../../core/waiting-reason-label';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
 import {
@@ -41,6 +42,7 @@ import {
   styleUrl: './scoreboard.component.scss',
 })
 export class ScoreboardComponent {
+  readonly waitingReasonKey = waitingReasonKey;
   private readonly route = inject(ActivatedRoute);
   private readonly heartbeat = inject(LinkHeartbeatService);
   private readonly realtime = inject(RealtimeService);
