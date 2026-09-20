@@ -58,6 +58,19 @@
                     }}
                   }
                 </span>
+                <!-- 邀請的結局直接標在列表上：一則 group_invite 通知會活得
+                     比 pending 久，不標的話「團長已取消」「對方已拒絕」都
+                     要點進去才看得到。pending 不標，那是通知文字本身就已經
+                     在說的事。 -->
+                @if (gi.status !== 'pending') {
+                  <span
+                    class="status-badge"
+                    [class.status-badge--success]="gi.status === 'accepted'"
+                    [class.status-badge--danger]="gi.status === 'declined' || gi.status === 'cancelled' || gi.status === 'invalidated'"
+                  >
+                    {{ ('groupInvite.status.' + gi.status) | translate }}
+                  </span>
+                }
               }
               <span class="notification-item__time">
                 {{ notification.created_at | date: 'M/d HH:mm' }}

@@ -100,6 +100,7 @@ export class AdminPageComponent {
   readonly invitableFriends = signal<InvitableFriendSummary[] | null>(null);
   readonly invitesErrorKey = signal<string | null>(null);
   readonly sendingInviteToMemberId = signal<string | null>(null);
+  readonly cancellingInviteId = signal<string | null>(null);
   readonly adminView = signal<AdminGroupResponse | null>(null);
   readonly loading = signal(true);
   readonly errorKey = signal<string | null>(null);
@@ -353,6 +354,13 @@ export class AdminPageComponent {
    * above. */
   loadInvitableFriends(): void {
     this.invitesErrorKey.set(null);
+    this.refreshInvitableFriends();
+  }
+
+  /** 只重抓列表，不碰 invitesErrorKey——失敗路徑要同時做兩件事：留著剛
+   * 剛那則錯誤訊息，又讓列表跟上伺服器的真實狀態。清錯誤的責任留給上面
+   * 的 loadInvitableFriends()。 */
+  private refreshInvitableFriends(): void {
     this.groupAdmin.listInvitableFriends(this.groupId).subscribe({
       next: (response) => this.invitableFriends.set(response.friends),
       error: (error: ApiError) => {
@@ -380,6 +388,34 @@ export class AdminPageComponent {
           return;
         }
         this.invitesErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  /** 團長在好友按下「接受邀請」之前把邀請收回。沒有二次確認對話框：邀請
+   * 沒有實際資料可毀，收回後還能再邀一次（同 sendInvite 一樣直接送出）。
+   * 失敗時一律重抓列表——最常見的失敗就是對方剛好先接受了，這時畫面上那
+   * 顆「取消邀請」按鈕本來就該換成「已在團內」。 */
+  cancelInvite(friend: InvitableFriendSummary): void {
+    if (!friend.invite_id) {
+      return;
+    }
+    const inviteId = friend.invite_id;
+    this.invitesErrorKey.set(null);
+    this.cancellingInviteId.set(inviteId);
+    this.groupAdmin.cancelInvite(this.groupId, inviteId).subscribe({
+      next: () => {
+        this.cancellingInviteId.set(null);
+        this.loadInvitableFriends();
+      },
+      error: (error: ApiError) => {
+        this.cancellingInviteId.set(null);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.invitesErrorKey.set(error.i18nKey);
+        this.refreshInvitableFriends();
       },
     });
   }

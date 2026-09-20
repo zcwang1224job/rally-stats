@@ -26,6 +26,7 @@ from app.domains.group.service import get_group_by_id, join_group
 from app.domains.group_invite.models import GroupInvite
 from app.domains.group_invite.schemas import (
     AcceptGroupInviteResponse,
+    CancelGroupInviteResponse,
     DeclineGroupInviteResponse,
     GroupInviteDetailResponse,
     InvitableFriendsResponse,
@@ -51,6 +52,21 @@ async def _get_invite_for_invitee(
     result = await session.execute(select(GroupInvite).where(GroupInvite.id == invite_id))
     invite = result.scalar_one_or_none()
     if invite is None or invite.invitee_member_id != member_id:
+        raise ApiError("GROUP_INVITE_NOT_FOUND", status_code=404)
+    return invite
+
+
+async def _get_invite_for_group(
+    session: AsyncSession, group_id: uuid.UUID, invite_id: uuid.UUID
+) -> GroupInvite:
+    """Creator-side counterpart of `_get_invite_for_invitee`: the caller is
+    already authorized for `group_id` by `require_admin`, so an invite
+    belonging to some OTHER group is reported as `GROUP_INVITE_NOT_FOUND`
+    rather than as a permission error — same don't-reveal-existence
+    convention."""
+    result = await session.execute(select(GroupInvite).where(GroupInvite.id == invite_id))
+    invite = result.scalar_one_or_none()
+    if invite is None or invite.group_id != group_id:
         raise ApiError("GROUP_INVITE_NOT_FOUND", status_code=404)
     return invite
 
@@ -135,6 +151,10 @@ async def list_invitable_friends(session: AsyncSession, group: Group) -> Invitab
     itself is left untouched — this is a read-time presentation decision,
     not a state transition (FR-014's `invalidated` state stays reserved
     for friendship-dissolution/group-disband).
+
+    A `cancelled` invite surfaces as exactly that (so the creator can see
+    they withdrew it) and, like `declined`/`invalidated`, does not stand in
+    the way of a fresh invite — only `pending` does.
 
     Errors: `GROUP_NOT_MEMBER_CREATED`."""
     if group.created_by_member_id is None:
@@ -259,13 +279,18 @@ async def accept_invite(
     """FR-006/007/013. Reuses `join_group(skip_password=True)` as the sole
     write path for the actual join (research.md #3) — capacity/disbanded/
     one-active-group-per-member enforcement all stay single-sourced there.
-    Errors: `GROUP_INVITE_NOT_FOUND`, `GROUP_INVITE_NOT_PENDING`,
-    `GROUP_DISBANDED` (defensive only — disbanding already invalidates
-    pending invites via the hook, so `GROUP_INVITE_NOT_PENDING` fires
-    first in practice), `GROUP_FULL` (triggers the FR-013 creator
-    notification, invite stays pending), `ALREADY_ACTIVE_IN_ANOTHER_GROUP`,
+    Errors: `GROUP_INVITE_NOT_FOUND`, `GROUP_INVITE_CANCELLED` (the
+    creator withdrew it first — split out of `GROUP_INVITE_NOT_PENDING`
+    only so the invitee is told WHY the button they were looking at no
+    longer works), `GROUP_INVITE_NOT_PENDING`, `GROUP_DISBANDED`
+    (defensive only — disbanding already invalidates pending invites via
+    the hook, so `GROUP_INVITE_NOT_PENDING` fires first in practice),
+    `GROUP_FULL` (triggers the FR-013 creator notification, invite stays
+    pending), `ALREADY_ACTIVE_IN_ANOTHER_GROUP`,
     `MEMBER_NICKNAME_NOT_SET`."""
     invite = await _get_invite_for_invitee(session, member.id, invite_id)
+    if invite.status == "cancelled":
+        raise ApiError("GROUP_INVITE_CANCELLED", status_code=409)
     if invite.status != "pending":
         raise ApiError("GROUP_INVITE_NOT_PENDING", status_code=409)
 
@@ -311,6 +336,37 @@ async def decline_invite(
     await session.commit()
     await session.refresh(invite)
     return DeclineGroupInviteResponse(invite_id=str(invite.id), status="declined")
+
+
+async def cancel_invite(
+    session: AsyncSession, group_id: uuid.UUID, invite_id: uuid.UUID
+) -> CancelGroupInviteResponse:
+    """The creator withdrawing an invite the invitee has not answered yet:
+    the invite becomes terminal `cancelled`, so the invitee's later
+    `accept_invite()` hits the existing `pending` guard and they never get
+    in (bug report: 團長邀請好友，在好友接受邀請之前，團長可以取消邀請,
+    這樣好友在按下接受邀請之後，就進不來了).
+
+    Mirrors `decline_invite()` from the other side, down to not blocking a
+    future re-invite — the partial unique index only covers `pending`, so a
+    later `send_invite()` just creates an independent new row. The
+    invitee's original `group_invite` notification is deliberately left in
+    place: it now links to a detail page that shows `cancelled` and offers
+    no buttons, the same way a `declined`/`invalidated` invite does.
+
+    Errors: `GROUP_INVITE_NOT_FOUND` (unknown invite, or one belonging to
+    another group), `GROUP_INVITE_NOT_PENDING` (already accepted/declined/
+    invalidated/cancelled — in particular, an accept that landed first
+    wins)."""
+    invite = await _get_invite_for_group(session, group_id, invite_id)
+    if invite.status != "pending":
+        raise ApiError("GROUP_INVITE_NOT_PENDING", status_code=409)
+
+    invite.status = "cancelled"
+    invite.updated_at = datetime.now(UTC)
+    await session.commit()
+    await session.refresh(invite)
+    return CancelGroupInviteResponse(invite_id=str(invite.id), status="cancelled")
 
 
 async def invalidate_pending_invites_for_group(session: AsyncSession, group_id: uuid.UUID) -> None:

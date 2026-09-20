@@ -1,7 +1,13 @@
 // Mirrors apps/api/app/domains/group_invite/schemas.py — see
 // specs/013-group-invite-friends/contracts/group-invite-api.md.
 
-export type GroupInviteStatus = 'pending' | 'accepted' | 'declined' | 'invalidated';
+export type GroupInviteStatus =
+  | 'pending'
+  | 'accepted'
+  | 'declined'
+  // The creator withdrew the invite before the invitee answered.
+  | 'cancelled'
+  | 'invalidated';
 export type InviteStatusForFriend = GroupInviteStatus | 'not_invited' | 'already_member';
 
 export interface InvitableFriendSummary {
@@ -38,4 +44,9 @@ export interface AcceptGroupInviteResponse {
 export interface DeclineGroupInviteResponse {
   invite_id: string;
   status: 'declined';
+}
+
+export interface CancelGroupInviteResponse {
+  invite_id: string;
+  status: 'cancelled';
 }

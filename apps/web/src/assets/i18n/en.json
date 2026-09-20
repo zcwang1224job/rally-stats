@@ -168,6 +168,7 @@
       "pending": "Pending",
       "accepted": "Accepted",
       "declined": "Declined",
+      "cancelled": "Cancelled by Creator",
       "invalidated": "Invalidated"
     },
     "acceptButton": "Accept Invite",
@@ -178,11 +179,13 @@
     "title": "Invite Friends",
     "empty": "No friends available to invite",
     "inviteButton": "Send Invite",
+    "cancelButton": "Cancel Invite",
     "status": {
       "not_invited": "Not Invited",
       "pending": "Pending",
       "accepted": "Accepted",
       "declined": "Declined",
+      "cancelled": "Invite Cancelled",
       "invalidated": "Invalidated",
       "already_member": "Already in Group"
     }
@@ -1229,6 +1232,7 @@
     "INVITE_ALREADY_PENDING": "An invite has already been sent to this friend and is awaiting a response",
     "GROUP_INVITE_NOT_FOUND": "Group invite not found",
     "GROUP_INVITE_NOT_PENDING": "This invite has already been handled",
+    "GROUP_INVITE_CANCELLED": "The group creator cancelled this invite, so you can no longer join",
     "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records",
     "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again."
   }

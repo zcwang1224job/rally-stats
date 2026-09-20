@@ -218,6 +218,114 @@ async def test_accept_invite_skips_password_even_with_one_set(
     assert body["nickname"] == "好友F"
 
 
+async def test_cancel_invite_blocks_the_invitees_accept(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """End-to-end shape of the bug report: the creator withdraws a pending
+    invite, and the friend who then taps 接受邀請 does not get in."""
+    a_token, _a_number = await _register_verified_and_login(
+        client, db_session, "inv-contract-g@example.com", "團長G", valid_turnstile_token
+    )
+    b_token, b_number = await _register_verified_and_login(
+        client, db_session, "inv-contract-h@example.com", "好友H", valid_turnstile_token
+    )
+    await _become_friends(client, a_token, b_token, b_number)
+    group = await _create_member_group(client, a_token, valid_turnstile_token)
+    admin_headers = {"Authorization": f"Bearer {group['admin_token']}"}
+    invitable = (
+        await client.get(f"/groups/{group['group_id']}/invitable-friends", headers=admin_headers)
+    ).json()
+    invitee_id = invitable["friends"][0]["member_id"]
+    sent = await client.post(
+        f"/groups/{group['group_id']}/invites",
+        headers=admin_headers,
+        json={"invitee_member_id": invitee_id},
+    )
+    invite_id = sent.json()["invite_id"]
+
+    cancelled = await client.post(
+        f"/groups/{group['group_id']}/invites/{invite_id}/cancel", headers=admin_headers
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json() == {"invite_id": invite_id, "status": "cancelled"}
+
+    b_headers = {"Authorization": f"Bearer {b_token}"}
+    detail = await client.get(f"/group-invites/{invite_id}", headers=b_headers)
+    assert detail.json()["status"] == "cancelled"
+
+    accepted = await client.post(f"/group-invites/{invite_id}/accept", headers=b_headers)
+    assert accepted.status_code == 409
+    assert accepted.json()["error_code"] == "GROUP_INVITE_CANCELLED"
+
+    # And the creator can invite them again afterwards.
+    listed = (
+        await client.get(f"/groups/{group['group_id']}/invitable-friends", headers=admin_headers)
+    ).json()
+    assert listed["friends"][0]["invite_status"] == "cancelled"
+    resent = await client.post(
+        f"/groups/{group['group_id']}/invites",
+        headers=admin_headers,
+        json={"invitee_member_id": invitee_id},
+    )
+    assert resent.status_code == 201
+    assert resent.json()["invite_id"] != invite_id
+
+
+async def test_cancel_invite_requires_admin_token(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    a_token, _a_number = await _register_verified_and_login(
+        client, db_session, "inv-contract-i@example.com", "團長I", valid_turnstile_token
+    )
+    b_token, b_number = await _register_verified_and_login(
+        client, db_session, "inv-contract-j@example.com", "好友J", valid_turnstile_token
+    )
+    await _become_friends(client, a_token, b_token, b_number)
+    group = await _create_member_group(client, a_token, valid_turnstile_token)
+    admin_headers = {"Authorization": f"Bearer {group['admin_token']}"}
+    invitable = (
+        await client.get(f"/groups/{group['group_id']}/invitable-friends", headers=admin_headers)
+    ).json()
+    sent = await client.post(
+        f"/groups/{group['group_id']}/invites",
+        headers=admin_headers,
+        json={"invitee_member_id": invitable["friends"][0]["member_id"]},
+    )
+    invite_id = sent.json()["invite_id"]
+    path = f"/groups/{group['group_id']}/invites/{invite_id}/cancel"
+
+    assert (await client.post(path)).status_code == 401
+
+    # A valid admin token, but for somebody else's group: rejected by the
+    # endpoint's own `group.id != group_id` guard before it ever reaches
+    # the invite.
+    other = await _create_member_group(
+        client, b_token, valid_turnstile_token, name="Someone Else's Group"
+    )
+    as_other_admin = await client.post(
+        path, headers={"Authorization": f"Bearer {other['admin_token']}"}
+    )
+    assert as_other_admin.status_code == 401
+    assert as_other_admin.json()["error_code"] == "ADMIN_TOKEN_INVALID"
+
+
+async def test_cancel_unknown_invite_returns_not_found(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    a_token, _a_number = await _register_verified_and_login(
+        client, db_session, "inv-contract-k@example.com", "團長K", valid_turnstile_token
+    )
+    group = await _create_member_group(client, a_token, valid_turnstile_token)
+    admin_headers = {"Authorization": f"Bearer {group['admin_token']}"}
+
+    response = await client.post(
+        f"/groups/{group['group_id']}/invites/00000000-0000-0000-0000-000000000000/cancel",
+        headers=admin_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["error_code"] == "GROUP_INVITE_NOT_FOUND"
+
+
 async def test_group_invite_endpoints_require_login(client: AsyncClient) -> None:
     invite_id = "00000000-0000-0000-0000-000000000000"
     assert (await client.get(f"/group-invites/{invite_id}")).status_code == 401

@@ -8,6 +8,7 @@ import { CourtManagementService } from '../court-management/court-management.ser
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
+import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { GroupAdminService } from '../group-admin.service';
 import { AdminGroupResponse } from '../group-admin.models';
 import { ScheduleService } from '../schedule-management/schedule.service';
@@ -917,5 +918,99 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('errors.ROSTER_ENTRY_ALREADY_LEFT');
+  });
+
+  // 團長取消邀請：好友還沒回覆之前把邀請收回
+  function setupInvitesTab(
+    friends: InvitableFriendSummary[],
+    groupAdminOverrides: Partial<GroupAdminService> = {},
+  ) {
+    const fixture = setup(false, {
+      getAdminView: () =>
+        of({
+          ...adminGroupResponse,
+          group: { ...adminGroupResponse.group, created_by_member: true },
+        }),
+      listInvitableFriends: () => of({ friends }),
+      ...groupAdminOverrides,
+    });
+    // 場地 / 賽程 / 名單 / 邀請好友 / 設定 —— created_by_member 為真才有第 4 顆
+    navButtons(fixture)[3].click();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const pendingFriend: InvitableFriendSummary = {
+    member_id: 'm-friend',
+    nickname: '小美',
+    user_number: 'aB3dEfGh',
+    invite_status: 'pending',
+    invite_id: 'inv-1',
+  };
+
+  function inviteRowButton(fixture: ReturnType<typeof setup>): HTMLButtonElement {
+    return fixture.nativeElement.querySelector('.invite-friend-list button');
+  }
+
+  it('a pending invite offers 取消邀請 instead of 送出邀請', () => {
+    const fixture = setupInvitesTab([pendingFriend]);
+
+    expect(inviteRowButton(fixture).textContent).toContain('inviteSection.cancelButton');
+  });
+
+  it('取消邀請 calls cancelInvite with the invite id and reloads the list', () => {
+    const cancelInvite = vi.fn(() => of({ invite_id: 'inv-1', status: 'cancelled' as const }));
+    let call = 0;
+    const fixture = setupInvitesTab([pendingFriend], {
+      cancelInvite,
+      listInvitableFriends: () => {
+        call += 1;
+        return of({
+          friends: [
+            call === 1
+              ? pendingFriend
+              : { ...pendingFriend, invite_status: 'cancelled' as const },
+          ],
+        });
+      },
+    });
+
+    inviteRowButton(fixture).click();
+    fixture.detectChanges();
+
+    expect(cancelInvite).toHaveBeenCalledWith('g1', 'inv-1');
+    // 收回之後那顆按鈕換回「送出邀請」，團長可以再邀一次
+    expect(fixture.nativeElement.textContent).toContain('inviteSection.status.cancelled');
+    expect(inviteRowButton(fixture).textContent).toContain('inviteSection.inviteButton');
+  });
+
+  it('a failed cancel shows the error and re-reads the list (對方可能剛好先接受了)', () => {
+    let call = 0;
+    const fixture = setupInvitesTab([pendingFriend], {
+      cancelInvite: () =>
+        throwError(() => ({
+          errorCode: 'GROUP_INVITE_NOT_PENDING',
+          i18nKey: 'errors.GROUP_INVITE_NOT_PENDING',
+          detail: null,
+          status: 409,
+        })),
+      listInvitableFriends: () => {
+        call += 1;
+        return of({
+          friends: [
+            call === 1
+              ? pendingFriend
+              : { ...pendingFriend, invite_status: 'already_member' as const },
+          ],
+        });
+      },
+    });
+
+    inviteRowButton(fixture).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('errors.GROUP_INVITE_NOT_PENDING');
+    expect(fixture.nativeElement.textContent).toContain('inviteSection.status.already_member');
+    expect(inviteRowButton(fixture)).toBeNull();
   });
 });
