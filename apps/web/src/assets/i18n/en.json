@@ -654,7 +654,9 @@
       "nicknamePlaceholder": "Enter guest nickname",
       "submit": "Add Guest",
       "shareLinkTitle": "Share with {{nickname}}",
-      "shareLinkHint": "Give this link or QR code to them — they can then check the match status from their own phone"
+      "shareLinkHint": "Give this link or QR code to them — they can then check the match status from their own phone",
+      "shareToLine": "Share to LINE",
+      "lineShareMessage": "Hi {{nickname}}, here's your own link for today's session — open it to follow the matches: {{link}}"
     }
   },
   "groupMemberView": {
