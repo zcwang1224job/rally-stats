@@ -769,6 +769,11 @@ class EndingStats(BaseModel):
 
 
 class MatchRecordDetailResponse(MatchRecordSummary):
+    # 040-match-share-card FR-012a: the match's own points-to-win — the
+    # Match.target_score snapshot taken at creation (constitution III),
+    # never the group's current setting. The share card scales its
+    # highlight thresholds by it.
+    target_score: int
     record_completeness: Literal["complete", "partial", "none"]
     events: list[ScoreEventSummary]
     # research.md Decision 4: `[]` is the single signal for "no player was

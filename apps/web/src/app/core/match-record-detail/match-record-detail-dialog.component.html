@@ -15,6 +15,18 @@
   } @else if (detail(); as d) {
     <h2>{{ 'matchRecordDetail.title' | translate }}</h2>
 
+    <!-- 040-match-share-card FR-001: only once the detail has loaded, and
+         only where the caller supplied a share context. -->
+    @if (shareContext(); as context) {
+      <button
+        type="button"
+        class="btn btn--secondary share-card-button"
+        (click)="shareDialog.open(d, context)"
+      >
+        {{ 'matchShareCard.openButton' | translate }}
+      </button>
+    }
+
     <!-- feature/match-record-detail-scoreboard-style: a compact echo of the
          live scoreboard (scoreboard.component.scss) — team-colored dots
          (--color-team-a-bg/-b-bg, the SAME pair the scoreboard/chart/
@@ -284,4 +296,8 @@
       </div>
     }
   }
+
+  <!-- Outside the loading/error branches so it stays mounted while its own
+       preview is open. -->
+  <app-share-card-dialog #shareDialog />
 </dialog>

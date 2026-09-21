@@ -16,6 +16,7 @@ import {
   OpponentRecord,
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
+import { ShareCardContext } from '../../../../core/match-share-card/share-card.models';
 import { NicknameComponent } from '../../../../core/nickname/nickname.component';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
@@ -94,6 +95,13 @@ export class GroupHistoryComponent {
   readonly detailLoadError = signal(false);
 
   readonly history = signal<MemberGroupHistoryResponse | null>(null);
+
+  /** 040-match-share-card FR-017: a whole group's history is never "my
+   * report", even for matches the viewer played in — always neutral. */
+  readonly shareContext = computed<ShareCardContext | null>(() => {
+    const history = this.history();
+    return history ? { groupName: history.group_name, perspective: { kind: 'neutral' } } : null;
+  });
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
 

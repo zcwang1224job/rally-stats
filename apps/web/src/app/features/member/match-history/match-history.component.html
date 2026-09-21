@@ -197,7 +197,7 @@
           [result]="match.won ? 'win' : 'loss'"
           [groupName]="match.group_name"
           [candidateFor]="candidateLookup"
-          (opened)="openDetail(match.match_id)"
+          (opened)="openDetail(match)"
         ></li>
       }
     </ul>
@@ -212,4 +212,5 @@
   [detail]="detail()"
   [loading]="detailLoading()"
   [loadError]="detailLoadError()"
+  [shareContext]="shareContext()"
 />

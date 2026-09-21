@@ -1,22 +1,14 @@
 import { Component, ElementRef, computed, effect, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
-import {
-  MatchRecordDetailResponse,
-  ScoreEventSummary,
-  ShotPlacementDetail,
-} from '../api/group-member-view.models';
+import { MatchRecordDetailResponse, ShotPlacementDetail } from '../api/group-member-view.models';
 import { CourtDiagramComponent } from '../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../nickname/nickname.component';
+import { ShareCardContext } from '../match-share-card/share-card.models';
+import { ShareCardDialogComponent } from '../match-share-card/share-card-dialog/share-card-dialog.component';
 import { MatchDerivedStatsComponent } from './match-derived-stats/match-derived-stats.component';
+import { ScoreTrendPoint, buildScoreTrendPoints } from './score-trend';
 
-interface ChartPoint {
-  x: number;
-  yA: number;
-  yB: number;
-  elapsedSeconds: number;
-  scoreA: number;
-  scoreB: number;
-}
+type ChartPoint = ScoreTrendPoint;
 
 interface YAxisTick {
   value: number;
@@ -74,7 +66,13 @@ export function nearestPointIndex(points: readonly { x: number }[], xPercent: nu
  * groupId 參數決定端點」導致的 I1 那類錯誤。 */
 @Component({
   selector: 'app-match-record-detail-dialog',
-  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent, MatchDerivedStatsComponent],
+  imports: [
+    TranslatePipe,
+    NicknameComponent,
+    CourtDiagramComponent,
+    MatchDerivedStatsComponent,
+    ShareCardDialogComponent,
+  ],
   templateUrl: './match-record-detail-dialog.component.html',
   styleUrl: './match-record-detail-dialog.component.scss',
 })
@@ -82,6 +80,10 @@ export class MatchRecordDetailDialogComponent {
   readonly detail = input<MatchRecordDetailResponse | null>(null);
   readonly loading = input(false);
   readonly loadError = input(false);
+  /** 040-match-share-card: the group name and perspective only the caller
+   * knows (which list the match was opened from). null = this caller
+   * doesn't offer a share card, so no button. */
+  readonly shareContext = input<ShareCardContext | null>(null);
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private readonly plotArea = viewChild<ElementRef<HTMLElement>>('plotArea');
@@ -107,33 +109,11 @@ export class MatchRecordDetailDialogComponent {
     return Math.max(d?.score_a ?? 0, d?.score_b ?? 0, 1);
   });
 
-  /** research.md #3: chart x-axis is elapsed seconds since match start.
-   * For a `"complete"` record, a synthetic (0, 0:0) origin point is
-   * prepended — the match really did start there. For `"partial"`, that
-   * origin is unknown and MUST NOT be fabricated (FR-006a), so the chart
-   * starts at the first recorded event's already-elevated score. */
+  /** research.md #3's point layout, now in `score-trend.ts` so the 040
+   * share card draws the exact same shape (040 research.md Decision 4). */
   readonly chartPoints = computed<ChartPoint[] | null>(() => {
     const d = this.detail();
-    if (!d || d.events.length === 0) {
-      return null;
-    }
-    const events: ScoreEventSummary[] =
-      d.record_completeness === 'complete'
-        ? [
-            { side: 'A', delta: 1, score_a: 0, score_b: 0, elapsed_seconds: 0, detail: null },
-            ...d.events,
-          ]
-        : d.events;
-    const maxElapsed = Math.max(events[events.length - 1].elapsed_seconds, 1);
-    const maxScore = this.maxScore();
-    return events.map((event) => ({
-      x: (event.elapsed_seconds / maxElapsed) * 100,
-      yA: 100 - (event.score_a / maxScore) * 100,
-      yB: 100 - (event.score_b / maxScore) * 100,
-      elapsedSeconds: event.elapsed_seconds,
-      scoreA: event.score_a,
-      scoreB: event.score_b,
-    }));
+    return d ? buildScoreTrendPoints(d) : null;
   });
 
   readonly polylineA = computed(

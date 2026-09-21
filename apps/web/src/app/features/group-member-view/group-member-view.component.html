@@ -56,7 +56,7 @@
           <app-standings [groupId]="groupId" />
         }
         @case ('match-records') {
-          <app-match-records [groupId]="groupId" />
+          <app-match-records [groupId]="groupId" [groupName]="g.name" />
         }
       }
     </div>

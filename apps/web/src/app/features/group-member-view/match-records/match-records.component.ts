@@ -1,4 +1,4 @@
-import { Component, effect, inject, input, signal, viewChild } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { MatchCardComponent } from '../../../shared/match-card/match-card.component';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
@@ -9,6 +9,7 @@ import {
   MatchRecordDetailResponse,
 } from '../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
+import { ShareCardContext } from '../../../core/match-share-card/share-card.models';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
 import { GroupMemberViewService } from '../group-member-view.service';
@@ -30,6 +31,15 @@ import { GroupMemberViewService } from '../group-member-view.service';
 })
 export class MatchRecordsComponent {
   readonly groupId = input.required<string>();
+  /** 040-match-share-card: the share card names the group; the shell above
+   * has already loaded it. */
+  readonly groupName = input.required<string>();
+
+  /** FR-017: in-group records are always shared neutrally. */
+  readonly shareContext = computed<ShareCardContext>(() => ({
+    groupName: this.groupName(),
+    perspective: { kind: 'neutral' },
+  }));
 
   private readonly memberView = inject(GroupMemberViewService);
   private readonly auth = inject(AuthService);

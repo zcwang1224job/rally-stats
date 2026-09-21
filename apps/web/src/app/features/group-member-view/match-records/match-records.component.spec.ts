@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
 import { GroupMatchRecordsResponse } from '../../../core/api/group-member-view.models';
+import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
@@ -83,6 +84,7 @@ function setup(
   });
   const fixture = TestBed.createComponent(MatchRecordsComponent);
   fixture.componentRef.setInput('groupId', 'g1');
+  fixture.componentRef.setInput('groupName', '週三羽球團');
   fixture.detectChanges();
   return fixture;
 }
@@ -149,6 +151,21 @@ describe('MatchRecordsComponent match detail', () => {
 
     expect(detailCalls.length).toBe(1);
     expect(detailCalls[0]).toEqual(['g1', 'm1']);
+  });
+
+  // 040-match-share-card FR-017: in-group records are shared neutrally.
+  it('hands the detail dialog a neutral share context with the group name input', () => {
+    const fixture = setup();
+
+    (fixture.nativeElement.querySelectorAll('.record-list li')[0] as HTMLElement).click();
+    fixture.detectChanges();
+
+    const dialog = fixture.debugElement.query(By.directive(MatchRecordDetailDialogComponent))
+      .componentInstance as MatchRecordDetailDialogComponent;
+    expect(dialog.shareContext()).toEqual({
+      groupName: '週三羽球團',
+      perspective: { kind: 'neutral' },
+    });
   });
 });
 

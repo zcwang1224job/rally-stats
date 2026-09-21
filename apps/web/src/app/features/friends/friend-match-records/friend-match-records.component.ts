@@ -7,8 +7,10 @@ import { PaginationComponent } from '../../../shared/pagination/pagination.compo
 import { ApiError } from '../../../core/api/api-error';
 import {
   MatchRecordDetailResponse,
+  MemberMatchRecordSummary,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import { ShareCardContext } from '../../../core/match-share-card/share-card.models';
 import {
   DashboardMetricKey,
   MemberMatchDashboardResponse,
@@ -128,6 +130,7 @@ export class FriendMatchRecordsComponent {
   readonly detail = signal<MatchRecordDetailResponse | null>(null);
   readonly detailLoading = signal(false);
   readonly detailLoadError = signal(false);
+  readonly shareContext = signal<ShareCardContext | null>(null);
 
   constructor() {
     this.load(this.page());
@@ -168,12 +171,14 @@ export class FriendMatchRecordsComponent {
   /** Mirrors `match-history.component.ts`'s existing `openDetail()` —
    * same dialog component, same loading/error signal dance, just a
    * different (friend-scoped) source endpoint. */
-  openDetail(matchId: string): void {
+  openDetail(match: MemberMatchRecordSummary): void {
+    // 040-match-share-card FR-017: a friend's match is shared neutrally.
+    this.shareContext.set({ groupName: match.group_name, perspective: { kind: 'neutral' } });
     this.detail.set(null);
     this.detailLoadError.set(false);
     this.detailLoading.set(true);
     this.detailDialogRef().open();
-    this.auth.getFriendMatchRecordDetail(this.memberId, matchId).subscribe({
+    this.auth.getFriendMatchRecordDetail(this.memberId, match.match_id).subscribe({
       next: (response) => {
         this.detail.set(response);
         this.detailLoading.set(false);

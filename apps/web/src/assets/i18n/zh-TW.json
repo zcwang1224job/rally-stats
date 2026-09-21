@@ -1136,6 +1136,43 @@
       }
     }
   },
+  "matchShareCard": {
+    "openButton": "分享圖卡",
+    "previewTitle": "分享圖卡",
+    "themeLabel": "配色",
+    "themeLight": "亮色",
+    "themeDark": "暗色",
+    "share": "分享",
+    "copy": "複製圖片",
+    "copied": "已複製圖片",
+    "download": "下載圖片",
+    "close": "關閉",
+    "generating": "圖卡產生中…",
+    "generateError": "圖卡產生失敗，請稍後再試。",
+    "shareError": "分享失敗，可以改用「下載圖片」。",
+    "copyError": "複製失敗，可以改用「下載圖片」。",
+    "badge": {
+      "win": "勝",
+      "victory": "勝利",
+      "defeat": "落敗"
+    },
+    "dateFormat": "yyyy/M/d",
+    "round": "第 {{round}} 輪",
+    "duration": "比賽時長 {{minutes}} 分 {{seconds}} 秒",
+    "durationHours": "比賽時長 {{hours}} 小時 {{minutes}} 分",
+    "avgPerPoint": "平均每分 {{seconds}} 秒",
+    "brand": "Rally Stats",
+    "altText": "比賽圖卡：{{first}} {{firstScore}} 比 {{second}} {{secondScore}}，{{winner}} 獲勝",
+    "highlight": {
+      "comeback": "最大落後 {{deficit}} 分逆轉勝",
+      "matchPointsSaved": "化解 {{count}} 個賽末點",
+      "deuceWin": "延長賽 {{scoreFor}}:{{scoreAgainst}} 勝出",
+      "run": "最長連得 {{length}} 分",
+      "winnerRate": "主動得分 {{percent}}",
+      "leadChanges": "領先易手 {{count}} 次",
+      "bigMargin": "以 {{margin}} 分差勝出"
+    }
+  },
   "errors": {
     "VALIDATION_ERROR": "欄位資料不正確，請檢查後重新送出",
     "OAUTH_PROVIDER_UNKNOWN": "不支援的登入方式",

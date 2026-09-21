@@ -17,8 +17,10 @@ import {
   MatchRecordScoreComparison,
   MatchupRecord,
   MemberMatchRecordFilters,
+  MemberMatchRecordSummary,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import { ShareCardContext } from '../../../core/match-share-card/share-card.models';
 import {
   DashboardInsights,
   DashboardMetricKey,
@@ -89,6 +91,7 @@ export class MatchHistoryComponent {
   readonly detail = signal<MatchRecordDetailResponse | null>(null);
   readonly detailLoading = signal(false);
   readonly detailLoadError = signal(false);
+  readonly shareContext = signal<ShareCardContext | null>(null);
 
   readonly records = signal<MemberMatchRecordsResponse | null>(null);
   readonly errorKey = signal<string | null>(null);
@@ -385,12 +388,20 @@ export class MatchHistoryComponent {
    * NOT `GroupMemberViewService`'s active-membership one (research.md
    * #1/#4), since this list already includes matches from groups the
    * member may no longer be active in. */
-  openDetail(matchId: string): void {
+  openDetail(match: MemberMatchRecordSummary): void {
+    // 040-match-share-card FR-016: this is the viewer's own match list, so
+    // the share card takes their side. Which side is read off this row
+    // (won + winner_team), never matched against the logged-in member.
+    const myTeam = match.won ? match.winner_team : match.winner_team === 'A' ? 'B' : 'A';
+    this.shareContext.set({
+      groupName: match.group_name,
+      perspective: { kind: 'mine', myTeam },
+    });
     this.detail.set(null);
     this.detailLoadError.set(false);
     this.detailLoading.set(true);
     this.detailDialogRef().open();
-    this.auth.getMatchRecordDetail(matchId).subscribe({
+    this.auth.getMatchRecordDetail(match.match_id).subscribe({
       next: (response) => {
         this.detail.set(response);
         this.detailLoading.set(false);

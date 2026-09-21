@@ -475,3 +475,8 @@
 .player-stats-empty {
   color: var(--color-text-muted);
 }
+
+// 040-match-share-card: the entry to the share card, right under the title.
+.share-card-button {
+  margin-bottom: var(--space-md);
+}

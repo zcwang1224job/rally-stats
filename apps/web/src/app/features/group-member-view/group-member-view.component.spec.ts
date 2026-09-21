@@ -1,6 +1,8 @@
 import { convertToParamMap, ActivatedRoute, Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
+import { MatchRecordsComponent } from './match-records/match-records.component';
 import { Observable, of, throwError } from 'rxjs';
 import { GroupMemberViewService } from './group-member-view.service';
 import { GroupMemberViewComponent } from './group-member-view.component';
@@ -79,6 +81,7 @@ function setup(
         useValue: {
           getMemberSchedule: () => of(scheduleResponse),
           getRoundMatches: () => of({ round_number: 1, matches: [] }),
+          getMatchRecords: () => of({ matches: [], page: 1, total_pages: 1 }),
         },
       },
       {
@@ -112,6 +115,21 @@ function setup(
   fixture.detectChanges();
   return { fixture, clearGuestSessionTokenCalls };
 }
+
+// 040-match-share-card: the match-records tab needs the group's name for
+// the share card; this shell is where the name is already loaded.
+describe('GroupMemberViewComponent match-records tab', () => {
+  it('passes the group name down to the match records list', () => {
+    const { fixture } = setup();
+
+    fixture.componentInstance.activeTab.set('match-records');
+    fixture.detectChanges();
+
+    const records = fixture.debugElement.query(By.directive(MatchRecordsComponent))
+      .componentInstance as MatchRecordsComponent;
+    expect(records.groupName()).toBe('週三夜羽球團');
+  });
+});
 
 /** SC-001: a general member's nav MUST show exactly 賽程/戰績/退出組團/
  * 對戰紀錄 (FR-001), and MUST NOT expose any admin-only entry point (場地
