@@ -1,4 +1,4 @@
-import { ShareCardCanvas } from '../share-card.models';
+import { ShareCardCanvas } from '../share-card-canvas';
 
 export interface RecordedText {
   text: string;
@@ -9,6 +9,14 @@ export interface RecordedText {
   textAlign: CanvasTextAlign;
   /** Width `measureText` reports for this text at this font. */
   width: number;
+}
+
+/** 041-group-share-cards: one entry per visible mark, in drawing order, with
+ * its vertical extent — lets a test measure just the middle of a card. */
+export interface RecordedOp {
+  kind: 'text' | 'rect' | 'roundRect' | 'arc';
+  top: number;
+  bottom: number;
 }
 
 /** 040-match-share-card research.md Decision 3: jsdom has no canvas, so the
@@ -26,8 +34,9 @@ export class RecordingContext implements ShareCardCanvas {
   readonly recordedTexts: RecordedText[] = [];
   readonly recordedPolylines: { color: string; points: number }[] = [];
   readonly recordedRects: { x: number; y: number; w: number; h: number; color: string }[] = [];
-  readonly recordedRoundRects: { x: number; y: number; w: number; h: number }[] = [];
+  readonly recordedRoundRects: { x: number; y: number; w: number; h: number; color: string }[] = [];
   readonly recordedArcs: { x: number; y: number; radius: number; color: string }[] = [];
+  readonly ops: RecordedOp[] = [];
   fillCount = 0;
 
   private currentPathPoints = 0;
@@ -60,10 +69,15 @@ export class RecordingContext implements ShareCardCanvas {
       textAlign: this.textAlign,
       width: this.measureText(text).width,
     });
+    const size = this.fontSize();
+    const top =
+      this.textBaseline === 'top' ? y : this.textBaseline === 'middle' ? y - size / 2 : y - size;
+    this.ops.push({ kind: 'text', top, bottom: top + size });
   }
 
   fillRect(x: number, y: number, w: number, h: number): void {
     this.recordedRects.push({ x, y, w, h, color: String(this.fillStyle) });
+    this.ops.push({ kind: 'rect', top: y, bottom: y + h });
   }
 
   beginPath(): void {
@@ -89,6 +103,7 @@ export class RecordingContext implements ShareCardCanvas {
 
   arc(x: number, y: number, radius: number): void {
     this.recordedArcs.push({ x, y, radius, color: String(this.fillStyle) });
+    this.ops.push({ kind: 'arc', top: y - radius, bottom: y + radius });
   }
 
   fill(): void {
@@ -96,7 +111,20 @@ export class RecordingContext implements ShareCardCanvas {
   }
 
   roundRect(x: number, y: number, w: number, h: number): void {
-    this.recordedRoundRects.push({ x, y, w, h });
+    this.recordedRoundRects.push({ x, y, w, h, color: String(this.fillStyle) });
+    this.ops.push({ kind: 'roundRect', top: y, bottom: y + h });
+  }
+
+  opCount(): number {
+    return this.ops.length;
+  }
+
+  /** The lowest edge of the marks between the first `skipFirst` and the
+   * last `skipLast` — e.g. skip the full-canvas background and the footer
+   * to measure just the middle of a card. */
+  bottomEdge({ skipFirst = 0, skipLast = 0 }: { skipFirst?: number; skipLast?: number } = {}): number {
+    const slice = this.ops.slice(skipFirst, this.ops.length - skipLast);
+    return slice.reduce((max, op) => Math.max(max, op.bottom), -Infinity);
   }
 
   save(): void {

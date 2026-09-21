@@ -32,7 +32,8 @@ describe('matchShareCard language keys (040 FR-027)', () => {
     }
   });
 
-  it('covers every highlight kind and the date format', () => {
+  // 041: the date format moved to shareCard.* (core/share-card/share-card-i18n.spec.ts).
+  it('covers every highlight kind', () => {
     for (const kind of [
       'comeback',
       'matchPointsSaved',
@@ -44,7 +45,5 @@ describe('matchShareCard language keys (040 FR-027)', () => {
     ]) {
       expect(zh[`highlight.${kind}`], kind).toBeTruthy();
     }
-    expect(zh['dateFormat']).toBe('yyyy/M/d');
-    expect(eng['dateFormat']).toBe('MMM d, yyyy');
   });
 });

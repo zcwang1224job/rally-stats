@@ -1,4 +1,4 @@
-import { SharePalette, ShareTheme } from './share-card.models';
+import { SharePalette, ShareTheme } from './share-card-canvas';
 import { SHARE_PALETTES } from './share-card-palette';
 
 /** WCAG 2.x relative luminance of a #rrggbb color. */
