@@ -46,7 +46,7 @@
 | 欄位 | 型別 | 規則 |
 |---|---|---|
 | `groupName` | `string` | 來自 context |
-| `startedAt` | `string \| null` | ISO 時間戳；由 renderer 依裝置時區與語言格式化成日期；null 時不畫日期 |
+| `startedAt` | `string \| null` | ISO 時間戳；由 renderer 依裝置時區格式化成日期，格式字串取自語系 key `matchShareCard.dateFormat`，locale 固定為 `en-US`（research Decision 8）；null 時不畫日期 |
 | `roundNumber` | `number` | |
 | `perspective` | `'neutral' \| 'mine'` | |
 | `teams` | `[CardTeam, CardTeam]` | **第一隊為主角隊**：中立視角為勝方，我方視角為我方（FR-016、FR-017） |

@@ -105,7 +105,7 @@ type ShareCardContext = {
 
 ## Decision 7：亮點挑選的資料對應
 
-**Decision**：主角隊 `P`：中立視角為 `winner_team`，我方視角為 `myTeam`。門檻 `th(r) = max(2, floor(T × r))`，T = `target_score`。候選依優先順序：
+**Decision**：主角隊 `P`：中立視角為 `winner_team`，我方視角為 `myTeam`。門檻 `th(r) = max(3, floor(T × r))`，T = `target_score`。候選依優先順序：
 
 | # | 候選 | 條件（全部來自既有欄位） | 顯示數字 |
 |---|---|---|---|
@@ -129,7 +129,9 @@ type ShareCardContext = {
 ## Decision 8：日期與時長的呈現
 
 **Decision**：
-- 日期：以 `started_at` 經 Angular `formatDate` 依**裝置時區**、當下介面語言的 locale 格式化（例如 `2026/09/21`、`Sep 21, 2026`），與既有 `shared/match-card` 以 `date` pipe 顯示比賽時間的慣例一致。
+- 日期：以 `started_at` 經 Angular `formatDate(startedAt, 格式, 'en-US')` 依**裝置時區**格式化（不傳時區參數即為裝置時區），與既有 `shared/match-card` 以 `date` pipe 顯示比賽時間的慣例一致。**語言差異由格式字串決定，不由 locale 決定**：格式字串放在語系 key `matchShareCard.dateFormat`，zh-TW 為 `yyyy/M/d`，en 為 `MMM d, yyyy`。locale 一律固定為 `'en-US'`。
+  - **為什麼不傳 `'zh-TW'` 當 locale**（`/speckit-analyze` U1）：本 app 從未呼叫 `registerLocaleData`，`LOCALE_ID` 維持 Angular 預設的 `en-US`。`formatDate(…, 'zh-TW')` 會在執行時拋出「Missing locale data」，中文介面產圖就會失敗。既有畫面（`match-card` 的 `'M/d HH:mm'`、`dashboard-trend-chart` 注入的 `LOCALE_ID`）都用純數字格式或預設 locale 避開這個問題，圖卡沿用同一做法。為了一張圖卡而註冊 zh-TW locale data 並改動全站 `LOCALE_ID`，影響範圍過大，所以不採用。
+  - zh-TW 的格式 `yyyy/M/d` 只含數字，`en-US` locale 也能正確輸出；en 的 `MMM` 月份縮寫本來就是 `en-US` 的資料。
 - 比賽時長：`ended_at − started_at`（UTC 相減），格式為「N 分 N 秒」，超過 1 小時為「N 小時 N 分」。任一時間為 null 時省略（Edge Case）。
 - 平均每分耗時：直接使用 `tempo_stats.average_seconds`（與詳情 033 區塊同源），null 時省略。
 

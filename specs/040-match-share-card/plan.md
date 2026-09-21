@@ -31,7 +31,7 @@
   - 擴充 `tests/contract/test_group_match_record_detail.py`、`tests/contract/test_member_match_record_detail.py`：回應包含 `target_score`，值等於比賽的快照；另有一例是比賽建立後才修改團設定，回應仍為原本的快照值。
   - 擴充 `tests/unit/domains/member/test_personal_settings.py`：好友詳情端點同樣帶有 `target_score`。
 - 前端（Vitest，`@angular/build:unit-test`）：
-  - `share-card-highlights.spec.ts`（新增）：七個候選各自的門檻邊界（剛好達標／差 1），11／15／21 分制的換算，`max(2, …)` 下限，優先順序與只取 3 個，我方落敗時略過 #1／#3／#7，簡易模式略過 #5，涵蓋率 79% 或 80%，不完整紀錄回傳 `[]`，確定性。
+  - `share-card-highlights.spec.ts`（新增）：七個候選各自的門檻邊界（剛好達標／差 1），11／15／21 分制的換算，`max(3, …)` 下限，優先順序與只取 3 個，我方落敗時略過 #1／#3／#7，簡易模式略過 #5，涵蓋率 79% 或 80%，不完整紀錄回傳 `[]`，確定性。
   - `share-card-model.spec.ts`（新增）：中立視角勝方在前、我方視角我方在前，排序後比分與暱稱的對應正確（FR-019），徽章文字的 key，時長與平均每分耗時的有無，partial／none 的降級，檔名，alt 文字。
   - `score-trend.spec.ts`（新增）：抽出的走勢點計算。詳情 dialog 既有 spec 維持全綠，作為重構行為不變的保證。
   - `share-card-renderer.spec.ts`（新增）：以 `RecordingContext` 驗證該畫的文字都有畫、被省略的元素沒畫、20 字雙打暱稱經過截斷且不超過邊界、兩種色盤。

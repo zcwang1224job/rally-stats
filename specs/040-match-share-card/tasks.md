@@ -23,7 +23,7 @@ description: "Task list for 040-match-share-card"
 
 - 前端：`ln -s /Users/zcwang/projects/rally-stats/apps/web/node_modules apps/web/node_modules`，在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build`。
 - 後端：`export PATH=/Users/zcwang/projects/rally-stats/apps/api/.venv/bin:$PATH`，在 `apps/api` 執行 `python -m pytest …`（測試 DB `rally_stats_test`）。
-- 共用常數與術語：「主角隊」＝中立視角的勝方，或我方視角的我方；`th(r) = max(2, floor(T × r))`，T = `target_score`（research Decision 7）。
+- 共用常數與術語：「主角隊」＝中立視角的勝方，或我方視角的我方；`th(r) = max(3, floor(T × r))`，T = `target_score`（research Decision 7）。
 
 ---
 
@@ -34,7 +34,7 @@ description: "Task list for 040-match-share-card"
 - [ ] T001 建立 `web/app/core/match-share-card/share-card.models.ts`，依 data-model.md B 節與 contracts/share-card-module.md §3–§4 定義型別：`ShareCardContext`（`groupName`、`perspective: { kind: 'neutral' } | { kind: 'mine'; myTeam: 'A' | 'B' }`）、`CardTeam`（`team`、`nicknames`、`score`、`isWinner`、`badge: 'win' | 'victory' | 'defeat' | null`）、`Highlight`（以 `kind` 區分的七種聯集，參數見 data-model.md 的 Highlight 表）、`ShareCardModel`（全部欄位，含 `trend: ScoreTrendPoint[] | null`、`highlights`、`durationSeconds`、`averagePointSeconds`、`fileName`、`altText: { key; params }`）、`ShareTheme = 'light' | 'dark'`、`SharePalette`（背景、主要文字、次要文字、分隔線、A／B 隊色、徽章底色與文字色、走勢線 A／B）、`ShareCardText = (key: string, params?: Record<string, string | number>) => string`，以及 `ShareCardCanvas`（renderer 用到的 `CanvasRenderingContext2D` 子集：`fillStyle`、`strokeStyle`、`lineWidth`、`font`、`textAlign`、`textBaseline`、`fillRect`、`fillText`、`measureText`、`beginPath`、`moveTo`、`lineTo`、`stroke`、`arc`、`fill`、`roundRect`、`save`、`restore`）。`ScoreTrendPoint` 先以 `import type` 指向 T005 會建立的 `web/app/core/match-record-detail/score-trend.ts`；T005 完成前可以暫時在本檔定義同形介面，T005 時再改為 re-export。不得使用 `any`。
 - [ ] T002 [P] 建立測試輔助檔 `web/app/core/match-share-card/testing/detail-fixtures.ts`：`makeDetail(overrides)` 產生合法的 `MatchRecordDetailResponse`，預設為 21 分制雙打、A 隊 21:17 勝、`record_completeness: 'complete'`、所有 stats 為 null 或 []；另提供 `makeSingles()`、`makePartial()`、`makeNone()`，以及 `withMomentum`、`withClutch`、`withEnding`、`withTempo` 等小工具，方便組出各亮點的邊界情境。`target_score` 此時尚未存在於型別中，先不放；T031 加入型別時再補上預設值 21。
 - [ ] T003 [P] 建立 `web/app/core/match-share-card/testing/recording-context.ts`：`RecordingContext` 實作 `ShareCardCanvas`，每次 `fillText` 都記錄 `{ text, x, y, font, fillStyle, maxWidthUsed }`，`stroke` 記錄折線點數；`measureText(text)` 回傳 `{ width: [...text].length × 字級 × 0.6 }`，字級從目前 `font` 字串解析出來。對外提供 `texts()`、`findText(substr)`、`polylines()`。
-- [ ] T004 [P] 在 `web/assets/i18n/zh-TW.json` 與 `web/assets/i18n/en.json` 新增 `matchShareCard` 命名空間，放入 contracts/share-card-module.md §7 列出的**全部** key（按鈕、提示、徽章、`round`（「第 {round} 輪」／「Round {round}」）、`duration`（「比賽時長 {minutes} 分 {seconds} 秒」）、`durationHours`、`avgPerPoint`（「平均每分 {seconds} 秒」）、`brand`（「Rally Stats」）、`altText`（含 `{first}`、`{firstScore}`、`{second}`、`{secondScore}`、`{winner}` 參數）、七個 `highlight.*`，文案見 data-model.md 的 Highlight 表）。同時新增 `web/app/core/match-share-card/share-card-i18n.spec.ts`：比照 `web/app/core/player-insights/player-insights.component.spec.ts` 的做法 import 兩份 JSON，斷言兩邊的 `matchShareCard` key 集合完全相同，且每個值都是非空字串。
+- [ ] T004 [P] 在 `web/assets/i18n/zh-TW.json` 與 `web/assets/i18n/en.json` 新增 `matchShareCard` 命名空間，放入 contracts/share-card-module.md §7 列出的**全部** key（按鈕、提示、徽章、`dateFormat`（Angular 日期格式字串：zh-TW 為 `yyyy/M/d`，en 為 `MMM d, yyyy`）、`round`（「第 {round} 輪」／「Round {round}」）、`duration`（「比賽時長 {minutes} 分 {seconds} 秒」）、`durationHours`、`avgPerPoint`（「平均每分 {seconds} 秒」）、`brand`（「Rally Stats」）、`altText`（含 `{first}`、`{firstScore}`、`{second}`、`{secondScore}`、`{winner}` 參數）、七個 `highlight.*`，文案見 data-model.md 的 Highlight 表）。同時新增 `web/app/core/match-share-card/share-card-i18n.spec.ts`：比照 `web/app/core/player-insights/player-insights.component.spec.ts` 的做法 import 兩份 JSON，斷言兩邊的 `matchShareCard` key 集合完全相同，且每個值都是非空字串。
 
 ---
 
@@ -69,18 +69,21 @@ description: "Task list for 040-match-share-card"
   - `altText.key === 'matchShareCard.altText'`，參數齊全。
   - `groupName`、`roundNumber`、`startedAt` 原樣帶入。
   - 同樣的輸入呼叫兩次，結果深度相等（SC-007）。
-- [ ] T008 [P] [US1] 新增 `web/app/core/match-share-card/share-card-renderer.spec.ts`（基本段落），使用 `RecordingContext` 與假的 `ShareCardText`（回傳 `key|JSON(params)`）：
+- [ ] T008 [P] [US1] 新增 `web/app/core/match-share-card/share-card-renderer.spec.ts`（基本段落），使用 `RecordingContext` 與假的 `ShareCardText`：對 `matchShareCard.dateFormat` 回傳真實的格式字串（依測試情境為 zh-TW 的 `yyyy/M/d` 或 en 的 `MMM d, yyyy`），其餘 key 回傳 `key|JSON(params)`：
   - 畫出團名、日期、`matchShareCard.round`、每個暱稱、雙方比分、`matchShareCard.badge.win`、`matchShareCard.brand`。
   - 所有 `fillText` 的 x 加上實際寬度不超過 1080 − 左右邊距。
   - 20 字雙打暱稱被截斷並以「…」結尾，寬度不超過分配寬度（SC-005）。
-  - 沒有任何文字含 `http`、`www`、`/`（FR-006）。
+  - 沒有任何文字含 `http`、`www`、`://`（FR-006）。不檢查 `/`，因為 zh-TW 日期本身含 `/`。
   - `durationSeconds` 為 null 時不畫 duration。
+  - **日期格式化不會拋錯**（`/speckit-analyze` U1）：以 zh-TW 格式字串繪製時畫出 `2026/9/21` 這類純數字日期；以 en 格式字串繪製時畫出 `Sep 21, 2026`。兩種情況都在 Angular 預設、未註冊 zh-TW locale data 的測試環境下執行，不得拋出例外。
 - [ ] T009 [P] [US1] 新增 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.spec.ts`，以替身 `ShareCardActions` 提供（`rasterize` 回傳假 Blob，`download` 為 spy）：
   - `open(detail, context)` 後，以 `'light'` 呼叫 `rasterize`。
   - 產生中顯示 `generating`；完成後 `<img>` 的 `src` 為 object URL，`alt` 為翻譯後的 altText。
   - 「下載圖片」一律顯示，按下後呼叫 `download(blob, model.fileName)`。
   - `rasterize` reject 時顯示 `generateError`，且不顯示下載按鈕。
   - 關閉時呼叫 `URL.revokeObjectURL`。
+  - **關閉預覽後回到詳情**（FR-003，`/speckit-analyze` G2）：以測試宿主把本元件放在一個已 `open` 的外層 `<dialog>` 內，並由一顆觸發按鈕開啟預覽；關閉預覽後，外層 dialog 的 `open` 仍為 true，`document.activeElement` 為那顆觸發按鈕。
+  - **切換語言後重開預覽會使用新語言**（SC-008，`/speckit-analyze` G5）：先以 zh-TW `open` 一次並關閉，再 `TranslateService.use('en')` 後重新 `open`。替身 `rasterize` 第二次收到的文字提供者（或它呼叫 `TranslateService.instant` 的結果）對 `matchShareCard.brand`、`matchShareCard.badge.win` 等 key 回傳的是 en 文案；`<img>` 的 alt 也是英文。若 `rasterize` 的簽章不直接帶文字提供者，改為斷言 `rasterize` 內部讀取文字的時點在 `open` 之後（例如在替身中呼叫注入的 `TranslateService.instant` 並記錄結果）。
 - [ ] T010 [P] [US1] 擴充 `web/app/core/match-record-detail/match-record-detail-dialog.component.spec.ts`：
   - `shareContext` 為 null 時沒有「分享圖卡」按鈕。
   - 有 context，但 `loading()` 或 `loadError()` 為 true 時，按鈕不存在或 disabled。
@@ -107,7 +110,7 @@ description: "Task list for 040-match-share-card"
     3. 走勢區（US2）。
     4. 亮點區（US2）。
     5. 頁尾：左側為時長 · 平均每分（30px），右側為 `brand`。
-  - 日期以 `formatDate(startedAt, 'mediumDate', locale)` 格式化，locale 以參數或 `text` 提供者傳入的目前語言決定。
+  - 日期以 `formatDate(model.startedAt, text('matchShareCard.dateFormat'), 'en-US')` 格式化：語言差異只來自語系檔的格式字串，locale **固定為 `'en-US'`**，不得傳入 `'zh-TW'`（本 app 未註冊 zh-TW locale data，傳入會拋錯，見 research Decision 8）。`renderShareCard` 的簽章不增加 locale 參數。
   - 畫面上 MUST NOT 出現 QR 碼或任何網址（FR-006）。
 - [ ] T015 [US1] 建立 `web/app/core/match-share-card/share-card-actions.service.ts`（`@Injectable({ providedIn: 'root' })`，類別 `ShareCardActions`）：
   - `rasterize(model, theme)`：`await document.fonts.ready`，從 `getComputedStyle(document.documentElement)` 讀取 `--font-family-base` 與 `--font-family-score`，建立 1080×1350 的 canvas（不乘 DPR），以 `TranslateService.instant` 包成 `ShareCardText`，呼叫 `renderShareCard`，最後 `toBlob('image/png')`。
@@ -147,9 +150,9 @@ description: "Task list for 040-match-share-card"
 - [ ] T024 [P] [US2] 擴充 `api/tests/contract/test_member_match_record_detail.py`：同上；另加一例，建立 11 分制的比賽並完賽，再把該團的 `target_score` 改為 21，`GET /members/me/match-records/{id}` 仍回傳 11（FR-012a）。
 - [ ] T025 [P] [US2] 擴充 `api/tests/unit/domains/member/test_personal_settings.py`：好友詳情端點 `GET /members/{member_id}/match-records/{match_id}` 的回應含正確的 `target_score`。
 - [ ] T026 [P] [US2] 新增 `web/app/core/match-share-card/share-card-highlights.spec.ts`（這是本功能最關鍵的測試，逐項對照 research Decision 7）：
-  - `highlightThreshold`：21 分制為 3／5／10，15 分制為 2／3／7，11 分制為 2／2／5，T=5 時下限為 2。
+  - `highlightThreshold`：21 分制為 3／5／10，15 分制為 3／3／7，11 分制為 3／3／5，T=5 時三者皆為下限 3。
   - 七個候選各有「剛好達標會出現」與「差 1 不出現」兩例，以 21 分制測試。
-  - 11 分制時，連得 2 分就會出現。
+  - 11 分制時，連得 3 分會出現、連得 2 分不出現（下限 3）。
   - #2 `saved = 0` 不出現；#3 `deuce` 為 null 不出現。
   - #5：涵蓋率 79% 不出現、80% 出現；主動得分 50% 出現、49% 不出現；`ending_stats` 為 null（簡易模式）時略過，而且不影響其他候選（FR-014）；主角隊得 0 分時不出現。
   - #5 的 `percent` 等於 `formatPercent(winners / score)`（引用 `web/app/core/match-record-detail/ratio-format.ts`）。
@@ -273,6 +276,7 @@ description: "Task list for 040-match-share-card"
 - [ ] T050 [P] 後端：在 `apps/api` 執行 `ruff check .`、`mypy app`，以及 T023～T025 三個測試檔。
 - [ ] T051 [P] 前端：在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build`。已知 `admin-page.component.spec.ts` 的 NG04002 unhandled error 是既有問題，與本功能無關。
 - [ ] T052 依 `specs/040-match-share-card/quickstart.md` 第 2 節做實際畫面驗收：worktree 後端開在 :8001，連 `rally_stats_test`；前端開在 :4300；以 `apps/api/scripts/seed_dashboard_demo.py` 建立示範資料；用 playwright-core 對步驟 1～9、13、14 截圖，並逐張檢查排版（特別是步驟 7 的長暱稱、步驟 4 的降級版面）。步驟 12（手機系統分享）需要 HTTPS 環境，無法在本機自動化，列為交付時請使用者驗證的項目。
+  - **SC-001 量測**（`/speckit-analyze` G1）：在同一支 playwright 腳本中，以 CDP `Emulation.setCPUThrottlingRate({ rate: 4 })` 模擬一般手機，並設定 390×844 的 viewport。記錄從點擊「分享圖卡」到預覽 `<img>` 觸發 `load` 事件的時間，分別測一場雙打完整紀錄（有走勢與亮點）的比賽，以及一場 partial 紀錄的比賽，各跑 5 次取中位數。兩者都 MUST ≤ 2000 ms；超過時先檢查 `document.fonts.ready` 與 `toBlob` 各自的耗時再優化。把量測結果寫進交付報告。
 - [ ] T053 在背景執行完整的後端測試套件（`python -m pytest -rf > <job tmp>/pytest-full.txt`，約 20 分鐘），確認沒有回歸。必須在同一回合內等它跑完，才能移除 worktree。
 - [ ] T054 對照 spec.md 的 FR-001～FR-029（含 FR-006a、FR-012a、FR-017a）與 SC-001～SC-008，逐條確認都有對應的任務或測試；有遺漏就補上任務。
 

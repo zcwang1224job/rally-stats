@@ -37,7 +37,7 @@ pickHighlights(detail: MatchRecordDetailResponse, protagonist: 'A' | 'B'): Highl
 // 0–3 個；不完整紀錄時為 []；確定性（FR-011～FR-015，research Decision 7）
 
 highlightThreshold(targetScore: number, ratio: number): number
-// max(2, floor(targetScore × ratio))
+// max(3, floor(targetScore × ratio))
 
 buildShareCardModel(detail: MatchRecordDetailResponse, context: ShareCardContext): ShareCardModel
 ```
@@ -63,6 +63,7 @@ renderShareCard(
 - 值為 null 或空的元素不繪製，下方區塊往上遞補，不留空框（FR-009）。
 - 暱稱以 `measureText` 截斷並加上「…」，確保不超出分配的寬度（Edge Case、SC-005）。
 - 不繪製任何 QR 碼或網址（FR-006），只在頁尾畫品牌字樣 `Rally Stats`。
+- 日期：`formatDate(model.startedAt, text('matchShareCard.dateFormat'), 'en-US')`。語言差異只來自語系檔的格式字串，locale 固定為 `'en-US'`，因為本 app 沒有註冊 zh-TW locale data（research Decision 8）。簽章因此**不需要** locale 參數。
 
 ## 5. 平台能力（`ShareCardActions`，可注入替換）
 
@@ -89,4 +90,4 @@ renderShareCard(
 
 ## 7. 語系 key（`matchShareCard.*`，zh-TW 與 en 必須同時存在）
 
-`openButton`、`previewTitle`、`themeLight`、`themeDark`、`share`、`copy`、`copied`、`download`、`close`、`generating`、`generateError`、`shareError`、`copyError`、`badge.win`、`badge.victory`、`badge.defeat`、`round`、`duration`、`durationHours`、`avgPerPoint`、`brand`、`altText`、`highlight.{comeback,matchPointsSaved,deuceWin,run,winnerRate,leadChanges,bigMargin}`。
+`openButton`、`previewTitle`、`themeLight`、`themeDark`、`share`、`copy`、`copied`、`download`、`close`、`generating`、`generateError`、`shareError`、`copyError`、`badge.win`、`badge.victory`、`badge.defeat`、`dateFormat`（Angular 日期格式字串；zh-TW `yyyy/M/d`、en `MMM d, yyyy`）、`round`、`duration`、`durationHours`、`avgPerPoint`、`brand`、`altText`、`highlight.{comeback,matchPointsSaved,deuceWin,run,winnerRate,leadChanges,bigMargin}`。
