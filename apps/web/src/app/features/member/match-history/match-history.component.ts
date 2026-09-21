@@ -1,4 +1,12 @@
-import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
+import {
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
 import { RecordHeroComponent } from '../../../shared/record-hero/record-hero.component';
@@ -47,6 +55,15 @@ import { FriendsService } from '../../friends/friends.service';
  * 統計，僅登入會員可見（路由層由既有 member 功能區塊之登入檢查涵蓋）。
  * 篩選（對手/隊友暱稱、勝負、日期、輪次、比分）交由後端計算，所有統計卡
  * 片與圖表都反映篩選後的完整結果集，而非僅目前頁面。 */
+/** The page's big sections, run as an accordion (one open at a time). */
+export type MatchHistorySection =
+  | 'insights'
+  | 'dashboard'
+  | 'benchmark'
+  | 'roundTrend'
+  | 'partners'
+  | 'opponents';
+
 @Component({
   selector: 'app-match-history',
   imports: [
@@ -69,6 +86,8 @@ export class MatchHistoryComponent {
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
   private readonly friends = inject(FriendsService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** 026-match-record-friend-invite: the viewer's own member_id, so their
    * own row never renders an "加好友" entry (FR-003). */
@@ -86,7 +105,45 @@ export class MatchHistoryComponent {
   private readonly dashboardRef = viewChild(PlayerDashboardComponent);
   private readonly matchList = viewChild<ElementRef<HTMLElement>>('matchList');
 
+  /** Which big section is open — none on arrival. Opening one closes the
+   * rest, so the match list is never buried under several open sections. */
+  readonly openSection = signal<MatchHistorySection | null>(null);
+
+  /** A panel was opened or closed by the reader (its `toggle`). Closing
+   * the previously open one happens NOW, not on the next change detection:
+   * if that panel sat above this one, the page shifts up by its height, and
+   * this panel's title — the thing just tapped — would be left off screen.
+   * Measured after the shift, it is scrolled back into view. */
+  onSectionToggle(section: MatchHistorySection, open: boolean): void {
+    if (!open) {
+      if (this.openSection() === section) {
+        this.openSection.set(null);
+      }
+      return;
+    }
+    if (this.openSection() === section) {
+      return; // our own [open] binding echoing back
+    }
+    this.openSection.set(section);
+    this.cdr.detectChanges();
+    const panel = this.host.nativeElement.querySelector<HTMLElement>(`[data-section="${section}"]`);
+    // "Off screen" includes tucked under the sticky nav, which is what the
+    // panel's scroll-margin-top clears.
+    const clearance = panel ? parseFloat(getComputedStyle(panel).scrollMarginTop) || 0 : 0;
+    if (panel && panel.getBoundingClientRect().top < clearance) {
+      panel.scrollIntoView?.({ block: 'start' });
+    }
+  }
+
+  /** Opens a section for a jump into it, closing the rest before anything
+   * inside it is measured or scrolled to. */
+  private openSectionNow(section: MatchHistorySection): void {
+    this.openSection.set(section);
+    this.cdr.detectChanges();
+  }
+
   focusMetric(key: DashboardMetricKey): void {
+    this.openSectionNow('dashboard');
     this.dashboardRef()?.focusMetric(key);
   }
 
@@ -236,10 +293,7 @@ export class MatchHistoryComponent {
     if (!row) {
       return;
     }
-    const details = row.closest('details');
-    if (details) {
-      details.open = true;
-    }
+    this.openSectionNow(target.role === 'partner' ? 'partners' : 'opponents');
     row.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     (row.querySelector('button') ?? row).focus?.({ preventScroll: true });
   }

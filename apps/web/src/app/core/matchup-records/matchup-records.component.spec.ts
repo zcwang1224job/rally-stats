@@ -159,3 +159,28 @@ describe('MatchupRecordsComponent — nothing to list', () => {
     expect(root.querySelector('.matchups__sort')).toBeNull();
   });
 });
+
+// A host page can run its sections as an accordion; anywhere else (a
+// friend's records) the table starts open as before.
+describe('MatchupRecordsComponent — open state', () => {
+  it('starts open by default', () => {
+    const fixture = setup({});
+    expect((fixture.nativeElement as HTMLElement).querySelector('details')!.open).toBe(true);
+  });
+
+  it('follows the `open` input and reports the reader\'s own toggles', () => {
+    const fixture = setup({ open: false });
+    const details = (fixture.nativeElement as HTMLElement).querySelector('details')!;
+    const changes: boolean[] = [];
+    fixture.componentInstance.openChange.subscribe((open) => changes.push(open));
+    expect(details.open).toBe(false);
+
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+    expect(details.open).toBe(true);
+
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+    expect(changes).toEqual([false]);
+  });
+});

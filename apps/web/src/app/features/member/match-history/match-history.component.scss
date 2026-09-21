@@ -154,12 +154,32 @@
   scroll-margin-top: calc(var(--touch-target-min) + var(--space-xl));
 }
 
-.chart-card {
+// The accordion: a short stack of titles while folded. The children's own
+// bottom margins give way to one small gap between every panel.
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
   margin-bottom: var(--space-lg);
 
-  h2 {
-    margin: 0 0 var(--space-md);
+  > * {
+    margin: 0;
+    // Clears the sticky nav when an opened panel is scrolled back to.
+    scroll-margin-top: calc(var(--touch-target-min) + var(--space-xl));
   }
+}
+
+// Same title row as the collapsible cards beside it (團內比較, 搭檔戰績):
+// one line, a full touch target tall.
+.section-panel__title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--touch-target-min);
+  cursor: pointer;
+}
+
+.section-panel[open] > .section-panel__title {
+  margin-bottom: var(--space-sm);
 }
 
 .chart-empty {
