@@ -84,11 +84,26 @@ version 4-M 的位元組容量為 62：`https://`(8) ＋ host ＋ `/?ref=card-ma
 
 ## Decision 6：中段排版改為可收縮的 `stackBlocks()`，040 圖卡跟著套用
 
-**Decision**：把 040 renderer 內「區塊堆疊並垂直置中」的邏輯抽成共用的 `stackBlocks()`，並加入收縮規則：放得下 → 行為與現在完全相同；放不下 → 依序 (1) 區塊間距 48→32，(2) 有 `minHeight` 的區塊由上而下收縮（040 的走勢圖 240→140；亮點列高 60→52；我的成績卡的走勢圖同理）。頁尾固定高度 240、下邊距 56。040 的「比賽時長 · 平均每分耗時」改為頁尾左上方的 `meta` 行。spec FR-022 同步放寬（見 plan.md「規格修訂」）。
+**Decision**：把 040 renderer 內「區塊堆疊並垂直置中」的邏輯抽成共用的 `stackBlocks()`，並加入收縮規則：放得下 → 行為與現在完全相同；放不下 → 依序 (1) 區塊間距由 48 往下降到剛好放下、最低 32，(2) 有 `minHeight` 的區塊由上而下收縮（040 的走勢圖 240→最低 140，接著亮點列高 60→最低 52；我的成績卡的走勢圖 220→最低 140）。**040 的隊伍區塊不收縮**（兩隊之間維持 48）。頁尾固定高度 240、下邊距 56；中段範圍改為 y = 210～996。040 的「比賽時長 · 平均每分耗時」改為頁尾左上方的 `meta` 行，由 040 renderer 自己組好後以 `{ ...env.footer, meta }` 傳給共用頁尾。spec FR-022 同步放寬（見 plan.md「規格修訂」）。
 
-**Rationale（實算）**：040 的中段目前是 y=230→1174，共 944px。最壞情況（雙打、我方視角有徽章、走勢圖、3 個亮點）＝隊伍 176＋48＋150，走勢 240，亮點 228，區塊間距 96 → **938px**，只剩 6px。新頁尾佔 240px：頁尾頂 1350−56−240＝1054、分隔線 1026、中段下緣約 996 → 可用 766px。套用收縮後最壞情況＝隊伍 176＋32＋150＝358、走勢 140、亮點 3×52＋48＝204、間距 64 → **766px**，剛好放下；實作時把中段上緣由 230 調到 210（標題區實際只到 y=166）再多 20px 餘裕。沒有走勢圖或亮點不足 3 個的圖卡（多數情況）完全不會觸發收縮，看起來與現在一樣。
+**Rationale（實算）**：040 的中段目前是 y = 230→1174，共 944px。最壞情況（雙打、我方視角有徽章、走勢圖、3 個亮點）＝隊伍 176＋48＋150＝374，走勢 240，亮點 3×60＋2×24＝228，區塊間距 2×48＝96 → **938px**，只剩 6px。新頁尾佔 240px：頁尾頂 1350−56−240＝1054、分隔線 1026、中段下緣 996；中段上緣由 230 調到 210（標題區實際只到 y = 166）→ 可用 **786px**。最壞情況套用收縮後＝隊伍 374（不縮）、走勢 140、亮點 3×52＋48＝204、間距 64 → **782px**，放得下，還有 4px；因此隊伍區塊不必收縮，040 的改動也更小。
 
-「只在放不下時才收縮、且順序固定」讓結果可預測、可測試：renderer spec 以 `RecordingContext` 斷言最壞情況下沒有任何繪製的 y 超過中段下緣。
+實算後各種常見內容的結果（可用 786px）：
+
+| 040 圖卡內容 | 不收縮時總高 | 結果 |
+|---|---|---|
+| 隊伍＋走勢（無亮點） | 374＋240＋48＝662 | 不收縮，與現在一樣 |
+| 隊伍＋3 個亮點（無走勢） | 374＋228＋48＝650 | 不收縮，與現在一樣 |
+| 雙打＋走勢＋1 個亮點 | 374＋240＋108＋96＝818 | 間距降為 32，區塊高度不變 |
+| 雙打＋走勢＋2 個亮點 | 374＋240＋168＋96＝878 | 間距 32，走勢縮到 180 |
+| 單打＋走勢＋3 個亮點 | 348＋240＋228＋96＝912 | 間距 32，走勢縮到 146 |
+| 雙打（有徽章）＋走勢＋3 個亮點 | 938 | 間距 32，走勢 140，亮點區塊縮到 208（列高 53） |
+
+（亮點區塊高度＝列數 × 列高＋上下內距 48；列高 60，最低 52。）
+
+也就是說，**只要有走勢圖又有亮點，間距多半會變緊**；沒有走勢圖的圖卡（紀錄不完整時）不受影響。內容、順序、字級一律不變，這正是 FR-022 修訂後允許的範圍。
+
+「只在放不下時才收縮、且順序固定」讓結果可預測、可測試：renderer spec 以 `RecordingContext.bottomEdge()`（排除背景與頁尾）斷言各情境下中段下緣不超過 996，並斷言所有內容都有畫出。
 
 **Alternatives considered**：
 - *QR 放在右上角標題區*：標題區只有約 158px 高，240px 的 QR 會壓到隊伍區的比分欄。
@@ -109,7 +124,7 @@ version 4-M 的位元組容量為 62：`https://`(8) ＋ host ＋ `/?ref=card-ma
 
 ## Decision 8：系統分享只送圖片檔，不附 `title`／`text`／`url`
 
-**Decision**：`navigator.share({ files: [png] })`，與 040 現行行為相同。FR-023 的「SHOULD 附上文字與網址」在本期**不啟用**，走該條的但書（會導致不送圖片時 MUST 只分享圖片）。導流完全由圖上的 QR 與可讀網址負責。
+**Decision**：`navigator.share({ files: [png] })`，與 040 現行行為相同。這個決定促成 spec FR-023 的修訂：由原本的「SHOULD 附上文字與網址、會丟圖時才只分享圖片」改為「MUST 只分享圖卡圖片檔，MUST NOT 附帶標題、文字或網址」（見 spec Clarifications）。導流完全由圖上的 QR 與可讀網址負責。
 
 **Rationale**（以瀏覽器原始碼與公開回報為據）：
 - **iOS**（WebKit `WKShareSheet.mm`）：`text`、`url`、檔案會被拆成**多個分享項目，順序為文字 → 連結 → 檔案**，圖片排最後。已有回報：Facebook、LinkedIn 只收到網址；WhatsApp 在帶 `title` 時只送出文字、沒有圖片；MDN 的 issue 也記載「iOS 上只有在唯一屬性是 `files` 時才可靠」。
@@ -137,16 +152,18 @@ version 4-M 的位元組容量為 62：`https://`(8) ＋ host ＋ `/?ref=card-ma
 
 ## Decision 10：語系 key 的分工
 
-**Decision**：`shareCard.*` 放共用文字（品牌、標語、掃碼提示、預覽外殼的按鈕與訊息、配色名稱、圖卡種類標籤）；`matchShareCard.*` 只留比賽專屬（徽章、亮點、輪次、時長、替代文字）；新增 `groupShareCard.*`（排行榜與我的成績的標題、標籤、「我」、人數、名次、對手、替代文字）與 `home.*`。040 已存在於 `matchShareCard.*` 的預覽按鈕 key 搬到 `shareCard.*`，並以既有的「兩份語系檔 key 一致」測試擴大涵蓋三個命名空間。
+**Decision**：`shareCard.*` 放共用文字（品牌、標語、掃碼提示、預覽外殼的按鈕與訊息、配色名稱、圖卡種類標籤）；`matchShareCard.*` 只留比賽專屬（徽章、亮點、輪次、時長、替代文字）；新增 `groupShareCard.*`（排行榜與我的成績的標題、標籤、「我」、人數、名次、對手、替代文字）與 `home.*`。040 已存在於 `matchShareCard.*` 的預覽按鈕 key 搬到 `shareCard.*`。「兩份語系檔 key 一致」的測試各模組各一份：`core/share-card/share-card-i18n.spec.ts` 管 `shareCard.*`（含 `dateFormat` 的值，從 040 的 spec 移過來）、`core/group-share-card/group-share-card-i18n.spec.ts` 管 `groupShareCard.*`、首頁 spec 管 `home.*`，040 既有的 spec 繼續管縮減後的 `matchShareCard.*`。
 
 **Rationale**：共用外殼若繼續使用 `matchShareCard.share` 這類 key，名稱就與用途不符；搬移只是重新命名，由 key 一致性測試與外殼 spec 保護。
 
 **Alternatives considered**：*共用外殼沿用 `matchShareCard.*`*：省一次搬移，但之後每個新圖卡都得去「比賽」的命名空間找按鈕文字。
 
-## Decision 11：各輪走勢縮圖沿用頁面走勢圖的縱軸範圍
+## Decision 11：各輪走勢縮圖用固定 0～100% 縱軸，與頁面相同
 
-**Decision**：把 `LineChartComponent` 內計算縱軸範圍的邏輯（`rate` 類型：取資料最小／最大值、夾在 0–1、全平時上下各留 0.05）抽成 `shared/line-chart/line-chart-scale.ts` 的純函式，元件與 `buildMyStatsCardModel()` 共用。
+**Decision**：`buildMyStatsCardModel()` 直接把第 i 輪換算成 `x = i / (n − 1) × 100`、`y = (1 − win_rate) × 100`（0 在上、100 在下，與 canvas 座標同向），不抽取、也不修改 `shared/line-chart/`。
 
-**Rationale**：FR-015 要求縮圖形狀與頁面一致；頁面的走勢圖是自動範圍而非固定 0–100%，若圖卡自行用 0–1 畫，同一份資料會得到明顯較扁的線。做法與 040 Decision 4（抽出 `score-trend.ts`）相同。`LineChartComponent` 目前沒有自己的 spec，因此新函式的 spec 要先以現行行為寫成特性測試，再搬移程式；使用它的 `round-trend-chart` 既有 spec 不改動且維持全綠。
+**Rationale**：FR-015 要求縮圖形狀與頁面一致。團戰績頁的各輪走勢是 `RoundTrendChartComponent`，它對共用的 `LineChartComponent` 傳入固定的 `[bounds]="{ min: 0, max: 1 }"`（元件註解寫明 "fixed 0–100% axis"）；`LineChartComponent` 只有在沒傳 `bounds` 時才用自動範圍。因此圖卡用固定 0～1 就與頁面完全相同，公式一行、可在 model spec 直接驗算，不需要任何共用函式。
 
-**Alternatives considered**：*圖卡固定用 0–100%*：實作最簡單，但與頁面形狀不一致，違反 FR-015。
+**勘誤**：本決策初版誤以為頁面使用自動範圍，因而規劃抽出 `line-chart-scale.ts`；`/speckit-analyze` 對照 `round-trend-chart.component.ts` 後更正，該抽取任務已從 tasks.md 刪除。
+
+**Alternatives considered**：*抽出 `LineChartComponent` 的範圍計算並以 `bounds = { min: 0, max: 1 }` 呼叫*：結果相同，但多動一個沒有測試的共用元件，沒有好處。

@@ -25,6 +25,8 @@
 
 `'card-rank' | 'card-me' | 'card-match'`——`ref` 參數的值，也是圖卡種類的識別。
 
+本節的 `ShareCardSource`、`ShareCardLink`、`QrMatrix`、`PromoFooter`、`ShareCardRenderEnv`、`ShareCardOption` 全部定義在 `share-card-option.ts`（只放型別、不 import 任何實作檔，避免循環），並在 Phase 2 就定案為以下形狀；之後各 phase 只改實作、不改欄位。
+
 ### ShareCardLink
 
 | 欄位 | 型別 | 說明 |
@@ -36,7 +38,7 @@
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
-| `size` | `number` | 每邊模組數（version 1–40 → 21–177；實際為 29–37） |
+| `size` | `number` | 每邊模組數（version 1–40 → 21–177）。一般網址為 33；頁尾可畫的上限為 53（`qrLayout()` 仍可得到 4px） |
 | `isDark(row, col)` | `boolean` | 該模組是否為深色 |
 
 `QrMatrix | null`：`null` 表示 QR 產生失敗或網址過長（每模組會低於 4px），頁尾省略 QR 碼、保留可讀網址。
@@ -54,9 +56,9 @@
 
 | 欄位 | 型別 | 說明 |
 |---|---|---|
-| `link` | `ShareCardLink` | |
-| `qr` | `QrMatrix \| null` | |
-| `meta` | `string \| null` | 頁尾左上方的一行輔助資訊。040 單場圖卡放「比賽時長 · 平均每分耗時」；團圖卡為 `null` |
+| `link` | `ShareCardLink` | 由 `rasterize()` 以 `buildShareCardLink(window.location, option.source)` 產生；Phase 2 起就是必填 |
+| `qr` | `QrMatrix \| null` | US2 之前固定為 `null`；US2 起由 `rasterize()` 動態載入 `qrcode` 產生，失敗時為 `null` |
+| `meta` | `string \| null` | 頁尾左上方的一行輔助資訊。`rasterize()` 一律給 `null`；040 單場圖卡的 renderer 以 `{ ...env.footer, meta }` 覆寫為「比賽時長 · 平均每分耗時」；團圖卡維持 `null` |
 
 品牌字樣、標語、掃碼提示由 renderer 依語系取得，不放在模型裡。
 
@@ -70,12 +72,12 @@
 
 `stackBlocks(blocks, { top, bottom, gap, minGap })`：
 
-1. 總高 ≤ 可用高度 → 不收縮，整組在上下緣之間垂直置中（與 040 現行行為相同）。
-2. 否則間距由 `gap`(48) 降到 `minGap`(32)。
-3. 仍不足 → 由上而下，把有 `minHeight` 的區塊依序收縮到所需為止。
-4. 仍不足 → 由 `top` 開始往下排，不再置中；renderer 測試保證各圖卡的最壞情況不會走到這一步。
+1. 區塊總高＋`gap`(48) × 間距數 ≤ 可用高度 → 不收縮，起點為 `top + Math.floor(剩餘 / 2)`，整組垂直置中（與 040 現行行為相同）。
+2. 否則間距改為 `max(minGap, Math.floor((可用 − 區塊總高) / 間距數))`（最低 32）；若因此放得下，區塊高度不變，剩餘像素同樣置中。
+3. 間距 32 仍不足 → 由上而下，把有 `minHeight` 的區塊依序收縮到「剛好放下」或其 `minHeight` 為止；起點為 `top`。
+4. 仍不足 → 由 `top` 開始往下排；renderer 測試保證各圖卡的最壞情況不會走到這一步。
 
-同樣輸入必得同樣輸出（SC-010）。
+全部以整數像素計算；同樣輸入必得同樣輸出（SC-010）。各圖卡的區塊尺寸見 contracts/share-card-core.md §7 與 contracts/group-share-card.md §2。
 
 ### ShareCardOption（預覽外殼的輸入）
 
@@ -113,11 +115,11 @@
 |---|---|---|
 | `groupName` | `string` | |
 | `date` | `string \| null` | `context.createdAt` |
-| `playerCount` | `number` | `total_matches ≥ 1` 的列數（FR-006、FR-011） |
+| `playerCount` | `number` | `countPlayers(final_standings)`＝`total_matches ≥ 1` 的列數（FR-006、FR-011）；我的成績卡共用同一個函式 |
 | `rows` | `LeaderboardRow[]` | 先濾掉 `total_matches = 0`，**保持伺服器順序**，取前 6 列（FR-007） |
 | `selfRow` | `LeaderboardRow \| null` | 本人有出賽且不在 `rows` 內時，另附本人那一列與真實名次（FR-010）；否則 `null` |
 | `fileName` | `string` | `rally-stats-rank-<YYYYMMDD 或 nodate>-<團名安全字元>.png` |
-| `altText` | `TranslatedText` | 團名＋前 3 列的名次與暱稱 |
+| `altText` | `TranslatedText` | 依 `rows` 列數選用 `groupShareCard.leaderboard.altText1／2／3`；參數 `group`、`rankN`（伺服器名次，並列時原樣）、`nameN`，不出現空字串參數（FR-031） |
 
 `buildLeaderboardCardModel(history, context)` 在沒有任何出賽球員時回傳 `null`（FR-005 的可用條件）。
 
@@ -130,10 +132,10 @@
 | `winRate` | `string` | `formatPercent(my_stats.win_rate)`——與頁面字面相同（FR-017） |
 | `wins`、`losses`、`matches` | `number` | `my_stats` 原樣 |
 | `standing` | `{ rank: number; playerCount: number } \| null` | 來自 `is_self` 列與排行榜卡相同定義的 `playerCount`；找不到本人列則 `null`（FR-014） |
-| `trend` | `{ x: number; y: number }[] \| null` | `round_win_rates.length ≥ 2` 時，以 `line-chart-scale` 的同一套縱軸範圍換算成 0–100 的座標（FR-015）；否則 `null` |
+| `trend` | `{ x: number; y: number }[] \| null` | `round_win_rates.length ≥ 2` 時，第 i 輪為 `x = i / (n − 1) × 100`、`y = (1 − win_rate) × 100`——與團戰績頁 `round-trend-chart` 相同的固定 0～100% 縱軸（FR-015）；否則 `null` |
 | `opponents` | `{ nickname; wins; losses }[]` | `opponent_records` 前 3 筆，順序不變（FR-016）；可為空陣列（整塊省略） |
 | `fileName` | `string` | `rally-stats-me-<YYYYMMDD 或 nodate>-<團名安全字元>.png` |
-| `altText` | `TranslatedText` | 團名＋勝率＋勝負場數 |
+| `altText` | `TranslatedText` | `groupShareCard.myStats.altText`，參數 `group`、`winRate`、`wins`、`losses` |
 
 `buildMyStatsCardModel(history, context)` 在 `my_stats.total_matches = 0` 時回傳 `null`（FR-013）。
 
