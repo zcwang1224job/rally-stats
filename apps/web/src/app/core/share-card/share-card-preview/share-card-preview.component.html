@@ -1,21 +1,21 @@
 <dialog
   #dialog
   class="dialog dialog--lg share-card-dialog"
-  aria-labelledby="share-card-title"
+  [attr.aria-labelledby]="titleId"
   (close)="onNativeClose()"
 >
   <button
     type="button"
     class="dialog__close"
     (click)="close()"
-    [attr.aria-label]="'matchShareCard.close' | translate"
+    [attr.aria-label]="'shareCard.close' | translate"
   >
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
   </button>
-  <h2 id="share-card-title">{{ 'matchShareCard.previewTitle' | translate }}</h2>
+  <h2 [id]="titleId">{{ 'shareCard.previewTitle' | translate }}</h2>
 
-  @if (model(); as m) {
-    <div class="share-card__theme" role="group" [attr.aria-label]="'matchShareCard.themeLabel' | translate">
+  @if (selected(); as card) {
+    <div class="share-card__theme" role="group" [attr.aria-label]="'shareCard.themeLabel' | translate">
       @for (option of themes; track option) {
         <button
           type="button"
@@ -25,7 +25,7 @@
           [disabled]="status() === 'generating'"
           (click)="selectTheme(option)"
         >
-          {{ (option === 'light' ? 'matchShareCard.themeLight' : 'matchShareCard.themeDark') | translate }}
+          {{ (option === 'light' ? 'shareCard.themeLight' : 'shareCard.themeDark') | translate }}
         </button>
       }
     </div>
@@ -35,17 +35,17 @@
     <div class="share-card__stage">
       @switch (status()) {
         @case ('generating') {
-          <p class="share-card__status" role="status">{{ 'matchShareCard.generating' | translate }}</p>
+          <p class="share-card__status" role="status">{{ 'shareCard.generating' | translate }}</p>
         }
         @case ('error') {
-          <p class="share-card__error" role="alert">{{ 'matchShareCard.generateError' | translate }}</p>
+          <p class="share-card__error" role="alert">{{ 'shareCard.generateError' | translate }}</p>
         }
         @case ('ready') {
           @if (imageUrl(); as url) {
             <img
               class="share-card__preview"
               [src]="url"
-              [alt]="m.altText.key | translate: m.altText.params"
+              [alt]="card.altText.key | translate: card.altText.params"
               width="1080"
               height="1350"
             />
@@ -58,12 +58,12 @@
       <div class="actions share-card__actions">
         @if (canShare()) {
           <button type="button" class="btn share-card__share" (click)="share()">
-            {{ 'matchShareCard.share' | translate }}
+            {{ 'shareCard.share' | translate }}
           </button>
         }
         @if (canCopy()) {
           <button type="button" class="btn btn--secondary share-card__copy" (click)="copy()">
-            {{ 'matchShareCard.copy' | translate }}
+            {{ 'shareCard.copy' | translate }}
           </button>
         }
         <button
@@ -72,7 +72,7 @@
           [class.btn--secondary]="canShare()"
           (click)="download()"
         >
-          {{ 'matchShareCard.download' | translate }}
+          {{ 'shareCard.download' | translate }}
         </button>
       </div>
     }

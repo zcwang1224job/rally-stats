@@ -17,7 +17,26 @@
     "menuToggle": "開啟導覽選單"
   },
   "home": {
-    "title": "Rally Stats"
+    "title": "Rally Stats",
+    "features": {
+      "scoring": {
+        "title": "即時計分",
+        "body": "手機就是計分板，比分即時同步給場邊每個人。"
+      },
+      "rotation": {
+        "title": "自動排點",
+        "body": "依人數與休息狀況自動輪轉上場，不用再手寫名單。"
+      },
+      "stats": {
+        "title": "個人與團戰績",
+        "body": "每一場都留下紀錄，勝率、走勢與對手一目了然。"
+      }
+    },
+    "cta": {
+      "start": "開始使用",
+      "login": "登入",
+      "member": "進入我的頁面"
+    }
   },
   "breadcrumb": {
     "groupAdmin": "團管理",
@@ -1138,30 +1157,15 @@
   },
   "matchShareCard": {
     "openButton": "分享圖卡",
-    "previewTitle": "分享圖卡",
-    "themeLabel": "配色",
-    "themeLight": "亮色",
-    "themeDark": "暗色",
-    "share": "分享",
-    "copy": "複製圖片",
-    "copied": "已複製圖片",
-    "download": "下載圖片",
-    "close": "關閉",
-    "generating": "圖卡產生中…",
-    "generateError": "圖卡產生失敗，請稍後再試。",
-    "shareError": "分享失敗，可以改用「下載圖片」。",
-    "copyError": "複製失敗，可以改用「下載圖片」。",
     "badge": {
       "win": "勝",
       "victory": "勝利",
       "defeat": "落敗"
     },
-    "dateFormat": "yyyy/M/d",
     "round": "第 {{round}} 輪",
     "duration": "比賽時長 {{minutes}} 分 {{seconds}} 秒",
     "durationHours": "比賽時長 {{hours}} 小時 {{minutes}} 分",
     "avgPerPoint": "平均每分 {{seconds}} 秒",
-    "brand": "Rally Stats",
     "altText": "比賽圖卡：{{first}} {{firstScore}} 比 {{second}} {{secondScore}}，{{winner}} 獲勝",
     "highlight": {
       "comeback": "最大落後 {{deficit}} 分逆轉勝",
@@ -1171,7 +1175,8 @@
       "winnerRate": "主動得分 {{percent}}",
       "leadChanges": "領先易手 {{count}} 次",
       "bigMargin": "以 {{margin}} 分差勝出"
-    }
+    },
+    "kind": "單場比賽"
   },
   "errors": {
     "VALIDATION_ERROR": "欄位資料不正確，請檢查後重新送出",
@@ -1272,5 +1277,50 @@
     "GROUP_INVITE_CANCELLED": "團長已取消這則邀請，無法再加入此團",
     "GROUP_MEMBERSHIP_NEVER_HELD": "您從未加入過此團，無法查看比賽紀錄",
     "INVALID_PLAYER_KEY": "球員識別碼格式不正確，請重新整理後再試一次"
+  },
+  "shareCard": {
+    "brand": "Rally Stats",
+    "tagline": "計分・排點・戰績，打球一站搞定",
+    "scanHint": "掃描 QR 碼開始使用",
+    "kindLabel": "圖卡種類",
+    "previewTitle": "分享圖卡",
+    "themeLabel": "配色",
+    "themeLight": "亮色",
+    "themeDark": "暗色",
+    "share": "分享",
+    "copy": "複製圖片",
+    "copied": "已複製圖片",
+    "download": "下載圖片",
+    "close": "關閉",
+    "generating": "圖卡產生中…",
+    "generateError": "圖卡產生失敗，請稍後再試。",
+    "shareError": "分享失敗，可以改用「下載圖片」。",
+    "copyError": "複製失敗，可以改用「下載圖片」。",
+    "dateFormat": "yyyy/M/d"
+  },
+  "groupShareCard": {
+    "openButton": "分享圖卡",
+    "kind": {
+      "leaderboard": "排行榜",
+      "myStats": "我的成績"
+    },
+    "leaderboard": {
+      "title": "排行榜",
+      "playerCount": "{{count}} 位球員",
+      "record": "{{wins}} 勝 {{losses}} 敗",
+      "altText1": "{{group}} 排行榜：第 {{rank1}} 名 {{name1}}",
+      "altText2": "{{group}} 排行榜：第 {{rank1}} 名 {{name1}}、第 {{rank2}} 名 {{name2}}",
+      "altText3": "{{group}} 排行榜：第 {{rank1}} 名 {{name1}}、第 {{rank2}} 名 {{name2}}、第 {{rank3}} 名 {{name3}}"
+    },
+    "selfTag": "我",
+    "myStats": {
+      "title": "我的成績",
+      "record": "{{wins}} 勝 {{losses}} 敗・共 {{matches}} 場",
+      "standing": "第 {{rank}} 名／共 {{count}} 人",
+      "trendTitle": "各輪勝率",
+      "opponentsTitle": "最常交手",
+      "opponentRecord": "{{wins}} 勝 {{losses}} 敗",
+      "altText": "{{group}} 我的成績：勝率 {{winRate}}，{{wins}} 勝 {{losses}} 敗"
+    }
   }
 }

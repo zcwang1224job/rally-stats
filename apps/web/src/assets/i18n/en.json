@@ -17,7 +17,26 @@
     "menuToggle": "Open navigation menu"
   },
   "home": {
-    "title": "Rally Stats"
+    "title": "Rally Stats",
+    "features": {
+      "scoring": {
+        "title": "Live scoring",
+        "body": "Your phone is the scoreboard, and everyone courtside sees the score as it happens."
+      },
+      "rotation": {
+        "title": "Automatic rotation",
+        "body": "Players rotate on court by headcount and rest, with no handwritten lists."
+      },
+      "stats": {
+        "title": "Your stats and your group's",
+        "body": "Every game is recorded: win rate, trends and opponents at a glance."
+      }
+    },
+    "cta": {
+      "start": "Get started",
+      "login": "Log in",
+      "member": "Go to my page"
+    }
   },
   "breadcrumb": {
     "groupAdmin": "Group Admin",
@@ -1138,30 +1157,15 @@
   },
   "matchShareCard": {
     "openButton": "Share card",
-    "previewTitle": "Share card",
-    "themeLabel": "Theme",
-    "themeLight": "Light",
-    "themeDark": "Dark",
-    "share": "Share",
-    "copy": "Copy image",
-    "copied": "Image copied",
-    "download": "Download image",
-    "close": "Close",
-    "generating": "Creating card…",
-    "generateError": "Couldn't create the card. Please try again.",
-    "shareError": "Sharing failed. You can use “Download image” instead.",
-    "copyError": "Copying failed. You can use “Download image” instead.",
     "badge": {
       "win": "WIN",
       "victory": "Victory",
       "defeat": "Defeat"
     },
-    "dateFormat": "MMM d, yyyy",
     "round": "Round {{round}}",
     "duration": "Duration {{minutes}}m {{seconds}}s",
     "durationHours": "Duration {{hours}}h {{minutes}}m",
     "avgPerPoint": "{{seconds}}s per point",
-    "brand": "Rally Stats",
     "altText": "Match card: {{first}} {{firstScore}}, {{second}} {{secondScore}}. {{winner}} won",
     "highlight": {
       "comeback": "Came back from {{deficit}} down",
@@ -1171,7 +1175,8 @@
       "winnerRate": "{{percent}} of points were winners",
       "leadChanges": "Lead changed {{count}} times",
       "bigMargin": "Won by {{margin}} points"
-    }
+    },
+    "kind": "Match"
   },
   "errors": {
     "VALIDATION_ERROR": "Some fields are invalid — please check them and try again",
@@ -1272,5 +1277,50 @@
     "GROUP_INVITE_CANCELLED": "The group creator cancelled this invite, so you can no longer join",
     "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records",
     "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again."
+  },
+  "shareCard": {
+    "brand": "Rally Stats",
+    "tagline": "Score, schedule and track every game.",
+    "scanHint": "Scan to get started",
+    "kindLabel": "Card type",
+    "previewTitle": "Share card",
+    "themeLabel": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "share": "Share",
+    "copy": "Copy image",
+    "copied": "Image copied",
+    "download": "Download image",
+    "close": "Close",
+    "generating": "Creating card…",
+    "generateError": "Couldn't create the card. Please try again.",
+    "shareError": "Sharing failed. You can use “Download image” instead.",
+    "copyError": "Copying failed. You can use “Download image” instead.",
+    "dateFormat": "MMM d, yyyy"
+  },
+  "groupShareCard": {
+    "openButton": "Share card",
+    "kind": {
+      "leaderboard": "Leaderboard",
+      "myStats": "My stats"
+    },
+    "leaderboard": {
+      "title": "Leaderboard",
+      "playerCount": "{{count}} players",
+      "record": "{{wins}}W {{losses}}L",
+      "altText1": "{{group}} leaderboard: #{{rank1}} {{name1}}",
+      "altText2": "{{group}} leaderboard: #{{rank1}} {{name1}}, #{{rank2}} {{name2}}",
+      "altText3": "{{group}} leaderboard: #{{rank1}} {{name1}}, #{{rank2}} {{name2}}, #{{rank3}} {{name3}}"
+    },
+    "selfTag": "YOU",
+    "myStats": {
+      "title": "My stats",
+      "record": "{{wins}}W {{losses}}L · {{matches}} matches",
+      "standing": "#{{rank}} of {{count}}",
+      "trendTitle": "Win rate by round",
+      "opponentsTitle": "Most played against",
+      "opponentRecord": "{{wins}}W {{losses}}L",
+      "altText": "{{group}} my stats: {{winRate}} win rate, {{wins}} wins, {{losses}} losses"
+    }
   }
 }

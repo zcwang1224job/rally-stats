@@ -7,8 +7,8 @@ import {
   SHARE_CARD_PADDING,
   SHARE_CARD_WIDTH,
   renderShareCard,
-  truncateToWidth,
 } from './share-card-renderer';
+import { testFooter } from '../share-card/testing/footer-ops';
 import {
   makeDetail,
   makePartial,
@@ -16,7 +16,7 @@ import {
   withMomentum,
   withTempo,
 } from './testing/detail-fixtures';
-import { RecordingContext } from './testing/recording-context';
+import { RecordingContext } from '../share-card/testing/recording-context';
 
 const neutral: ShareCardContext = { groupName: '週三羽球團', perspective: { kind: 'neutral' } };
 const FONTS = { base: 'sans-serif', score: 'monospace' };
@@ -28,20 +28,25 @@ const EN_DATE = 'MMM d, yyyy';
  * real wording, so it isn't truncated, yet still shows what was asked. */
 function fakeText(dateFormat = ZH_DATE): ShareCardText {
   return (key, params) => {
-    if (key === 'matchShareCard.dateFormat') {
+    if (key === 'shareCard.dateFormat') {
       return dateFormat;
     }
-    if (key === 'matchShareCard.brand') {
+    if (key === 'shareCard.brand') {
       return 'Rally Stats';
     }
-    const name = key.replace('matchShareCard.', '');
+    const name = key.replace(/^(matchShareCard|shareCard)\./, '');
     return `${name}(${Object.values(params ?? {}).join(',')})`;
   };
 }
 
 function draw(model: ShareCardModel, dateFormat = ZH_DATE): RecordingContext {
   const ctx = new RecordingContext();
-  renderShareCard(ctx, model, SHARE_PALETTES.light, fakeText(dateFormat), FONTS);
+  renderShareCard(ctx, model, {
+    palette: SHARE_PALETTES.light,
+    text: fakeText(dateFormat),
+    fonts: FONTS,
+    footer: testFooter(),
+  });
   return ctx;
 }
 
@@ -232,23 +237,5 @@ describe('renderShareCard — my perspective (040 US3)', () => {
     expect(myName.y).toBeLessThan(panel.y + panel.h);
     const opponent = ctx.findText('王小明')!;
     expect(opponent.y).toBeGreaterThan(panel.y + panel.h);
-  });
-});
-
-describe('truncateToWidth', () => {
-  it('returns the text untouched when it fits', () => {
-    const ctx = new RecordingContext();
-    ctx.font = '10px sans-serif';
-
-    expect(truncateToWidth(ctx, 'abc', 100)).toBe('abc');
-  });
-
-  it('cuts the longest prefix that still fits with the ellipsis', () => {
-    const ctx = new RecordingContext();
-    ctx.font = '10px sans-serif';
-
-    const result = truncateToWidth(ctx, '一二三四五六', 35);
-    expect(result).toBe('一二…');
-    expect(ctx.measureText(result).width).toBeLessThanOrEqual(35);
   });
 });

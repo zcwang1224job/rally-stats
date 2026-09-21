@@ -1,5 +1,21 @@
 import { formatDate } from '@angular/common';
 import {
+  SHARE_CARD_HEIGHT,
+  SHARE_CARD_PADDING,
+  SHARE_CARD_WIDTH,
+} from '../share-card/share-card-canvas';
+import { panel, pill, truncateToWidth } from '../share-card/share-card-drawing';
+import { drawPromoFooter } from '../share-card/share-card-footer';
+import {
+  Block,
+  SHARE_CARD_BLOCK_GAP,
+  SHARE_CARD_BLOCK_MIN_GAP,
+  SHARE_CARD_MIDDLE_BOTTOM,
+  SHARE_CARD_MIDDLE_TOP,
+  stackBlocks,
+} from '../share-card/share-card-layout';
+import { ShareCardRenderEnv } from '../share-card/share-card-option';
+import {
   CardTeam,
   ScoreTrendPoint,
   ShareCardCanvas,
@@ -9,12 +25,12 @@ import {
   SharePalette,
 } from './share-card.models';
 
-export const SHARE_CARD_WIDTH = 1080;
-export const SHARE_CARD_HEIGHT = 1350;
-export const SHARE_CARD_PADDING = 72;
+// 041-group-share-cards: these now live in the shared layer.
+export { SHARE_CARD_HEIGHT, SHARE_CARD_PADDING, SHARE_CARD_WIDTH };
 
 const CONTENT_WIDTH = SHARE_CARD_WIDTH - SHARE_CARD_PADDING * 2;
 const RIGHT_EDGE = SHARE_CARD_WIDTH - SHARE_CARD_PADDING;
+// The gap between the two teams inside the teams block (not between blocks).
 const BLOCK_GAP = 48;
 
 // Team rows: color bar, names, score on the right.
@@ -32,27 +48,18 @@ const TREND_INSET = 28;
 const HIGHLIGHT_LINE = 60;
 const HIGHLIGHT_INSET = 24;
 
-const FOOTER_TOP = SHARE_CARD_HEIGHT - SHARE_CARD_PADDING - 32;
-const MIDDLE_TOP = 230;
-const MIDDLE_BOTTOM = FOOTER_TOP - 72;
-
-interface Block {
-  height: number;
-  draw(y: number): void;
-}
-
 /** 040-match-share-card: draws the 1080×1350 card (FR-004). The header is
  * pinned to the top and the footer to the bottom; the middle blocks are
- * stacked and centered between them, and a block with nothing to show is
- * simply not in the stack — no empty frame, no placeholder (FR-009).
- * Draws no link or QR code of any kind (FR-006). */
+ * stacked between them by the shared `stackBlocks()` (041), and a block
+ * with nothing to show is simply not in the stack — no empty frame, no
+ * placeholder (FR-009). The footer is the shared one, with this card's
+ * duration and pace as its meta line. */
 export function renderShareCard(
   ctx: ShareCardCanvas,
   model: ShareCardModel,
-  palette: SharePalette,
-  text: ShareCardText,
-  fonts: ShareCardFonts,
+  env: ShareCardRenderEnv,
 ): void {
+  const { palette, text, fonts } = env;
   ctx.textBaseline = 'top';
   ctx.fillStyle = palette.background;
   ctx.fillRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
@@ -66,15 +73,14 @@ export function renderShareCard(
   if (model.highlights.length > 0) {
     blocks.push(highlightsBlock(ctx, model, palette, text, fonts));
   }
-  const total =
-    blocks.reduce((sum, block) => sum + block.height, 0) + BLOCK_GAP * (blocks.length - 1);
-  let y = MIDDLE_TOP + Math.max(0, (MIDDLE_BOTTOM - MIDDLE_TOP - total) / 2);
-  for (const block of blocks) {
-    block.draw(y);
-    y += block.height + BLOCK_GAP;
-  }
+  stackBlocks(blocks, {
+    top: SHARE_CARD_MIDDLE_TOP,
+    bottom: SHARE_CARD_MIDDLE_BOTTOM,
+    gap: SHARE_CARD_BLOCK_GAP,
+    minGap: SHARE_CARD_BLOCK_MIN_GAP,
+  });
 
-  drawFooter(ctx, model, palette, text, fonts);
+  drawPromoFooter(ctx, { ...env.footer, meta: footerMeta(model, text) }, env);
 }
 
 function drawHeader(
@@ -93,7 +99,7 @@ function drawHeader(
   // The language decides the date pattern, never the locale: the app has
   // no zh-TW locale data registered (research.md Decision 8).
   const date = model.startedAt
-    ? formatDate(model.startedAt, text('matchShareCard.dateFormat'), 'en-US')
+    ? formatDate(model.startedAt, text('shareCard.dateFormat'), 'en-US')
     : null;
   const round = text('matchShareCard.round', { round: model.roundNumber });
   const meta = [date, round].filter((part): part is string => !!part).join(' · ');
@@ -261,23 +267,10 @@ function highlightsBlock(
   };
 }
 
-function drawFooter(
-  ctx: ShareCardCanvas,
-  model: ShareCardModel,
-  palette: SharePalette,
-  text: ShareCardText,
-  fonts: ShareCardFonts,
-): void {
-  ctx.fillStyle = palette.divider;
-  ctx.fillRect(SHARE_CARD_PADDING, FOOTER_TOP - 32, CONTENT_WIDTH, 2);
-
-  ctx.textAlign = 'right';
-  ctx.fillStyle = palette.text;
-  ctx.font = `bold 32px ${fonts.base}`;
-  const brand = text('matchShareCard.brand');
-  ctx.fillText(brand, RIGHT_EDGE, FOOTER_TOP);
-  const brandWidth = ctx.measureText(brand).width;
-
+/** The footer's meta line: the match's duration and pace, or null when
+ * neither is known (041 contracts/share-card-core.md §7 — composed here,
+ * drawn by the shared footer). */
+function footerMeta(model: ShareCardModel, text: ShareCardText): string | null {
   const parts: string[] = [];
   if (model.durationSeconds !== null) {
     parts.push(durationText(model.durationSeconds, text));
@@ -287,16 +280,7 @@ function drawFooter(
       text('matchShareCard.avgPerPoint', { seconds: Math.round(model.averagePointSeconds) }),
     );
   }
-  if (parts.length > 0) {
-    ctx.textAlign = 'left';
-    ctx.fillStyle = palette.textMuted;
-    ctx.font = `28px ${fonts.base}`;
-    ctx.fillText(
-      truncateToWidth(ctx, parts.join(' · '), CONTENT_WIDTH - brandWidth - 32),
-      SHARE_CARD_PADDING,
-      FOOTER_TOP + 2,
-    );
-  }
+  return parts.length > 0 ? parts.join(' · ') : null;
 }
 
 function durationText(seconds: number, text: ShareCardText): string {
@@ -310,69 +294,4 @@ function durationText(seconds: number, text: ShareCardText): string {
     minutes: Math.floor(seconds / 60),
     seconds: seconds % 60,
   });
-}
-
-function panel(
-  ctx: ShareCardCanvas,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  color: string,
-): void {
-  roundedFill(ctx, x, y, width, height, 24, color);
-}
-
-function pill(
-  ctx: ShareCardCanvas,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  color: string,
-): void {
-  roundedFill(ctx, x, y, width, height, height / 2, color);
-}
-
-function roundedFill(
-  ctx: ShareCardCanvas,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-  color: string,
-): void {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(x, y, width, height, radius);
-  } else {
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + width, y);
-    ctx.lineTo(x + width, y + height);
-    ctx.lineTo(x, y + height);
-  }
-  ctx.fill();
-}
-
-/** The longest prefix that still fits `maxWidth` with a trailing "…" — or
- * the text itself when it already fits (SC-005: a 20-character nickname
- * must never run into the score or off the card). */
-export function truncateToWidth(ctx: ShareCardCanvas, value: string, maxWidth: number): string {
-  if (ctx.measureText(value).width <= maxWidth) {
-    return value;
-  }
-  const chars = [...value];
-  let low = 0;
-  let high = chars.length;
-  while (low < high) {
-    const mid = Math.ceil((low + high) / 2);
-    if (ctx.measureText(`${chars.slice(0, mid).join('')}…`).width <= maxWidth) {
-      low = mid;
-    } else {
-      high = mid - 1;
-    }
-  }
-  return `${chars.slice(0, low).join('')}…`;
 }
