@@ -806,7 +806,7 @@ describe('MatchHistoryComponent', () => {
 
       tap(fixture, 'partners');
       expect(openSections(root)).toEqual(['partners']);
-      expect(fixture.componentInstance.openSection()).toBe('partners');
+      expect(fixture.componentInstance.sections.openSection()).toBe('partners');
     });
 
     it('folding the open section leaves every section folded', () => {
@@ -817,7 +817,7 @@ describe('MatchHistoryComponent', () => {
       tap(fixture, 'roundTrend');
 
       expect(openSections(root)).toEqual([]);
-      expect(fixture.componentInstance.openSection()).toBeNull();
+      expect(fixture.componentInstance.sections.openSection()).toBeNull();
     });
 
     it('opening the group comparison still starts loading it', () => {

@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { booleanAttribute, Component, input } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import {
   ComparisonMetric,
@@ -23,6 +23,9 @@ export class FriendComparisonComponent {
   readonly friendNickname = input<string | null>(null);
   readonly loading = input(false);
   readonly failed = input(false);
+  /** Inside the page's own collapsible panel, whose summary already carries
+   * the title: no card frame and no heading of its own. */
+  readonly bare = input(false, { transform: booleanAttribute });
 
   labelKey(metric: ComparisonMetric): string {
     return `playerDashboard.metric.${metric.key}.label`;

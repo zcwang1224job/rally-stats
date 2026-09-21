@@ -411,6 +411,35 @@ details.disclosure {
   }
 }
 
+// A records page's big sections run as an accordion (SectionAccordion — the
+// member's own 對戰紀錄 and a friend's): a short stack of card titles while
+// folded. The panels' own bottom margins give way to one small gap.
+.section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+
+  > * {
+    margin: 0;
+    // Clears the sticky nav when an opened panel is scrolled back to.
+    scroll-margin-top: calc(var(--touch-target-min) + var(--space-xl));
+  }
+}
+
+// A page-level panel's title — the same row as the collapsible cards beside
+// it (團內比較, 搭檔戰績): one line, a full touch target tall.
+.section-panel__title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--touch-target-min);
+  cursor: pointer;
+}
+
+.section-panel[open] > .section-panel__title {
+  margin-bottom: var(--space-sm);
+}
+
 // A person's initial in a brand-colored circle (member hub, friend list,
 // my groups, group rosters). The text is decorative: pair it with the
 // visible name and mark it aria-hidden.

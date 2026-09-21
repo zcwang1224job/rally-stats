@@ -136,9 +136,8 @@
   <!-- The big sections run as an accordion: all collapsed on arrival, and
        opening one folds away whichever was open, so the page is a short list
        of titles above the matches rather than a long scroll through all of
-       them. `openSection` is the one source of truth; each panel reports the
-       reader's clicks back through onSectionToggle(). -->
-  <div class="sections">
+       them (SectionAccordion). -->
+  <div class="section-stack">
     <!-- 036 US1: the conclusions first, the numbers behind them right below.
          Rides on the dashboard response, so it follows the same filters and
          shares its loading state; when that request fails the dashboard says
@@ -147,8 +146,8 @@
       <details
         class="card section-panel"
         data-section="insights"
-        [open]="openSection() === 'insights'"
-        (toggle)="onSectionToggle('insights', $any($event.target).open)"
+        [open]="sections.isOpen('insights')"
+        (toggle)="sections.toggled('insights', $any($event.target).open)"
       >
         <summary class="section-panel__title">{{ 'playerInsights.title' | translate }}</summary>
         <app-player-insights
@@ -168,8 +167,8 @@
     <details
       class="card section-panel"
       data-section="dashboard"
-      [open]="openSection() === 'dashboard'"
-      (toggle)="onSectionToggle('dashboard', $any($event.target).open)"
+      [open]="sections.isOpen('dashboard')"
+      (toggle)="sections.toggled('dashboard', $any($event.target).open)"
     >
       <summary class="section-panel__title">{{ 'playerDashboard.title' | translate }}</summary>
       <app-player-dashboard
@@ -186,8 +185,8 @@
          stays folded like the rest. Deliberately NOT bound to the filters. -->
     <app-group-benchmark
       data-section="benchmark"
-      [open]="openSection() === 'benchmark'"
-      (openChange)="onSectionToggle('benchmark', $event)"
+      [open]="sections.isOpen('benchmark')"
+      (openChange)="sections.toggled('benchmark', $event)"
       [groups]="benchmarkGroups()"
       [selectedGroupId]="benchmarkGroupId()"
       [benchmark]="benchmark()"
@@ -201,8 +200,8 @@
       <details
         class="card section-panel"
         data-section="roundTrend"
-        [open]="openSection() === 'roundTrend'"
-        (toggle)="onSectionToggle('roundTrend', $any($event.target).open)"
+        [open]="sections.isOpen('roundTrend')"
+        (toggle)="sections.toggled('roundTrend', $any($event.target).open)"
       >
         <summary class="section-panel__title">{{ 'member.matchHistory.charts.roundTrendTitle' | translate }}</summary>
         <app-round-trend-chart [rounds]="r.round_win_rates" />
@@ -214,8 +213,8 @@
       <app-matchup-records
         data-section="partners"
         role="partner"
-        [open]="openSection() === 'partners'"
-        (openChange)="onSectionToggle('partners', $event)"
+        [open]="sections.isOpen('partners')"
+        (openChange)="sections.toggled('partners', $event)"
         [records]="r.partner_records"
         [mostPlayedKey]="r.matchup_highlights.most_played_partner"
         [standoutKey]="r.matchup_highlights.best_partner"
@@ -225,8 +224,8 @@
       <app-matchup-records
         data-section="opponents"
         role="opponent"
-        [open]="openSection() === 'opponents'"
-        (openChange)="onSectionToggle('opponents', $event)"
+        [open]="sections.isOpen('opponents')"
+        (openChange)="sections.toggled('opponents', $event)"
         [records]="r.opponent_records"
         [mostPlayedKey]="r.matchup_highlights.most_faced_opponent"
         [standoutKey]="r.matchup_highlights.toughest_opponent"

@@ -376,25 +376,29 @@ describe('FriendMatchRecordsComponent', () => {
 
   // 036-match-insights-benchmarks US4 (T050)
   describe('compare with me', () => {
-    const toggle = (root: HTMLElement) =>
-      root.querySelector<HTMLButtonElement>('[data-compare-toggle]')!;
+    const panel = (root: HTMLElement) =>
+      root.querySelector<HTMLDetailsElement>('details[data-section="comparison"]')!;
+    /** What a tap on the panel's title does: flip `open`, then `toggle`. */
+    const tap = (fixture: ReturnType<typeof setup>['fixture']) => {
+      const details = panel(fixture.nativeElement);
+      details.open = !details.open;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    };
 
-    it('asks for nothing until the button is pressed, and then only once', () => {
+    it('asks for nothing until its panel is opened, and then only once', () => {
       const { fixture, getFriendMatchComparisonCalls } = setup({});
       const root: HTMLElement = fixture.nativeElement;
       expect(getFriendMatchComparisonCalls.length).toBe(0);
+      expect(panel(root).open).toBe(false);
       expect(root.querySelector('app-friend-comparison')).toBeNull();
-      expect(toggle(root).getAttribute('aria-pressed')).toBe('false');
 
-      toggle(root).click();
-      fixture.detectChanges();
+      tap(fixture);
       expect(getFriendMatchComparisonCalls).toEqual([['friend-1']]);
-      expect(toggle(root).getAttribute('aria-pressed')).toBe('true');
       expect(root.querySelector('app-friend-comparison [data-metric="team_serve"]')).not.toBeNull();
 
-      toggle(root).click(); // hide…
-      toggle(root).click(); // …and show again: no second request
-      fixture.detectChanges();
+      tap(fixture); // fold…
+      tap(fixture); // …and open again: no second request
       expect(getFriendMatchComparisonCalls.length).toBe(1);
       expect(root.querySelector('app-friend-comparison [data-better-mark]')).not.toBeNull();
     });
@@ -404,8 +408,7 @@ describe('FriendMatchRecordsComponent', () => {
         getFriendMatchComparison: () => throwError(() => new Error('boom')),
       });
       const root: HTMLElement = fixture.nativeElement;
-      toggle(root).click();
-      fixture.detectChanges();
+      tap(fixture);
 
       expect(root.querySelector('app-friend-comparison [data-failed]')).not.toBeNull();
       expect(root.querySelectorAll('.match-card').length).toBe(1);
@@ -429,8 +432,7 @@ describe('FriendMatchRecordsComponent', () => {
               ),
       });
       const root: HTMLElement = fixture.nativeElement;
-      toggle(root).click();
-      fixture.detectChanges();
+      tap(fixture);
       expect(root.querySelector('app-friend-comparison')).not.toBeNull();
 
       allowed = false;
@@ -439,6 +441,7 @@ describe('FriendMatchRecordsComponent', () => {
 
       expect(root.querySelector('app-friend-comparison')).toBeNull();
       expect(fixture.componentInstance.comparison()).toBeNull();
+      expect(fixture.componentInstance.sections.openSection()).toBeNull();
     });
 
     it('never shows an in-group comparison on a friend\'s page (FR-037)', () => {
@@ -564,6 +567,73 @@ describe('FriendMatchRecordsComponent', () => {
           ),
       });
       expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // The big sections run as an accordion, as on the member's own 對戰紀錄.
+  describe('sections as an accordion', () => {
+    const SECTIONS = ['comparison', 'insights', 'dashboard', 'partners', 'opponents'];
+    const withRows = (): MemberMatchRecordsResponse => ({ ...oneMatch, doubles_matches: 1 });
+
+    function panel(root: HTMLElement, section: string): HTMLDetailsElement {
+      const el = root.querySelector<HTMLElement>(`[data-section="${section}"]`)!;
+      return (el instanceof HTMLDetailsElement ? el : el.querySelector('details'))!;
+    }
+
+    function tap(fixture: ReturnType<typeof setup>['fixture'], section: string): void {
+      const details = panel(fixture.nativeElement, section);
+      details.open = !details.open;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    }
+
+    const openSections = (root: HTMLElement) => SECTIONS.filter((section) => panel(root, section).open);
+
+    it('shows every section, all folded, on arrival', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      for (const section of SECTIONS) {
+        expect(panel(root, section), section).toBeTruthy();
+      }
+      expect(openSections(root)).toEqual([]);
+    });
+
+    it('opening one section folds the one that was open', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      tap(fixture, 'dashboard');
+      expect(openSections(root)).toEqual(['dashboard']);
+
+      tap(fixture, 'comparison');
+      expect(openSections(root)).toEqual(['comparison']);
+
+      tap(fixture, 'opponents');
+      expect(openSections(root)).toEqual(['opponents']);
+
+      tap(fixture, 'opponents');
+      expect(openSections(root)).toEqual([]);
+    });
+
+    it('an insight about a metric opens the dashboard and folds the summary', () => {
+      const { fixture } = setup({
+        getFriendMatchDashboard: () =>
+          of(
+            dashboardFixture({
+              insights: insightsFixture({ strengths: [insightFixture({ metric_key: 'winner_share' })] }),
+            }),
+          ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      tap(fixture, 'insights');
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(openSections(root)).toEqual(['dashboard']);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
     });
   });
 });

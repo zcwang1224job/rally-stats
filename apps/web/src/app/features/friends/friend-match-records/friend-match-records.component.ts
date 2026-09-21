@@ -24,6 +24,7 @@ import {
 import { PlayerDashboardComponent } from '../../../core/player-dashboard/player-dashboard.component';
 import { PlayerInsightsComponent } from '../../../core/player-insights/player-insights.component';
 import { AuthService } from '../../auth/auth.service';
+import { SectionAccordion } from '../../../core/section-accordion/section-accordion';
 import { FriendComparisonComponent } from './friend-comparison/friend-comparison.component';
 
 /** 023-view-friend-match-records US1/US2: a deliberately thin sibling of
@@ -36,6 +37,9 @@ import { FriendComparisonComponent } from './friend-comparison/friend-comparison
  *
  * FR-008: every load — including pagination — re-calls the server; the
  * component never remembers "was I allowed last time" and skips the call. */
+/** The page's big sections, run as an accordion (one open at a time). */
+export type FriendRecordsSection = 'comparison' | 'insights' | 'dashboard' | 'partners' | 'opponents';
+
 @Component({
   selector: 'app-friend-match-records',
   imports: [
@@ -73,7 +77,12 @@ export class FriendMatchRecordsComponent {
   /** 036 FR-037 / FR-010: the friend's summary jumps to the friend's cards. */
   private readonly dashboardRef = viewChild(PlayerDashboardComponent);
 
+  /** The big sections, one open at a time, all folded on arrival — the same
+   * as on the member's own 對戰紀錄. */
+  readonly sections = new SectionAccordion<FriendRecordsSection>();
+
   focusMetric(key: DashboardMetricKey): void {
+    this.sections.openNow('dashboard');
     this.dashboardRef()?.focusMetric(key);
   }
 
@@ -85,30 +94,27 @@ export class FriendMatchRecordsComponent {
     if (!row) {
       return;
     }
-    const details = row.closest('details');
-    if (details) {
-      details.open = true;
-    }
+    this.sections.openNow(target.role === 'partner' ? 'partners' : 'opponents');
     row.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     row.setAttribute('tabindex', '-1');
     row.focus({ preventScroll: true });
   }
 
   // ---- 036 US4: "compare with me" -------------------------------------------
-  /** Off until asked for, and fetched at most once per visit: most looks at a
-   * friend's records are not a comparison. */
-  readonly comparing = signal(false);
+  /** Off until asked for — the first time its panel is opened — and then
+   * fetched at most once per visit: most looks at a friend's records are not
+   * a comparison. */
+  readonly comparisonRequested = signal(false);
   readonly comparison = signal<MatchComparisonResponse | null>(null);
   readonly comparisonLoading = signal(false);
   readonly comparisonFailed = signal(false);
-  private comparisonRequested = false;
 
-  toggleComparison(): void {
-    this.comparing.update((on) => !on);
-    if (!this.comparing() || this.comparisonRequested) {
+  onComparisonToggle(open: boolean): void {
+    this.sections.toggled('comparison', open);
+    if (!open || this.comparisonRequested()) {
       return;
     }
-    this.comparisonRequested = true;
+    this.comparisonRequested.set(true);
     this.comparisonLoading.set(true);
     this.auth.getFriendMatchComparison(this.memberId).subscribe({
       next: (response) => {
@@ -152,7 +158,8 @@ export class FriendMatchRecordsComponent {
         // opened): nothing of theirs may stay on screen (023 FR-007).
         this.dashboard.set(null);
         this.comparison.set(null);
-        this.comparing.set(false);
+        this.comparisonRequested.set(false); // asked again if re-opened once allowed
+        this.sections.closeAll();
         this.errorKey.set(error.i18nKey);
       },
     });

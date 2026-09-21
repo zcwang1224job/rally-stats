@@ -3,7 +3,7 @@
 :host {
   display: block;
   min-width: 0;
-  margin-bottom: var(--space-lg);
+  // Spacing comes from the page's .section-stack.
 }
 
 .matchups__title {
