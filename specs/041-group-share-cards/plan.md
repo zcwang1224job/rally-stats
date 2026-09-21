@@ -56,7 +56,7 @@ QR 碼以既有相依 `angularx-qrcode` 的底層套件 `qrcode@1.5.4` 產生模
   - `group-share-cards.spec.ts`：`availableGroupCards()` 在各種資料下回傳的選項集合與順序。
   - `group-share-card-i18n.spec.ts`：`shareCard.*`、`groupShareCard.*` 兩份語系檔 key 一致。
 - 040 回歸：`share-card-model.spec.ts`、`share-card-highlights.spec.ts` **一行都不改、維持全綠**（內容與挑選規則不變的證明）；`share-card-renderer.spec.ts` 只更新頁尾與座標相關斷言，並新增「全滿圖卡不超出中段下緣」一例；`share-card-dialog.component.spec.ts` 改為驗證委派給預覽外殼。四個呼叫端與比賽詳情 dialog 的 spec 不動。
-- `shared/line-chart/line-chart-scale.spec.ts`（新增）：抽出的縱軸範圍純函式；`line-chart.component.spec.ts` 維持全綠作為重構不變的保證。
+- `shared/line-chart/line-chart-scale.spec.ts`（新增）：抽出的縱軸範圍純函式。`shared/line-chart/` 目前沒有任何 spec，這份同時是現行行為的特性測試；`shared/round-trend-chart/round-trend-chart.component.spec.ts` 不改動且維持全綠，作為重構不變的保證。
 - `features/member/my-groups/group-history/group-history.component.spec.ts`（擴充）：按鈕在載入中／錯誤／無可用圖卡時不出現；點擊後以正確的選項開啟預覽；`getMyGroups()` 失敗時日期為 `null` 但圖卡仍可用；對戰紀錄篩選不影響圖卡輸入。
 - `features/home/home.component.spec.ts`（擴充）：未登入／已登入的行動按鈕去向；帶 `?ref=card-rank` 與未知 `ref` 時照常顯示；兩種語言。
 

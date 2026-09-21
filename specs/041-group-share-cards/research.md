@@ -147,6 +147,6 @@ version 4-M 的位元組容量為 62：`https://`(8) ＋ host ＋ `/?ref=card-ma
 
 **Decision**：把 `LineChartComponent` 內計算縱軸範圍的邏輯（`rate` 類型：取資料最小／最大值、夾在 0–1、全平時上下各留 0.05）抽成 `shared/line-chart/line-chart-scale.ts` 的純函式，元件與 `buildMyStatsCardModel()` 共用。
 
-**Rationale**：FR-015 要求縮圖形狀與頁面一致；頁面的走勢圖是自動範圍而非固定 0–100%，若圖卡自行用 0–1 畫，同一份資料會得到明顯較扁的線。做法與 040 Decision 4（抽出 `score-trend.ts`）相同，元件既有 spec 維持全綠即為重構不變的保證。
+**Rationale**：FR-015 要求縮圖形狀與頁面一致；頁面的走勢圖是自動範圍而非固定 0–100%，若圖卡自行用 0–1 畫，同一份資料會得到明顯較扁的線。做法與 040 Decision 4（抽出 `score-trend.ts`）相同。`LineChartComponent` 目前沒有自己的 spec，因此新函式的 spec 要先以現行行為寫成特性測試，再搬移程式；使用它的 `round-trend-chart` 既有 spec 不改動且維持全綠。
 
 **Alternatives considered**：*圖卡固定用 0–100%*：實作最簡單，但與頁面形狀不一致，違反 FR-015。
