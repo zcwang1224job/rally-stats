@@ -63,6 +63,13 @@ export class MyGroupsComponent {
     Object.values(this.appliedFilters()).some((value) => value !== ''),
   );
 
+  /** Keeps the folded "more filters" section open while one of its filters
+   * is applied — an active filter must never be hidden from view. */
+  readonly hasAdvancedFilters = computed(() => {
+    const { group_number, role, status } = this.appliedFilters();
+    return !!(group_number || role || status);
+  });
+
   constructor() {
     this.load();
   }

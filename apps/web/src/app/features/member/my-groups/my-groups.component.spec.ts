@@ -314,6 +314,29 @@ describe('MyGroupsComponent', () => {
       });
     });
 
+    it('folds the extra filters away, but keeps them open while one is applied', () => {
+      const { fixture } = setup({ groups: [group], page: 1, total_pages: 1 });
+      const component = fixture.componentInstance;
+      const details = (): HTMLDetailsElement =>
+        fixture.nativeElement.querySelector('details.advanced-filters');
+      expect(details().open).toBe(false);
+
+      // the name search sits outside the fold, so it alone doesn't open it
+      component.filterForm.patchValue({ name: '週三' });
+      component.applyFilters();
+      fixture.detectChanges();
+      expect(details().open).toBe(false);
+
+      component.filterForm.patchValue({ status: 'disbanded' });
+      component.applyFilters();
+      fixture.detectChanges();
+      expect(details().open).toBe(true);
+
+      component.clearFilters();
+      fixture.detectChanges();
+      expect(details().open).toBe(false);
+    });
+
     it('tells "no groups at all" apart from "nothing matches the filters"', () => {
       const { fixture } = setup({ groups: [], page: 1, total_pages: 1 });
       expect(fixture.nativeElement.querySelector('.empty-state').textContent).toContain(
