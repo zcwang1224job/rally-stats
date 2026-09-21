@@ -1,13 +1,68 @@
-main {
+// 041-group-share-cards US4: mobile first — at 360×640 the name, tagline
+// and the main button fit the first screen; the features follow below.
+
+.home {
   display: block;
   padding: var(--space-xl) var(--space-md);
   max-width: 480px;
   margin: 0 auto;
+}
+
+.home__intro {
   text-align: center;
 }
 
 h1 {
+  margin: 0;
   font-size: var(--font-size-display);
   font-weight: var(--font-weight-black);
   color: var(--color-brand-primary);
+}
+
+.home__tagline {
+  margin: var(--space-sm) 0 var(--space-lg);
+  font-size: var(--font-size-subheading);
+  color: var(--color-text-primary);
+}
+
+.home__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.home__features {
+  display: grid;
+  gap: var(--space-md);
+  margin: var(--space-xl) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home__feature {
+  display: flex;
+  gap: var(--space-md);
+  align-items: flex-start;
+  padding: var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+
+  app-icon {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    color: var(--color-brand-primary);
+  }
+
+  h2 {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--font-size-subheading);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--font-size-body);
+    color: var(--color-text-muted);
+  }
 }

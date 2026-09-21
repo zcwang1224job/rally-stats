@@ -1,3 +1,26 @@
-<main>
-  <h1>{{ 'home.title' | translate }}</h1>
+<main class="home">
+  <section class="home__intro">
+    <h1>{{ 'home.title' | translate }}</h1>
+    <p class="home__tagline">{{ 'shareCard.tagline' | translate }}</p>
+    <div class="home__actions">
+      @if (loggedIn()) {
+        <a class="btn" routerLink="/member">{{ 'home.cta.member' | translate }}</a>
+      } @else {
+        <a class="btn" routerLink="/auth/register">{{ 'home.cta.start' | translate }}</a>
+        <a class="btn btn--secondary" routerLink="/auth/login">{{ 'home.cta.login' | translate }}</a>
+      }
+    </div>
+  </section>
+
+  <ul class="home__features">
+    @for (feature of features; track feature.key) {
+      <li class="home__feature">
+        <app-icon [name]="feature.icon" />
+        <div>
+          <h2>{{ 'home.features.' + feature.key + '.title' | translate }}</h2>
+          <p>{{ 'home.features.' + feature.key + '.body' | translate }}</p>
+        </div>
+      </li>
+    }
+  </ul>
 </main>

@@ -257,7 +257,7 @@ description: "Task list for 041-group-share-cards"
 
 ### Tests for User Story 4 ⚠️（先寫，確認會失敗）
 
-- [ ] T046 [US4] 擴充 `web/app/features/home/home.component.spec.ts`（contracts/landing-link.md §2、FR-024～FR-026、FR-030）：
+- [X] T046 [US4] 擴充 `web/app/features/home/home.component.spec.ts`（contracts/landing-link.md §2、FR-024～FR-026、FR-030）：
   - 渲染 `home.title`、`shareCard.tagline`（與圖卡頁尾**同一個 key**）、3 個功能重點（各有標題與內文）。
   - `AuthService.loggedIn()` 為 false：主要連結的 `href` 為 `/auth/register`、文字 `home.cta.start`；次要連結為 `/auth/login`、文字 `home.cta.login`；沒有 `/member` 連結。
   - 為 true：主要連結為 `/member`、文字 `home.cta.member`；沒有註冊／登入連結；Router 的 `navigate`／`navigateByUrl` **沒有**被呼叫（不自動轉址，FR-026）。
@@ -267,8 +267,8 @@ description: "Task list for 041-group-share-cards"
 
 ### Implementation for User Story 4
 
-- [ ] T047 [US4] 實作 `web/app/features/home/home.component.{ts,html,scss}`：注入 `AuthService` 讀取 `loggedIn` signal；範本為 `<main>` 內的標題、標語、`<ul>` 功能重點（沿用既有的 `app-icon`，若無合適圖示則只用文字）、行動按鈕以 `<a routerLink>` 呈現並套用既有的按鈕樣式類別；**不注入 `ActivatedRoute`、不讀取 query string**。樣式以行動裝置優先：360×640 視窗下標題、標語、主要按鈕在第一屏內（功能重點可在下方），使用既有的設計 token，不新增顏色。讓 T046 全綠。
-- [ ] T048 [US4] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；以 `grep -n "ActivatedRoute\|queryParam" apps/web/src/app/features/home/home.component.ts` 確認沒有結果。Commit：「首頁加上系統介紹與開始使用的按鈕，掃圖卡 QR 碼進來的人知道這是什麼」。
+- [X] T047 [US4] 實作 `web/app/features/home/home.component.{ts,html,scss}`：注入 `AuthService` 讀取 `loggedIn` signal；範本為 `<main>` 內的標題、標語、`<ul>` 功能重點（沿用既有的 `app-icon`，若無合適圖示則只用文字）、行動按鈕以 `<a routerLink>` 呈現並套用既有的按鈕樣式類別；**不注入 `ActivatedRoute`、不讀取 query string**。樣式以行動裝置優先：360×640 視窗下標題、標語、主要按鈕在第一屏內（功能重點可在下方），使用既有的設計 token，不新增顏色。讓 T046 全綠。
+- [X] T048 [US4] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；以 `grep -n "ActivatedRoute\|queryParam" apps/web/src/app/features/home/home.component.ts` 確認沒有結果。Commit：「首頁加上系統介紹與開始使用的按鈕，掃圖卡 QR 碼進來的人知道這是什麼」。
 
 **Checkpoint**：四個 story 全部完成，導流路徑從圖卡到首頁完整接通。
 
