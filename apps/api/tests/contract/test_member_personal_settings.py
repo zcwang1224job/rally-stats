@@ -353,6 +353,21 @@ async def test_view_match_records_succeeds_for_friend_when_enabled(
     assert "total_matches" in body
     assert "win_rate" in body
 
+    # Same time-range filter as `/members/me/match-records`: instants with a
+    # UTC offset are taken, a time without one is refused.
+    ranged = await client.get(
+        f"/members/{target.id}/match-records",
+        params={"ended_from": "2026-09-20T16:00:00.000Z", "ended_before": "2026-09-21T16:00:00Z"},
+        headers=_auth(token),
+    )
+    assert ranged.status_code == 200
+    naive = await client.get(
+        f"/members/{target.id}/match-records",
+        params={"ended_from": "2026-09-21T00:00:00"},
+        headers=_auth(token),
+    )
+    assert naive.status_code == 422
+
 
 async def test_view_match_records_requires_verified_viewer(
     client: AsyncClient, db_session: AsyncSession

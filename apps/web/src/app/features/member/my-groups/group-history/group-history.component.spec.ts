@@ -106,6 +106,8 @@ const myGroupsResponse: MyGroupsResponse = {
       member_status: 'active',
     },
   ],
+  page: 1,
+  total_pages: 1,
 };
 
 function setup(
@@ -534,6 +536,9 @@ describe('GroupHistoryComponent — share cards (041 US1)', () => {
     fixture.detectChanges();
 
     expect(getMyGroups).toHaveBeenCalledTimes(1);
+    // The list is paginated — pinning `group_id` finds this group's row
+    // whatever page it would otherwise be on.
+    expect(getMyGroups).toHaveBeenCalledWith(1, { group_id: 'g1' });
   });
 
   it('still offers the card, without a date, when the group list fails (research Decision 7)', () => {
@@ -547,7 +552,7 @@ describe('GroupHistoryComponent — share cards (041 US1)', () => {
   });
 
   it('still offers the card, without a date, when the group is not in the list', () => {
-    const { fixture } = setup({ getMyGroups: () => of({ groups: [] }) });
+    const { fixture } = setup({ getMyGroups: () => of({ groups: [], page: 1, total_pages: 1 }) });
     fixture.detectChanges();
 
     expect(openedOptions(fixture)[0].fileName).toBe('rally-stats-rank-nodate-週三團.png');

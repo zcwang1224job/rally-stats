@@ -140,8 +140,10 @@ MUST 立即反映新設定——這兩個既有/新增端點在每次請求當�
    `false` → `MATCH_RECORDS_PRIVATE`（403，FR-018）。
 5. 皆通過 → 回應內容與既有 `GET /members/me/match-records`
    **完全相同的形狀**（`MemberMatchRecordsResponse`，含 query 參數：
-   `page`、`opponent1`、`opponent2`、`partner`、`result`、`date_from`、
-   `date_to`、`round_from`、`round_to`、`self_score_cmp`、`self_score`、
+   `page`、`opponent1`、`opponent2`、`partner`、`result`、`ended_from`、
+   `ended_before`（Revision 2026-09-22：取代 `date_from`／`date_to`，帶 UTC
+   offset 的時間點半開區間，詳見 034 合約）、`round_from`、`round_to`、
+   `self_score_cmp`、`self_score`、
    `opponent_score_cmp`、`opponent_score`、`match_mode`——直接透傳給既有
    `build_member_match_records(session, member_id, ...)`）。
 

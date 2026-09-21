@@ -377,8 +377,12 @@ export interface MemberMatchRecordFilters {
   opponent2?: string;
   partner?: string;
   result?: MatchRecordResultFilter;
-  date_from?: string;
-  date_to?: string;
+  // When the match ended: a half-open range of instants (`ended_from` <=
+  // ended_at < `ended_before`) as ISO strings WITH a UTC offset — built
+  // from the viewer's local days by `localDayStart()`, so "9/21" means 9/21
+  // where the viewer is, as the list's own times do.
+  ended_from?: string;
+  ended_before?: string;
   round_from?: number;
   round_to?: number;
   self_score_cmp?: MatchRecordScoreComparison;

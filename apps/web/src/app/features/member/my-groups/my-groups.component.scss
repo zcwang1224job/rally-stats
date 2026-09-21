@@ -1,7 +1,46 @@
 @use '../../../../styles/layout';
+@use '../../../../styles/breakpoints';
 
 :host {
   @include layout.page(narrow);
+}
+
+.filters-panel {
+  margin-bottom: var(--space-md);
+}
+
+.filter-form {
+  max-width: none;
+}
+
+.advanced-filters {
+  summary {
+    cursor: pointer;
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+    padding: var(--space-xs) 0;
+  }
+
+  &[open] summary {
+    margin-bottom: var(--space-sm);
+  }
+}
+
+.advanced-filters-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+
+  // Two columns, so each from/to pair of dates shares a row.
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.filters-actions {
+  display: flex;
+  gap: var(--space-sm);
 }
 
 .group-list {

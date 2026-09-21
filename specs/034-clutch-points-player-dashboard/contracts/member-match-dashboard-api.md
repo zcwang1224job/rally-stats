@@ -5,7 +5,8 @@
 ## `GET /members/me/match-dashboard`（本人）
 
 - **授權**：`require_verified_member`（憲章原則 IV：對戰紀錄在信箱驗證前 MUST 鎖定）。與 `GET /members/me/match-records` 相同（Revision 2026-09-18：本功能上線時該端點仍是較寬鬆的 `require_member`，屬既有偏離；已於 `feature/require-verified-match-records` 一併更正，兩者現在一致）。
-- **Query 參數**：與 `GET /members/me/match-records` 的篩選參數**完全相同**——`opponent1`、`opponent2`、`partner`、`result`、`date_from`、`date_to`、`round_from`、`round_to`、`self_score_cmp`、`self_score`、`opponent_score_cmp`、`opponent_score`、`match_mode`；驗證規則（長度、`ge`、列舉值）亦同。**沒有 `page`**——儀表板恆對整個篩選結果計算（FR-019）。
+- **Query 參數**：與 `GET /members/me/match-records` 的篩選參數**完全相同**——`opponent1`、`opponent2`、`partner`、`result`、`ended_from`、`ended_before`、`round_from`、`round_to`、`self_score_cmp`、`self_score`、`opponent_score_cmp`、`opponent_score`、`match_mode`；驗證規則（長度、`ge`、列舉值）亦同。**沒有 `page`**——儀表板恆對整個篩選結果計算（FR-019）。
+  - Revision 2026-09-22：原本的 `date_from`／`date_to`（`date`，後端拿去比比賽結束時間的 **UTC 日期**）改為 `ended_from`／`ended_before`：比賽結束時間的半開區間（`ended_from` ≤ `ended_at` < `ended_before`），值是**帶 UTC offset 的 datetime**，不帶 offset 回 422。畫面上的時間以瀏覽者當地時區顯示，所以由前端把當地的「某一天」換成時間點（起日 → 當地該日 00:00；迄日含當天 → 當地隔日 00:00）；舊做法會把台北早上 8 點前結束的比賽算到前一天。三個入口（`/members/me/match-records`、`/members/me/match-dashboard`、`/members/{member_id}/match-records`／`match-dashboard`）一致。與 `GET /members/me/groups` 的 `created_*`／`disbanded_*` 同一套慣例（見 014 合約）。
 - **Errors**：`MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`（403）。
 
 ## `GET /members/{member_id}/match-dashboard`（好友檢視，US5）

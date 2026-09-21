@@ -1,6 +1,64 @@
 <main>
   <h1>{{ 'myGroups.title' | translate }}</h1>
 
+  <section class="filters-panel card">
+    <form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <label>
+        {{ 'myGroups.filters.name' | translate }}
+        <input type="text" formControlName="name" maxlength="30" />
+      </label>
+
+      <!-- Same split as the group list: the name search stays in view, the
+           rest folds away so the list isn't pushed off a phone's first
+           screen. Stays open while one of its filters is applied, so an
+           active filter is never hidden. -->
+      <details class="advanced-filters" [open]="hasAdvancedFilters()">
+        <summary>{{ 'groupJoin.moreFilters' | translate }}</summary>
+        <div class="advanced-filters-grid">
+          <label>
+            {{ 'myGroups.filters.groupNumber' | translate }}
+            <input type="text" inputmode="numeric" formControlName="group_number" maxlength="20" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.role' | translate }}
+            <select formControlName="role">
+              <option value="">{{ 'myGroups.filters.any' | translate }}</option>
+              <option value="creator">{{ 'myGroups.role.creator' | translate }}</option>
+              <option value="member">{{ 'myGroups.role.member' | translate }}</option>
+            </select>
+          </label>
+          <label>
+            {{ 'myGroups.filters.createdFrom' | translate }}
+            <input type="date" formControlName="created_from" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.createdTo' | translate }}
+            <input type="date" formControlName="created_to" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.disbandedFrom' | translate }}
+            <input type="date" formControlName="disbanded_from" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.disbandedTo' | translate }}
+            <input type="date" formControlName="disbanded_to" />
+          </label>
+        </div>
+      </details>
+
+      <div class="filters-actions">
+        <button type="submit" class="btn btn--secondary">
+          {{ 'groupJoin.applyFilters' | translate }}
+        </button>
+        @if (hasActiveFilters()) {
+          <button type="button" class="btn btn--secondary" (click)="clearFilters()">
+            {{ 'groupJoin.clearFilters' | translate }}
+          </button>
+        }
+      </div>
+    </form>
+  </section>
+
   @if (errorKey(); as key) {
     <p role="alert">{{ key | translate }}</p>
   }
@@ -8,7 +66,9 @@
   @if (loading()) {
     <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (groups().length === 0) {
-    <p class="empty-state card">{{ 'myGroups.empty' | translate }}</p>
+    <p class="empty-state card">
+      {{ (hasActiveFilters() ? 'myGroups.emptyFiltered' : 'myGroups.empty') | translate }}
+    </p>
   } @else {
     <ul class="group-list">
       @for (group of groups(); track group.group_id) {
@@ -48,6 +108,8 @@
         </li>
       }
     </ul>
+
+    <app-pagination [page]="page()" [totalPages]="totalPages()" (pageChange)="goToPage($event)" />
   }
 </main>
 

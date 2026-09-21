@@ -82,6 +82,27 @@ export interface MyGroupSummary {
 
 export interface MyGroupsResponse {
   groups: MyGroupSummary[];
+  page: number;
+  total_pages: number;
+}
+
+/** Filters for `GET /members/me/groups`. `name`/`group_number` are
+ * substring matches; `role` is whether this member created the group.
+ * `created_*`/`disbanded_*` are half-open ranges of instants (`from` <= t
+ * < `before`) as ISO strings WITH a UTC offset — the caller turns the
+ * viewer's local day into instants, so the filter agrees with the local
+ * times the list shows; a `disbanded_*` bound also drops every group that
+ * has no `disbanded_at`. `group_id` pins one exact group — for a caller
+ * that needs that one row whatever page it would land on. */
+export interface MyGroupsFilters {
+  name?: string;
+  group_number?: string;
+  role?: 'creator' | 'member';
+  created_from?: string;
+  created_before?: string;
+  disbanded_from?: string;
+  disbanded_before?: string;
+  group_id?: string;
 }
 
 export interface ForgotAdminPinResponse {

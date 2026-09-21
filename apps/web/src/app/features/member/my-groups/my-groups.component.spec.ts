@@ -31,7 +31,7 @@ describe('MyGroupsComponent', () => {
         provideTranslateService({}),
         {
           provide: FriendsService,
-          useValue: { getMyGroups: () => of({ groups: [group, disbandedGroup] }) },
+          useValue: { getMyGroups: () => of({ groups: [group, disbandedGroup], page: 1, total_pages: 1 }) },
         },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
@@ -85,7 +85,7 @@ describe('MyGroupsComponent', () => {
       imports: [MyGroupsComponent],
       providers: [
         provideTranslateService({}),
-        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group] }) } },
+        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
       ],
@@ -114,7 +114,7 @@ describe('MyGroupsComponent', () => {
         provideTranslateService({}),
         {
           provide: FriendsService,
-          useValue: { getMyGroups: () => of({ groups: [group, joinedGroup] }) },
+          useValue: { getMyGroups: () => of({ groups: [group, joinedGroup], page: 1, total_pages: 1 }) },
         },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
@@ -141,7 +141,7 @@ describe('MyGroupsComponent', () => {
       imports: [MyGroupsComponent],
       providers: [
         provideTranslateService({}),
-        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group] }) } },
+        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         {
           provide: Router,
@@ -173,7 +173,7 @@ describe('MyGroupsComponent', () => {
         {
           provide: FriendsService,
           useValue: {
-            getMyGroups: () => of({ groups: [group] }),
+            getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }),
             forgotAdminPin: () => of({ admin_pin: '123456', admin_token: 'new-token' }),
           },
         },
@@ -204,5 +204,209 @@ describe('MyGroupsComponent', () => {
 
     expect(storedToken).toEqual({ groupId: 'g1', token: 'new-token' });
     expect(navigateCalls).toEqual([[['/groups', 'g1', 'admin']]]);
+  });
+
+  describe('filters and pagination', () => {
+    function setup(response: { groups: (typeof group)[]; page: number; total_pages: number }) {
+      const getMyGroups = vi.fn<FriendsService['getMyGroups']>(() => of(response));
+      TestBed.configureTestingModule({
+        imports: [MyGroupsComponent],
+        providers: [
+          provideTranslateService({}),
+          { provide: FriendsService, useValue: { getMyGroups } },
+          { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
+          { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
+        ],
+      });
+      const fixture = TestBed.createComponent(MyGroupsComponent);
+      fixture.detectChanges();
+      return { fixture, getMyGroups };
+    }
+
+    it('loads page 1 with no filters at first, and offers no "clear filters"', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 1 });
+
+      expect(getMyGroups).toHaveBeenCalledTimes(1);
+      expect(getMyGroups).toHaveBeenCalledWith(1, {
+        name: undefined,
+        group_number: undefined,
+        role: undefined,
+        created_from: undefined,
+        created_before: undefined,
+        disbanded_from: undefined,
+        disbanded_before: undefined,
+      });
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
+      expect(fixture.nativeElement.querySelectorAll('.filters-actions button').length).toBe(1);
+    });
+
+    it('sends the trimmed filters and goes back to page 1 when filters are applied', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 3 });
+      const component = fixture.componentInstance;
+      component.goToPage(3);
+
+      component.filterForm.setValue({
+        name: '  週三 ',
+        group_number: '100',
+        role: 'creator',
+        created_from: '2026-09-01',
+        created_to: '2026-09-30',
+        disbanded_from: '2026-10-05',
+        disbanded_to: '2026-10-05',
+      });
+      fixture.nativeElement
+        .querySelector('form.filter-form')
+        .dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+
+      // Days are the viewer's LOCAL days, sent as instants: "from" is that
+      // day's local midnight, an inclusive "to" is the NEXT day's.
+      expect(getMyGroups).toHaveBeenLastCalledWith(1, {
+        name: '週三',
+        group_number: '100',
+        role: 'creator',
+        created_from: new Date(2026, 8, 1).toISOString(),
+        created_before: new Date(2026, 9, 1).toISOString(),
+        disbanded_from: new Date(2026, 9, 5).toISOString(),
+        disbanded_before: new Date(2026, 9, 6).toISOString(),
+      });
+      expect(component.page()).toBe(1);
+      expect(component.hasActiveFilters()).toBe(true);
+      expect(fixture.nativeElement.querySelectorAll('.filters-actions button').length).toBe(2);
+    });
+
+    it('does not treat typed-but-unsubmitted filters as active', () => {
+      const { fixture } = setup({ groups: [group], page: 1, total_pages: 1 });
+
+      fixture.componentInstance.filterForm.patchValue({ name: '週三' });
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
+    });
+
+    it('clears every filter and reloads from page 1', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 1 });
+      const component = fixture.componentInstance;
+      component.filterForm.patchValue({ name: '週三', disbanded_to: '2026-09-30' });
+      component.applyFilters();
+
+      component.clearFilters();
+
+      expect(component.filterForm.getRawValue()).toEqual({
+        name: '',
+        group_number: '',
+        role: '',
+        created_from: '',
+        created_to: '',
+        disbanded_from: '',
+        disbanded_to: '',
+      });
+      expect(getMyGroups).toHaveBeenLastCalledWith(1, {
+        name: undefined,
+        group_number: undefined,
+        role: undefined,
+        created_from: undefined,
+        created_before: undefined,
+        disbanded_from: undefined,
+        disbanded_before: undefined,
+      });
+      expect(component.hasActiveFilters()).toBe(false);
+    });
+
+    it('keeps the applied filters when moving to another page', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 3 });
+      const component = fixture.componentInstance;
+      component.filterForm.patchValue({ role: 'member' });
+      component.applyFilters();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('app-pagination')).not.toBeNull();
+      component.goToPage(2);
+
+      expect(getMyGroups).toHaveBeenLastCalledWith(2, {
+        name: undefined,
+        group_number: undefined,
+        role: 'member',
+        created_from: undefined,
+        created_before: undefined,
+        disbanded_from: undefined,
+        disbanded_before: undefined,
+      });
+    });
+
+    it('folds the extra filters away, but keeps them open while one is applied', () => {
+      const { fixture } = setup({ groups: [group], page: 1, total_pages: 1 });
+      const component = fixture.componentInstance;
+      const details = (): HTMLDetailsElement =>
+        fixture.nativeElement.querySelector('details.advanced-filters');
+      expect(details().open).toBe(false);
+
+      // the name search sits outside the fold, so it alone doesn't open it
+      component.filterForm.patchValue({ name: '週三' });
+      component.applyFilters();
+      fixture.detectChanges();
+      expect(details().open).toBe(false);
+
+      component.filterForm.patchValue({ created_from: '2026-09-01' });
+      component.applyFilters();
+      fixture.detectChanges();
+      expect(details().open).toBe(true);
+
+      component.clearFilters();
+      fixture.detectChanges();
+      expect(details().open).toBe(false);
+    });
+
+    it('offers a from/to date pair for both the opening and the disbanding time', () => {
+      const { fixture } = setup({ groups: [group], page: 1, total_pages: 1 });
+
+      const dateControls = Array.from<HTMLInputElement>(
+        fixture.nativeElement.querySelectorAll('details.advanced-filters input[type="date"]'),
+      ).map((input) => input.getAttribute('formcontrolname'));
+      expect(dateControls).toEqual([
+        'created_from',
+        'created_to',
+        'disbanded_from',
+        'disbanded_to',
+      ]);
+      // the group-status filter is gone
+      expect(fixture.nativeElement.querySelector('[formcontrolname="status"]')).toBeNull();
+    });
+
+    it('sends only the bounds that were filled in', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 1 });
+      fixture.componentInstance.filterForm.patchValue({ created_to: '2026-12-31' });
+      fixture.componentInstance.applyFilters();
+
+      expect(getMyGroups).toHaveBeenLastCalledWith(1, {
+        name: undefined,
+        group_number: undefined,
+        role: undefined,
+        created_from: undefined,
+        // Dec 31 inclusive → before Jan 1 of the next year
+        created_before: new Date(2027, 0, 1).toISOString(),
+        disbanded_from: undefined,
+        disbanded_before: undefined,
+      });
+    });
+
+    it('tells "no groups at all" apart from "nothing matches the filters"', () => {
+      const { fixture } = setup({ groups: [], page: 1, total_pages: 1 });
+      expect(fixture.nativeElement.querySelector('.empty-state').textContent).toContain(
+        'myGroups.empty',
+      );
+      expect(fixture.nativeElement.querySelector('.empty-state').textContent).not.toContain(
+        'myGroups.emptyFiltered',
+      );
+
+      fixture.componentInstance.filterForm.patchValue({ name: '不存在' });
+      fixture.componentInstance.applyFilters();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.empty-state').textContent).toContain(
+        'myGroups.emptyFiltered',
+      );
+      expect(fixture.nativeElement.querySelector('app-pagination')).toBeNull();
+    });
   });
 });

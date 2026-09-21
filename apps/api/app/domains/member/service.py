@@ -10,7 +10,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from urllib.parse import urlencode
 
@@ -725,8 +725,8 @@ async def view_member_match_records(
     opponents: list[str] | None = None,
     partners: list[str] | None = None,
     result: Literal["win", "loss"] | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    ended_from: datetime | None = None,
+    ended_before: datetime | None = None,
     round_from: int | None = None,
     round_to: int | None = None,
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
@@ -750,8 +750,8 @@ async def view_member_match_records(
         opponents=opponents,
         partners=partners,
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -1264,18 +1264,35 @@ async def _build_member_match_record_summaries(
     return summaries
 
 
+def _within(value: datetime | None, start: datetime | None, before: datetime | None) -> bool:
+    """`start` <= `value` < `before`, each bound optional. With no bound at
+    all anything passes (a missing `value` too); with a bound, a missing
+    `value` never does."""
+    if start is None and before is None:
+        return True
+    if value is None:
+        return False
+    return (start is None or value >= start) and (before is None or value < before)
+
+
 @dataclass(frozen=True)
 class MemberMatchFilters:
     """Every filter `build_member_match_records()` accepts, as one value —
     034's dashboard applies exactly the same set, and a seventh copy of
     twelve keyword arguments was one too many. `group_id` is only ever set
-    internally by `get_member_group_history()`."""
+    internally by `get_member_group_history()`.
+
+    `ended_from`/`ended_before` are a half-open range of INSTANTS
+    (`ended_from` <= `ended_at` < `ended_before`), timezone-aware: the
+    client turns the viewer's local calendar day into instants, so "matches
+    on 9/21" means 9/21 where the viewer is — the same convention as
+    `get_my_groups()`'s `created_*`/`disbanded_*`."""
 
     opponents: tuple[str, ...] = ()
     partners: tuple[str, ...] = ()
     result: Literal["win", "loss"] | None = None
-    date_from: date | None = None
-    date_to: date | None = None
+    ended_from: datetime | None = None
+    ended_before: datetime | None = None
     round_from: int | None = None
     round_to: int | None = None
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None
@@ -1379,12 +1396,14 @@ async def _filtered_member_matches(
             continue
         if filters.result is not None and won != (filters.result == "win"):
             continue
-        if match.ended_at is not None:
-            match_date = match.ended_at.date()
-            if filters.date_from is not None and match_date < filters.date_from:
-                continue
-            if filters.date_to is not None and match_date > filters.date_to:
-                continue
+        # Instants, not `ended_at.date()`: that is the UTC date, which is the
+        # previous day for a match finished before 08:00 Taipei time and so
+        # disagreed with the local time the list shows. (A match with no
+        # `ended_at` is left in, as it always was.)
+        if match.ended_at is not None and not _within(
+            match.ended_at, filters.ended_from, filters.ended_before
+        ):
+            continue
         if filters.round_from is not None and match.round_number < filters.round_from:
             continue
         if filters.round_to is not None and match.round_number > filters.round_to:
@@ -1460,8 +1479,8 @@ async def build_member_match_records(
     opponents: list[str] | None = None,
     partners: list[str] | None = None,
     result: Literal["win", "loss"] | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    ended_from: datetime | None = None,
+    ended_before: datetime | None = None,
     round_from: int | None = None,
     round_to: int | None = None,
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
@@ -1504,8 +1523,8 @@ async def build_member_match_records(
             opponents=tuple(opponents or ()),
             partners=tuple(partners or ()),
             result=result,
-            date_from=date_from,
-            date_to=date_to,
+            ended_from=ended_from,
+            ended_before=ended_before,
             round_from=round_from,
             round_to=round_to,
             self_score_cmp=self_score_cmp,
@@ -1985,7 +2004,20 @@ async def search_member(
     )
 
 
-async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroupsResponse:
+async def get_my_groups(
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    *,
+    page: int = 1,
+    name: str | None = None,
+    group_number: str | None = None,
+    role: Literal["creator", "member"] | None = None,
+    created_from: datetime | None = None,
+    created_before: datetime | None = None,
+    disbanded_from: datetime | None = None,
+    disbanded_before: datetime | None = None,
+    group_id: uuid.UUID | None = None,
+) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has EVER had a `RosterEntry` in
     (any status — active/left/kicked), deduplicated by group. Guest-joined
@@ -1994,15 +2026,31 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
 
     `member_status` reflects each group's MOST RECENT `RosterEntry` for
     this member (by `joined_at` DESC) — a member can leave and rejoin the
-    same group, producing multiple historical rows (research.md #4)."""
+    same group, producing multiple historical rows (research.md #4).
+
+    Filters (substring on `name`/`group_number`, exact on `role`/
+    `group_id`, half-open time ranges on `created_at`/`disbanded_at`) are
+    applied in Python after loading every group of this member, then
+    paginated — same precedent as `friend.service.list_friends` (one
+    member's group count is small enough that this is cheap).
+    `group_id` lets the group-history page fetch one specific row without
+    depending on which page it falls on.
+
+    The time ranges are instants (`*_from` <= t < `*_before`), not calendar
+    dates: the caller turns the viewer's LOCAL day into instants, so a
+    group opened at 07:00 Taipei time is found under that local date, not
+    under the previous day's UTC date. Either `disbanded_*` bound drops
+    every group without a `disbanded_at` (still active, or disbanded before
+    that column existed)."""
     roster_result = await session.execute(
         select(RosterEntry.group_id, RosterEntry.status)
         .where(RosterEntry.member_id == member_id)
         .order_by(RosterEntry.joined_at.desc())
     )
     member_status_by_group: dict[uuid.UUID, str] = {}
-    for group_id, status in roster_result.all():
-        member_status_by_group.setdefault(group_id, status)  # first seen (newest) wins
+    for roster_group_id, roster_status in roster_result.all():
+        # first seen (newest) wins
+        member_status_by_group.setdefault(roster_group_id, roster_status)
 
     created_result = await session.execute(
         select(Group.id).where(Group.created_by_member_id == member_id)
@@ -2011,7 +2059,7 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
 
     all_group_ids = set(member_status_by_group) | created_group_ids
     if not all_group_ids:
-        return MyGroupsResponse(groups=[])
+        return MyGroupsResponse(groups=[], page=page, total_pages=1)
 
     result = await session.execute(
         select(
@@ -2037,5 +2085,16 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
             member_status=member_status_by_group[row.id],
         )
         for row in result.all()
+        if (group_id is None or row.id == group_id)
+        and (not name or name.lower() in row.name.lower())
+        and (not group_number or group_number in str(row.group_number))
+        and (role is None or (row.id in created_group_ids) == (role == "creator"))
+        and _within(row.created_at, created_from, created_before)
+        and _within(row.disbanded_at, disbanded_from, disbanded_before)
     ]
-    return MyGroupsResponse(groups=groups)
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (len(groups) + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    return MyGroupsResponse(
+        groups=groups[start : start + page_size], page=page, total_pages=total_pages
+    )

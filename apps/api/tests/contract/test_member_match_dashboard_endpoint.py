@@ -194,21 +194,46 @@ async def test_filters_match_the_match_list_and_page_is_ignored(
         assert dashboard.status_code == records.status_code == 200
         assert dashboard.json()["total_matches"] == records.json()["total_matches"], query
 
+    # `ended_from`/`ended_before`: instants with a UTC offset, on both endpoints.
+    for query, expected in (
+        ("?ended_from=2000-01-01T00:00:00.000Z", 3),
+        ("?ended_from=2000-01-01T00:00:00%2B08:00&ended_before=2999-01-01T00:00:00Z", 3),
+        ("?ended_before=2000-01-01T00:00:00Z", 0),
+    ):
+        dashboard = await client.get(f"/members/me/match-dashboard{query}", headers=headers)
+        records = await client.get(f"/members/me/match-records{query}", headers=headers)
+        assert dashboard.status_code == records.status_code == 200, query
+        assert dashboard.json()["total_matches"] == expected, query
+        assert records.json()["total_matches"] == expected, query
+
     with_page = await client.get("/members/me/match-dashboard?page=7", headers=headers)
     without = await client.get("/members/me/match-dashboard", headers=headers)
     assert with_page.json() == without.json()
 
 
-@pytest.mark.parametrize("query", ["result=draw", "match_mode=triples", "round_from=0"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "result=draw",
+        "match_mode=triples",
+        "round_from=0",
+        # a time without a UTC offset: which day it means would depend on the
+        # server's zone, so it is refused rather than guessed
+        "ended_from=2026-09-21T00:00:00",
+        "ended_before=2026-09-21",
+    ],
+)
 async def test_invalid_filter_values_are_rejected(
     client: AsyncClient, db_session: AsyncSession, query: str
 ) -> None:
     await _register(db_session, "dash-invalid@example.com")
     headers = await _login(client, "dash-invalid@example.com")
 
-    response = await client.get(f"/members/me/match-dashboard?{query}", headers=headers)
+    dashboard = await client.get(f"/members/me/match-dashboard?{query}", headers=headers)
+    records = await client.get(f"/members/me/match-records?{query}", headers=headers)
 
-    assert response.status_code == 422
+    assert dashboard.status_code == 422
+    assert records.status_code == 422
 
 
 async def test_comparison_and_trends_appear_past_ten_matches(
