@@ -185,7 +185,9 @@ export class GroupHistoryComponent {
 
   constructor() {
     this.load(this.page());
-    this.friends.getMyGroups().subscribe({
+    // The list is paginated; `group_id` pins this group's row whatever
+    // page it would otherwise land on.
+    this.friends.getMyGroups(1, { group_id: this.groupId }).subscribe({
       next: (response) =>
         this.createdAt.set(
           response.groups.find((group) => group.group_id === this.groupId)?.created_at ?? null,

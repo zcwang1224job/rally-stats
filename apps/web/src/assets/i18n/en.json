@@ -212,6 +212,16 @@
   "myGroups": {
     "title": "My Groups",
     "empty": "You haven't joined any groups yet",
+    "emptyFiltered": "No groups match these filters",
+    "filters": {
+      "name": "Group name",
+      "groupNumber": "Group number",
+      "role": "My role",
+      "status": "Group status",
+      "any": "All",
+      "statusActive": "Active",
+      "statusDisbanded": "Disbanded"
+    },
     "forgotPinButton": "Forgot Admin PIN",
     "forgotPinConfirmTitle": "Reset this group's admin PIN?",
     "forgotPinConfirmBody": "The current PIN will be invalidated immediately. This cannot be undone.",

@@ -9,6 +9,7 @@ import {
   InviteCandidatesResponse,
   MemberGroupHistoryFilters,
   MemberGroupHistoryResponse,
+  MyGroupsFilters,
   MyGroupsResponse,
   SearchMemberResponse,
 } from '../../core/api/friend.models';
@@ -84,8 +85,17 @@ export class FriendsService {
     );
   }
 
-  getMyGroups(): Observable<MyGroupsResponse> {
-    return this.api.get<MyGroupsResponse>('/members/me/groups', this.authHeader());
+  getMyGroups(page = 1, filters: MyGroupsFilters = {}): Observable<MyGroupsResponse> {
+    const params = new URLSearchParams({ page: String(page) });
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') {
+        params.set(key, String(value));
+      }
+    }
+    return this.api.get<MyGroupsResponse>(
+      `/members/me/groups?${params.toString()}`,
+      this.authHeader(),
+    );
   }
 
   /** 014-member-groups-history: the group's own shared match history

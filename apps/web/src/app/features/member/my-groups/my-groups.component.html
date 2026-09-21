@@ -1,6 +1,47 @@
 <main>
   <h1>{{ 'myGroups.title' | translate }}</h1>
 
+  <section class="filters-panel card">
+    <form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <div class="filters-grid">
+        <label>
+          {{ 'myGroups.filters.name' | translate }}
+          <input type="text" formControlName="name" maxlength="30" />
+        </label>
+        <label>
+          {{ 'myGroups.filters.groupNumber' | translate }}
+          <input type="text" inputmode="numeric" formControlName="group_number" maxlength="20" />
+        </label>
+        <label>
+          {{ 'myGroups.filters.role' | translate }}
+          <select formControlName="role">
+            <option value="">{{ 'myGroups.filters.any' | translate }}</option>
+            <option value="creator">{{ 'myGroups.role.creator' | translate }}</option>
+            <option value="member">{{ 'myGroups.role.member' | translate }}</option>
+          </select>
+        </label>
+        <label>
+          {{ 'myGroups.filters.status' | translate }}
+          <select formControlName="status">
+            <option value="">{{ 'myGroups.filters.any' | translate }}</option>
+            <option value="active">{{ 'myGroups.filters.statusActive' | translate }}</option>
+            <option value="disbanded">{{ 'myGroups.filters.statusDisbanded' | translate }}</option>
+          </select>
+        </label>
+      </div>
+      <div class="filters-actions">
+        <button type="submit" class="btn btn--secondary">
+          {{ 'groupJoin.applyFilters' | translate }}
+        </button>
+        @if (hasActiveFilters()) {
+          <button type="button" class="btn btn--secondary" (click)="clearFilters()">
+            {{ 'groupJoin.clearFilters' | translate }}
+          </button>
+        }
+      </div>
+    </form>
+  </section>
+
   @if (errorKey(); as key) {
     <p role="alert">{{ key | translate }}</p>
   }
@@ -8,7 +49,9 @@
   @if (loading()) {
     <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (groups().length === 0) {
-    <p class="empty-state card">{{ 'myGroups.empty' | translate }}</p>
+    <p class="empty-state card">
+      {{ (hasActiveFilters() ? 'myGroups.emptyFiltered' : 'myGroups.empty') | translate }}
+    </p>
   } @else {
     <ul class="group-list">
       @for (group of groups(); track group.group_id) {
@@ -48,6 +91,8 @@
         </li>
       }
     </ul>
+
+    <app-pagination [page]="page()" [totalPages]="totalPages()" (pageChange)="goToPage($event)" />
   }
 </main>
 

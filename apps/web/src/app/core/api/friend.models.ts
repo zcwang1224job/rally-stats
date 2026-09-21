@@ -82,6 +82,20 @@ export interface MyGroupSummary {
 
 export interface MyGroupsResponse {
   groups: MyGroupSummary[];
+  page: number;
+  total_pages: number;
+}
+
+/** Filters for `GET /members/me/groups`. `name`/`group_number` are
+ * substring matches; `role` is whether this member created the group;
+ * `status` is the group's own status. `group_id` pins one exact group —
+ * for a caller that needs that one row whatever page it would land on. */
+export interface MyGroupsFilters {
+  name?: string;
+  group_number?: string;
+  role?: 'creator' | 'member';
+  status?: 'active' | 'disbanded';
+  group_id?: string;
 }
 
 export interface ForgotAdminPinResponse {

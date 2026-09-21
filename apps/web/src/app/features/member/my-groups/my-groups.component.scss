@@ -1,7 +1,32 @@
 @use '../../../../styles/layout';
+@use '../../../../styles/breakpoints';
 
 :host {
   @include layout.page(narrow);
+}
+
+.filters-panel {
+  margin-bottom: var(--space-md);
+}
+
+.filter-form {
+  max-width: none;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-md);
+
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.filters-actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
 }
 
 .group-list {

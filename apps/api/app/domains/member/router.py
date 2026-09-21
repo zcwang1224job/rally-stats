@@ -414,12 +414,33 @@ async def get_group_benchmark(
 async def get_my_groups(
     member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    name: Annotated[str | None, Query(max_length=30)] = None,
+    group_number: Annotated[str | None, Query(max_length=20)] = None,
+    role: Annotated[Literal["creator", "member"] | None, Query()] = None,
+    status: Annotated[Literal["active", "disbanded"] | None, Query()] = None,
+    group_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has ever had a roster entry in (any
     status). Still backs the "忘記管理 PIN 碼" recovery list for the
-    `is_creator=true` rows."""
-    return await service.get_my_groups(session, member.id)
+    `is_creator=true` rows.
+
+    Paginated (`page`, system default page size) and filterable: `name`/
+    `group_number` are case-insensitive substring matches, `role` is
+    whether this member created the group, `status` is the group's own
+    status, `group_id` pins one exact group (used by the group-history
+    page, which needs that one row whatever page it would land on)."""
+    return await service.get_my_groups(
+        session,
+        member.id,
+        page=page,
+        name=name,
+        group_number=group_number,
+        role=role,
+        status=status,
+        group_id=group_id,
+    )
 
 
 @router.get(

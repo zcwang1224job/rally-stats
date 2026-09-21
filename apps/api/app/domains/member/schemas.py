@@ -246,6 +246,8 @@ class MyGroupSummary(BaseModel):
 
 class MyGroupsResponse(BaseModel):
     groups: list[MyGroupSummary]
+    page: int = 1
+    total_pages: int = 1
 
 
 class MemberGroupStatsResponse(BaseModel):

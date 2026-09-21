@@ -1985,7 +1985,17 @@ async def search_member(
     )
 
 
-async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroupsResponse:
+async def get_my_groups(
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    *,
+    page: int = 1,
+    name: str | None = None,
+    group_number: str | None = None,
+    role: Literal["creator", "member"] | None = None,
+    status: Literal["active", "disbanded"] | None = None,
+    group_id: uuid.UUID | None = None,
+) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has EVER had a `RosterEntry` in
     (any status — active/left/kicked), deduplicated by group. Guest-joined
@@ -1994,15 +2004,23 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
 
     `member_status` reflects each group's MOST RECENT `RosterEntry` for
     this member (by `joined_at` DESC) — a member can leave and rejoin the
-    same group, producing multiple historical rows (research.md #4)."""
+    same group, producing multiple historical rows (research.md #4).
+
+    Filters (substring on `name`/`group_number`, exact on `role`/`status`/
+    `group_id`) are applied in Python after loading every group of this
+    member, then paginated — same precedent as `friend.service.list_friends`
+    (one member's group count is small enough that this is cheap).
+    `group_id` lets the group-history page fetch one specific row without
+    depending on which page it falls on."""
     roster_result = await session.execute(
         select(RosterEntry.group_id, RosterEntry.status)
         .where(RosterEntry.member_id == member_id)
         .order_by(RosterEntry.joined_at.desc())
     )
     member_status_by_group: dict[uuid.UUID, str] = {}
-    for group_id, status in roster_result.all():
-        member_status_by_group.setdefault(group_id, status)  # first seen (newest) wins
+    for roster_group_id, roster_status in roster_result.all():
+        # first seen (newest) wins
+        member_status_by_group.setdefault(roster_group_id, roster_status)
 
     created_result = await session.execute(
         select(Group.id).where(Group.created_by_member_id == member_id)
@@ -2011,7 +2029,7 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
 
     all_group_ids = set(member_status_by_group) | created_group_ids
     if not all_group_ids:
-        return MyGroupsResponse(groups=[])
+        return MyGroupsResponse(groups=[], page=page, total_pages=1)
 
     result = await session.execute(
         select(
@@ -2037,5 +2055,15 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
             member_status=member_status_by_group[row.id],
         )
         for row in result.all()
+        if (group_id is None or row.id == group_id)
+        and (not name or name.lower() in row.name.lower())
+        and (not group_number or group_number in str(row.group_number))
+        and (role is None or (row.id in created_group_ids) == (role == "creator"))
+        and (status is None or row.status == status)
     ]
-    return MyGroupsResponse(groups=groups)
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (len(groups) + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    return MyGroupsResponse(
+        groups=groups[start : start + page_size], page=page, total_pages=total_pages
+    )

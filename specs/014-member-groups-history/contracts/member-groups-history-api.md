@@ -36,6 +36,28 @@
 
 **Errors**：`MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`（皆既有，不變）。
 
+### Revision 2026-09-21：篩選與分頁
+
+原規格「暫不特別設計分頁機制」（spec.md）就此取代：列表改為分頁，並可篩選。
+回應多了 `page`／`total_pages`，形狀與 `GET /friends` 一致；每頁筆數取系統設定
+`default_page_size`（預設 20）。排序不變（`created_at` 由新到舊）。篩選在分頁**之前**
+套用，多個條件為 AND。超出範圍的頁碼回傳空的 `groups`，不是錯誤。
+
+| Query 參數 | 型別 | 說明 |
+|---|---|---|
+| `page` | int ≥ 1，預設 1 | 頁碼 |
+| `name` | string ≤ 30 | 團名，不分大小寫的部分比對 |
+| `group_number` | string ≤ 20 | 團編號，部分比對（比對數字字串） |
+| `role` | `creator` \| `member` | 我是不是這個團的建立者 |
+| `status` | `active` \| `disbanded` | 團本身的狀態（不是 `member_status`） |
+| `group_id` | uuid | 精確指定一個團。團戰績頁用它取得該團的 `created_at`，不受該團落在第幾頁影響 |
+
+```json
+{ "groups": [ ... ], "page": 1, "total_pages": 3 }
+```
+
+**Errors**：參數不合法（`page=0`、未知的 `role`／`status`、非 uuid 的 `group_id`）→ 422。
+
 ## `GET /members/me/groups/{group_id}/history?page=N`（新增，Revision
 2026-09-07b：`matches` 是該團全部比賽、`nickname` 搜尋全部參與者——修正
 Revision 2026-09-07a 誤將整個端點窄化為「僅自己的比賽」的方向）
