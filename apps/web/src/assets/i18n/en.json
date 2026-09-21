@@ -1165,7 +1165,7 @@
     "altText": "Match card: {{first}} {{firstScore}}, {{second}} {{secondScore}}. {{winner}} won",
     "highlight": {
       "comeback": "Came back from {{deficit}} down",
-      "matchPointsSaved": "Saved {{count}} match point(s)",
+      "matchPointsSaved": "Match points saved: {{count}}",
       "deuceWin": "Won in extra points {{scoreFor}}:{{scoreAgainst}}",
       "run": "{{length}} points in a row",
       "winnerRate": "{{percent}} of points were winners",

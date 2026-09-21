@@ -273,9 +273,9 @@ description: "Task list for 040-match-share-card"
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
-- [ ] T050 [P] 後端：在 `apps/api` 執行 `ruff check .`、`mypy app`，以及 T023～T025 三個測試檔。
-- [ ] T051 [P] 前端：在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build`。已知 `admin-page.component.spec.ts` 的 NG04002 unhandled error 是既有問題，與本功能無關。
-- [ ] T052 依 `specs/040-match-share-card/quickstart.md` 第 2 節做實際畫面驗收：worktree 後端開在 :8001，連 `rally_stats_test`；前端開在 :4300；以 `apps/api/scripts/seed_dashboard_demo.py` 建立示範資料；用 playwright-core 對步驟 1～9、13、14 截圖，並逐張檢查排版（特別是步驟 7 的長暱稱、步驟 4 的降級版面）。步驟 12（手機系統分享）需要 HTTPS 環境，無法在本機自動化，列為交付時請使用者驗證的項目。
+- [X] T050 [P] 後端：在 `apps/api` 執行 `ruff check .`、`mypy app`，以及 T023～T025 三個測試檔。
+- [X] T051 [P] 前端：在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build`。已知 `admin-page.component.spec.ts` 的 NG04002 unhandled error 是既有問題，與本功能無關。
+- [X] T052 依 `specs/040-match-share-card/quickstart.md` 第 2 節做實際畫面驗收：worktree 後端開在 :8001，連 `rally_stats_test`；前端開在 :4300；以 `apps/api/scripts/seed_dashboard_demo.py` 建立示範資料；用 playwright-core 對步驟 1～9、13、14 截圖，並逐張檢查排版（特別是步驟 7 的長暱稱、步驟 4 的降級版面）。步驟 12（手機系統分享）需要 HTTPS 環境，無法在本機自動化，列為交付時請使用者驗證的項目。
   - **SC-001 量測**（`/speckit-analyze` G1）：在同一支 playwright 腳本中，以 CDP `Emulation.setCPUThrottlingRate({ rate: 4 })` 模擬一般手機，並設定 390×844 的 viewport。記錄從點擊「分享圖卡」到預覽 `<img>` 觸發 `load` 事件的時間，分別測一場雙打完整紀錄（有走勢與亮點）的比賽，以及一場 partial 紀錄的比賽，各跑 5 次取中位數。兩者都 MUST ≤ 2000 ms；超過時先檢查 `document.fonts.ready` 與 `toBlob` 各自的耗時再優化。把量測結果寫進交付報告。
 - [ ] T053 在背景執行完整的後端測試套件（`python -m pytest -rf > <job tmp>/pytest-full.txt`，約 20 分鐘），確認沒有回歸。必須在同一回合內等它跑完，才能移除 worktree。
 - [ ] T054 對照 spec.md 的 FR-001～FR-029（含 FR-006a、FR-012a、FR-017a）與 SC-001～SC-008，逐條確認都有對應的任務或測試；有遺漏就補上任務。

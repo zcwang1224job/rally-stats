@@ -7,8 +7,11 @@
   width: min(100%, 360px);
   aspect-ratio: 4 / 5;
   margin: 0 auto;
+  // A white card on a white dialog needs an edge to read as a picture.
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface-alt);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
@@ -16,7 +19,6 @@
   display: block;
   width: 100%;
   height: auto;
-  box-shadow: var(--shadow-md);
 }
 
 .share-card__status,

@@ -119,9 +119,13 @@ function teamsBlock(
         panel(ctx, SHARE_CARD_PADDING, y - 20, CONTENT_WIDTH, heights[0] + 40, palette.panel);
       }
       drawTeam(ctx, model.teams[0], y, heights[0], palette, text, fonts);
-      const dividerY = y + heights[0] + BLOCK_GAP / 2;
-      ctx.fillStyle = palette.divider;
-      ctx.fillRect(SHARE_CARD_PADDING, dividerY - 1, CONTENT_WIDTH, 2);
+      // The panel already separates the two teams on "my" card; a divider
+      // right under it would only crowd it.
+      if (model.perspective !== 'mine') {
+        const dividerY = y + heights[0] + BLOCK_GAP / 2;
+        ctx.fillStyle = palette.divider;
+        ctx.fillRect(SHARE_CARD_PADDING, dividerY - 1, CONTENT_WIDTH, 2);
+      }
       drawTeam(ctx, model.teams[1], y + heights[0] + BLOCK_GAP, heights[1], palette, text, fonts);
     },
   };
