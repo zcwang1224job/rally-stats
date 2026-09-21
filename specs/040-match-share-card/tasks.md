@@ -277,8 +277,8 @@ description: "Task list for 040-match-share-card"
 - [X] T051 [P] 前端：在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build`。已知 `admin-page.component.spec.ts` 的 NG04002 unhandled error 是既有問題，與本功能無關。
 - [X] T052 依 `specs/040-match-share-card/quickstart.md` 第 2 節做實際畫面驗收：worktree 後端開在 :8001，連 `rally_stats_test`；前端開在 :4300；以 `apps/api/scripts/seed_dashboard_demo.py` 建立示範資料；用 playwright-core 對步驟 1～9、13、14 截圖，並逐張檢查排版（特別是步驟 7 的長暱稱、步驟 4 的降級版面）。步驟 12（手機系統分享）需要 HTTPS 環境，無法在本機自動化，列為交付時請使用者驗證的項目。
   - **SC-001 量測**（`/speckit-analyze` G1）：在同一支 playwright 腳本中，以 CDP `Emulation.setCPUThrottlingRate({ rate: 4 })` 模擬一般手機，並設定 390×844 的 viewport。記錄從點擊「分享圖卡」到預覽 `<img>` 觸發 `load` 事件的時間，分別測一場雙打完整紀錄（有走勢與亮點）的比賽，以及一場 partial 紀錄的比賽，各跑 5 次取中位數。兩者都 MUST ≤ 2000 ms；超過時先檢查 `document.fonts.ready` 與 `toBlob` 各自的耗時再優化。把量測結果寫進交付報告。
-- [ ] T053 在背景執行完整的後端測試套件（`python -m pytest -rf > <job tmp>/pytest-full.txt`，約 20 分鐘），確認沒有回歸。必須在同一回合內等它跑完，才能移除 worktree。
-- [ ] T054 對照 spec.md 的 FR-001～FR-029（含 FR-006a、FR-012a、FR-017a）與 SC-001～SC-008，逐條確認都有對應的任務或測試；有遺漏就補上任務。
+- [X] T053 在背景執行完整的後端測試套件（`python -m pytest -rf > <job tmp>/pytest-full.txt`，約 20 分鐘），確認沒有回歸。必須在同一回合內等它跑完，才能移除 worktree。
+- [X] T054 對照 spec.md 的 FR-001～FR-029（含 FR-006a、FR-012a、FR-017a）與 SC-001～SC-008，逐條確認都有對應的任務或測試；有遺漏就補上任務。
 
 ---
 
@@ -378,3 +378,14 @@ Task: "T028 share-card-renderer.spec.ts 擴充"
 - 不新增任何第三方套件、migration 或端點（plan.md Constraints）。
 - 所有顯示文字只能使用 T004 建立的 `matchShareCard.*` key；實作過程中若需要新增 key，兩份語系檔要同時補上，T004 的一致性測試會擋下漏加的情況。
 - 每完成一個 story 就 commit 一次，commit 訊息使用繁體中文，並描述使用者看得到的變化。
+
+## 實作備註（2026-09-21，`/speckit-implement`）
+
+- **順序調整**：前端 `target_score` 型別（T031 的一半）在 Phase 1 就先加入，讓 fixtures 從一開始就帶這個欄位，不必事後回頭補。後端部分（T029、T030）仍依 US2 的測試先行順序完成。
+- **我方視角提前實作**：model 的 mine 路徑（T039）和 match-history 的 mine context（T040）在 US1 就一併完成，因為 match-history 從一開始就會傳入 mine。因此 T036 的 model 測試寫好時就直接通過，沒有先看到失敗；renderer 的我方底框（T041）則有照「先失敗、再實作」的順序進行。
+- **FR-018 的退回**：`openDetail()` 直接接收被點開的那一列資料，所以不會發生「找不到該列」的情況，也就不需要 T040 原先設想的 neutral 退回分支。
+- **下載後釋放 object URL**：改為延遲 1 秒（contract §5 原寫「立即」），因為 Safari 在同一個 tick 內釋放會取消下載。
+- **實際畫面驗收（T052）額外修正的三處**：預覽框加上邊框（白底圖卡放在白色 dialog 上原本看不出邊界）；我方視角拿掉兩隊之間的分隔線（和底框擠在一起）；英文的 `matchPointsSaved` 改為「Match points saved: N」（原本用 `(s)` 表示複數，讀起來彆扭）。
+- **未在本機驗證的項目**：手機系統分享（quickstart 步驟 12）需要 HTTPS；以 LAN http 開啟時隱藏「複製圖片」（步驟 11）只由 `share-card-actions.service.spec.ts` 覆蓋。localhost 屬於安全連線，會顯示「複製圖片」，而且實測可以把 PNG 放進剪貼簿。
+- **SC-001 量測**：在 390×844 視窗、CPU 降速 4 倍的條件下，各跑多次取中位數：有走勢和亮點的圖卡約 84 ms，partial 紀錄的圖卡約 85 ms。
+- 驗收腳本與截圖存放在 `docs/040-share-card-check/`，這個資料夾只存在本機，不進 git。
