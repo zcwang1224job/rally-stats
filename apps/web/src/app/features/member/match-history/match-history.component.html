@@ -24,7 +24,7 @@
     <details class="advanced-filters">
       <summary>{{ 'member.matchHistory.filters.moreFilters' | translate }}</summary>
       <div class="filters-grid">
-        <label>
+        <label class="filters-field--wide">
           {{ 'groupJoin.matchModeFilter' | translate }}
           <select formControlName="match_mode">
             <option value="">{{ 'groupJoin.matchModeFilterAny' | translate }}</option>
@@ -56,7 +56,7 @@
           {{ 'member.matchHistory.filters.roundTo' | translate }}
           <input type="number" min="1" formControlName="round_to" />
         </label>
-        <label>
+        <label class="filters-field--wide">
           {{ 'member.matchHistory.filters.selfScoreCmp' | translate }}
           <div class="score-filter-row">
             <select formControlName="self_score_cmp">
@@ -68,7 +68,7 @@
             <input type="number" min="0" formControlName="self_score" />
           </div>
         </label>
-        <label>
+        <label class="filters-field--wide">
           {{ 'member.matchHistory.filters.opponentScoreCmp' | translate }}
           <div class="score-filter-row">
             <select formControlName="opponent_score_cmp">
@@ -123,6 +123,15 @@
     [total]="r.total_matches"
     [winRate]="r.win_rate"
   />
+
+  <!-- On a phone the list sits below the insights, the dashboard and the
+       matchup tables — thousands of pixels down. One tap gets there. -->
+  @if (r.matches.length > 0) {
+    <button type="button" class="jump-to-list" data-jump-to-list (click)="scrollToMatchList()">
+      <span aria-hidden="true">↓</span>
+      {{ 'member.matchHistory.jumpToList' | translate: { total: r.total_matches } }}
+    </button>
+  }
 
   <!-- 036 US1: the conclusions first, the numbers behind them right below.
        Rides on the dashboard response, so it follows the same filters and
@@ -189,7 +198,7 @@
   @if (r.matches.length === 0) {
     <p class="empty-state card">{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
   } @else {
-    <ul class="record-list">
+    <ul class="record-list" id="match-list" #matchList>
       @for (match of r.matches; track match.match_id) {
         <li
           app-match-card

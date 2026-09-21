@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { provideTranslateService } from '@ngx-translate/core';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { Observable, Subject, of, throwError } from 'rxjs';
+import { vi } from 'vitest';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import {
@@ -707,6 +708,53 @@ describe('MatchHistoryComponent', () => {
       expect(group.open).toBe(true);
       expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
       root.remove();
+    });
+  });
+
+  // On a phone the list sits thousands of pixels below the summary and the
+  // dashboard: a jump button gets there, and a page flip lands on the NEW
+  // page's first card rather than at the pagination under it.
+  describe('getting to the match list on a phone', () => {
+    function spyOnListScroll(fixture: ReturnType<typeof setup>) {
+      const list = fixture.nativeElement.querySelector('#match-list') as HTMLElement;
+      const scroll = vi.fn();
+      list.scrollIntoView = scroll;
+      return scroll;
+    }
+
+    it('the jump button scrolls the list into view and shows the total', () => {
+      const fixture = setup([], { records: { ...recordsResponse, total_matches: 42 } });
+      const scroll = spyOnListScroll(fixture);
+      const button = fixture.nativeElement.querySelector('[data-jump-to-list]') as HTMLButtonElement;
+
+      expect(button.textContent).toContain('member.matchHistory.jumpToList');
+      button.click();
+
+      expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
+    });
+
+    it('has no jump button when there is no match to jump to', () => {
+      const fixture = setup([], { records: { ...recordsResponse, matches: [], total_matches: 0 } });
+
+      expect(fixture.nativeElement.querySelector('[data-jump-to-list]')).toBeNull();
+    });
+
+    it('a page flip brings the top of the new page into view', () => {
+      const fixture = setup();
+      const scroll = spyOnListScroll(fixture);
+
+      fixture.componentInstance.goToPage(2);
+
+      expect(scroll).toHaveBeenCalledTimes(1);
+    });
+
+    it('applying filters does not scroll — the reader is looking at the form', () => {
+      const fixture = setup();
+      const scroll = spyOnListScroll(fixture);
+
+      fixture.componentInstance.applyFilters();
+
+      expect(scroll).not.toHaveBeenCalled();
     });
   });
 });

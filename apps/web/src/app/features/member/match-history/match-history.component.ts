@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
 import { RecordHeroComponent } from '../../../shared/record-hero/record-hero.component';
@@ -84,6 +84,7 @@ export class MatchHistoryComponent {
   /** 036 FR-010: an insight sentence jumps to the card it is about. Optional —
    * the dashboard only exists once the records have loaded. */
   private readonly dashboardRef = viewChild(PlayerDashboardComponent);
+  private readonly matchList = viewChild<ElementRef<HTMLElement>>('matchList');
 
   focusMetric(key: DashboardMetricKey): void {
     this.dashboardRef()?.focusMetric(key);
@@ -278,10 +279,20 @@ export class MatchHistoryComponent {
 
   goToPage(page: number): void {
     this.page.set(page);
-    this.load(page);
+    this.load(page, { scrollToList: true });
   }
 
-  private load(page: number): void {
+  /** On a phone the match list starts far below the summary, the dashboard
+   * and the matchup tables; this brings its top edge into view. */
+  scrollToMatchList(): void {
+    this.matchList()?.nativeElement.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }
+
+  /** `scrollToList`: a page flip is tapped from the pagination under the
+   * list — without it a phone user lands at the BOTTOM of the new page. The
+   * old list stays rendered until the response arrives, so its top edge is
+   * already where the new one will be. */
+  private load(page: number, { scrollToList = false } = {}): void {
     const raw = this.filterForm.getRawValue();
     const filters: MemberMatchRecordFilters = {
       opponent1: raw.opponent1 || undefined,
@@ -312,6 +323,9 @@ export class MatchHistoryComponent {
       next: (response) => {
         this.records.set(response);
         this.loadInviteCandidates(response);
+        if (scrollToList) {
+          this.scrollToMatchList();
+        }
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });

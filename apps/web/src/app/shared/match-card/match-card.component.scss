@@ -64,3 +64,30 @@
   display: flex;
   justify-content: flex-end;
 }
+
+// The viewer's own matches: the short 勝/敗 badge rides at the end of the
+// meta row instead of taking a row of its own under the score — on a phone
+// list that row is a sixth of every card. (A group's records carry a
+// "winner: …" badge of any length instead, so they keep the stacked layout.)
+:host(.match-card--win),
+:host(.match-card--loss) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'meta result'
+    'body body';
+  align-items: start;
+  column-gap: var(--space-sm);
+
+  .match-card__meta {
+    grid-area: meta;
+  }
+
+  .match-card__body {
+    grid-area: body;
+  }
+
+  .match-card__result {
+    grid-area: result;
+  }
+}

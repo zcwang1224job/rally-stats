@@ -1,4 +1,5 @@
 @use '../court-diagram/landing-legend';
+@use '../../../styles/breakpoints';
 
 :host {
   display: block;
@@ -37,6 +38,15 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 8rem), 1fr));
   gap: var(--space-sm);
+}
+
+// …which a 360px phone missed by a couple of pixels: the page gutter, the
+// card's padding and the group's own padding left ~262px for two 8rem
+// tiles. The group's side padding gives way on a phone instead.
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
+  .dashboard-group {
+    padding-inline: var(--space-sm);
+  }
 }
 
 .dashboard-group__trend {

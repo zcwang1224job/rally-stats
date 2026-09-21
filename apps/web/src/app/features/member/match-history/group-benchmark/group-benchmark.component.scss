@@ -9,6 +9,8 @@
 .benchmark__title {
   font-size: var(--font-size-body);
   font-weight: var(--font-weight-bold);
+  // The whole summary row is the tap target (one line, full touch height).
+  line-height: var(--touch-target-min);
   cursor: pointer;
 }
 
