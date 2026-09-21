@@ -218,7 +218,7 @@ description: "Task list for 041-group-share-cards"
 
 ### Tests for User Story 3 ⚠️（先寫，確認會失敗）
 
-- [ ] T036 [P] [US3] 新增 `web/app/core/group-share-card/my-stats-card-model.spec.ts`，逐條涵蓋 contracts/group-share-card.md 的 M1～M6（FR-013～FR-017、FR-021、FR-031、FR-032、SC-003、SC-010）：
+- [X] T036 [P] [US3] 新增 `web/app/core/group-share-card/my-stats-card-model.spec.ts`，逐條涵蓋 contracts/group-share-card.md 的 M1～M6（FR-013～FR-017、FR-021、FR-031、FR-032、SC-003、SC-010）：
   - M1：`my_stats.total_matches === 0` → `null`。
   - M2：`winRate` 等於 `formatPercent(win_rate)`，以 0、0.6、0.666…、1 各驗一次。
   - M3：`standing` 為本人列的 `rank` 與 `countPlayers()`；沒有本人列 → `standing === null` 且 `nickname === null`。
@@ -226,24 +226,24 @@ description: "Task list for 041-group-share-cards"
   - M5：0 筆 → `[]`；1 筆 → 1 筆；5 筆 → 前 3 筆且順序與輸入相同；另以**刻意不照場數排序**的輸入驗證沒有重新排序；每筆只有 `nickname`、`wins`、`losses`。
   - M6：`createdAt === null` → `date === null`。
   - 另驗證 `fileName` 為 `rally-stats-me-…png`、`altText.key === 'groupShareCard.myStats.altText'` 且參數齊全、同樣輸入兩次深度相等、`JSON.stringify(model)` 不含任何 ID。
-- [ ] T037 [P] [US3] 新增 `web/app/core/group-share-card/my-stats-card-renderer.spec.ts`（FR-014～FR-018、SC-005）：
+- [X] T037 [P] [US3] 新增 `web/app/core/group-share-card/my-stats-card-renderer.spec.ts`（FR-014～FR-018、SC-005）：
   - 畫出團名、`groupShareCard.myStats.title`、日期、暱稱、大字勝率字串（字級為全卡最大）、`groupShareCard.myStats.record`、`groupShareCard.myStats.standing`、`groupShareCard.myStats.trendTitle` 與 1 條折線、`groupShareCard.myStats.opponentsTitle` 與每位對手的暱稱及 `opponentRecord`。
   - `standing`／`trend`／`opponents`／`nickname`／`date` 各自缺漏時對應元素完全不畫、且沒有多出的 `recordedRoundRects`（無空框，FR-017）。
   - 20 字暱稱（本人與對手）被截斷不超界。
   - 最壞情況（全部區塊都有、3 位對手）：依 contracts/group-share-card.md §2 的尺寸表，走勢區塊被收縮（高度 < 220 且 ≥ 140），且 `bottomEdge({ skipFirst: 1, skipLast: footerOpCount(…) })` ≤ `SHARE_CARD_MIDDLE_BOTTOM`；只有 1 位對手時走勢不被收縮。
   - 頁尾畫出 `shareCard.brand` 與 `displayUrl`（FR-018）。
   - 亮暗兩種色盤。
-- [ ] T038 [P] [US3] 擴充 `web/app/core/group-share-card/group-share-cards.spec.ts`：本人有出賽 → 兩個選項、順序固定為 `card-rank`、`card-me`；本人 0 場 → 只有 `card-rank`；全員 0 場 → `[]`（FR-003、FR-013）。
-- [ ] T039 [P] [US3] 擴充 `web/app/core/share-card/share-card-preview/share-card-preview.component.spec.ts`（contracts/share-card-core.md §2、FR-003、FR-004）：1 個選項時不渲染種類切換；2 個選項時渲染 2 顆原生 `<button>`、文字為各自 `labelKey` 的翻譯、`aria-pressed` 反映選取狀態、外層 `role="group"` 且有 `shareCard.kindLabel` 的標籤；點第二顆 → 以第二個選項重新 `rasterize`、`alt` 與下載檔名換成第二個選項；先選暗色再切種類 → `rasterize` 收到的 theme 仍為 `'dark'`；點已選取的那顆不重新產圖；重新 `open()` 後回到第一個選項與亮色；切換途中較舊的產圖結果被丟棄。
-- [ ] T040 [P] [US3] 擴充 `web/app/features/member/my-groups/group-history/group-history.component.spec.ts`：本人有出賽時傳給外殼 2 個選項；本人 0 場但團內有比賽時 1 個。
+- [X] T038 [P] [US3] 擴充 `web/app/core/group-share-card/group-share-cards.spec.ts`：本人有出賽 → 兩個選項、順序固定為 `card-rank`、`card-me`；本人 0 場 → 只有 `card-rank`；全員 0 場 → `[]`（FR-003、FR-013）。
+- [X] T039 [P] [US3] 擴充 `web/app/core/share-card/share-card-preview/share-card-preview.component.spec.ts`（contracts/share-card-core.md §2、FR-003、FR-004）：1 個選項時不渲染種類切換；2 個選項時渲染 2 顆原生 `<button>`、文字為各自 `labelKey` 的翻譯、`aria-pressed` 反映選取狀態、外層 `role="group"` 且有 `shareCard.kindLabel` 的標籤；點第二顆 → 以第二個選項重新 `rasterize`、`alt` 與下載檔名換成第二個選項；先選暗色再切種類 → `rasterize` 收到的 theme 仍為 `'dark'`；點已選取的那顆不重新產圖；重新 `open()` 後回到第一個選項與亮色；切換途中較舊的產圖結果被丟棄。
+- [X] T040 [P] [US3] 擴充 `web/app/features/member/my-groups/group-history/group-history.component.spec.ts`：本人有出賽時傳給外殼 2 個選項；本人 0 場但團內有比賽時 1 個。
 
 ### Implementation for User Story 3
 
-- [ ] T041 [US3] 在 `web/app/core/group-share-card/group-share-card.models.ts` 加入 `MyStatsCardModel`（data-model.md 第 3 節），並實作 `web/app/core/group-share-card/my-stats-card-model.ts`：`buildMyStatsCardModel(history, context)`。`playerCount` 使用 T020 export 的 `countPlayers()`，不得另寫一份；走勢 `y = (1 − win_rate) × 100`；對手只用 `slice(0, 3)`，**不得**排序或挑選（FR-016）。讓 T036 全綠。
-- [ ] T042 [US3] 實作 `web/app/core/group-share-card/my-stats-card-renderer.ts`：`renderMyStatsCard(ctx, model, env)`，背景 → 標題區（同排行榜卡）→ `stackBlocks()` → `drawPromoFooter(ctx, env.footer, env)`。中段區塊與尺寸依 contracts/group-share-card.md §2：主視覺 232（暱稱 40px 行高 52、勝率 `env.fonts.score` 140px 行高 150、勝負總場數 30px 行高 30）、名次膠囊 56、走勢 `height 220`／`minHeight 140`（含 30px 小標，單一折線用 `palette.trendA`，縱軸固定 0～100%）、對手區塊 `40 + 列數 × 56`。缺漏的區塊不進入 `stackBlocks()`。讓 T037 全綠。
-- [ ] T043 [US3] 擴充 `web/app/core/group-share-card/group-share-cards.ts`：加入我的成績選項（`source: 'card-me'`、`labelKey: 'groupShareCard.kind.myStats'`）。讓 T038、T040 全綠（`group-history` 元件本身不需再改，因為它只轉交 `availableGroupCards()` 的結果）。
-- [ ] T044 [US3] 在 `web/app/core/share-card/share-card-preview/share-card-preview.component.{ts,html,scss}` 加上種類切換：`@if (options().length > 1)` 渲染 `role="group"`＋`aria-label` 的按鈕列，樣式比照既有的配色切換；`selectOption(option)` 在選項不同且狀態非 `idle` 時更新 `selected` 並重新 `generate()`，**不重設** `theme`；`open()` 重設為第一個選項與亮色。讓 T039 全綠。
-- [ ] T045 [US3] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；重跑 T024 的 `git diff --stat` 指令，輸出必須為空。Commit：「分享圖卡新增「我的成績」：勝率、名次、各輪走勢與最常交手的對手，可在預覽中切換圖卡種類」。
+- [X] T041 [US3] 在 `web/app/core/group-share-card/group-share-card.models.ts` 加入 `MyStatsCardModel`（data-model.md 第 3 節），並實作 `web/app/core/group-share-card/my-stats-card-model.ts`：`buildMyStatsCardModel(history, context)`。`playerCount` 使用 T020 export 的 `countPlayers()`，不得另寫一份；走勢 `y = (1 − win_rate) × 100`；對手只用 `slice(0, 3)`，**不得**排序或挑選（FR-016）。讓 T036 全綠。
+- [X] T042 [US3] 實作 `web/app/core/group-share-card/my-stats-card-renderer.ts`：`renderMyStatsCard(ctx, model, env)`，背景 → 標題區（同排行榜卡）→ `stackBlocks()` → `drawPromoFooter(ctx, env.footer, env)`。中段區塊與尺寸依 contracts/group-share-card.md §2：主視覺 232（暱稱 40px 行高 52、勝率 `env.fonts.score` 140px 行高 150、勝負總場數 30px 行高 30）、名次膠囊 56、走勢 `height 220`／`minHeight 140`（含 30px 小標，單一折線用 `palette.trendA`，縱軸固定 0～100%）、對手區塊 `40 + 列數 × 56`。缺漏的區塊不進入 `stackBlocks()`。讓 T037 全綠。
+- [X] T043 [US3] 擴充 `web/app/core/group-share-card/group-share-cards.ts`：加入我的成績選項（`source: 'card-me'`、`labelKey: 'groupShareCard.kind.myStats'`）。讓 T038、T040 全綠（`group-history` 元件本身不需再改，因為它只轉交 `availableGroupCards()` 的結果）。
+- [X] T044 [US3] 在 `web/app/core/share-card/share-card-preview/share-card-preview.component.{ts,html,scss}` 加上種類切換：`@if (options().length > 1)` 渲染 `role="group"`＋`aria-label` 的按鈕列，樣式比照既有的配色切換；`selectOption(option)` 在選項不同且狀態非 `idle` 時更新 `selected` 並重新 `generate()`，**不重設** `theme`；`open()` 重設為第一個選項與亮色。讓 T039 全綠。
+- [X] T045 [US3] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；重跑 T024 的 `git diff --stat` 指令，輸出必須為空。Commit：「分享圖卡新增「我的成績」：勝率、名次、各輪走勢與最常交手的對手，可在預覽中切換圖卡種類」。
 
 **Checkpoint**：兩種團圖卡都可用，並且都帶導流頁尾。
 

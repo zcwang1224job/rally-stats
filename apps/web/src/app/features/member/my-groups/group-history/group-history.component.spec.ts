@@ -595,3 +595,31 @@ describe('GroupHistoryComponent — share cards (041 US1)', () => {
     expect(fixture.debugElement.queryAll(By.directive(ShareCardPreviewComponent)).length).toBe(2);
   });
 });
+
+describe('GroupHistoryComponent — my stats card (041 US3)', () => {
+  function openedSources(fixture: ReturnType<typeof setup>['fixture']): string[] {
+    const open = vi.spyOn(fixture.componentInstance.sharePreview(), 'open');
+    fixture.nativeElement.querySelector('.group-history__share').click();
+    return (open.mock.calls.at(-1)![0] as ShareCardOption[]).map((o) => o.source);
+  }
+
+  it('offers the leaderboard and my stats when I have played here', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    expect(openedSources(fixture)).toEqual(['card-rank', 'card-me']);
+  });
+
+  it('offers only the leaderboard when I have not played here', () => {
+    const { fixture } = setup({
+      getMemberGroupHistory: () =>
+        of({
+          ...historyResponse,
+          my_stats: { ...historyResponse.my_stats, total_matches: 0, total_wins: 0, total_losses: 0, win_rate: 0 },
+        }),
+    });
+    fixture.detectChanges();
+
+    expect(openedSources(fixture)).toEqual(['card-rank']);
+  });
+});

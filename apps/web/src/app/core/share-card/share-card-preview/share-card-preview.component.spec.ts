@@ -326,3 +326,113 @@ describe('ShareCardPreviewComponent — share and copy (moved from 040)', () => 
     expect(root.querySelector('.share-card__message')?.textContent).toContain('shareCard.copyError');
   });
 });
+
+describe('ShareCardPreviewComponent — choosing a card (041 US3, FR-003, FR-004)', () => {
+  const rank = () => makeOption();
+  const me = () =>
+    makeOption({
+      source: 'card-me',
+      labelKey: 'x.kind.me',
+      fileName: 'rally-stats-me-20260916-test.png',
+      altText: { key: 'x.alt.me', params: {} },
+    });
+  const kindButtons = (root: HTMLElement) =>
+    Array.from(root.querySelectorAll<HTMLButtonElement>('.share-card__kind-option'));
+  const themeButton = (root: HTMLElement, theme: string) =>
+    root.querySelector<HTMLButtonElement>(`.share-card__theme-option[data-theme="${theme}"]`)!;
+
+  it('offers no choice when there is only one card', async () => {
+    const { root, open } = await setup();
+    await open([rank()]);
+
+    expect(root.querySelector('.share-card__kind')).toBeNull();
+  });
+
+  it('offers each card as a pressed-state button, in a labelled group', async () => {
+    const { root, open } = await setup();
+    await open([rank(), me()]);
+
+    const group = root.querySelector('.share-card__kind')!;
+    expect(group.getAttribute('role')).toBe('group');
+    expect(group.getAttribute('aria-label')).toBe('shareCard.kindLabel');
+    const buttons = kindButtons(root);
+    expect(buttons.map((b) => b.textContent?.trim())).toEqual(['x.kind.rank', 'x.kind.me']);
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    expect(buttons.every((b) => b.type === 'button')).toBe(true);
+  });
+
+  it('switches to the other card: redraws it, with its own alt text and file name', async () => {
+    const { fixture, root, actions, open } = await setup();
+    const second = me();
+    await open([rank(), second]);
+
+    await click(fixture, kindButtons(root)[1]);
+
+    expect(actions.rasterize.mock.calls.at(-1)).toEqual([second, 'light']);
+    expect(root.querySelector('.share-card__preview')?.getAttribute('alt')).toBe('x.alt.me');
+    expect(kindButtons(root).map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    button(root, '.share-card__download')!.click();
+    expect(actions.download.mock.calls.at(-1)![1]).toBe('rally-stats-me-20260916-test.png');
+  });
+
+  it('keeps the chosen colors when switching cards', async () => {
+    const { fixture, root, actions, open } = await setup();
+    await open([rank(), me()]);
+
+    await click(fixture, themeButton(root, 'dark'));
+    await click(fixture, kindButtons(root)[1]);
+
+    expect(actions.rasterize.mock.calls.at(-1)![1]).toBe('dark');
+    button(root, '.share-card__download')!.click();
+    const [blob] = actions.download.mock.calls.at(-1) as [Blob];
+    expect(await blob.text()).toBe('card-me:dark');
+  });
+
+  it('does nothing when the current card is picked again', async () => {
+    const { fixture, root, actions, open } = await setup();
+    await open([rank(), me()]);
+
+    await click(fixture, kindButtons(root)[0]);
+
+    expect(actions.rasterize).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens on the first card, in light colors, every time', async () => {
+    const { fixture, root, actions, open } = await setup();
+    await open([rank(), me()]);
+    await click(fixture, themeButton(root, 'dark'));
+    await click(fixture, kindButtons(root)[1]);
+    fixture.componentInstance.preview().close();
+
+    await open([rank(), me()]);
+
+    const [option, theme] = actions.rasterize.mock.calls.at(-1)!;
+    expect((option as ShareCardOption).source).toBe('card-rank');
+    expect(theme).toBe('light');
+  });
+
+  it('throws away the old card’s image if it finishes after switching', async () => {
+    const resolvers: ((blob: Blob) => void)[] = [];
+    const actions = makeActions({
+      rasterize: vi.fn(() => new Promise<Blob>((r) => resolvers.push(r))),
+    });
+    const { fixture, root } = await setup(actions);
+    fixture.componentInstance.preview().open([rank(), me()]);
+    resolvers[0](new Blob(['rank']));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    kindButtons(root)[1].click();
+    kindButtons(root)[0].click();
+    fixture.detectChanges();
+
+    resolvers[2](new Blob(['rank again']));
+    await fixture.whenStable();
+    resolvers[1](new Blob(['me, late']));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    button(root, '.share-card__download')!.click();
+    const [blob] = actions.download.mock.calls.at(-1) as [Blob];
+    expect(await blob.text()).toBe('rank again');
+  });
+});

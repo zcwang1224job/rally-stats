@@ -28,6 +28,22 @@ describe('availableGroupCards — the leaderboard (041 US1, FR-001, FR-005)', ()
     expect(availableGroupCards(history, context)).toEqual([]);
   });
 
+  it('offers my stats second when I have played (041 US3, FR-003, FR-013)', () => {
+    const options = availableGroupCards(makeHistory(), context);
+
+    expect(options.map((o) => o.source)).toEqual(['card-rank', 'card-me']);
+    expect(options[1].labelKey).toBe('groupShareCard.kind.myStats');
+    expect(options[1].fileName).toBe('rally-stats-me-20260916-週三羽球團.png');
+  });
+
+  it('offers only the leaderboard when I have not played', () => {
+    const history = makeHistory({
+      my_stats: { ...makeHistory().my_stats, total_matches: 0, total_wins: 0, total_losses: 0, win_rate: 0 },
+    });
+
+    expect(availableGroupCards(history, context).map((o) => o.source)).toEqual(['card-rank']);
+  });
+
   it('draws the leaderboard when asked', () => {
     const [first] = availableGroupCards(makeHistory(), context);
     const ctx = new RecordingContext();

@@ -99,6 +99,16 @@ export class ShareCardPreviewComponent implements OnDestroy {
     void this.generate();
   }
 
+  /** 041 US3: switches to another card, keeping the chosen colors (FR-004).
+   * Not disabled while drawing: a newer request simply wins. */
+  selectOption(option: ShareCardOption): void {
+    if (option === this.selected() || this.status() === 'idle') {
+      return;
+    }
+    this.selected.set(option);
+    void this.generate();
+  }
+
   /** Called straight from the tap, with the file made in advance. */
   share(): void {
     if (!this.file) {

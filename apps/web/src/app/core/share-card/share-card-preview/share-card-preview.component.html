@@ -15,6 +15,21 @@
   <h2 [id]="titleId">{{ 'shareCard.previewTitle' | translate }}</h2>
 
   @if (selected(); as card) {
+    @if (options().length > 1) {
+      <div class="share-card__kind" role="group" [attr.aria-label]="'shareCard.kindLabel' | translate">
+        @for (kind of options(); track kind.source) {
+          <button
+            type="button"
+            class="btn btn--secondary share-card__kind-option"
+            [attr.aria-pressed]="kind === card"
+            (click)="selectOption(kind)"
+          >
+            {{ kind.labelKey | translate }}
+          </button>
+        }
+      </div>
+    }
+
     <div class="share-card__theme" role="group" [attr.aria-label]="'shareCard.themeLabel' | translate">
       @for (option of themes; track option) {
         <button
