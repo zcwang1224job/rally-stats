@@ -54,10 +54,3 @@
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
 }
-
-// The chosen card and color read as chosen: filled, not just outlined.
-.share-card__kind-option[aria-pressed='true'],
-.share-card__theme-option[aria-pressed='true'] {
-  border-color: var(--color-text-primary);
-  font-weight: 600;
-}

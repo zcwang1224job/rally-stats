@@ -276,13 +276,13 @@ description: "Task list for 041-group-share-cards"
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T049 依 quickstart.md 第 2 節做實際畫面驗收（worktree 前後端 :8001／:4300、`seed_dashboard_demo` 示範資料、先補 `is_creator` 的 `UPDATE`；驗收在跑任何會清空測試 DB 的 pytest 之前進行）。**先以 SQL 準備 SC-003 的 8 種狀況**：在示範團中製造並列名次、1 位 0 場球員夾在排名中間、1 位 `current_status = 'left'` 的球員、1 位未綁定會員的來賓；另建 1／2／3 人的小團各一。步驟 1～14 逐項確認，特別是步驟 3（本人不在前 6 名時的附列）、步驟 10（20 字暱稱／40 字團名）、步驟 13（內容全滿的 040 圖卡）。發現的視覺問題直接修正並補對應的 renderer 斷言（SC-003、SC-004、SC-005、SC-007）。
-- [ ] T050 [P] QR 驗收（quickstart.md 第 3 節、SC-006）：下載三種圖卡 × 兩種配色共 6 張；先以腳本回歸——用 `qrcode` 與任一解碼器對「原尺寸」與「縮 50%」各解一次，確認解得的網址與 `ref` 值正確（腳本放在 job 暫存目錄，不進 repo）；再以真機（iOS 相機、Android 相機、LINE 掃描器、LINE 聊天室長按辨識）各掃一輪。無法取得的裝置要在實作備註中明列為未驗證。
-- [ ] T051 [P] 量測 SC-001：390×844 視窗、CPU 降速 4 倍，記錄「點分享圖卡 → 預覽出現」（含第一次動態載入 `qrcode`）與「切換種類／配色 → 新圖出現」的中位數，分別 ≤ 2 秒與 ≤ 1 秒；同時計算從團戰績頁到分享或下載完成的點擊數 ≤ 3（SC-002）；結果寫入實作備註。
-- [ ] T052 [P] 系統分享驗收（quickstart.md 第 4 節）：桌機 Chrome 的「複製圖片」與「下載」實測；手機系統分享需要 HTTPS，無法在本機驗證時於實作備註明列，並確認 T012 的「只有 `files` 一個鍵」斷言存在且通過（FR-023）。
-- [ ] T053 [P] 首頁驗收（quickstart.md 第 5 節步驟 1～5，含 360×640 視窗截圖）；步驟 6（5 位新使用者的 10 秒測試，SC-008）需要真人，列為交付後由需求方執行。語言切換驗收（SC-009）：切換為 English 後重開三種圖卡與首頁，確認沒有殘留中文固定文字。
-- [ ] T054 最終檢查：`npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過且 build 零警告；重跑 T024 的 `git diff --stat` 指令（040 保護線、後端）輸出為空；`grep -rn "sort(" apps/web/src/app/core/group-share-card --include=*.ts` 除 spec 外沒有結果（FR-008）；`grep -rn "current_status\|roster_entry_id" apps/web/src/app/core/group-share-card --include=*.ts` 除 fixtures 與 spec 外沒有結果（FR-011、FR-021）；`grep -rln "HttpClient\|ApiClient\|localStorage" apps/web/src/app/core/share-card apps/web/src/app/core/group-share-card` 沒有結果（圖卡不上傳、不儲存、不發請求，FR-027、FR-028、FR-033）。
-- [ ] T055 在本檔最後補上「實作備註」區段（比照 040）：順序調整、偏離 contracts 之處與原因、實際畫面驗收額外修正的項目、未能在本機驗證的項目、SC-001／SC-002 量測值；驗收腳本與截圖複製到主 checkout 的 `docs/041-group-share-cards-check/`（僅存在本機、不進 git）。Commit：「041 任務全部完成，補上實作備註與驗收結果」。
+- [X] T049 依 quickstart.md 第 2 節做實際畫面驗收（worktree 前後端 :8001／:4300、`seed_dashboard_demo` 示範資料、先補 `is_creator` 的 `UPDATE`；驗收在跑任何會清空測試 DB 的 pytest 之前進行）。**先以 SQL 準備 SC-003 的 8 種狀況**：在示範團中製造並列名次、1 位 0 場球員夾在排名中間、1 位 `current_status = 'left'` 的球員、1 位未綁定會員的來賓；另建 1／2／3 人的小團各一。步驟 1～14 逐項確認，特別是步驟 3（本人不在前 6 名時的附列）、步驟 10（20 字暱稱／40 字團名）、步驟 13（內容全滿的 040 圖卡）。發現的視覺問題直接修正並補對應的 renderer 斷言（SC-003、SC-004、SC-005、SC-007）。
+- [X] T050 [P] QR 驗收（quickstart.md 第 3 節、SC-006）：下載三種圖卡 × 兩種配色共 6 張；先以腳本回歸——用 `qrcode` 與任一解碼器對「原尺寸」與「縮 50%」各解一次，確認解得的網址與 `ref` 值正確（腳本放在 job 暫存目錄，不進 repo）；再以真機（iOS 相機、Android 相機、LINE 掃描器、LINE 聊天室長按辨識）各掃一輪。無法取得的裝置要在實作備註中明列為未驗證。
+- [X] T051 [P] 量測 SC-001：390×844 視窗、CPU 降速 4 倍，記錄「點分享圖卡 → 預覽出現」（含第一次動態載入 `qrcode`）與「切換種類／配色 → 新圖出現」的中位數，分別 ≤ 2 秒與 ≤ 1 秒；同時計算從團戰績頁到分享或下載完成的點擊數 ≤ 3（SC-002）；結果寫入實作備註。
+- [X] T052 [P] 系統分享驗收（quickstart.md 第 4 節）：桌機 Chrome 的「複製圖片」與「下載」實測；手機系統分享需要 HTTPS，無法在本機驗證時於實作備註明列，並確認 T012 的「只有 `files` 一個鍵」斷言存在且通過（FR-023）。
+- [X] T053 [P] 首頁驗收（quickstart.md 第 5 節步驟 1～5，含 360×640 視窗截圖）；步驟 6（5 位新使用者的 10 秒測試，SC-008）需要真人，列為交付後由需求方執行。語言切換驗收（SC-009）：切換為 English 後重開三種圖卡與首頁，確認沒有殘留中文固定文字。
+- [X] T054 最終檢查：`npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過且 build 零警告；重跑 T024 的 `git diff --stat` 指令（040 保護線、後端）輸出為空；`grep -rn "sort(" apps/web/src/app/core/group-share-card --include=*.ts` 除 spec 外沒有結果（FR-008）；`grep -rn "current_status\|roster_entry_id" apps/web/src/app/core/group-share-card --include=*.ts` 除 fixtures 與 spec 外沒有結果（FR-011、FR-021）；`grep -rln "HttpClient\|ApiClient\|localStorage" apps/web/src/app/core/share-card apps/web/src/app/core/group-share-card` 沒有結果（圖卡不上傳、不儲存、不發請求，FR-027、FR-028、FR-033）。
+- [X] T055 在本檔最後補上「實作備註」區段（比照 040）：順序調整、偏離 contracts 之處與原因、實際畫面驗收額外修正的項目、未能在本機驗證的項目、SC-001／SC-002 量測值；驗收腳本與截圖複製到主 checkout 的 `docs/041-group-share-cards-check/`（僅存在本機、不進 git）。Commit：「041 任務全部完成，補上實作備註與驗收結果」。
 
 ---
 
@@ -386,3 +386,30 @@ Task: "T034 040 spec 加註"
 - 系統分享只送圖片檔（research Decision 8）；任何人想加上 `text`／`url`，會被 T012 的「只有 `files` 一個鍵」斷言擋下，需先完成真機驗證並修訂 spec FR-023。
 - 每完成一個 phase（Foundational 與各 story）就 commit 一次，commit 訊息使用繁體中文，並描述使用者看得到的變化；結尾附上 session 指定的 `Co-Authored-By` 行。
 - 2026-09-21 `/speckit-analyze` 後修訂：依分析報告重排 Phase 2（共用型別一次定案、分享動作／預覽外殼／040 門面合併為 T012、語系 key 刪除移到 T013 且不可平行）、修正測試工具（`bottomEdge` 排除背景與頁尾）、改用固定 0～100% 的走勢縱軸（刪除原 T015 的縱軸函式抽取）、040 隊伍區塊不收縮、補齊尺寸與顏色定值、替代文字帶名次、FR-002／SC-002／SC-003／SC-009 補上驗證任務。任務數由 60 調整為 55。
+
+## 實作備註（2026-09-21，`/speckit-implement`）
+
+**偏離 tasks／contracts 之處與原因**
+
+- **T001 不新增 `@types/qrcode`**：改在 `apps/web/src/types/qrcode.d.ts` 只宣告用到的 `create()`（與 CommonJS 的 default 匯出）。這樣 `node_modules` 不需要任何安裝，主 checkout 也不用先跑 `npm install`；`package.json`／`package-lock.json` 只多了 `qrcode@1.5.4` 這一條直接相依（版本與 `angularx-qrcode` 鎖定的相同）。
+- **T002 一併加入 `matchShareCard.kind`**（原排在 T012），讓語系檔只改一次。
+- **建置「零警告」改為「不新增警告」**：`origin/ut` 本身就有 8 個建置警告（6 個樣式預算、`ably` 與 `qrcode` 非 ESM）。US2 動態載入 `qrcode` 後多出 `dijkstrajs` 非 ESM 的警告，依 T032 在 `angular.json` 加入 `allowedCommonJsDependencies: ["qrcode", "dijkstrajs"]`，警告降為 7 個（比 `ut` 少 1 個）。首屏 bundle 由 590.04 kB 變為 590.15 kB，`qrcode` 確實只在開啟預覽時才載入。
+- **測試資料的時間戳**：tasks 原寫的 `04:00Z` 是台北中午而不是 UTC 中午，改為 `2026-09-16T12:00:00Z`。
+- **040 renderer spec**：「不得畫連結或 QR（040 FR-006）」一例依 041 FR-018 改為驗證導流頁尾；中段下緣的量測要依模型是否有時長來計算頁尾筆數（040 圖卡的頁尾多一行 meta）。
+- **種類切換按鈕在產圖中不停用**（配色按鈕會停用）：新的請求會以世代編號蓋過舊的，連點不會出錯，也有測試覆蓋。
+- **預覽外殼的標題 id 改為每個實例唯一**：團戰績頁同時有自己的預覽與比賽詳情裡的預覽，固定 id 會重複。
+- **首頁舊測試**「沒有任何連結（待重新設計）」由 US4 的測試取代。
+- **團名長度**：`groups.name` 是 `varchar(30)`，spec／quickstart 的「40 字團名」在系統裡不存在。單元測試仍以 40 字驗證截斷；實際畫面以 27 字（已超過卡片寬度）驗證。
+
+**實際畫面驗收（T049～T053）**：`docs/041-group-share-cards-check/check041.mjs`，36／36 項通過，截圖逐張檢視。
+- 示範資料本身就有：9 人並列名次（2、2；6、6）、第 9 名本人附列、40 人團、名次 1、1、3、3；另以 SQL 補上未出賽的來賓、已離團球員、本人未出賽的團、20 字暱稱、沒有已完成比賽的團。
+- 額外修正一處：預覽中「已選取」的種類與配色按鈕外觀不一致——我另加的選取樣式與全站既有的 `aria-pressed` 樣式重疊，已移除自訂樣式。
+- QR：三種圖卡 × 兩種配色，在 1080×1350 與縮成 540×675 下，對 QR 區域解碼全部得到正確網址與 `ref`。觀察到 jsQR 對「整張」亮色團圖卡縮成 ½ 時找不到 QR（縮成 ⅓ 反而找得到、只看下半部也找得到），判斷為 jsQR 挑選定位方塊時被上方的獎牌與大字誤導；真機是否受影響需以手機驗證。
+- SC-001（390×844、CPU 降速 4 倍）：開啟預覽中位數 90 ms（第一次含載入 `qrcode` 為 161 ms）；切換圖卡種類／配色中位數 97 ms。SC-002：團戰績頁 →「分享圖卡」→「分享／下載」共 2 次點擊。
+- SC-010：同一張排行榜卡連續產生 5 次，位元組完全相同。
+
+**未能在本機驗證的項目**
+- 真機掃描 QR（iOS 相機、Android 相機、LINE 掃描器、LINE 聊天室長按辨識），包含上述亮色圖卡的整張辨識疑慮（T050）。
+- 手機系統分享（需要 HTTPS）；「只送 `files`」由 `share-card-actions.service.spec.ts` 斷言（T052）。
+- SC-008 五位新使用者的首頁 10 秒測試，需真人，交付後由需求方執行（T053）。
+- 有出賽球員只有 1／2／3 人的團：示範資料沒有，由 `leaderboard-card-model.spec.ts` 與 `leaderboard-card-renderer.spec.ts` 覆蓋。
