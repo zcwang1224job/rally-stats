@@ -1985,6 +1985,17 @@ async def search_member(
     )
 
 
+def _within(value: datetime | None, start: datetime | None, before: datetime | None) -> bool:
+    """`start` <= `value` < `before`, each bound optional. With no bound at
+    all anything passes (a missing `value` too); with a bound, a missing
+    `value` never does."""
+    if start is None and before is None:
+        return True
+    if value is None:
+        return False
+    return (start is None or value >= start) and (before is None or value < before)
+
+
 async def get_my_groups(
     session: AsyncSession,
     member_id: uuid.UUID,
@@ -1993,7 +2004,10 @@ async def get_my_groups(
     name: str | None = None,
     group_number: str | None = None,
     role: Literal["creator", "member"] | None = None,
-    status: Literal["active", "disbanded"] | None = None,
+    created_from: datetime | None = None,
+    created_before: datetime | None = None,
+    disbanded_from: datetime | None = None,
+    disbanded_before: datetime | None = None,
     group_id: uuid.UUID | None = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
@@ -2006,12 +2020,20 @@ async def get_my_groups(
     this member (by `joined_at` DESC) — a member can leave and rejoin the
     same group, producing multiple historical rows (research.md #4).
 
-    Filters (substring on `name`/`group_number`, exact on `role`/`status`/
-    `group_id`) are applied in Python after loading every group of this
-    member, then paginated — same precedent as `friend.service.list_friends`
-    (one member's group count is small enough that this is cheap).
+    Filters (substring on `name`/`group_number`, exact on `role`/
+    `group_id`, half-open time ranges on `created_at`/`disbanded_at`) are
+    applied in Python after loading every group of this member, then
+    paginated — same precedent as `friend.service.list_friends` (one
+    member's group count is small enough that this is cheap).
     `group_id` lets the group-history page fetch one specific row without
-    depending on which page it falls on."""
+    depending on which page it falls on.
+
+    The time ranges are instants (`*_from` <= t < `*_before`), not calendar
+    dates: the caller turns the viewer's LOCAL day into instants, so a
+    group opened at 07:00 Taipei time is found under that local date, not
+    under the previous day's UTC date. Either `disbanded_*` bound drops
+    every group without a `disbanded_at` (still active, or disbanded before
+    that column existed)."""
     roster_result = await session.execute(
         select(RosterEntry.group_id, RosterEntry.status)
         .where(RosterEntry.member_id == member_id)
@@ -2059,7 +2081,8 @@ async def get_my_groups(
         and (not name or name.lower() in row.name.lower())
         and (not group_number or group_number in str(row.group_number))
         and (role is None or (row.id in created_group_ids) == (role == "creator"))
-        and (status is None or row.status == status)
+        and _within(row.created_at, created_from, created_before)
+        and _within(row.disbanded_at, disbanded_from, disbanded_before)
     ]
     page_size = await get_default_page_size(session)
     total_pages = max(1, (len(groups) + page_size - 1) // page_size)

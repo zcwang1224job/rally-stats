@@ -32,8 +32,9 @@
   grid-template-columns: 1fr;
   gap: var(--space-md);
 
+  // Two columns, so each from/to pair of dates shares a row.
   @media (min-width: breakpoints.$breakpoint-tablet) {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

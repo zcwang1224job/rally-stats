@@ -28,12 +28,20 @@
             </select>
           </label>
           <label>
-            {{ 'myGroups.filters.status' | translate }}
-            <select formControlName="status">
-              <option value="">{{ 'myGroups.filters.any' | translate }}</option>
-              <option value="active">{{ 'myGroups.filters.statusActive' | translate }}</option>
-              <option value="disbanded">{{ 'myGroups.filters.statusDisbanded' | translate }}</option>
-            </select>
+            {{ 'myGroups.filters.createdFrom' | translate }}
+            <input type="date" formControlName="created_from" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.createdTo' | translate }}
+            <input type="date" formControlName="created_to" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.disbandedFrom' | translate }}
+            <input type="date" formControlName="disbanded_from" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.disbandedTo' | translate }}
+            <input type="date" formControlName="disbanded_to" />
           </label>
         </div>
       </details>

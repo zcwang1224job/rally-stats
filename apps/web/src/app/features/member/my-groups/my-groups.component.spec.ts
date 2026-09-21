@@ -4,7 +4,7 @@ import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { FriendsService } from '../../friends/friends.service';
-import { MyGroupsComponent } from './my-groups.component';
+import { MyGroupsComponent, localDayStart } from './my-groups.component';
 
 const group = {
   group_id: 'g1',
@@ -16,6 +16,34 @@ const group = {
   is_creator: true,
   member_status: 'active' as const,
 };
+
+describe('localDayStart', () => {
+  it('is LOCAL midnight of that day — not UTC midnight', () => {
+    const start = new Date(localDayStart('2026-09-21')!);
+
+    expect([start.getFullYear(), start.getMonth(), start.getDate()]).toEqual([2026, 8, 21]);
+    expect([start.getHours(), start.getMinutes(), start.getSeconds()]).toEqual([0, 0, 0]);
+  });
+
+  it('rolls over month and year ends when offset by a day', () => {
+    const afterSeptember = new Date(localDayStart('2026-09-30', 1)!);
+    const afterDecember = new Date(localDayStart('2026-12-31', 1)!);
+
+    expect([afterSeptember.getMonth(), afterSeptember.getDate()]).toEqual([9, 1]);
+    expect([afterDecember.getFullYear(), afterDecember.getMonth(), afterDecember.getDate()]).toEqual(
+      [2027, 0, 1],
+    );
+  });
+
+  it('carries a UTC offset, which the API requires', () => {
+    expect(localDayStart('2026-09-21')).toMatch(/Z$/);
+  });
+
+  it('is undefined for an empty or malformed value', () => {
+    expect(localDayStart('')).toBeUndefined();
+    expect(localDayStart('2026/09/21')).toBeUndefined();
+  });
+});
 
 describe('MyGroupsComponent', () => {
   it('shows the group\'s created-at time, and disbanded-at only when the group is disbanded', () => {
@@ -231,7 +259,10 @@ describe('MyGroupsComponent', () => {
         name: undefined,
         group_number: undefined,
         role: undefined,
-        status: undefined,
+        created_from: undefined,
+        created_before: undefined,
+        disbanded_from: undefined,
+        disbanded_before: undefined,
       });
       expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
       expect(fixture.nativeElement.querySelectorAll('.filters-actions button').length).toBe(1);
@@ -246,18 +277,26 @@ describe('MyGroupsComponent', () => {
         name: '  週三 ',
         group_number: '100',
         role: 'creator',
-        status: 'active',
+        created_from: '2026-09-01',
+        created_to: '2026-09-30',
+        disbanded_from: '2026-10-05',
+        disbanded_to: '2026-10-05',
       });
       fixture.nativeElement
         .querySelector('form.filter-form')
         .dispatchEvent(new Event('submit'));
       fixture.detectChanges();
 
+      // Days are the viewer's LOCAL days, sent as instants: "from" is that
+      // day's local midnight, an inclusive "to" is the NEXT day's.
       expect(getMyGroups).toHaveBeenLastCalledWith(1, {
         name: '週三',
         group_number: '100',
         role: 'creator',
-        status: 'active',
+        created_from: new Date(2026, 8, 1).toISOString(),
+        created_before: new Date(2026, 9, 1).toISOString(),
+        disbanded_from: new Date(2026, 9, 5).toISOString(),
+        disbanded_before: new Date(2026, 9, 6).toISOString(),
       });
       expect(component.page()).toBe(1);
       expect(component.hasActiveFilters()).toBe(true);
@@ -276,7 +315,7 @@ describe('MyGroupsComponent', () => {
     it('clears every filter and reloads from page 1', () => {
       const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 1 });
       const component = fixture.componentInstance;
-      component.filterForm.patchValue({ name: '週三', status: 'disbanded' });
+      component.filterForm.patchValue({ name: '週三', disbanded_to: '2026-09-30' });
       component.applyFilters();
 
       component.clearFilters();
@@ -285,13 +324,19 @@ describe('MyGroupsComponent', () => {
         name: '',
         group_number: '',
         role: '',
-        status: '',
+        created_from: '',
+        created_to: '',
+        disbanded_from: '',
+        disbanded_to: '',
       });
       expect(getMyGroups).toHaveBeenLastCalledWith(1, {
         name: undefined,
         group_number: undefined,
         role: undefined,
-        status: undefined,
+        created_from: undefined,
+        created_before: undefined,
+        disbanded_from: undefined,
+        disbanded_before: undefined,
       });
       expect(component.hasActiveFilters()).toBe(false);
     });
@@ -310,7 +355,10 @@ describe('MyGroupsComponent', () => {
         name: undefined,
         group_number: undefined,
         role: 'member',
-        status: undefined,
+        created_from: undefined,
+        created_before: undefined,
+        disbanded_from: undefined,
+        disbanded_before: undefined,
       });
     });
 
@@ -327,7 +375,7 @@ describe('MyGroupsComponent', () => {
       fixture.detectChanges();
       expect(details().open).toBe(false);
 
-      component.filterForm.patchValue({ status: 'disbanded' });
+      component.filterForm.patchValue({ created_from: '2026-09-01' });
       component.applyFilters();
       fixture.detectChanges();
       expect(details().open).toBe(true);
@@ -335,6 +383,39 @@ describe('MyGroupsComponent', () => {
       component.clearFilters();
       fixture.detectChanges();
       expect(details().open).toBe(false);
+    });
+
+    it('offers a from/to date pair for both the opening and the disbanding time', () => {
+      const { fixture } = setup({ groups: [group], page: 1, total_pages: 1 });
+
+      const dateControls = Array.from<HTMLInputElement>(
+        fixture.nativeElement.querySelectorAll('details.advanced-filters input[type="date"]'),
+      ).map((input) => input.getAttribute('formcontrolname'));
+      expect(dateControls).toEqual([
+        'created_from',
+        'created_to',
+        'disbanded_from',
+        'disbanded_to',
+      ]);
+      // the group-status filter is gone
+      expect(fixture.nativeElement.querySelector('[formcontrolname="status"]')).toBeNull();
+    });
+
+    it('sends only the bounds that were filled in', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 1 });
+      fixture.componentInstance.filterForm.patchValue({ created_to: '2026-12-31' });
+      fixture.componentInstance.applyFilters();
+
+      expect(getMyGroups).toHaveBeenLastCalledWith(1, {
+        name: undefined,
+        group_number: undefined,
+        role: undefined,
+        created_from: undefined,
+        // Dec 31 inclusive → before Jan 1 of the next year
+        created_before: new Date(2027, 0, 1).toISOString(),
+        disbanded_from: undefined,
+        disbanded_before: undefined,
+      });
     });
 
     it('tells "no groups at all" apart from "nothing matches the filters"', () => {

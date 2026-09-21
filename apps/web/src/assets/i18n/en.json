@@ -217,10 +217,11 @@
       "name": "Group name",
       "groupNumber": "Group number",
       "role": "My role",
-      "status": "Group status",
       "any": "All",
-      "statusActive": "Active",
-      "statusDisbanded": "Disbanded"
+      "createdFrom": "Created (From)",
+      "createdTo": "Created (To)",
+      "disbandedFrom": "Disbanded (From)",
+      "disbandedTo": "Disbanded (To)"
     },
     "forgotPinButton": "Forgot Admin PIN",
     "forgotPinConfirmTitle": "Reset this group's admin PIN?",

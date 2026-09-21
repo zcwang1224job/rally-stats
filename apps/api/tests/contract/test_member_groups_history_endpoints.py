@@ -95,10 +95,35 @@ async def test_my_groups_is_paginated_and_filterable(
     assert everything["page"] == 1
     assert everything["total_pages"] == 1
 
-    by_status = (
-        await client.get("/members/me/groups", headers=headers, params={"status": "disbanded"})
+    # Time ranges are instants with a UTC offset; both groups were just made,
+    # and only Alpha has a disbanded_at.
+    created_recently = (
+        await client.get(
+            "/members/me/groups",
+            headers=headers,
+            params={
+                "created_from": "2020-01-01T00:00:00+08:00",
+                "created_before": "2999-01-01T00:00:00.000Z",
+            },
+        )
     ).json()
-    assert [g["name"] for g in by_status["groups"]] == ["Alpha Filter Group"]
+    assert len(created_recently["groups"]) == 2
+    created_long_ago = (
+        await client.get(
+            "/members/me/groups",
+            headers=headers,
+            params={"created_before": "2020-01-01T00:00:00+08:00"},
+        )
+    ).json()
+    assert created_long_ago["groups"] == []
+    disbanded_recently = (
+        await client.get(
+            "/members/me/groups",
+            headers=headers,
+            params={"disbanded_from": "2020-01-01T00:00:00Z"},
+        )
+    ).json()
+    assert [g["name"] for g in disbanded_recently["groups"]] == ["Alpha Filter Group"]
 
     by_name = (
         await client.get("/members/me/groups", headers=headers, params={"name": "alpha"})
@@ -114,7 +139,7 @@ async def test_my_groups_is_paginated_and_filterable(
 
     as_member = (
         await client.get(
-            "/members/me/groups", headers=headers, params={"role": "member", "status": "active"}
+            "/members/me/groups", headers=headers, params={"role": "member"}
         )
     ).json()
     assert as_member["groups"] == []
@@ -125,7 +150,14 @@ async def test_my_groups_is_paginated_and_filterable(
     assert second_page["groups"] == []
     assert second_page["page"] == 2
 
-    for bad in ({"page": 0}, {"role": "owner"}, {"status": "gone"}, {"group_id": "not-a-uuid"}):
+    for bad in (
+        {"page": 0},
+        {"role": "owner"},
+        {"group_id": "not-a-uuid"},
+        {"created_from": "2026-09-21"},
+        # no UTC offset: which day it means would depend on the server's zone
+        {"disbanded_before": "2026-09-21T00:00:00"},
+    ):
         response = await client.get("/members/me/groups", headers=headers, params=bad)
         assert response.status_code == 422, bad
 

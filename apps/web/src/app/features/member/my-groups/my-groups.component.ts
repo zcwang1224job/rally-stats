@@ -11,7 +11,22 @@ import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { FriendsService } from '../../friends/friends.service';
 
 type RoleFilter = '' | 'creator' | 'member';
-type StatusFilter = '' | 'active' | 'disbanded';
+
+/** The instant a LOCAL calendar day (`<input type="date">`'s `YYYY-MM-DD`)
+ * begins, `offsetDays` days later, as an ISO string — or undefined for an
+ * empty/unparseable value. Built from the date's parts so it is local
+ * midnight (`new Date('YYYY-MM-DD')` would be UTC midnight), which is what
+ * makes the filter agree with the local times the list shows: a group
+ * opened at 07:30 Taipei time belongs to that day, not to the previous
+ * day's UTC date. */
+export function localDayStart(date: string, offsetDays = 0): string | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) {
+    return undefined;
+  }
+  const [year, month, day] = match.slice(1).map(Number);
+  return new Date(year, month - 1, day + offsetDays).toISOString();
+}
 
 /** 我的團 + 忘記管理 PIN 碼 (US7, completes 006-member-friends US4):
  * everything this member has ever created (any status), each with a
@@ -19,8 +34,9 @@ type StatusFilter = '' | 'active' | 'disbanded';
  * invalidates the current PIN immediately, so it gets the same
  * Constitution V treatment as disband/regenerate-PIN.
  *
- * Filterable (name / group number / role / group status) and paginated —
- * same filter-panel + `<app-pagination>` convention as the friend list. */
+ * Filterable (name / group number / role / opened-between /
+ * disbanded-between) and paginated — same filter-panel +
+ * `<app-pagination>` convention as the friend list. */
 @Component({
   selector: 'app-my-groups',
   imports: [
@@ -52,7 +68,11 @@ export class MyGroupsComponent {
     name: [''],
     group_number: [''],
     role: ['' as RoleFilter],
-    status: ['' as StatusFilter],
+    // local calendar days (`YYYY-MM-DD`), both ends inclusive
+    created_from: [''],
+    created_to: [''],
+    disbanded_from: [''],
+    disbanded_to: [''],
   });
 
   /** Snapshot of the filters a load() call actually used — separate from
@@ -66,8 +86,10 @@ export class MyGroupsComponent {
   /** Keeps the folded "more filters" section open while one of its filters
    * is applied — an active filter must never be hidden from view. */
   readonly hasAdvancedFilters = computed(() => {
-    const { group_number, role, status } = this.appliedFilters();
-    return !!(group_number || role || status);
+    // everything but the name search lives inside the fold
+    return Object.entries(this.appliedFilters()).some(
+      ([key, value]) => key !== 'name' && value !== '',
+    );
   });
 
   constructor() {
@@ -80,7 +102,7 @@ export class MyGroupsComponent {
   }
 
   clearFilters(): void {
-    this.filterForm.reset({ name: '', group_number: '', role: '', status: '' });
+    this.filterForm.reset();
     this.applyFilters();
   }
 
@@ -101,7 +123,12 @@ export class MyGroupsComponent {
         name: name || undefined,
         group_number: groupNumber || undefined,
         role: raw.role || undefined,
-        status: raw.status || undefined,
+        // The API takes half-open ranges of instants: an inclusive "to" day
+        // becomes "before the start of the day after".
+        created_from: localDayStart(raw.created_from),
+        created_before: localDayStart(raw.created_to, 1),
+        disbanded_from: localDayStart(raw.disbanded_from),
+        disbanded_before: localDayStart(raw.disbanded_to, 1),
       })
       .subscribe({
         next: (response) => {

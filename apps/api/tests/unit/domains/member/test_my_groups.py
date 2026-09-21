@@ -4,6 +4,7 @@ of self-created ∪ ever-a-roster-member groups (any status), each annotated
 with is_creator/member_status (FR-001~003)."""
 
 import uuid
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -285,21 +286,84 @@ async def test_my_groups_filters_by_name_number_role_status_and_group_id(
         "Old Weekend",
     }
     assert await _my_group_names(db_session, member.id, role="member") == {"Friday Club"}
-    assert await _my_group_names(db_session, member.id, status="disbanded") == {"Old Weekend"}
-    assert await _my_group_names(db_session, member.id, status="active") == {
-        "Wednesday Night",
-        "Friday Club",
-    }
     assert await _my_group_names(db_session, member.id, group_id=created.id) == {
         "Wednesday Night"
     }
     # filters combine with AND
-    assert await _my_group_names(db_session, member.id, role="creator", status="active") == {
+    assert await _my_group_names(db_session, member.id, role="creator", name="night") == {
         "Wednesday Night"
     }
     no_match = await get_my_groups(db_session, member.id, name="nothing like this")
     assert no_match.groups == []
     assert no_match.total_pages == 1
+
+
+async def test_my_groups_filters_by_created_and_disbanded_time_ranges(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "mygroups17@example.com", "abc12345")
+    member.nickname = "時間篩選者"
+    await db_session.commit()
+    taipei = timezone(timedelta(hours=8))
+
+    # Opened 9/21 07:30 Taipei time — which is still 9/20 in UTC.
+    early, *_ = await create_group(db_session, _group_payload("Early Bird"), member=member)
+    await disband_group(db_session, early)
+    early.created_at = datetime(2026, 9, 20, 23, 30, tzinfo=UTC)
+    early.disbanded_at = datetime(2026, 9, 25, 10, 0, tzinfo=UTC)
+    late, *_ = await create_group(db_session, _group_payload("Still Going"), member=member)
+    late.created_at = datetime(2026, 9, 23, 12, 0, tzinfo=UTC)
+    await db_session.commit()
+
+    def day(month: int, date_: int) -> datetime:
+        return datetime(2026, month, date_, tzinfo=taipei)
+
+    # The viewer's LOCAL day decides, not the UTC date.
+    assert await _my_group_names(
+        db_session, member.id, created_from=day(9, 21), created_before=day(9, 22)
+    ) == {"Early Bird"}
+    assert (
+        await _my_group_names(
+            db_session, member.id, created_from=day(9, 20), created_before=day(9, 21)
+        )
+        == set()
+    )
+    # open-ended on either side
+    assert await _my_group_names(db_session, member.id, created_from=day(9, 22)) == {
+        "Still Going"
+    }
+    assert await _my_group_names(db_session, member.id, created_before=day(9, 22)) == {
+        "Early Bird"
+    }
+    # `from` is inclusive, `before` is exclusive
+    assert await _my_group_names(db_session, member.id, created_from=early.created_at) == {
+        "Early Bird",
+        "Still Going",
+    }
+    assert await _my_group_names(db_session, member.id, created_before=early.created_at) == set()
+
+    # Any disbanded bound drops a group with no disbanded_at.
+    assert await _my_group_names(db_session, member.id, disbanded_from=day(9, 1)) == {
+        "Early Bird"
+    }
+    assert await _my_group_names(db_session, member.id, disbanded_before=day(12, 31)) == {
+        "Early Bird"
+    }
+    assert (
+        await _my_group_names(
+            db_session, member.id, disbanded_from=day(9, 26), disbanded_before=day(9, 27)
+        )
+        == set()
+    )
+    # both ranges together
+    assert await _my_group_names(
+        db_session,
+        member.id,
+        created_from=day(9, 21),
+        created_before=day(9, 22),
+        disbanded_from=day(9, 25),
+        disbanded_before=day(9, 26),
+    ) == {"Early Bird"}
 
 
 async def test_my_groups_paginates_newest_first(

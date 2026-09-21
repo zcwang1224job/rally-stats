@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
+from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -418,7 +419,10 @@ async def get_my_groups(
     name: Annotated[str | None, Query(max_length=30)] = None,
     group_number: Annotated[str | None, Query(max_length=20)] = None,
     role: Annotated[Literal["creator", "member"] | None, Query()] = None,
-    status: Annotated[Literal["active", "disbanded"] | None, Query()] = None,
+    created_from: Annotated[AwareDatetime | None, Query()] = None,
+    created_before: Annotated[AwareDatetime | None, Query()] = None,
+    disbanded_from: Annotated[AwareDatetime | None, Query()] = None,
+    disbanded_before: Annotated[AwareDatetime | None, Query()] = None,
     group_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
@@ -428,9 +432,17 @@ async def get_my_groups(
 
     Paginated (`page`, system default page size) and filterable: `name`/
     `group_number` are case-insensitive substring matches, `role` is
-    whether this member created the group, `status` is the group's own
-    status, `group_id` pins one exact group (used by the group-history
-    page, which needs that one row whatever page it would land on)."""
+    whether this member created the group, `group_id` pins one exact group
+    (used by the group-history page, which needs that one row whatever
+    page it would land on).
+
+    `created_from`/`created_before` and `disbanded_from`/`disbanded_before`
+    are half-open ranges of INSTANTS (`from` <= t < `before`), and must
+    carry a UTC offset (a naive value is a 422): the client converts the
+    viewer's local calendar day into instants, so the filter agrees with
+    the local times the list displays — unlike a bare `date`, which would
+    be compared against the UTC date. A `disbanded_*` bound also drops
+    every group that has no `disbanded_at`."""
     return await service.get_my_groups(
         session,
         member.id,
@@ -438,7 +450,10 @@ async def get_my_groups(
         name=name,
         group_number=group_number,
         role=role,
-        status=status,
+        created_from=created_from,
+        created_before=created_before,
+        disbanded_from=disbanded_from,
+        disbanded_before=disbanded_before,
         group_id=group_id,
     )
 

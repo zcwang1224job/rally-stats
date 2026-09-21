@@ -217,10 +217,11 @@
       "name": "團名",
       "groupNumber": "團編號",
       "role": "我的身分",
-      "status": "團的狀態",
       "any": "全部",
-      "statusActive": "進行中",
-      "statusDisbanded": "已解散"
+      "createdFrom": "開團時間（起）",
+      "createdTo": "開團時間（迄）",
+      "disbandedFrom": "解散時間（起）",
+      "disbandedTo": "解散時間（迄）"
     },
     "forgotPinButton": "忘記管理 PIN 碼",
     "forgotPinConfirmTitle": "確定重設此團的管理 PIN 碼？",
