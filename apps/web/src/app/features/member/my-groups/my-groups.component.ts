@@ -5,28 +5,13 @@ import { Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { MyGroupSummary } from '../../../core/api/friend.models';
+import { localDayStart } from '../../../core/local-day';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { FriendsService } from '../../friends/friends.service';
 
 type RoleFilter = '' | 'creator' | 'member';
-
-/** The instant a LOCAL calendar day (`<input type="date">`'s `YYYY-MM-DD`)
- * begins, `offsetDays` days later, as an ISO string — or undefined for an
- * empty/unparseable value. Built from the date's parts so it is local
- * midnight (`new Date('YYYY-MM-DD')` would be UTC midnight), which is what
- * makes the filter agree with the local times the list shows: a group
- * opened at 07:30 Taipei time belongs to that day, not to the previous
- * day's UTC date. */
-export function localDayStart(date: string, offsetDays = 0): string | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!match) {
-    return undefined;
-  }
-  const [year, month, day] = match.slice(1).map(Number);
-  return new Date(year, month - 1, day + offsetDays).toISOString();
-}
 
 /** 我的團 + 忘記管理 PIN 碼 (US7, completes 006-member-friends US4):
  * everything this member has ever created (any status), each with a

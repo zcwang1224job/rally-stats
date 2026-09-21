@@ -10,7 +10,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from urllib.parse import urlencode
 
@@ -725,8 +725,8 @@ async def view_member_match_records(
     opponents: list[str] | None = None,
     partners: list[str] | None = None,
     result: Literal["win", "loss"] | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    ended_from: datetime | None = None,
+    ended_before: datetime | None = None,
     round_from: int | None = None,
     round_to: int | None = None,
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
@@ -750,8 +750,8 @@ async def view_member_match_records(
         opponents=opponents,
         partners=partners,
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -1264,18 +1264,35 @@ async def _build_member_match_record_summaries(
     return summaries
 
 
+def _within(value: datetime | None, start: datetime | None, before: datetime | None) -> bool:
+    """`start` <= `value` < `before`, each bound optional. With no bound at
+    all anything passes (a missing `value` too); with a bound, a missing
+    `value` never does."""
+    if start is None and before is None:
+        return True
+    if value is None:
+        return False
+    return (start is None or value >= start) and (before is None or value < before)
+
+
 @dataclass(frozen=True)
 class MemberMatchFilters:
     """Every filter `build_member_match_records()` accepts, as one value —
     034's dashboard applies exactly the same set, and a seventh copy of
     twelve keyword arguments was one too many. `group_id` is only ever set
-    internally by `get_member_group_history()`."""
+    internally by `get_member_group_history()`.
+
+    `ended_from`/`ended_before` are a half-open range of INSTANTS
+    (`ended_from` <= `ended_at` < `ended_before`), timezone-aware: the
+    client turns the viewer's local calendar day into instants, so "matches
+    on 9/21" means 9/21 where the viewer is — the same convention as
+    `get_my_groups()`'s `created_*`/`disbanded_*`."""
 
     opponents: tuple[str, ...] = ()
     partners: tuple[str, ...] = ()
     result: Literal["win", "loss"] | None = None
-    date_from: date | None = None
-    date_to: date | None = None
+    ended_from: datetime | None = None
+    ended_before: datetime | None = None
     round_from: int | None = None
     round_to: int | None = None
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None
@@ -1379,12 +1396,14 @@ async def _filtered_member_matches(
             continue
         if filters.result is not None and won != (filters.result == "win"):
             continue
-        if match.ended_at is not None:
-            match_date = match.ended_at.date()
-            if filters.date_from is not None and match_date < filters.date_from:
-                continue
-            if filters.date_to is not None and match_date > filters.date_to:
-                continue
+        # Instants, not `ended_at.date()`: that is the UTC date, which is the
+        # previous day for a match finished before 08:00 Taipei time and so
+        # disagreed with the local time the list shows. (A match with no
+        # `ended_at` is left in, as it always was.)
+        if match.ended_at is not None and not _within(
+            match.ended_at, filters.ended_from, filters.ended_before
+        ):
+            continue
         if filters.round_from is not None and match.round_number < filters.round_from:
             continue
         if filters.round_to is not None and match.round_number > filters.round_to:
@@ -1460,8 +1479,8 @@ async def build_member_match_records(
     opponents: list[str] | None = None,
     partners: list[str] | None = None,
     result: Literal["win", "loss"] | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    ended_from: datetime | None = None,
+    ended_before: datetime | None = None,
     round_from: int | None = None,
     round_to: int | None = None,
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
@@ -1504,8 +1523,8 @@ async def build_member_match_records(
             opponents=tuple(opponents or ()),
             partners=tuple(partners or ()),
             result=result,
-            date_from=date_from,
-            date_to=date_to,
+            ended_from=ended_from,
+            ended_before=ended_before,
             round_from=round_from,
             round_to=round_to,
             self_score_cmp=self_score_cmp,
@@ -1983,17 +2002,6 @@ async def search_member(
         user_number=target.user_number,
         friendship_status=status,
     )
-
-
-def _within(value: datetime | None, start: datetime | None, before: datetime | None) -> bool:
-    """`start` <= `value` < `before`, each bound optional. With no bound at
-    all anything passes (a missing `value` too); with a bound, a missing
-    `value` never does."""
-    if start is None and before is None:
-        return True
-    if value is None:
-        return False
-    return (start is None or value >= start) and (before is None or value < before)
 
 
 async def get_my_groups(

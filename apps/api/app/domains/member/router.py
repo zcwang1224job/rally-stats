@@ -2,7 +2,6 @@
 auth-api.md and member-api.md."""
 
 import uuid
-from datetime import date
 from typing import Annotated, Literal, cast
 from urllib.parse import urlencode
 
@@ -542,8 +541,8 @@ async def get_member_match_records(
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
     partner: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
-    date_from: Annotated[date | None, Query()] = None,
-    date_to: Annotated[date | None, Query()] = None,
+    ended_from: Annotated[AwareDatetime | None, Query()] = None,
+    ended_before: Annotated[AwareDatetime | None, Query()] = None,
     round_from: Annotated[int | None, Query(ge=1)] = None,
     round_to: Annotated[int | None, Query(ge=1)] = None,
     self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
@@ -565,8 +564,13 @@ async def get_member_match_records(
     暱稱，僅一個欄位——雙打隊伍除自己外只有一位隊友，不像對手一次面對兩
     人。`self_score_cmp`+`self_score`、`opponent_score_cmp`+
     `opponent_score` 各自篩選自己/對手的比分（與指定數值比較，而非兩者互
-    比）。`result`/`date_from`/`date_to`/`round_from`/`round_to` 篩選勝負、
-    日期、輪次區間；`match_mode` 篩選單打/雙打（比賽所屬團的賽制）——
+    比）。`result`/`round_from`/`round_to` 篩選勝負、輪次區間；
+    `ended_from`/`ended_before` 篩選比賽結束時間，是「時間點」的半開區間
+    （`ended_from` ≤ `ended_at` < `ended_before`）且必須帶 UTC offset（否則
+    422）——由前端把瀏覽者當地的某一天換成時間點送來，篩選才會與畫面上以
+    當地時區顯示的時間一致（原本的 `date_from`/`date_to` 比的是 UTC 日期，
+    台北早上 8 點前結束的比賽會被算到前一天）；
+    `match_mode` 篩選單打/雙打（比賽所屬團的賽制）——
     所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
     皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`、
     `EMAIL_NOT_VERIFIED`。
@@ -578,8 +582,8 @@ async def get_member_match_records(
         opponents=[name for name in (opponent1, opponent2) if name],
         partners=[partner] if partner else [],
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -625,8 +629,8 @@ def match_filters_query(
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
     partner: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
-    date_from: Annotated[date | None, Query()] = None,
-    date_to: Annotated[date | None, Query()] = None,
+    ended_from: Annotated[AwareDatetime | None, Query()] = None,
+    ended_before: Annotated[AwareDatetime | None, Query()] = None,
     round_from: Annotated[int | None, Query(ge=1)] = None,
     round_to: Annotated[int | None, Query(ge=1)] = None,
     self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
@@ -646,8 +650,8 @@ def match_filters_query(
         opponents=tuple(name for name in (opponent1, opponent2) if name),
         partners=(partner,) if partner else (),
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -778,8 +782,8 @@ async def get_viewed_member_match_records(
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
     partner: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
-    date_from: Annotated[date | None, Query()] = None,
-    date_to: Annotated[date | None, Query()] = None,
+    ended_from: Annotated[AwareDatetime | None, Query()] = None,
+    ended_before: Annotated[AwareDatetime | None, Query()] = None,
     round_from: Annotated[int | None, Query(ge=1)] = None,
     round_to: Annotated[int | None, Query(ge=1)] = None,
     self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
@@ -804,8 +808,8 @@ async def get_viewed_member_match_records(
         opponents=[name for name in (opponent1, opponent2) if name],
         partners=[partner] if partner else [],
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,

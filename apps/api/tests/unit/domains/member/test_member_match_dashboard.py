@@ -4,7 +4,7 @@ load, the conversion to "my" point of view, and the promise that a match
 contributes exactly what its own detail dialog shows (FR-003)."""
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -206,9 +206,17 @@ async def test_filters_select_the_same_matches_as_the_match_list(
         (MemberMatchFilters(), {}, 3),
         (MemberMatchFilters(match_mode="doubles"), {"match_mode": "doubles"}, 2),
         (
-            MemberMatchFilters(date_from=(NOW - timedelta(days=5)).date()),
-            {"date_from": (NOW - timedelta(days=5)).date()},
+            MemberMatchFilters(ended_from=NOW - timedelta(days=5)),
+            {"ended_from": NOW - timedelta(days=5)},
             2,
+        ),
+        (
+            # half-open: the match that ended exactly at `ended_before` is out
+            MemberMatchFilters(
+                ended_from=NOW - timedelta(days=5), ended_before=NOW - timedelta(days=1)
+            ),
+            {"ended_from": NOW - timedelta(days=5), "ended_before": NOW - timedelta(days=1)},
+            1,
         ),
         (MemberMatchFilters(partners=("另一位",)), {"partners": ["另一位"]}, 1),
         (MemberMatchFilters(result="loss"), {"result": "loss"}, 1),
@@ -220,6 +228,34 @@ async def test_filters_select_the_same_matches_as_the_match_list(
             db_session, setup.member.id, **keyword_arguments  # type: ignore[arg-type]
         )
         assert dashboard.total_matches == records.total_matches == expected, filters
+
+
+async def test_a_day_is_the_viewers_local_day_not_the_utc_date(
+    db_session: AsyncSession,
+) -> None:
+    setup = await _Doubles.create(db_session)
+    taipei = timezone(timedelta(hours=8))
+    # Finished 9/21 07:30 in Taipei — which is still 9/20 in UTC.
+    await make_played_match(
+        db_session, setup.group, team_a=setup.mine, team_b=setup.theirs,
+        sides="A" * 21, ended_at=datetime(2026, 9, 20, 23, 30, tzinfo=UTC),
+    )
+
+    def day(date_: int) -> datetime:
+        return datetime(2026, 9, date_, tzinfo=taipei)
+
+    async def found(**bounds: datetime) -> tuple[int, int]:
+        dashboard = await build_member_match_dashboard(
+            db_session, setup.member.id, MemberMatchFilters(**bounds)
+        )
+        records = await build_member_match_records(db_session, setup.member.id, **bounds)
+        return dashboard.total_matches, records.total_matches
+
+    assert await found(ended_from=day(21), ended_before=day(22)) == (1, 1)
+    assert await found(ended_from=day(20), ended_before=day(21)) == (0, 0)
+    # either bound alone
+    assert await found(ended_from=day(21)) == (1, 1)
+    assert await found(ended_before=day(21)) == (0, 0)
 
 
 async def test_guest_era_match_counts_only_once_it_is_bound_to_the_member(

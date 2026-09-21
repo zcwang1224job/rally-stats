@@ -30,6 +30,7 @@ import {
   getBenchmarkGroup,
   setBenchmarkGroup,
 } from '../../../core/benchmark-group-preference';
+import { localDayStart } from '../../../core/local-day';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import {
   MatchupRecordsComponent,
@@ -102,6 +103,8 @@ export class MatchHistoryComponent {
     opponent2: [''],
     partner: [''],
     result: [''],
+    // the viewer's LOCAL calendar days (`YYYY-MM-DD`), both ends inclusive —
+    // `load()` turns them into the instants the API takes
     date_from: [''],
     date_to: [''],
     round_from: [''],
@@ -285,8 +288,12 @@ export class MatchHistoryComponent {
       opponent2: raw.opponent2 || undefined,
       partner: raw.partner || undefined,
       result: (raw.result || undefined) as MatchRecordResultFilter | undefined,
-      date_from: raw.date_from || undefined,
-      date_to: raw.date_to || undefined,
+      // A half-open range of instants: an inclusive "to" day becomes "before
+      // the start of the day after". Sending the bare dates had the server
+      // compare them with each match's UTC date, so a match finished before
+      // 08:00 Taipei time was filed under the previous day.
+      ended_from: localDayStart(raw.date_from),
+      ended_before: localDayStart(raw.date_to, 1),
       round_from: raw.round_from ? Number(raw.round_from) : undefined,
       round_to: raw.round_to ? Number(raw.round_to) : undefined,
       self_score_cmp: (raw.self_score_cmp || undefined) as MatchRecordScoreComparison | undefined,

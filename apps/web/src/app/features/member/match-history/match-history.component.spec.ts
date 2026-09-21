@@ -290,6 +290,57 @@ describe('MatchHistoryComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
   });
 
+  describe('date filter', () => {
+    type SentFilters = Record<string, unknown>;
+    const lastFilters = (calls: unknown[][], index: number): SentFilters =>
+      calls[calls.length - 1][index] as SentFilters;
+
+    it('sends the viewer\'s LOCAL days as instants, to the list and the dashboard alike', () => {
+      const recordCalls: unknown[][] = [];
+      const dashboardCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls, dashboardCalls });
+
+      fixture.componentInstance.filterForm.patchValue({
+        date_from: '2026-09-21',
+        date_to: '2026-09-30',
+      });
+      fixture.componentInstance.applyFilters();
+
+      // "from" is that day's local midnight; an inclusive "to" is the NEXT
+      // day's — the API's range is half-open.
+      const expected = {
+        ended_from: new Date(2026, 8, 21).toISOString(),
+        ended_before: new Date(2026, 9, 1).toISOString(),
+      };
+      expect(lastFilters(recordCalls, 1)).toMatchObject(expected);
+      expect(lastFilters(dashboardCalls, 0)).toMatchObject(expected);
+      // the bare dates the server used to compare with UTC dates are gone
+      expect(lastFilters(recordCalls, 1)).not.toHaveProperty('date_from');
+      expect(lastFilters(recordCalls, 1)).not.toHaveProperty('date_to');
+    });
+
+    it('sends only the end that was filled in', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+
+      fixture.componentInstance.filterForm.patchValue({ date_to: '2026-12-31' });
+      fixture.componentInstance.applyFilters();
+
+      expect(lastFilters(recordCalls, 1)['ended_from']).toBeUndefined();
+      expect(lastFilters(recordCalls, 1)['ended_before']).toBe(new Date(2027, 0, 1).toISOString());
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(true);
+    });
+
+    it('counts as no filter when both days are empty', () => {
+      const recordCalls: unknown[][] = [];
+      const fixture = setup([], { recordCalls });
+
+      expect(lastFilters(recordCalls, 1)['ended_from']).toBeUndefined();
+      expect(lastFilters(recordCalls, 1)['ended_before']).toBeUndefined();
+      expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
+    });
+  });
+
   // 034-clutch-points-player-dashboard (T023)
   describe('technique dashboard', () => {
     function applyFilter(fixture: ReturnType<typeof setup>, matchMode: string): void {
