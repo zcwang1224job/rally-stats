@@ -359,3 +359,33 @@ async def test_ending_stats_are_included_via_member_endpoint(
         )
     # Nothing but nicknames identifies anyone (same visibility as before).
     assert set(ending["players"][0]) & {"member_id", "email"} == set()
+
+
+async def test_target_score_is_the_matchs_own_snapshot(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """040-match-share-card FR-012a: same field through the member endpoint
+    (my match history and "我的團" group history), still the snapshot after
+    the group's own setting changes."""
+    created, court, access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token, "matchdetail-target@example.com"
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    await _complete_match(client, court, match_id)
+    await db_session.execute(
+        text("UPDATE groups SET target_score = 21 WHERE id = :id"),
+        {"id": created["group_id"]},
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["target_score"], int)
+    assert body["target_score"] == 3

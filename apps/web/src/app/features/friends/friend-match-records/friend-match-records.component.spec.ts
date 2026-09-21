@@ -1,5 +1,7 @@
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
@@ -276,6 +278,21 @@ describe('FriendMatchRecordsComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('小美');
     expect(fixture.componentInstance.detail()?.match_id).toBe('match-1');
+  });
+
+  // 040-match-share-card FR-017: a friend's record is shared neutrally.
+  it('hands the detail dialog a neutral share context with the row’s group name', () => {
+    const { fixture } = setup({});
+
+    (fixture.nativeElement.querySelector('.match-card') as HTMLElement).click();
+    fixture.detectChanges();
+
+    const dialog = fixture.debugElement.query(By.directive(MatchRecordDetailDialogComponent))
+      .componentInstance as MatchRecordDetailDialogComponent;
+    expect(dialog.shareContext()).toEqual({
+      groupName: '週末羽球團',
+      perspective: { kind: 'neutral' },
+    });
   });
 
   // Polish: FR-011 — no notification side effects. The component is only

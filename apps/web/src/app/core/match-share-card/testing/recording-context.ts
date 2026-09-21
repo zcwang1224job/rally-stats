@@ -13,7 +13,7 @@ export interface RecordedText {
 
 /** 040-match-share-card research.md Decision 3: jsdom has no canvas, so the
  * renderer is tested against this recorder. `measureText` approximates a
- * glyph as 0.6 × the font size — enough to check truncation and bounds. */
+ * glyph by its script (see measureText) — enough to check truncation and bounds. */
 export class RecordingContext implements ShareCardCanvas {
   fillStyle: string | CanvasGradient | CanvasPattern = '#000';
   strokeStyle: string | CanvasGradient | CanvasPattern = '#000';
@@ -26,6 +26,9 @@ export class RecordingContext implements ShareCardCanvas {
   readonly recordedTexts: RecordedText[] = [];
   readonly recordedPolylines: { color: string; points: number }[] = [];
   readonly recordedRects: { x: number; y: number; w: number; h: number; color: string }[] = [];
+  readonly recordedRoundRects: { x: number; y: number; w: number; h: number }[] = [];
+  readonly recordedArcs: { x: number; y: number; radius: number; color: string }[] = [];
+  fillCount = 0;
 
   private currentPathPoints = 0;
   private readonly stack: Pick<RecordingContext, 'font' | 'fillStyle' | 'strokeStyle'>[] = [];
@@ -35,8 +38,16 @@ export class RecordingContext implements ShareCardCanvas {
     return match ? Number(match[1]) : 10;
   }
 
+  /** A CJK glyph is about 1 em wide, a Latin one about 0.6 em — close
+   * enough that a 20-character Chinese nickname really does overflow here
+   * the way it would on a phone. */
   measureText(text: string): { width: number } {
-    return { width: [...text].length * this.fontSize() * 0.6 };
+    const size = this.fontSize();
+    const width = [...text].reduce(
+      (sum, char) => sum + (/[\u2E80-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/.test(char) ? 1 : 0.6) * size,
+      0,
+    );
+    return { width };
   }
 
   fillText(text: string, x: number, y: number): void {
@@ -76,11 +87,17 @@ export class RecordingContext implements ShareCardCanvas {
     }
   }
 
-  arc(): void {}
+  arc(x: number, y: number, radius: number): void {
+    this.recordedArcs.push({ x, y, radius, color: String(this.fillStyle) });
+  }
 
-  fill(): void {}
+  fill(): void {
+    this.fillCount += 1;
+  }
 
-  roundRect(): void {}
+  roundRect(x: number, y: number, w: number, h: number): void {
+    this.recordedRoundRects.push({ x, y, w, h });
+  }
 
   save(): void {
     this.stack.push({ font: this.font, fillStyle: this.fillStyle, strokeStyle: this.strokeStyle });

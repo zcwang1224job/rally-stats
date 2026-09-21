@@ -485,3 +485,31 @@ async def test_match_without_any_ending_type_has_null_ending_stats(
     assert body["events"][1]["detail"] is None
     assert body["player_stats"][0]["scored_count"] == 1
     assert body["landing_distribution"] != []
+
+
+async def test_target_score_is_the_matchs_own_snapshot(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """040-match-share-card FR-012a: the detail carries the match's own
+    points-to-win (snapshot at creation), which the share card scales its
+    highlight thresholds by — a later change to the group's setting MUST
+    NOT leak into an already-finished match."""
+    created, court = await _create_group_with_active_match(
+        client, db_session, valid_turnstile_token
+    )
+    match_id = await _get_match_id(client, court)
+    await _complete_match(client, court, match_id)
+    await db_session.execute(
+        text("UPDATE groups SET target_score = 21 WHERE id = :id"),
+        {"id": created["group_id"]},
+    )
+    await db_session.commit()
+
+    guest_join = await client.post(f"/groups/{created['group_id']}/join", json={"nickname": "小美"})
+    response = await client.get(
+        f"/groups/{created['group_id']}/match-records/{match_id}",
+        params={"guest_session_token": guest_join.json()["guest_session_token"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["target_score"] == 3

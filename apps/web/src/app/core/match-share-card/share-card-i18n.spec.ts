@@ -1,7 +1,9 @@
 import en from '../../../assets/i18n/en.json';
 import zhTW from '../../../assets/i18n/zh-TW.json';
 
-type Tree = { [key: string]: string | Tree };
+interface Tree {
+  [key: string]: string | Tree;
+}
 
 function leaves(tree: Tree, prefix = ''): Record<string, string> {
   const out: Record<string, string> = {};

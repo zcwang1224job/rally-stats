@@ -1,0 +1,54 @@
+<dialog
+  #dialog
+  class="dialog dialog--lg share-card-dialog"
+  aria-labelledby="share-card-title"
+  (close)="onNativeClose()"
+>
+  <button
+    type="button"
+    class="dialog__close"
+    (click)="close()"
+    [attr.aria-label]="'matchShareCard.close' | translate"
+  >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+  </button>
+  <h2 id="share-card-title">{{ 'matchShareCard.previewTitle' | translate }}</h2>
+
+  @if (model(); as m) {
+    <!-- A fixed 4:5 stage, so the layout doesn't jump while the card is
+         being drawn or if drawing fails. -->
+    <div class="share-card__stage">
+      @switch (status()) {
+        @case ('generating') {
+          <p class="share-card__status" role="status">{{ 'matchShareCard.generating' | translate }}</p>
+        }
+        @case ('error') {
+          <p class="share-card__error" role="alert">{{ 'matchShareCard.generateError' | translate }}</p>
+        }
+        @case ('ready') {
+          @if (imageUrl(); as url) {
+            <img
+              class="share-card__preview"
+              [src]="url"
+              [alt]="m.altText.key | translate: m.altText.params"
+              width="1080"
+              height="1350"
+            />
+          }
+        }
+      }
+    </div>
+
+    @if (status() === 'ready') {
+      <div class="actions share-card__actions">
+        <button type="button" class="btn share-card__download" (click)="download()">
+          {{ 'matchShareCard.download' | translate }}
+        </button>
+      </div>
+    }
+
+    @if (message(); as key) {
+      <p class="share-card__message" role="status">{{ key | translate }}</p>
+    }
+  }
+</dialog>

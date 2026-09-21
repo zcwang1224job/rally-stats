@@ -354,3 +354,6 @@ async def test_view_member_match_record_detail_delegates_when_friend_and_enabled
     detail = await view_member_match_record_detail(db_session, viewer.id, target.id, match_id)
 
     assert detail.match_id == str(match_id)
+    # 040-match-share-card FR-012a: the friend's detail carries the
+    # match's own points-to-win too (the helper's match is 21-point).
+    assert detail.target_score == 21

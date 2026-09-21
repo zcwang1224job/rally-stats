@@ -107,7 +107,9 @@ export interface ShareCardCanvas {
   stroke(): void;
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number): void;
   fill(): void;
-  roundRect(x: number, y: number, w: number, h: number, radii: number): void;
+  /** Missing before iOS Safari 16 — the renderer falls back to a square
+   * corner path. */
+  roundRect?(x: number, y: number, w: number, h: number, radii: number): void;
   save(): void;
   restore(): void;
 }

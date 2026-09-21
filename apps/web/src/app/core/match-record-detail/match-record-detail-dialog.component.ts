@@ -3,6 +3,8 @@ import { TranslatePipe } from '@ngx-translate/core';
 import { MatchRecordDetailResponse, ShotPlacementDetail } from '../api/group-member-view.models';
 import { CourtDiagramComponent } from '../court-diagram/court-diagram.component';
 import { NicknameComponent } from '../nickname/nickname.component';
+import { ShareCardContext } from '../match-share-card/share-card.models';
+import { ShareCardDialogComponent } from '../match-share-card/share-card-dialog/share-card-dialog.component';
 import { MatchDerivedStatsComponent } from './match-derived-stats/match-derived-stats.component';
 import { ScoreTrendPoint, buildScoreTrendPoints } from './score-trend';
 
@@ -64,7 +66,13 @@ export function nearestPointIndex(points: readonly { x: number }[], xPercent: nu
  * groupId 參數決定端點」導致的 I1 那類錯誤。 */
 @Component({
   selector: 'app-match-record-detail-dialog',
-  imports: [TranslatePipe, NicknameComponent, CourtDiagramComponent, MatchDerivedStatsComponent],
+  imports: [
+    TranslatePipe,
+    NicknameComponent,
+    CourtDiagramComponent,
+    MatchDerivedStatsComponent,
+    ShareCardDialogComponent,
+  ],
   templateUrl: './match-record-detail-dialog.component.html',
   styleUrl: './match-record-detail-dialog.component.scss',
 })
@@ -72,6 +80,10 @@ export class MatchRecordDetailDialogComponent {
   readonly detail = input<MatchRecordDetailResponse | null>(null);
   readonly loading = input(false);
   readonly loadError = input(false);
+  /** 040-match-share-card: the group name and perspective only the caller
+   * knows (which list the match was opened from). null = this caller
+   * doesn't offer a share card, so no button. */
+  readonly shareContext = input<ShareCardContext | null>(null);
 
   private readonly dialog = viewChild.required<ElementRef<HTMLDialogElement>>('dialog');
   private readonly plotArea = viewChild<ElementRef<HTMLElement>>('plotArea');

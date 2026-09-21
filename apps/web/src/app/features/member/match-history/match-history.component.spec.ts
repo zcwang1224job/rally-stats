@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideTranslateService } from '@ngx-translate/core';
+import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { Observable, Subject, of, throwError } from 'rxjs';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
@@ -185,6 +187,39 @@ describe('MatchHistoryComponent', () => {
 
     expect(detailCalls.length).toBe(1);
     expect(detailCalls[0]).toEqual(['m1']);
+  });
+
+  // 040-match-share-card FR-016: this list is the one "my matches" entry
+  // point, so the share card takes the viewer's side — derived from the
+  // row's own won/winner_team, never from who is logged in.
+  describe('share card context', () => {
+    function shareContextAfterClick(won: boolean) {
+      const fixture = setup([], {
+        records: {
+          ...recordsResponse,
+          matches: [{ ...recordsResponse.matches[0], won, winner_team: 'A' }],
+        },
+      });
+      (fixture.nativeElement.querySelector('.match-card') as HTMLElement).click();
+      fixture.detectChanges();
+      const dialog = fixture.debugElement.query(By.directive(MatchRecordDetailDialogComponent))
+        .componentInstance as MatchRecordDetailDialogComponent;
+      return dialog.shareContext();
+    }
+
+    it('is my side (the winner) with the row’s group name when I won', () => {
+      expect(shareContextAfterClick(true)).toEqual({
+        groupName: '週三團',
+        perspective: { kind: 'mine', myTeam: 'A' },
+      });
+    });
+
+    it('is my side (the other team) when I lost', () => {
+      expect(shareContextAfterClick(false)).toEqual({
+        groupName: '週三團',
+        perspective: { kind: 'mine', myTeam: 'B' },
+      });
+    });
   });
 
   // 025-delete-account follow-up

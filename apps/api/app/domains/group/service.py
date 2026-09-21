@@ -2068,6 +2068,7 @@ async def build_match_record_detail(
 
     return MatchRecordDetailResponse(
         **summary.model_dump(),
+        target_score=match.target_score,
         record_completeness=completeness,
         events=event_summaries,
         player_stats=player_stats,

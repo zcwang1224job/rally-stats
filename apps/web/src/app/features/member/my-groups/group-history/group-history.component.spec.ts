@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
@@ -331,6 +333,23 @@ describe('GroupHistoryComponent', () => {
 
     expect(matchRecordDetailCalls.length).toBe(1);
     expect(matchRecordDetailCalls[0]).toEqual(['m1']);
+  });
+
+  // 040-match-share-card FR-017: a whole group's history is never "my
+  // report", even for matches the viewer played in.
+  it('hands the detail dialog a neutral share context with the group name', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelectorAll('.record-list li')[0] as HTMLElement).click();
+    fixture.detectChanges();
+
+    const dialog = fixture.debugElement.query(By.directive(MatchRecordDetailDialogComponent))
+      .componentInstance as MatchRecordDetailDialogComponent;
+    expect(dialog.shareContext()).toEqual({
+      groupName: '週三團',
+      perspective: { kind: 'neutral' },
+    });
   });
 
   // 019-group-final-standings (T015)

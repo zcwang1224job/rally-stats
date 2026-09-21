@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideTranslateService } from '@ngx-translate/core';
 import { MatchRecordDetailResponse } from '../api/group-member-view.models';
+import { ShareCardContext } from '../match-share-card/share-card.models';
+import { ShareCardDialogComponent } from '../match-share-card/share-card-dialog/share-card-dialog.component';
 import {
   MatchRecordDetailDialogComponent,
   computeYTicks,
@@ -742,5 +745,51 @@ describe('MatchRecordDetailDialogComponent — ending type in the event list (03
     row.click();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('matchRecordDetail.eventList.landingNotRecorded');
+  });
+});
+
+describe('MatchRecordDetailDialogComponent — share card entry (040 US1, FR-001)', () => {
+  const context: ShareCardContext = { groupName: '週三羽球團', perspective: { kind: 'neutral' } };
+
+  function setupWithContext(
+    shareContext: ShareCardContext | null,
+    loading = false,
+    loadError = false,
+  ) {
+    const fixture = setup(completeDetail, loading, loadError);
+    fixture.componentRef.setInput('shareContext', shareContext);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('has no share button when the caller gave no share context', () => {
+    const fixture = setupWithContext(null);
+
+    expect(fixture.nativeElement.querySelector('.share-card-button')).toBeNull();
+  });
+
+  it('has no share button while loading', () => {
+    const fixture = setupWithContext(context, true, false);
+
+    expect(fixture.nativeElement.querySelector('.share-card-button')).toBeNull();
+  });
+
+  it('has no share button after a load error', () => {
+    const fixture = setupWithContext(context, false, true);
+
+    expect(fixture.nativeElement.querySelector('.share-card-button')).toBeNull();
+  });
+
+  it('opens the share preview with this match and the caller’s context', () => {
+    const fixture = setupWithContext(context);
+    const share = fixture.debugElement.query(By.directive(ShareCardDialogComponent))
+      .componentInstance as ShareCardDialogComponent;
+    const openSpy = vi.spyOn(share, 'open').mockImplementation(() => undefined);
+
+    const button = fixture.nativeElement.querySelector('.share-card-button') as HTMLButtonElement;
+    expect(button.textContent).toContain('matchShareCard.openButton');
+    button.click();
+
+    expect(openSpy).toHaveBeenCalledWith(completeDetail, context);
   });
 });
