@@ -147,6 +147,13 @@ describe('ShareCardDialogComponent — preview and download (040 US1)', () => {
     expect(document.activeElement).toBe(root.querySelector('.trigger'));
   });
 
+  it('offers no perspective switch — only the entry point decides it (FR-017a)', async () => {
+    const { root, open } = await setup();
+    await open();
+
+    expect(root.textContent).not.toMatch(/perspective|neutral|mine/i);
+  });
+
   it('renders again in the new language after the language is switched (SC-008)', async () => {
     const { fixture, root, actions, open } = await setup();
     const translate = TestBed.inject(TranslateService);
@@ -168,5 +175,153 @@ describe('ShareCardDialogComponent — preview and download (040 US1)', () => {
 
     expect(seenText).toEqual(['中文圖卡', 'English card']);
     expect(root.querySelector('.share-card__preview')?.getAttribute('alt')).toBe('English card');
+  });
+});
+
+describe('ShareCardDialogComponent — light and dark (040 US5, FR-024)', () => {
+  const themeButton = (root: HTMLElement, theme: string) =>
+    root.querySelector<HTMLButtonElement>(`.share-card__theme-option[data-theme="${theme}"]`)!;
+
+  it('starts light, with the choice exposed as pressed buttons', async () => {
+    const { root, open } = await setup();
+    await open();
+
+    expect(themeButton(root, 'light').getAttribute('aria-pressed')).toBe('true');
+    expect(themeButton(root, 'dark').getAttribute('aria-pressed')).toBe('false');
+    expect(themeButton(root, 'light').textContent).toContain('matchShareCard.themeLight');
+    expect(themeButton(root, 'dark').textContent).toContain('matchShareCard.themeDark');
+  });
+
+  it('redraws in dark, swaps the preview and downloads the dark image', async () => {
+    const { fixture, root, actions, open } = await setup();
+    await open();
+
+    themeButton(root, 'dark').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(actions.rasterize).toHaveBeenCalledTimes(2);
+    expect(actions.rasterize.mock.calls[1][1]).toBe('dark');
+    expect(actions.revokeObjectUrl).toHaveBeenCalledWith('blob:card-1');
+    expect(root.querySelector('.share-card__preview')?.getAttribute('src')).toBe('blob:card-2');
+    expect(themeButton(root, 'dark').getAttribute('aria-pressed')).toBe('true');
+
+    button(root, '.share-card__download')!.click();
+    const [blob] = actions.download.mock.calls[0] as [Blob];
+    expect(await blob.text()).toBe('dark');
+  });
+
+  it('does nothing when the current theme is picked again', async () => {
+    const { fixture, root, actions, open } = await setup();
+    await open();
+
+    themeButton(root, 'light').click();
+    await fixture.whenStable();
+
+    expect(actions.rasterize).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens light again next time (the choice isn’t remembered)', async () => {
+    const { fixture, root, actions, open } = await setup();
+    await open();
+    themeButton(root, 'dark').click();
+    await fixture.whenStable();
+    fixture.componentInstance.share().close();
+
+    await open();
+
+    expect(actions.rasterize.mock.calls.at(-1)![1]).toBe('light');
+    expect(themeButton(root, 'light').getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+describe('ShareCardDialogComponent — share and copy (040 US4)', () => {
+  async function click(fixture: { whenStable(): Promise<unknown>; detectChanges(): void }, el: HTMLElement) {
+    el.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  it('hides Share where the device can’t share images (FR-021)', async () => {
+    const { root, open } = await setup(makeActions({ canShareFiles: vi.fn(() => false) }));
+    await open();
+
+    expect(button(root, '.share-card__share')).toBeNull();
+    expect(button(root, '.share-card__download')).not.toBeNull();
+  });
+
+  it('shares the already-made image file, without drawing it again on tap (research Decision 9)', async () => {
+    const actions = makeActions({ canShareFiles: vi.fn(() => true) });
+    const { fixture, root, open } = await setup(actions);
+    await open();
+
+    await click(fixture, button(root, '.share-card__share')!);
+
+    expect(actions.rasterize).toHaveBeenCalledTimes(1);
+    expect(actions.share).toHaveBeenCalledTimes(1);
+    const [file] = actions.share.mock.calls[0] as unknown as [File];
+    expect(file).toBeInstanceOf(File);
+    expect(file.type).toBe('image/png');
+    expect(file.name).toMatch(/^rally-stats-\d{8}-21-17\.png$/);
+  });
+
+  it('says nothing when the user cancels the share sheet (FR-023)', async () => {
+    const actions = makeActions({
+      canShareFiles: vi.fn(() => true),
+      share: vi.fn(async () => 'cancelled'),
+    });
+    const { fixture, root, open } = await setup(actions);
+    await open();
+
+    await click(fixture, button(root, '.share-card__share')!);
+
+    expect(root.querySelector('.share-card__message')).toBeNull();
+  });
+
+  it('suggests downloading when sharing fails', async () => {
+    const actions = makeActions({
+      canShareFiles: vi.fn(() => true),
+      share: vi.fn(async () => Promise.reject(new Error('x'))),
+    });
+    const { fixture, root, open } = await setup(actions);
+    await open();
+
+    await click(fixture, button(root, '.share-card__share')!);
+
+    expect(root.querySelector('.share-card__message')?.textContent).toContain(
+      'matchShareCard.shareError',
+    );
+  });
+
+  it('hides Copy where images can’t be copied, and copies the PNG where they can (FR-022)', async () => {
+    const hidden = await setup(makeActions({ canCopyImage: vi.fn(() => false) }));
+    await hidden.open();
+    expect(button(hidden.root, '.share-card__copy')).toBeNull();
+    TestBed.resetTestingModule();
+
+    const actions = makeActions({ canCopyImage: vi.fn(() => true) });
+    const { fixture, root, open } = await setup(actions);
+    await open();
+    await click(fixture, button(root, '.share-card__copy')!);
+
+    expect(actions.copyImage).toHaveBeenCalledWith(expect.any(Blob));
+    expect(root.querySelector('.share-card__message')?.textContent).toContain(
+      'matchShareCard.copied',
+    );
+  });
+
+  it('suggests downloading when copying fails', async () => {
+    const actions = makeActions({
+      canCopyImage: vi.fn(() => true),
+      copyImage: vi.fn(async () => Promise.reject(new Error('x'))),
+    });
+    const { fixture, root, open } = await setup(actions);
+    await open();
+
+    await click(fixture, button(root, '.share-card__copy')!);
+
+    expect(root.querySelector('.share-card__message')?.textContent).toContain(
+      'matchShareCard.copyError',
+    );
   });
 });

@@ -13,6 +13,57 @@ import {
 
 const neutral: ShareCardContext = { groupName: '週三羽球團', perspective: { kind: 'neutral' } };
 
+describe('buildShareCardModel — my perspective (040 US3)', () => {
+  const mine = (myTeam: 'A' | 'B'): ShareCardContext => ({
+    groupName: '週三羽球團',
+    perspective: { kind: 'mine', myTeam },
+  });
+
+  it('puts my team first and says Defeat when I lost, scores still matched (FR-016/FR-019)', () => {
+    const model = buildShareCardModel(makeDetail(), mine('B')); // A won 21:17
+
+    expect(model.perspective).toBe('mine');
+    expect(model.teams[0]).toEqual({
+      team: 'B',
+      nicknames: ['林小美', '張阿強'],
+      score: 17,
+      isWinner: false,
+      badge: 'defeat',
+    });
+    expect(model.teams[1].badge).toBeNull();
+    expect(model.teams[1].score).toBe(21);
+  });
+
+  it('says Victory when I won', () => {
+    const model = buildShareCardModel(makeDetail(), mine('A'));
+
+    expect(model.teams[0].team).toBe('A');
+    expect(model.teams[0].badge).toBe('victory');
+  });
+
+  it('picks highlights about my side, even in a loss (FR-013)', () => {
+    const detail = makeDetail({
+      clutch_stats: withClutch({ comeback: { winner: 'A', maxDeficit: 6 }, savedB: 2 }),
+    });
+
+    expect(buildShareCardModel(detail, mine('B')).highlights).toEqual([
+      { kind: 'matchPointsSaved', count: 2 },
+    ]);
+  });
+
+  it('names the file with my score first', () => {
+    expect(buildShareCardModel(makeDetail(), mine('B')).fileName).toMatch(/-17-21\.png$/);
+  });
+
+  it('never says Victory or Defeat on a neutral card (FR-017)', () => {
+    for (const detail of [makeDetail(), makeDetail({ score_a: 18, score_b: 21, winner_team: 'B' })]) {
+      const badges = buildShareCardModel(detail, neutral).teams.map((t) => t.badge);
+      expect(badges).not.toContain('victory');
+      expect(badges).not.toContain('defeat');
+    }
+  });
+});
+
 describe('buildShareCardModel — neutral perspective (040 US1)', () => {
   it('puts the winner first and badges it WIN, whichever side won', () => {
     const aWins = buildShareCardModel(makeDetail(), neutral);

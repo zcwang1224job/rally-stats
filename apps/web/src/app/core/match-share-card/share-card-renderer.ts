@@ -113,6 +113,11 @@ function teamsBlock(
   return {
     height: heights[0] + BLOCK_GAP + heights[1],
     draw(y) {
+      // FR-016: on "my" card, my team sits on its own panel — the badge
+      // already says Victory/Defeat, this makes the whole row mine.
+      if (model.perspective === 'mine') {
+        panel(ctx, SHARE_CARD_PADDING, y - 20, CONTENT_WIDTH, heights[0] + 40, palette.panel);
+      }
       drawTeam(ctx, model.teams[0], y, heights[0], palette, text, fonts);
       const dividerY = y + heights[0] + BLOCK_GAP / 2;
       ctx.fillStyle = palette.divider;

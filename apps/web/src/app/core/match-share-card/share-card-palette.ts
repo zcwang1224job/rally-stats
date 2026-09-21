@@ -19,8 +19,24 @@ const LIGHT: SharePalette = {
   trendB: '#35519e',
 };
 
+/** The team colors are lifted so they still stand out on a dark card. */
+const DARK: SharePalette = {
+  background: '#121418',
+  text: '#f3f4f6',
+  textMuted: '#a7adba',
+  divider: '#2a2e37',
+  teamA: '#f06f9a',
+  teamB: '#8aa4f5',
+  panel: '#1d2129',
+  badgeBackground: '#f3f4f6',
+  badgeText: '#121418',
+  badgeMutedBackground: '#2e333d',
+  badgeMutedText: '#f3f4f6',
+  trendA: '#f06f9a',
+  trendB: '#8aa4f5',
+};
+
 export const SHARE_PALETTES: Record<ShareTheme, SharePalette> = {
   light: LIGHT,
-  // US5 (T048) gives dark its own colors.
-  dark: LIGHT,
+  dark: DARK,
 };

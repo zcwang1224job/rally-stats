@@ -196,20 +196,20 @@ description: "Task list for 040-match-share-card"
 
 ### Tests for User Story 3 ⚠️（先寫，確認會失敗）
 
-- [ ] T036 [P] [US3] 擴充 `web/app/core/match-share-card/share-card-model.spec.ts`（mine 段落）：
+- [X] T036 [P] [US3] 擴充 `web/app/core/match-share-card/share-card-model.spec.ts`（mine 段落）：
   - `myTeam = 'B'` 且 B 落敗時：`teams[0].team === 'B'`、`badge === 'defeat'`，`teams[1].badge === null`，比分與暱稱的對應正確（FR-019）。
   - `myTeam` 獲勝時 `badge === 'victory'`。
   - `pickHighlights` 以 `myTeam` 為主角隊：我方落敗時會出現「化解賽末點」，但不會出現逆轉勝。
   - `fileName` 以我方分數在前。
   - 中立視角永遠不會出現 `victory` 或 `defeat`（FR-017）。
-- [ ] T037 [P] [US3] 修改 `web/app/features/member/match-history/match-history.component.spec.ts` 的 context 斷言：`won: true` 且 `winner_team: 'A'` 時為 `{ kind: 'mine', myTeam: 'A' }`；`won: false` 且 `winner_team: 'A'` 時為 `myTeam: 'B'`。
-- [ ] T038 [P] [US3] 擴充 `web/app/core/match-share-card/share-card-renderer.spec.ts`：`badge: 'victory'` 時畫出 `matchShareCard.badge.victory`，`'defeat'` 時畫出 `…badge.defeat`；徽章一律有文字，不只靠底色（FR-029）。
+- [X] T037 [P] [US3] 修改 `web/app/features/member/match-history/match-history.component.spec.ts` 的 context 斷言：`won: true` 且 `winner_team: 'A'` 時為 `{ kind: 'mine', myTeam: 'A' }`；`won: false` 且 `winner_team: 'A'` 時為 `myTeam: 'B'`。
+- [X] T038 [P] [US3] 擴充 `web/app/core/match-share-card/share-card-renderer.spec.ts`：`badge: 'victory'` 時畫出 `matchShareCard.badge.victory`，`'defeat'` 時畫出 `…badge.defeat`；徽章一律有文字，不只靠底色（FR-029）。
 
 ### Implementation for User Story 3
 
-- [ ] T039 [US3] 更新 `web/app/core/match-share-card/share-card-model.ts`，實作 mine 路徑：主角隊為 `myTeam`，`teams[0]` 為我方，徽章為 `victory` 或 `defeat`，對手為 null；`pickHighlights` 的主角隊改為 `myTeam`。mine 路徑沒有「無法判定我方」的情況，因為型別已保證 `myTeam` 存在；FR-018 的退回由呼叫端負責，見 T040。
-- [ ] T040 [US3] 修改 `web/app/features/member/match-history/match-history.component.ts`：context 改為 `{ kind: 'mine', myTeam: row.won ? row.winner_team : (row.winner_team === 'A' ? 'B' : 'A') }`。如果找不到被點開的那一列（理論上不會發生），改給 `{ kind: 'neutral' }`（FR-018），並加上註解。
-- [ ] T041 [US3] 確認 `web/app/core/match-share-card/share-card-renderer.ts` 的徽章繪製已支援三種文字，未支援就補上；我方視角的 `teams[0]` 區塊以較深的底色或加粗外框強調（FR-016）。執行 `npx ng test --watch=false`。
+- [X] T039 [US3] 更新 `web/app/core/match-share-card/share-card-model.ts`，實作 mine 路徑：主角隊為 `myTeam`，`teams[0]` 為我方，徽章為 `victory` 或 `defeat`，對手為 null；`pickHighlights` 的主角隊改為 `myTeam`。mine 路徑沒有「無法判定我方」的情況，因為型別已保證 `myTeam` 存在；FR-018 的退回由呼叫端負責，見 T040。
+- [X] T040 [US3] 修改 `web/app/features/member/match-history/match-history.component.ts`：context 改為 `{ kind: 'mine', myTeam: row.won ? row.winner_team : (row.winner_team === 'A' ? 'B' : 'A') }`。如果找不到被點開的那一列（理論上不會發生），改給 `{ kind: 'neutral' }`（FR-018），並加上註解。
+- [X] T041 [US3] 確認 `web/app/core/match-share-card/share-card-renderer.ts` 的徽章繪製已支援三種文字，未支援就補上；我方視角的 `teams[0]` 區塊以較深的底色或加粗外框強調（FR-016）。執行 `npx ng test --watch=false`。
 
 **Checkpoint**：視角規則與 clarify Q2 一致。
 
@@ -223,12 +223,12 @@ description: "Task list for 040-match-share-card"
 
 ### Tests for User Story 4 ⚠️（先寫，確認會失敗）
 
-- [ ] T042 [P] [US4] 新增 `web/app/core/match-share-card/share-card-actions.service.spec.ts`，以 `vi.stubGlobal` 或 `Object.defineProperty` 替換 `navigator`、`window` 的相關 API：
+- [X] T042 [P] [US4] 新增 `web/app/core/match-share-card/share-card-actions.service.spec.ts`，以 `vi.stubGlobal` 或 `Object.defineProperty` 替換 `navigator`、`window` 的相關 API：
   - `canShareFiles` 只在 `navigator.canShare({ files })` 回傳 true 時為 true；API 不存在時為 false。
   - `share` 遇到 `DOMException('…', 'AbortError')` 時回傳 `'cancelled'`，其他錯誤會拋出。
   - `canCopyImage` 在 `isSecureContext` 為 false、`ClipboardItem` 不存在或 `clipboard.write` 不存在時為 false。
   - `copyImage` 以 `{ 'image/png': blob }` 呼叫 `clipboard.write`。
-- [ ] T043 [P] [US4] 擴充 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.spec.ts`：
+- [X] T043 [P] [US4] 擴充 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.spec.ts`：
   - 「分享」只在 `canShareFiles` 為 true 時顯示；按下時以**已快取的 Blob** 包成的 File 同步呼叫 `share`，在呼叫之前沒有任何 await（research Decision 9，可用 spy 驗證按下當下 `rasterize` 沒有被再次呼叫）。
   - `share` 回傳 `'cancelled'` 時不顯示任何訊息（FR-023）。
   - `share` 拋錯時顯示 `shareError`，並提示可以改用下載。
@@ -236,8 +236,8 @@ description: "Task list for 040-match-share-card"
 
 ### Implementation for User Story 4
 
-- [ ] T044 [US4] 在 `web/app/core/match-share-card/share-card-actions.service.ts` 加上 `canShareFiles(file)`、`share(file)`、`canCopyImage()`、`copyImage(blob)`，規格見 contracts/share-card-module.md §5。檔頭註解說明為什麼這裡使用 `navigator.share`，而 `web/app/core/line-share.ts` 刻意不用：LINE it! 只能分享網址，圖片檔只能透過 Web Share Level 2 送出。另外說明圖片複製沒有 `execCommand` 退路，這一點和 `web/app/core/clipboard.ts` 不同。
-- [ ] T045 [US4] 更新 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.{ts,html}`：
+- [X] T044 [US4] 在 `web/app/core/match-share-card/share-card-actions.service.ts` 加上 `canShareFiles(file)`、`share(file)`、`canCopyImage()`、`copyImage(blob)`，規格見 contracts/share-card-module.md §5。檔頭註解說明為什麼這裡使用 `navigator.share`，而 `web/app/core/line-share.ts` 刻意不用：LINE it! 只能分享網址，圖片檔只能透過 Web Share Level 2 送出。另外說明圖片複製沒有 `execCommand` 退路，這一點和 `web/app/core/clipboard.ts` 不同。
+- [X] T045 [US4] 更新 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.{ts,html}`：
   - Blob 產生後建立 `File([blob], model.fileName, { type: 'image/png' })` 並快取，同時算好 `canShare` 與 `canCopy` 兩個 signal。
   - 加上「分享」與「複製圖片」按鈕，按下時同步使用快取的 File 或 Blob。
   - 各種提示以 `role="status"` 區塊呈現。
@@ -255,8 +255,8 @@ description: "Task list for 040-match-share-card"
 
 ### Tests for User Story 5 ⚠️（先寫，確認會失敗）
 
-- [ ] T046 [P] [US5] 新增 `web/app/core/match-share-card/share-card-palette.spec.ts`：實作 WCAG 相對亮度與對比度計算，斷言 `light` 和 `dark` 兩組色盤中，主要文字、次要文字、徽章文字對各自背景的對比度都 ≥ 4.5，A 隊色與 B 隊色對背景的對比度 ≥ 3（圖形元素）（research Decision 10）。
-- [ ] T047 [P] [US5] 擴充 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.spec.ts`：
+- [X] T046 [P] [US5] 新增 `web/app/core/match-share-card/share-card-palette.spec.ts`：實作 WCAG 相對亮度與對比度計算，斷言 `light` 和 `dark` 兩組色盤中，主要文字、次要文字、徽章文字對各自背景的對比度都 ≥ 4.5，A 隊色與 B 隊色對背景的對比度 ≥ 3（圖形元素）（research Decision 10）。
+- [X] T047 [P] [US5] 擴充 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.spec.ts`：
   - 預設 `aria-pressed` 為 light。
   - 切到 dark 時以 `'dark'` 重新呼叫 `rasterize`，舊的 object URL 被 revoke，新的 Blob 取代快取。
   - 之後的「下載圖片」使用新的 Blob（FR-024）。
@@ -264,8 +264,8 @@ description: "Task list for 040-match-share-card"
 
 ### Implementation for User Story 5
 
-- [ ] T048 [US5] 在 `web/app/core/match-share-card/share-card-palette.ts` 補上 `dark` 色盤：深色背景（例如 `#121418`），提亮兩隊的隊色與走勢線色，讓 T046 通過。
-- [ ] T049 [US5] 在 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.{ts,html,scss}` 加上亮色／暗色切換（兩顆 `aria-pressed` 按鈕，文字為 `themeLight`、`themeDark`）：切換時重新 rasterize 並替換 Blob 與 URL，產生期間暫時停用輸出按鈕。執行 `npx ng test --watch=false`。
+- [X] T048 [US5] 在 `web/app/core/match-share-card/share-card-palette.ts` 補上 `dark` 色盤：深色背景（例如 `#121418`），提亮兩隊的隊色與走勢線色，讓 T046 通過。
+- [X] T049 [US5] 在 `web/app/core/match-share-card/share-card-dialog/share-card-dialog.component.{ts,html,scss}` 加上亮色／暗色切換（兩顆 `aria-pressed` 按鈕，文字為 `themeLight`、`themeDark`）：切換時重新 rasterize 並替換 Blob 與 URL，產生期間暫時停用輸出按鈕。執行 `npx ng test --watch=false`。
 
 **Checkpoint**：五個 story 全部完成。
 

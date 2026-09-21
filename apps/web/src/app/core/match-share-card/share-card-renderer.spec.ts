@@ -9,7 +9,13 @@ import {
   renderShareCard,
   truncateToWidth,
 } from './share-card-renderer';
-import { makeDetail, makePartial, withMomentum, withTempo } from './testing/detail-fixtures';
+import {
+  makeDetail,
+  makePartial,
+  makeSingles,
+  withMomentum,
+  withTempo,
+} from './testing/detail-fixtures';
 import { RecordingContext } from './testing/recording-context';
 
 const neutral: ShareCardContext = { groupName: '週三羽球團', perspective: { kind: 'neutral' } };
@@ -196,6 +202,36 @@ describe('renderShareCard — trend, highlights, pace (040 US2)', () => {
       expect(right, text.text).toBeLessThanOrEqual(SHARE_CARD_WIDTH - SHARE_CARD_PADDING + 0.5);
       expect(text.y, text.text).toBeLessThan(SHARE_CARD_HEIGHT - SHARE_CARD_PADDING);
     }
+  });
+});
+
+describe('renderShareCard — my perspective (040 US3)', () => {
+  const mine = (myTeam: 'A' | 'B'): ShareCardContext => ({
+    groupName: '週三羽球團',
+    perspective: { kind: 'mine', myTeam },
+  });
+
+  it('writes Victory or Defeat as text, not just a color (FR-029)', () => {
+    const won = draw(buildShareCardModel(makeDetail(), mine('A'))).texts();
+    const lost = draw(buildShareCardModel(makeDetail(), mine('B'))).texts();
+
+    expect(won).toContain('badge.victory()');
+    expect(lost).toContain('badge.defeat()');
+    expect(lost).not.toContain('badge.win()');
+  });
+
+  it('sets my team apart with a panel behind it, drawn before its names', () => {
+    const ctx = draw(buildShareCardModel(makeSingles(), mine('B')));
+    const neutralCtx = draw(buildShareCardModel(makeSingles(), neutral));
+
+    // mine: the emphasis panel plus the badge; neutral: just the badge.
+    expect(ctx.recordedRoundRects.length).toBe(neutralCtx.recordedRoundRects.length + 1);
+    const panel = ctx.recordedRoundRects[0];
+    const myName = ctx.findText('林小美')!;
+    expect(myName.y).toBeGreaterThan(panel.y);
+    expect(myName.y).toBeLessThan(panel.y + panel.h);
+    const opponent = ctx.findText('王小明')!;
+    expect(opponent.y).toBeGreaterThan(panel.y + panel.h);
   });
 });
 

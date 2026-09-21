@@ -15,6 +15,21 @@
   <h2 id="share-card-title">{{ 'matchShareCard.previewTitle' | translate }}</h2>
 
   @if (model(); as m) {
+    <div class="share-card__theme" role="group" [attr.aria-label]="'matchShareCard.themeLabel' | translate">
+      @for (option of themes; track option) {
+        <button
+          type="button"
+          class="btn btn--secondary share-card__theme-option"
+          [attr.data-theme]="option"
+          [attr.aria-pressed]="theme() === option"
+          [disabled]="status() === 'generating'"
+          (click)="selectTheme(option)"
+        >
+          {{ (option === 'light' ? 'matchShareCard.themeLight' : 'matchShareCard.themeDark') | translate }}
+        </button>
+      }
+    </div>
+
     <!-- A fixed 4:5 stage, so the layout doesn't jump while the card is
          being drawn or if drawing fails. -->
     <div class="share-card__stage">
@@ -41,7 +56,22 @@
 
     @if (status() === 'ready') {
       <div class="actions share-card__actions">
-        <button type="button" class="btn share-card__download" (click)="download()">
+        @if (canShare()) {
+          <button type="button" class="btn share-card__share" (click)="share()">
+            {{ 'matchShareCard.share' | translate }}
+          </button>
+        }
+        @if (canCopy()) {
+          <button type="button" class="btn btn--secondary share-card__copy" (click)="copy()">
+            {{ 'matchShareCard.copy' | translate }}
+          </button>
+        }
+        <button
+          type="button"
+          class="btn share-card__download"
+          [class.btn--secondary]="canShare()"
+          (click)="download()"
+        >
           {{ 'matchShareCard.download' | translate }}
         </button>
       </div>

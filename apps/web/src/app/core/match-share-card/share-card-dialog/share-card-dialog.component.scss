@@ -43,3 +43,10 @@
   color: var(--color-text-muted);
   text-align: center;
 }
+
+.share-card__theme {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
