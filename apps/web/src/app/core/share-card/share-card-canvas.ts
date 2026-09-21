@@ -29,6 +29,10 @@ export interface SharePalette {
   badgeMutedText: string;
   trendA: string;
   trendB: string;
+  /** The QR code's plate and modules: white and near-black in both themes
+   * — an inverted code doesn't scan everywhere (041 research.md Decision 5). */
+  qrPlate: string;
+  qrModule: string;
 }
 
 /** Looks up a language-file entry; wraps `TranslateService.instant` in the

@@ -18,4 +18,9 @@ declare module 'qrcode' {
   }
 
   export function create(text: string, options?: QRCodeCreateOptions): QRCode;
+
+  /** The package is CommonJS: a dynamic import may hand it back as the
+   * default export instead. */
+  const qrcode: { create: typeof create };
+  export default qrcode;
 }

@@ -1,9 +1,24 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject } from '@angular/core';
 import { TranslateService } from '@ngx-translate/core';
 import { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH, ShareTheme } from './share-card-canvas';
 import { buildShareCardLink } from './share-card-link';
-import { PromoFooter, ShareCardOption } from './share-card-option';
+import { PromoFooter, QrMatrix, ShareCardOption } from './share-card-option';
 import { SHARE_PALETTES } from './share-card-palette';
+import { QrCreate, toQrMatrix } from './share-card-qr';
+
+/** 041 research.md Decision 4: `qrcode` is only loaded when a card is
+ * first drawn, not with the pages that merely offer one. Replaceable in
+ * tests. */
+export const SHARE_CARD_QR_LOADER = new InjectionToken<() => Promise<QrCreate>>(
+  'SHARE_CARD_QR_LOADER',
+  {
+    providedIn: 'root',
+    factory: () => () =>
+      // CommonJS: depending on the bundler, `create` is on the module or
+      // on its default export.
+      import('qrcode').then((module) => module.create ?? module.default.create),
+  },
+);
 
 /** 040-match-share-card, shared by every card since 041: everything that
  * touches the browser — canvas, files, object URLs — kept behind one
@@ -12,6 +27,7 @@ import { SHARE_PALETTES } from './share-card-palette';
 @Injectable({ providedIn: 'root' })
 export class ShareCardActions {
   private readonly translate = inject(TranslateService);
+  private readonly loadQr = inject(SHARE_CARD_QR_LOADER);
 
   /** Draws the card on a fixed 1080×1350 canvas — never scaled by the
    * device pixel ratio, so every phone produces the same file (FR-004). */
@@ -22,11 +38,8 @@ export class ShareCardActions {
       base: style.getPropertyValue('--font-family-base').trim() || 'sans-serif',
       score: style.getPropertyValue('--font-family-score').trim() || 'sans-serif',
     };
-    const footer: PromoFooter = {
-      link: buildShareCardLink(window.location, option.source),
-      qr: null,
-      meta: null,
-    };
+    const link = buildShareCardLink(window.location, option.source);
+    const footer: PromoFooter = { link, qr: await this.qrFor(link.qrUrl), meta: null };
     const canvas = document.createElement('canvas');
     canvas.width = SHARE_CARD_WIDTH;
     canvas.height = SHARE_CARD_HEIGHT;
@@ -48,6 +61,16 @@ export class ShareCardActions {
         'image/png',
       ),
     );
+  }
+
+  /** The QR code for `url`, or null on any failure — a card without a
+   * code (but with its address) beats no card at all (FR-020). */
+  private async qrFor(url: string): Promise<QrMatrix | null> {
+    try {
+      return toQrMatrix(url, await this.loadQr());
+    } catch {
+      return null;
+    }
   }
 
   createObjectUrl(blob: Blob): string {

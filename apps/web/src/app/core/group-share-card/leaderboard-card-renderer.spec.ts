@@ -209,8 +209,25 @@ describe('renderLeaderboardCard — layout (041 contracts/share-card-core.md §6
     expect(middleBottom(ctx)).toBeLessThanOrEqual(SHARE_CARD_MIDDLE_BOTTOM);
   });
 
-  it('ends with the shared footer', () => {
-    expect(draw().texts()).toContain('Rally Stats');
+  it('ends with the shared footer and the site address (FR-018)', () => {
+    const texts = draw().texts();
+
+    expect(texts).toContain('Rally Stats');
+    expect(texts).toContain('rallystats.test');
+  });
+
+  it('keeps every row its full height in the fullest card — only the gaps may narrow', () => {
+    const standings = makeStandings(12, { selfAt: 10 });
+    const ctx = draw(standings);
+
+    const y = (i: number) => ctx.findText(standings[i].nickname)!.y;
+    // Podium rows are 120 apart; the name font steps from 44px to 36px
+    // between row 3 and row 4, so compare rows of the same kind.
+    expect(y(1) - y(0)).toBe(120);
+    expect(y(2) - y(1)).toBe(120);
+    expect(y(4) - y(3)).toBe(76);
+    expect(y(5) - y(4)).toBe(76);
+    expect(middleBottom(ctx)).toBeLessThanOrEqual(SHARE_CARD_MIDDLE_BOTTOM);
   });
 
   it('paints the chosen theme’s background first', () => {

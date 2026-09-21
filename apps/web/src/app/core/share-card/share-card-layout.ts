@@ -1,11 +1,14 @@
 /** 041-group-share-cards research.md Decision 6: the middle of every card
  * (between its header and footer) is a stack of blocks. */
 
-// Where the middle of a card may draw. These are 040's values until the
-// promo footer (US2) makes the footer taller.
-export const SHARE_CARD_MIDDLE_TOP = 230;
-export const SHARE_CARD_MIDDLE_BOTTOM = 1174;
-export const SHARE_CARD_FOOTER_TOP = 1246;
+// Where the middle of a card may draw (research.md Decision 6). The promo
+// footer is 240 tall with a 56px bottom margin, so it starts at
+// 1350 − 56 − 240 = 1054; its divider sits 28 above that (1026), and the
+// middle keeps 30 clear of the divider (996). The header ends by y = 166,
+// so the middle may start at 210 — 786px in all.
+export const SHARE_CARD_FOOTER_TOP = 1054;
+export const SHARE_CARD_MIDDLE_TOP = 210;
+export const SHARE_CARD_MIDDLE_BOTTOM = 996;
 export const SHARE_CARD_BLOCK_GAP = 48;
 export const SHARE_CARD_BLOCK_MIN_GAP = 32;
 

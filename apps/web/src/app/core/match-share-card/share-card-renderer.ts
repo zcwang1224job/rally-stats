@@ -47,6 +47,10 @@ const TREND_HEIGHT = 240;
 const TREND_INSET = 28;
 const HIGHLIGHT_LINE = 60;
 const HIGHLIGHT_INSET = 24;
+// 041 research.md Decision 6: how far the trend and the highlight rows may
+// shrink so a full card still clears the promo footer. The teams never do.
+const TREND_MIN_HEIGHT = 140;
+const HIGHLIGHT_MIN_LINE = 52;
 
 /** 040-match-share-card: draws the 1080×1350 card (FR-004). The header is
  * pinned to the top and the footer to the bottom; the middle blocks are
@@ -192,12 +196,13 @@ function trendBlock(
 ): Block {
   return {
     height: TREND_HEIGHT,
-    draw(y) {
-      panel(ctx, SHARE_CARD_PADDING, y, CONTENT_WIDTH, TREND_HEIGHT, palette.panel);
+    minHeight: TREND_MIN_HEIGHT,
+    draw(y, blockHeight) {
+      panel(ctx, SHARE_CARD_PADDING, y, CONTENT_WIDTH, blockHeight, palette.panel);
       const left = SHARE_CARD_PADDING + TREND_INSET;
       const top = y + TREND_INSET;
       const width = CONTENT_WIDTH - TREND_INSET * 2;
-      const height = TREND_HEIGHT - TREND_INSET * 2;
+      const height = blockHeight - TREND_INSET * 2;
       const at = (point: ScoreTrendPoint, yPercent: number) => ({
         x: left + (point.x / 100) * width,
         y: top + (yPercent / 100) * height,
@@ -243,14 +248,16 @@ function highlightsBlock(
   const dotColor = model.teams[0].team === 'A' ? palette.teamA : palette.teamB;
   return {
     height,
-    draw(y) {
-      panel(ctx, SHARE_CARD_PADDING, y, CONTENT_WIDTH, height, palette.panel);
+    minHeight: rows * HIGHLIGHT_MIN_LINE + HIGHLIGHT_INSET * 2,
+    draw(y, blockHeight) {
+      panel(ctx, SHARE_CARD_PADDING, y, CONTENT_WIDTH, blockHeight, palette.panel);
+      const line = Math.floor((blockHeight - HIGHLIGHT_INSET * 2) / rows);
       const textX = SHARE_CARD_PADDING + 64;
       model.highlights.forEach((highlight, index) => {
-        const rowTop = y + HIGHLIGHT_INSET + index * HIGHLIGHT_LINE;
+        const rowTop = y + HIGHLIGHT_INSET + index * line;
         ctx.fillStyle = dotColor;
         ctx.beginPath();
-        ctx.arc(SHARE_CARD_PADDING + 36, rowTop + HIGHLIGHT_LINE / 2, 8, 0, Math.PI * 2);
+        ctx.arc(SHARE_CARD_PADDING + 36, rowTop + line / 2, 8, 0, Math.PI * 2);
         ctx.fill();
 
         const { kind, ...params } = highlight;
@@ -260,7 +267,7 @@ function highlightsBlock(
         ctx.fillText(
           truncateToWidth(ctx, text(`matchShareCard.highlight.${kind}`, params), CONTENT_WIDTH - 64 - 24),
           textX,
-          rowTop + (HIGHLIGHT_LINE - 34) / 2,
+          rowTop + (line - 34) / 2,
         );
       });
     },

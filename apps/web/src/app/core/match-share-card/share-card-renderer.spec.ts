@@ -8,7 +8,8 @@ import {
   SHARE_CARD_WIDTH,
   renderShareCard,
 } from './share-card-renderer';
-import { testFooter } from '../share-card/testing/footer-ops';
+import { SHARE_CARD_MIDDLE_BOTTOM } from '../share-card/share-card-layout';
+import { footerOpCount, testFooter } from '../share-card/testing/footer-ops';
 import {
   makeDetail,
   makePartial,
@@ -123,10 +124,13 @@ describe('renderShareCard — basic card (040 US1)', () => {
     }
   });
 
-  it('never draws a link or QR code (FR-006)', () => {
-    const texts = draw(buildShareCardModel(makeDetail(), neutral)).texts().join('\n');
+  // 041 FR-018 replaces 040 FR-006: the footer now carries the site.
+  it('ends with the shared promo footer: brand, tagline and the site address', () => {
+    const texts = draw(buildShareCardModel(makeDetail(), neutral)).texts();
 
-    expect(texts).not.toMatch(/http|www|:\/\//);
+    expect(texts).toContain('Rally Stats');
+    expect(texts).toContain('tagline()');
+    expect(texts).toContain('rallystats.test');
   });
 
   it('shows the duration, and leaves it out when there is none', () => {
@@ -237,5 +241,111 @@ describe('renderShareCard — my perspective (040 US3)', () => {
     expect(myName.y).toBeLessThan(panel.y + panel.h);
     const opponent = ctx.findText('王小明')!;
     expect(opponent.y).toBeGreaterThan(panel.y + panel.h);
+  });
+});
+
+describe('renderShareCard — room for the promo footer (041 FR-022, research.md Decision 6)', () => {
+  const FOOTER_ENV = { palette: SHARE_PALETTES.light, text: fakeText(), fonts: FONTS };
+
+  /** Bottom of everything between the background and the footer. The
+   * footer has one more line when the match has a duration or pace. */
+  function middleBottom(ctx: RecordingContext, model: ShareCardModel): number {
+    const hasMeta = model.durationSeconds !== null || model.averagePointSeconds !== null;
+    const footer = testFooter({ meta: hasMeta ? 'meta' : null });
+    return ctx.bottomEdge({ skipFirst: 1, skipLast: footerOpCount(footer, FOOTER_ENV) });
+  }
+
+  /** The full-width panels (my team's, the trend's, the highlights'), top to bottom. */
+  function panels(ctx: RecordingContext) {
+    return ctx.recordedRoundRects.filter((r) => r.w === SHARE_CARD_WIDTH - SHARE_CARD_PADDING * 2);
+  }
+
+  /** Every name, both scores, the badge, the trend and each highlight —
+   * nothing is dropped to make room — and all of it above the footer. */
+  function expectEverythingDrawn(ctx: RecordingContext, model: ShareCardModel) {
+    for (const team of model.teams) {
+      for (const name of team.nicknames) {
+        expect(ctx.texts()).toContain(name);
+      }
+      expect(ctx.texts()).toContain(String(team.score));
+    }
+    expect(ctx.texts().some((t) => t.startsWith('badge.'))).toBe(true);
+    expect(ctx.recordedPolylines.length).toBe(model.trend ? 2 : 0);
+    for (const highlight of model.highlights) {
+      expect(ctx.texts().some((t) => t.startsWith(`highlight.${highlight.kind}(`))).toBe(true);
+    }
+    expect(middleBottom(ctx, model)).toBeLessThanOrEqual(SHARE_CARD_MIDDLE_BOTTOM);
+  }
+
+  const threeHighlights = { score_a: 21, score_b: 10, momentum_stats: withMomentum(6, 0, 3) };
+
+  it('fits the fullest card — doubles, my badge, trend, three highlights — by shrinking trend and rows', () => {
+    const model = buildShareCardModel(makeDetail(threeHighlights), {
+      groupName: '週三羽球團',
+      perspective: { kind: 'mine', myTeam: 'A' },
+    });
+    expect(model.highlights.length).toBe(3);
+    const ctx = draw(model);
+
+    expectEverythingDrawn(ctx, model);
+    // My team's panel, then the trend, then the highlights.
+    const [, trend, highlights] = panels(ctx);
+    expect(trend.h).toBe(140);
+    expect(highlights.h).toBe(208);
+  });
+
+  it('fits a full singles card with a shorter trend', () => {
+    const model = buildShareCardModel(makeSingles(threeHighlights), neutral);
+    expect(model.highlights.length).toBe(3);
+    const ctx = draw(model);
+
+    expectEverythingDrawn(ctx, model);
+    const [trend, highlights] = panels(ctx);
+    expect(trend.h).toBe(146);
+    expect(highlights.h).toBe(228);
+  });
+
+  it('fits doubles with a trend and two highlights', () => {
+    const model = buildShareCardModel(makeDetail({ momentum_stats: withMomentum(6, 0, 3) }), neutral);
+    expect(model.highlights.length).toBe(2);
+    const ctx = draw(model);
+
+    expectEverythingDrawn(ctx, model);
+    expect(panels(ctx)[0].h).toBe(180);
+  });
+
+  it('fits doubles with a trend and one highlight by narrowing the gaps only', () => {
+    const model = buildShareCardModel(makeDetail({ momentum_stats: withMomentum(6, 0, 0) }), neutral);
+    expect(model.highlights.length).toBe(1);
+    const ctx = draw(model);
+
+    expectEverythingDrawn(ctx, model);
+    const [trend, highlights] = panels(ctx);
+    expect(trend.h).toBe(240);
+    expect(highlights.h).toBe(108);
+    expect(highlights.y - (trend.y + trend.h)).toBe(32);
+  });
+
+  it('shrinks nothing when the card has room: teams only, teams and trend, teams and highlights', () => {
+    const teamsOnly = buildShareCardModel(makePartial(), neutral);
+    const teamsAndTrend = buildShareCardModel(makeDetail(), neutral);
+    const teamsAndHighlights = buildShareCardModel(makeDetail({ ...threeHighlights, events: [] }), neutral);
+    expect(teamsAndTrend.trend).not.toBeNull();
+    expect(teamsAndTrend.highlights.length).toBe(0);
+    expect(teamsAndHighlights.trend).toBeNull();
+    expect(teamsAndHighlights.highlights.length).toBe(3);
+
+    for (const model of [teamsOnly, teamsAndTrend, teamsAndHighlights]) {
+      const ctx = draw(model);
+      expectEverythingDrawn(ctx, model);
+      for (const panel of panels(ctx)) {
+        expect([240, 228]).toContain(panel.h);
+      }
+    }
+    const ctx = draw(teamsAndTrend);
+    const [trend] = panels(ctx);
+    const teamTop = ctx.recordedRects[1].y; // the first team's color bar
+    // The teams block is 374 tall; the full 48px gap follows it.
+    expect(trend.y - (teamTop + 374)).toBe(48);
   });
 });

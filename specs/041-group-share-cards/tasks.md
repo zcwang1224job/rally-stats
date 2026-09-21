@@ -180,31 +180,31 @@ description: "Task list for 041-group-share-cards"
 
 ### Tests for User Story 2 ⚠️（先寫，確認會失敗）
 
-- [ ] T025 [P] [US2] 新增 `web/app/core/share-card/share-card-qr.spec.ts`（FR-020、research Decision 5）：`qrLayout(33)` → `modulePx 6`；`qrLayout(29)` → `6`；`qrLayout(37)` → `4`；`qrLayout(53)` → `4`；`qrLayout(57)` → `null`；對 21～177 的每個合法尺寸，結果不是 `null` 時 `modulePx` 必為偶數、≥ 4，且 `(size + 4) × modulePx ≤ 240`、`offset` 使 QR 在 240 底板內置中。`toQrMatrix(url, create)`：以假的 `create` 回傳 `{ modules: { size, get } }` 時輸出的 `isDark(r, c)` 與其一致；`create` 拋錯時回傳 `null`；確認傳給 `create` 的選項為 `{ errorCorrectionLevel: 'M' }`；以**真的** `qrcode` 的 `create`（spec 內靜態 import）對同一網址呼叫兩次，矩陣完全相同，且 44 字元網址在等級 M 下 `size === 33`。
-- [ ] T026 [P] [US2] 改寫 `web/app/core/share-card/share-card-footer.spec.ts` 為導流頁尾（contracts/share-card-core.md §5 版面表）（FR-018、FR-020、SC-005）：
+- [X] T025 [P] [US2] 新增 `web/app/core/share-card/share-card-qr.spec.ts`（FR-020、research Decision 5）：`qrLayout(33)` → `modulePx 6`；`qrLayout(29)` → `6`；`qrLayout(37)` → `4`；`qrLayout(53)` → `4`；`qrLayout(57)` → `null`；對 21～177 的每個合法尺寸，結果不是 `null` 時 `modulePx` 必為偶數、≥ 4，且 `(size + 4) × modulePx ≤ 240`、`offset` 使 QR 在 240 底板內置中。`toQrMatrix(url, create)`：以假的 `create` 回傳 `{ modules: { size, get } }` 時輸出的 `isDark(r, c)` 與其一致；`create` 拋錯時回傳 `null`；確認傳給 `create` 的選項為 `{ errorCorrectionLevel: 'M' }`；以**真的** `qrcode` 的 `create`（spec 內靜態 import）對同一網址呼叫兩次，矩陣完全相同，且 44 字元網址在等級 M 下 `size === 33`。
+- [X] T026 [P] [US2] 改寫 `web/app/core/share-card/share-card-footer.spec.ts` 為導流頁尾（contracts/share-card-core.md §5 版面表）（FR-018、FR-020、SC-005）：
   - 有 `qr` 時：畫出一個 240×240、左上角 (768, 1054) 的底板，`recordedRoundRects` 中該筆的 `color` 為 `#ffffff`（亮暗兩種色盤皆同）；深色模組的 `fillRect` 數量等於矩陣中深色模組數，每個寬高等於 `modulePx`、顏色為 `#111827`（兩種色盤相同），座標全部落在底板內。
   - 左側依序畫出 `meta`（有值時）、`shareCard.brand`、`shareCard.tagline`、`link.displayUrl`、`shareCard.scanHint`，y 依 contracts §5 的行高表往下排、省略的行不佔空間；所有左側文字的右緣 ≤ 744（底板左緣 − 24）。
   - 200 字元的標語與 80 字元的 `displayUrl` 被截斷且右緣仍 ≤ 744。
   - `qr === null`：不畫底板與任何模組、不畫 `scanHint`，仍畫品牌、標語與 `displayUrl`，且文字可用寬度擴到 936（整個內容寬）。
   - `qrLayout()` 回傳 `null` 的超大矩陣：行為同 `qr === null`。
   - 頁尾所有繪製的 top ≥ 1026（分隔線），bottom ≤ 1294（1350 − 56）。
-- [ ] T027 [P] [US2] 擴充 `web/app/core/share-card/share-card-actions.service.spec.ts`（FR-019、FR-020）：`rasterize()` 交給 `option.draw` 的 `env.footer.qr` 在載入函式成功時為非 `null` 的矩陣；以 `SHARE_CARD_QR_LOADER`（InjectionToken）提供會拋錯或回傳 rejected promise 的替身時，`rasterize()` **仍回傳 Blob** 且 `env.footer.qr === null`（contracts/share-card-core.md §3 不變式）；`env.footer.link.qrUrl` 的 `ref` 等於 `option.source`。
-- [ ] T028 [P] [US2] 擴充 `web/app/core/match-share-card/share-card-renderer.spec.ts`（FR-022 允許的範圍、SC-007）：頁尾斷言改為「時長與每分耗時出現在頁尾的 `meta` 行、`shareCard.brand`／`tagline` 有畫出」；新增以下案例，每一例都斷言兩隊所有暱稱、雙方比分、徽章、走勢折線、亮點文字**全部都有畫**，且 `bottomEdge({ skipFirst: 1, skipLast: footerOpCount(…) })` ≤ `SHARE_CARD_MIDDLE_BOTTOM`：
+- [X] T027 [P] [US2] 擴充 `web/app/core/share-card/share-card-actions.service.spec.ts`（FR-019、FR-020）：`rasterize()` 交給 `option.draw` 的 `env.footer.qr` 在載入函式成功時為非 `null` 的矩陣；以 `SHARE_CARD_QR_LOADER`（InjectionToken）提供會拋錯或回傳 rejected promise 的替身時，`rasterize()` **仍回傳 Blob** 且 `env.footer.qr === null`（contracts/share-card-core.md §3 不變式）；`env.footer.link.qrUrl` 的 `ref` 等於 `option.source`。
+- [X] T028 [P] [US2] 擴充 `web/app/core/match-share-card/share-card-renderer.spec.ts`（FR-022 允許的範圍、SC-007）：頁尾斷言改為「時長與每分耗時出現在頁尾的 `meta` 行、`shareCard.brand`／`tagline` 有畫出」；新增以下案例，每一例都斷言兩隊所有暱稱、雙方比分、徽章、走勢折線、亮點文字**全部都有畫**，且 `bottomEdge({ skipFirst: 1, skipLast: footerOpCount(…) })` ≤ `SHARE_CARD_MIDDLE_BOTTOM`：
   - 內容全滿（雙打、我方視角有徽章、走勢圖、3 個亮點）：走勢 140、亮點列高 53（research Decision 6 實算表）。
   - 單打全滿（走勢圖＋3 個亮點）：走勢 146、亮點列高 60。
   - 雙打＋走勢圖＋2 個亮點：走勢 180。
   - 雙打＋走勢圖＋1 個亮點：間距 32、所有區塊高度不變（走勢 240）。
   - 只有隊伍區塊、隊伍＋走勢、隊伍＋3 個亮點（無走勢）：間距維持 48、沒有任何收縮、整組垂直置中。
-- [ ] T029 [P] [US2] 擴充 `web/app/core/group-share-card/leaderboard-card-renderer.spec.ts`：頁尾改版後，最壞情況（6 列＋`selfRow`）仍不超出新的 `SHARE_CARD_MIDDLE_BOTTOM`，且三個區塊高度不變（只有間距可能縮小）；頁尾畫出 `displayUrl`（FR-018）。
+- [X] T029 [P] [US2] 擴充 `web/app/core/group-share-card/leaderboard-card-renderer.spec.ts`：頁尾改版後，最壞情況（6 列＋`selfRow`）仍不超出新的 `SHARE_CARD_MIDDLE_BOTTOM`，且三個區塊高度不變（只有間距可能縮小）；頁尾畫出 `displayUrl`（FR-018）。
 
 ### Implementation for User Story 2
 
-- [ ] T030 [P] [US2] 實作 `web/app/core/share-card/share-card-qr.ts`：`QrCreate` 型別（只描述用到的 `create(text, options) => { modules: { size; get(row, col) } }`，不把 `qrcode` 的型別外洩到模組外）、`toQrMatrix()`、`qrLayout()`、常數 `QR_PLATE_SIZE = 240`。讓 T025 全綠。
-- [ ] T031 [US2] 改寫 `web/app/core/share-card/share-card-footer.ts` 的 `drawPromoFooter()` 為導流頁尾（contracts/share-card-core.md §5 版面表）；同時把 `web/app/core/share-card/share-card-layout.ts` 的常數改為「版面常數」表 US2 欄的值（`SHARE_CARD_MIDDLE_TOP = 210`、`SHARE_CARD_MIDDLE_BOTTOM = 996`、`SHARE_CARD_FOOTER_TOP = 1054`），並在檔內以註解寫出算式（research Decision 6）；兩種色盤在 `web/app/core/share-card/share-card-palette.ts` 新增 `qrPlate: '#ffffff'`、`qrModule: '#111827'`。讓 T026、T029 全綠。
-- [ ] T032 [US2] 修改 `web/app/core/share-card/share-card-actions.service.ts` 的 `rasterize()`：新增 `SHARE_CARD_QR_LOADER` InjectionToken（預設 `() => import('qrcode').then((m) => m.create ?? m.default.create)`）；`buildShareCardLink(window.location, option.source)` → 以 loader 取得 `create` → `toQrMatrix(link.qrUrl, create)`，任何例外都降為 `qr = null` → `env.footer = { link, qr, meta: null }`。執行 `npx ng build`；若出現 `qrcode` 的 CommonJS 相依警告，在 `apps/web/angular.json` 的 build options 加入 `"allowedCommonJsDependencies": ["qrcode"]`，build 必須零警告。讓 T027 全綠。
-- [ ] T033 [US2] 修改 `web/app/core/match-share-card/share-card-renderer.ts`（FR-022、research Decision 6）：走勢區塊給 `minHeight: 140` 並依 `draw(y, height)` 收到的高度繪製；亮點區塊的 `minHeight` 為 `列數 × 52 + 48`（現行高度 `列數 × 60 + 48`，48 為上下內距），`draw` 依實際高度以 `Math.floor((height − 48) / 列數)` 換算列高；**隊伍區塊不給 `minHeight`、永不收縮**。**不得**修改 `share-card-model.ts`、`share-card-highlights.ts` 及其 spec。讓 T028 全綠。
-- [ ] T034 [P] [US2] 更新 `specs/040-match-share-card/spec.md`：在 FR-006、US1 驗收情境 5 與 Assumptions「品牌字樣即足夠」三處各加一行註記「已由 041-group-share-cards FR-018 取代：圖卡頁尾現含網址與 QR 碼」，不改動原文。
-- [ ] T035 [US2] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；重跑 T024 的 `git diff --stat` 指令，輸出必須為空。Commit：「所有分享圖卡的頁尾加上標語、網址與 QR 碼，掃描即可進入系統首頁」。
+- [X] T030 [P] [US2] 實作 `web/app/core/share-card/share-card-qr.ts`：`QrCreate` 型別（只描述用到的 `create(text, options) => { modules: { size; get(row, col) } }`，不把 `qrcode` 的型別外洩到模組外）、`toQrMatrix()`、`qrLayout()`、常數 `QR_PLATE_SIZE = 240`。讓 T025 全綠。
+- [X] T031 [US2] 改寫 `web/app/core/share-card/share-card-footer.ts` 的 `drawPromoFooter()` 為導流頁尾（contracts/share-card-core.md §5 版面表）；同時把 `web/app/core/share-card/share-card-layout.ts` 的常數改為「版面常數」表 US2 欄的值（`SHARE_CARD_MIDDLE_TOP = 210`、`SHARE_CARD_MIDDLE_BOTTOM = 996`、`SHARE_CARD_FOOTER_TOP = 1054`），並在檔內以註解寫出算式（research Decision 6）；兩種色盤在 `web/app/core/share-card/share-card-palette.ts` 新增 `qrPlate: '#ffffff'`、`qrModule: '#111827'`。讓 T026、T029 全綠。
+- [X] T032 [US2] 修改 `web/app/core/share-card/share-card-actions.service.ts` 的 `rasterize()`：新增 `SHARE_CARD_QR_LOADER` InjectionToken（預設 `() => import('qrcode').then((m) => m.create ?? m.default.create)`）；`buildShareCardLink(window.location, option.source)` → 以 loader 取得 `create` → `toQrMatrix(link.qrUrl, create)`，任何例外都降為 `qr = null` → `env.footer = { link, qr, meta: null }`。執行 `npx ng build`；若出現 `qrcode` 的 CommonJS 相依警告，在 `apps/web/angular.json` 的 build options 加入 `"allowedCommonJsDependencies": ["qrcode"]`，build 必須零警告。讓 T027 全綠。
+- [X] T033 [US2] 修改 `web/app/core/match-share-card/share-card-renderer.ts`（FR-022、research Decision 6）：走勢區塊給 `minHeight: 140` 並依 `draw(y, height)` 收到的高度繪製；亮點區塊的 `minHeight` 為 `列數 × 52 + 48`（現行高度 `列數 × 60 + 48`，48 為上下內距），`draw` 依實際高度以 `Math.floor((height − 48) / 列數)` 換算列高；**隊伍區塊不給 `minHeight`、永不收縮**。**不得**修改 `share-card-model.ts`、`share-card-highlights.ts` 及其 spec。讓 T028 全綠。
+- [X] T034 [P] [US2] 更新 `specs/040-match-share-card/spec.md`：在 FR-006、US1 驗收情境 5 與 Assumptions「品牌字樣即足夠」三處各加一行註記「已由 041-group-share-cards FR-018 取代：圖卡頁尾現含網址與 QR 碼」，不改動原文。
+- [X] T035 [US2] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；重跑 T024 的 `git diff --stat` 指令，輸出必須為空。Commit：「所有分享圖卡的頁尾加上標語、網址與 QR 碼，掃描即可進入系統首頁」。
 
 **Checkpoint**：US1＋US2 可以一起交付——圖卡有了導流能力；040 單場圖卡同步升級。
 

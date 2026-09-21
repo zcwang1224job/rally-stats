@@ -17,6 +17,8 @@ const LIGHT: SharePalette = {
   badgeMutedText: '#15171c',
   trendA: '#b3335f',
   trendB: '#35519e',
+  qrPlate: '#ffffff',
+  qrModule: '#111827',
 };
 
 /** The team colors are lifted so they still stand out on a dark card. */
@@ -34,6 +36,8 @@ const DARK: SharePalette = {
   badgeMutedText: '#f3f4f6',
   trendA: '#f06f9a',
   trendB: '#8aa4f5',
+  qrPlate: '#ffffff',
+  qrModule: '#111827',
 };
 
 export const SHARE_PALETTES: Record<ShareTheme, SharePalette> = {

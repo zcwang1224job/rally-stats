@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
 import { SHARE_CARD_HEIGHT, SHARE_CARD_WIDTH, ShareCardCanvas } from './share-card-canvas';
-import { ShareCardActions } from './share-card-actions.service';
+import { SHARE_CARD_QR_LOADER, ShareCardActions } from './share-card-actions.service';
+import { QrCreate } from './share-card-qr';
 import { ShareCardOption, ShareCardRenderEnv } from './share-card-option';
 import { SHARE_PALETTES } from './share-card-palette';
 import { RecordingContext } from './testing/recording-context';
@@ -15,8 +16,13 @@ function install(target: object, key: string, value: unknown): void {
   installed.push({ target, key });
 }
 
-function setup(): ShareCardActions {
-  TestBed.configureTestingModule({ providers: [provideTranslateService({})] });
+function setup(qrLoader?: () => Promise<QrCreate>): ShareCardActions {
+  TestBed.configureTestingModule({
+    providers: [
+      provideTranslateService({}),
+      ...(qrLoader ? [{ provide: SHARE_CARD_QR_LOADER, useValue: qrLoader }] : []),
+    ],
+  });
   return TestBed.inject(ShareCardActions);
 }
 
@@ -80,6 +86,45 @@ describe('ShareCardActions — rasterize (041 contracts/share-card-core.md §3)'
     expect(env.footer.link.qrUrl).toBe(`${window.location.origin}/?ref=card-me`);
     expect(env.footer.link.displayUrl).toBe(window.location.host);
     expect(env.footer.meta).toBeNull();
+  });
+
+  it('puts a QR code of the card’s link in the footer (041 US2, FR-019)', async () => {
+    const create = vi.fn<QrCreate>(() => ({ modules: { size: 33, get: () => 1 } }));
+    const actions = setup(async () => create);
+    fakeCanvas();
+    const card = option({ source: 'card-rank' });
+
+    await actions.rasterize(card, 'light');
+
+    const env = vi.mocked(card.draw).mock.calls[0][1] as ShareCardRenderEnv;
+    expect(create).toHaveBeenCalledWith(`${window.location.origin}/?ref=card-rank`, {
+      errorCorrectionLevel: 'M',
+    });
+    expect(env.footer.qr?.size).toBe(33);
+  });
+
+  it('still makes the card, without a code, when the QR library can’t be loaded (FR-020)', async () => {
+    const actions = setup(() => Promise.reject(new Error('offline')));
+    fakeCanvas();
+    const card = option();
+
+    const blob = await actions.rasterize(card, 'light');
+
+    expect(blob.type).toBe('image/png');
+    const env = vi.mocked(card.draw).mock.calls[0][1] as ShareCardRenderEnv;
+    expect(env.footer.qr).toBeNull();
+    expect(env.footer.link.qrUrl).toContain('?ref=card-rank');
+  });
+
+  it('loads the real QR library by default', async () => {
+    const actions = setup();
+    fakeCanvas();
+    const card = option({ source: 'card-me' });
+
+    await actions.rasterize(card, 'light');
+
+    const env = vi.mocked(card.draw).mock.calls[0][1] as ShareCardRenderEnv;
+    expect(env.footer.qr?.size).toBeGreaterThanOrEqual(21);
   });
 });
 
