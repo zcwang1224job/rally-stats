@@ -168,10 +168,26 @@ async def list_groups(
     group_name: str | None = None,
     creator_nickname: str | None = None,
     match_mode: MatchMode | None = None,
+    pinned_group_id: uuid.UUID | None = None,
 ) -> GroupListResponse:
     """Public group browse list (US1/US5); an optional `Authorization`
     Bearer token adds per-item `joined_by_me` personalization (US6, research.md
-    #2). Excludes disbanded groups (data-model.md §1)."""
+    #2). Excludes disbanded groups (data-model.md §1).
+
+    The viewer's own groups are listed first: for a Member, the group they're
+    active in plus any group they created. A Guest has no server-side
+    identity to derive that from, so the client passes the group it's in as
+    `pinned_group_id`; it's ignored for a Member. It only reorders the list,
+    so an arbitrary value is harmless."""
+    # Computed once for the whole list, not per item — a Member has at most
+    # one active RosterEntry anywhere (the one-active-group invariant), so
+    # this single lookup already answers "is it in THIS item's group or a
+    # different one" for every item below.
+    active_group_id = (
+        await service.get_active_group_id_for_member(session, member.id)
+        if member is not None
+        else None
+    )
     groups, total_pages = await service.list_groups(
         session,
         page=page,
@@ -181,15 +197,8 @@ async def list_groups(
         group_name=group_name,
         creator_nickname=creator_nickname,
         match_mode=match_mode,
-    )
-    # Computed once for the whole list, not per item — a Member has at most
-    # one active RosterEntry anywhere (the one-active-group invariant), so
-    # this single lookup already answers "is it in THIS item's group or a
-    # different one" for every item below.
-    active_group_id = (
-        await service.get_active_group_id_for_member(session, member.id)
-        if member is not None
-        else None
+        pinned_group_id=active_group_id if member is not None else pinned_group_id,
+        pinned_creator_member_id=member.id if member is not None else None,
     )
     items = []
     for group in groups:

@@ -114,12 +114,17 @@ export class GroupListComponent {
   private readonly verifiedActiveGuestGroupId = signal<string | null>(null);
 
   constructor() {
-    this.load();
-    if (!this.auth.isLoggedIn()) {
-      this.joinService
-        .verifyActiveGuestGroupId()
-        .subscribe((groupId) => this.verifiedActiveGuestGroupId.set(groupId));
+    if (this.auth.isLoggedIn()) {
+      this.load();
+      return;
     }
+    // A Guest's own group is pinned to the top via pinned_group_id, so the
+    // first load waits for the verified id (immediate when nothing is
+    // tracked) instead of listing first and reshuffling afterwards.
+    this.joinService.verifyActiveGuestGroupId().subscribe((groupId) => {
+      this.verifiedActiveGuestGroupId.set(groupId);
+      this.load();
+    });
   }
 
   applyFilters(): void {
@@ -145,6 +150,7 @@ export class GroupListComponent {
         group_name: raw.group_name || undefined,
         creator_nickname: raw.creator_nickname || undefined,
         match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
+        pinned_group_id: this.verifiedActiveGuestGroupId() ?? undefined,
       })
       .subscribe({
         next: (response) => {
