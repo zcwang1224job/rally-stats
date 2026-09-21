@@ -3,7 +3,7 @@ import { FinalStandingRow, OpponentRecord, RoundWinRatePoint } from '../../api/g
 
 /** A UTC noon timestamp, so the date in file names is the same in every
  * time zone a test may run in. */
-export const CREATED_AT = '2026-09-16T04:00:00Z';
+export const CREATED_AT = '2026-09-16T12:00:00Z';
 
 const NICKNAMES = [
   '王小明', '陳大華', '林小美', '張阿強', '李文文', '黃志豪', '吳佳穎', '周建宏',

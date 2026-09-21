@@ -17,6 +17,9 @@ import {
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
 import { ShareCardContext } from '../../../../core/match-share-card/share-card.models';
+import { availableGroupCards } from '../../../../core/group-share-card/group-share-cards';
+import { ShareCardOption } from '../../../../core/share-card/share-card-option';
+import { ShareCardPreviewComponent } from '../../../../core/share-card/share-card-preview/share-card-preview.component';
 import { NicknameComponent } from '../../../../core/nickname/nickname.component';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
@@ -76,6 +79,7 @@ interface PlayerPieSlice {
     RouterLink,
     MatchRecordDetailDialogComponent,
     NicknameComponent,
+    ShareCardPreviewComponent,
   ],
   templateUrl: './group-history.component.html',
   styleUrl: './group-history.component.scss',
@@ -104,6 +108,19 @@ export class GroupHistoryComponent {
   });
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
+
+  /** 041-group-share-cards: the group's creation time, the card's date. The
+   * history response has no date, so it comes from the group list; if that
+   * fails the card simply has no date — the page itself is unaffected
+   * (research.md Decision 7). */
+  private readonly createdAt = signal<string | null>(null);
+  readonly sharePreview = viewChild.required(ShareCardPreviewComponent);
+  /** The group cards this history can make. The standings and my stats
+   * ignore the match-list filters, so neither do the cards. */
+  readonly shareOptions = computed<ShareCardOption[]>(() => {
+    const history = this.history();
+    return history ? availableGroupCards(history, { createdAt: this.createdAt() }) : [];
+  });
 
   readonly filterForm = this.fb.nonNullable.group({
     nickname: [''],
@@ -168,6 +185,17 @@ export class GroupHistoryComponent {
 
   constructor() {
     this.load(this.page());
+    this.friends.getMyGroups().subscribe({
+      next: (response) =>
+        this.createdAt.set(
+          response.groups.find((group) => group.group_id === this.groupId)?.created_at ?? null,
+        ),
+      error: () => this.createdAt.set(null),
+    });
+  }
+
+  openShareCards(): void {
+    this.sharePreview().open(this.shareOptions());
   }
 
   applyFilters(): void {

@@ -3,8 +3,15 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
 import { provideTranslateService } from '@ngx-translate/core';
-import { of, throwError } from 'rxjs';
-import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
+import { Subject, of, throwError } from 'rxjs';
+import {
+  MemberGroupHistoryFilters,
+  MemberGroupHistoryResponse,
+  MyGroupsResponse,
+} from '../../../../core/api/friend.models';
+import { ShareCardActions } from '../../../../core/share-card/share-card-actions.service';
+import { ShareCardOption } from '../../../../core/share-card/share-card-option';
+import { ShareCardPreviewComponent } from '../../../../core/share-card/share-card-preview/share-card-preview.component';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
 import { GroupHistoryComponent } from './group-history.component';
@@ -86,12 +93,29 @@ const historyResponse: MemberGroupHistoryResponse = {
   ],
 };
 
+const myGroupsResponse: MyGroupsResponse = {
+  groups: [
+    {
+      group_id: 'g1',
+      group_number: 7,
+      name: '週三團',
+      status: 'disbanded',
+      created_at: '2026-09-16T12:00:00Z',
+      disbanded_at: '2026-09-16T12:00:00Z',
+      is_creator: false,
+      member_status: 'active',
+    },
+  ],
+};
+
 function setup(
   overrides: {
     getMemberGroupHistory?: (...args: unknown[]) => unknown;
     getMatchRecordDetail?: (...args: unknown[]) => unknown;
+    getMyGroups?: () => unknown;
   } = {},
 ) {
+  const getMyGroups = overrides.getMyGroups ?? (() => of(myGroupsResponse));
   const calls: unknown[][] = [];
   const getMemberGroupHistory =
     overrides.getMemberGroupHistory ??
@@ -114,8 +138,22 @@ function setup(
         provide: ActivatedRoute,
         useValue: { snapshot: { paramMap: convertToParamMap({ groupId: 'g1' }) } },
       },
-      { provide: FriendsService, useValue: { getMemberGroupHistory } },
+      { provide: FriendsService, useValue: { getMemberGroupHistory, getMyGroups } },
       { provide: AuthService, useValue: { getMatchRecordDetail } },
+      // jsdom has no canvas; the share preview only needs these to run.
+      {
+        provide: ShareCardActions,
+        useValue: {
+          rasterize: async () => new Blob(['png']),
+          createObjectUrl: () => 'blob:card',
+          revokeObjectUrl: () => undefined,
+          canShareFiles: () => false,
+          canCopyImage: () => false,
+          download: () => undefined,
+          share: async () => 'shared',
+          copyImage: async () => undefined,
+        },
+      },
     ],
   });
   const fixture = TestBed.createComponent(GroupHistoryComponent);
@@ -434,5 +472,126 @@ describe('GroupHistoryComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'member.matchHistory.finalStandings.empty',
     );
+  });
+});
+
+describe('GroupHistoryComponent — share cards (041 US1)', () => {
+  const shareButton = (fixture: { nativeElement: HTMLElement }) =>
+    fixture.nativeElement.querySelector<HTMLButtonElement>('.group-history__share');
+
+  function openedOptions(fixture: ReturnType<typeof setup>['fixture']): ShareCardOption[] {
+    const preview = fixture.componentInstance.sharePreview();
+    const open = vi.spyOn(preview, 'open');
+    shareButton(fixture)!.click();
+    return open.mock.calls.at(-1)![0] as ShareCardOption[];
+  }
+
+  it('offers the leaderboard card once the page has loaded (FR-001)', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    expect(shareButton(fixture)?.textContent).toContain('groupShareCard.openButton');
+    const options = openedOptions(fixture);
+    expect(options[0].source).toBe('card-rank');
+    expect(options[0].fileName).toBe('rally-stats-rank-20260916-週三團.png');
+  });
+
+  it('shows no share button while loading or after an error', () => {
+    const loading = setup({ getMemberGroupHistory: () => new Subject() });
+    loading.fixture.detectChanges();
+    expect(shareButton(loading.fixture)).toBeNull();
+    TestBed.resetTestingModule();
+
+    const failed = setup({
+      getMemberGroupHistory: () => throwError(() => ({ i18nKey: 'errors.generic' })),
+    });
+    failed.fixture.detectChanges();
+    expect(shareButton(failed.fixture)).toBeNull();
+  });
+
+  it('shows no share button when nobody in the group has played', () => {
+    const { fixture } = setup({
+      getMemberGroupHistory: () =>
+        of({
+          ...historyResponse,
+          final_standings: historyResponse.final_standings.map((row) => ({
+            ...row,
+            total_matches: 0,
+            total_wins: 0,
+            total_losses: 0,
+          })),
+          my_stats: { ...historyResponse.my_stats, total_matches: 0, total_wins: 0, total_losses: 0 },
+        }),
+    });
+    fixture.detectChanges();
+
+    expect(shareButton(fixture)).toBeNull();
+  });
+
+  it('asks for the group list once, for the date on the card', () => {
+    const getMyGroups = vi.fn(() => of(myGroupsResponse));
+    const { fixture } = setup({ getMyGroups });
+    fixture.detectChanges();
+
+    expect(getMyGroups).toHaveBeenCalledTimes(1);
+  });
+
+  it('still offers the card, without a date, when the group list fails (research Decision 7)', () => {
+    const { fixture } = setup({
+      getMyGroups: () => throwError(() => ({ i18nKey: 'errors.generic' })),
+    });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.errorKey()).toBeNull();
+    expect(openedOptions(fixture)[0].fileName).toBe('rally-stats-rank-nodate-週三團.png');
+  });
+
+  it('still offers the card, without a date, when the group is not in the list', () => {
+    const { fixture } = setup({ getMyGroups: () => of({ groups: [] }) });
+    fixture.detectChanges();
+
+    expect(openedOptions(fixture)[0].fileName).toBe('rally-stats-rank-nodate-週三團.png');
+  });
+
+  it('makes the same card whatever the match list is filtered to', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+    const before = openedOptions(fixture)[0];
+
+    fixture.componentInstance.filterForm.controls.nickname.setValue('小華');
+    fixture.componentInstance.applyFilters();
+    fixture.componentInstance.goToPage(2);
+    fixture.detectChanges();
+    const after = openedOptions(fixture)[0];
+
+    expect(after.fileName).toBe(before.fileName);
+    expect(after.altText).toEqual(before.altText);
+  });
+
+  it('leaves the filters, the page and the data alone when the preview closes (FR-002)', async () => {
+    const { fixture, calls } = setup();
+    fixture.detectChanges();
+    fixture.componentInstance.filterForm.controls.nickname.setValue('小華');
+    fixture.componentInstance.applyFilters();
+    fixture.componentInstance.goToPage(2);
+    fixture.detectChanges();
+    const fetches = calls.length;
+
+    shareButton(fixture)!.click();
+    await fixture.whenStable();
+    fixture.componentInstance.sharePreview().close();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.filterForm.controls.nickname.value).toBe('小華');
+    expect(fixture.componentInstance.page()).toBe(2);
+    expect(calls.length).toBe(fetches);
+  });
+
+  it('keeps the match detail’s own share card for single matches', () => {
+    const { fixture } = setup();
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.directive(MatchRecordDetailDialogComponent))).not.toBeNull();
+    expect(fixture.debugElement.queryAll(By.directive(ShareCardPreviewComponent)).length).toBe(2);
   });
 });

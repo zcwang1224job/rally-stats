@@ -125,7 +125,7 @@ description: "Task list for 041-group-share-cards"
 
 ### Tests for User Story 1 ⚠️（先寫，確認會失敗）
 
-- [ ] T015 [P] [US1] 新增 `web/app/core/group-share-card/leaderboard-card-model.spec.ts`，逐條涵蓋 contracts/group-share-card.md 的 L1～L10（FR-005～FR-011、FR-021、FR-031、FR-032、SC-003、SC-004、SC-010）：
+- [X] T015 [P] [US1] 新增 `web/app/core/group-share-card/leaderboard-card-model.spec.ts`，逐條涵蓋 contracts/group-share-card.md 的 L1～L10（FR-005～FR-011、FR-021、FR-031、FR-032、SC-003、SC-004、SC-010）：
   - L1：1／2／3／6／7／40 位有出賽球員時 `rows.length` 為 `min(N, 6)`；`rows` 的暱稱序列等於輸入濾掉 0 場後的前綴；另以一份**刻意不照勝場排序**的輸入驗證輸出順序仍與輸入相同（證明沒有排序）；0 場球員夾在有出賽球員之間時被跳過、不影響其後列的相對順序。
   - L2：名次 1、1、3 原樣保留；1、2、3、3、3、3、3（並列跨越第 6 列）取前 6 列且名次原樣。
   - L3：`podium` 只有前 3 列為 true；只有 2 位球員時兩列皆為 true。
@@ -137,7 +137,7 @@ description: "Task list for 041-group-share-cards"
   - L9：同樣輸入呼叫兩次，結果深度相等。
   - L10：替代文字——3 列以上用 `altText3`、2 列 `altText2`、1 列 `altText1`；`rank1～3` 參數等於前 3 列的伺服器名次（並列 1、1、3 時為 `1`、`1`、`3`）；`name1～3` 為暱稱；`group` 為團名；不會出現空字串參數。
   - 另驗證：`date` 等於 `context.createdAt`（為 `null` 時為 `null`）；`fileName` 為 `rally-stats-rank-YYYYMMDD-<安全團名>.png`（無日期時為 `nodate`；團名中的 `/ \ : * ? " < > |` 與空白被替換為 `-`，長度上限 40）。
-- [ ] T016 [P] [US1] 新增 `web/app/core/group-share-card/leaderboard-card-renderer.spec.ts`，使用 `RecordingContext`、`testFooter()` 與假的 `ShareCardText`（對 `shareCard.dateFormat` 回傳真實格式字串，其餘回傳 `key|JSON(params)`）（FR-006、FR-007、FR-009、FR-010、FR-012、SC-005）：
+- [X] T016 [P] [US1] 新增 `web/app/core/group-share-card/leaderboard-card-renderer.spec.ts`，使用 `RecordingContext`、`testFooter()` 與假的 `ShareCardText`（對 `shareCard.dateFormat` 回傳真實格式字串，其餘回傳 `key|JSON(params)`）（FR-006、FR-007、FR-009、FR-010、FR-012、SC-005）：
   - 畫出團名、`groupShareCard.leaderboard.title`、格式化後的日期、`groupShareCard.leaderboard.playerCount`、每一列的名次數字、暱稱與 `groupShareCard.leaderboard.record`。
   - `date === null` 時不畫日期，副標其餘部分照常。
   - 本人列畫出 `groupShareCard.selfTag` **文字**；非本人列沒有。
@@ -149,8 +149,8 @@ description: "Task list for 041-group-share-cards"
   - 最壞情況（6 列＋`selfRow`）：`ctx.bottomEdge({ skipFirst: 1, skipLast: footerOpCount(…) })` ≤ `SHARE_CARD_MIDDLE_BOTTOM`。
   - 最後一次繪製呼叫 `drawPromoFooter`：頁尾的品牌字樣有畫出。
   - 亮色與暗色各跑一次，背景 `fillRect` 的顏色為對應色盤的 `background`。
-- [ ] T017 [P] [US1] 新增 `web/app/core/group-share-card/group-share-cards.spec.ts`（US1 段落）：有出賽球員時 `availableGroupCards()` 的第一個選項 `source === 'card-rank'`、`labelKey === 'groupShareCard.kind.leaderboard'`、`fileName`／`altText` 來自排行榜模型；全員 0 場時回傳 `[]`；選項的 `draw` 以 `RecordingContext` 呼叫後會畫出團名（FR-001、FR-005）。
-- [ ] T018 [P] [US1] 擴充 `web/app/features/member/my-groups/group-history/group-history.component.spec.ts`（FR-001、FR-002、FR-028、Edge Cases）：
+- [X] T017 [P] [US1] 新增 `web/app/core/group-share-card/group-share-cards.spec.ts`（US1 段落）：有出賽球員時 `availableGroupCards()` 的第一個選項 `source === 'card-rank'`、`labelKey === 'groupShareCard.kind.leaderboard'`、`fileName`／`altText` 來自排行榜模型；全員 0 場時回傳 `[]`；選項的 `draw` 以 `RecordingContext` 呼叫後會畫出團名（FR-001、FR-005）。
+- [X] T018 [P] [US1] 擴充 `web/app/features/member/my-groups/group-history/group-history.component.spec.ts`（FR-001、FR-002、FR-028、Edge Cases）：
   - 頁面載入成功且有可用圖卡時顯示 `groupShareCard.openButton` 按鈕；載入中、載入錯誤、或 `final_standings` 全員 0 場時**不顯示**。
   - 點擊按鈕後，以 `availableGroupCards()` 的結果呼叫 `ShareCardPreviewComponent.open()`（以替身外殼或 spy 驗證第一個選項 `source === 'card-rank'`）。
   - 初始化時呼叫一次 `FriendsService.getMyGroups()`；成功時選項的檔名含該團 `created_at` 的日期；`getMyGroups()` 失敗、或清單中沒有該團時，頁面**不進入錯誤狀態**、按鈕仍可用、檔名為 `nodate`（research Decision 7）。
@@ -159,12 +159,12 @@ description: "Task list for 041-group-share-cards"
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] 建立 `web/app/core/group-share-card/group-share-card.models.ts`：依 data-model.md 第 3 節定義 `GroupShareCardContext`、`LeaderboardRow`、`LeaderboardCardModel`（`MyStatsCardModel` 留到 US3）。不得使用 `any`；不得包含 `current_status` 或任何 ID 欄位。同時建立 `web/app/core/group-share-card/group-share-card-palette.ts`（獎牌色是排行榜專用，不放進共用色盤）：`MEDAL_COLORS = { 1: '#FCD34D', 2: '#D1D5DB', 3: '#F4B183' }`、`MEDAL_TEXT = '#111827'`，兩種配色相同；並新增 `group-share-card-palette.spec.ts` 斷言三個獎牌底色與 `MEDAL_TEXT` 的對比皆 ≥ 4.5:1（沿用 `share-card-palette.spec.ts` 的亮度公式）（FR-009、憲章 VII）。
-- [ ] T020 [US1] 實作 `web/app/core/group-share-card/leaderboard-card-model.ts`：`buildLeaderboardCardModel(history, context)`，另 export `countPlayers(standings)`（有出賽的列數，US3 共用）。只用 `filter`（`total_matches ≥ 1`）、`slice(0, 6)`、`find(is_self)`——**不得**呼叫 `sort`、不得重新計算或重新編號 `rank`（FR-008、憲章 X）。檔名的安全字元處理與日期格式化寫成本檔的私有小函式。讓 T015 全綠。
-- [ ] T021 [US1] 實作 `web/app/core/group-share-card/leaderboard-card-renderer.ts`：`renderLeaderboardCard(ctx, model, env)`，結構為背景 → 標題區（團名 bold 44px 於 y=72；副標「排行榜 · 日期 · N 位球員」30px 於 y=136，日期用 `formatDate(model.date, env.text('shareCard.dateFormat'), 'en-US')`）→ `stackBlocks()` 排中段 → `drawPromoFooter(ctx, env.footer, env)`。中段區塊（contracts/group-share-card.md §2 尺寸表）：頒獎台區塊每列 120（列與列之間不另加間距）、一般列區塊每列 76、本人附列區塊 116（分隔符號「⋯」40＋一列 76）；三個區塊都不給 `minHeight`。獎牌一律用 `arc`＋數字文字繪製、不用 emoji，顏色取自 `MEDAL_COLORS`／`MEDAL_TEXT`；獎牌依 `rank ≤ 3`，頒獎台的大字級與列高依 `podium`；本人列以 `palette.panel` 為列底色，「我」以 `pill`（`palette.badgeBackground`）＋文字（`palette.badgeText`）呈現。讓 T016 全綠。
-- [ ] T022 [US1] 實作 `web/app/core/group-share-card/group-share-cards.ts`：`availableGroupCards(history, context): ShareCardOption[]`，本階段只組排行榜選項。讓 T017 全綠。
-- [ ] T023 [US1] 接線 `web/app/features/member/my-groups/group-history/group-history.component.{ts,html,scss}`（contracts/group-share-card.md §3）：新增 signal `createdAt`，初始化時訂閱 `friends.getMyGroups()`，以路由的 `groupId` 找出該團的 `created_at`，錯誤時維持 `null` 且不碰 `errorKey`；`shareOptions = computed(…)`；標題列加上原生 `<button type="button">`（`@if (shareOptions().length > 0)`），點擊呼叫 `preview().open(shareOptions())`；範本加入 `<app-share-card-preview>` 並在 `imports` 登記。既有的比賽詳情 dialog 與其 `shareContext` 不動。讓 T018 全綠。
-- [ ] T024 [US1] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；重跑 T014 的 `git diff --stat` 指令，但把最後一個路徑 `…/member/my-groups` 換成 `…/member/my-groups/my-groups.component.ts`，輸出必須為空。Commit：「我的團的團戰績頁可以產生排行榜分享圖卡：前三名頒獎台、第 4–6 名，並標出自己」。
+- [X] T019 [US1] 建立 `web/app/core/group-share-card/group-share-card.models.ts`：依 data-model.md 第 3 節定義 `GroupShareCardContext`、`LeaderboardRow`、`LeaderboardCardModel`（`MyStatsCardModel` 留到 US3）。不得使用 `any`；不得包含 `current_status` 或任何 ID 欄位。同時建立 `web/app/core/group-share-card/group-share-card-palette.ts`（獎牌色是排行榜專用，不放進共用色盤）：`MEDAL_COLORS = { 1: '#FCD34D', 2: '#D1D5DB', 3: '#F4B183' }`、`MEDAL_TEXT = '#111827'`，兩種配色相同；並新增 `group-share-card-palette.spec.ts` 斷言三個獎牌底色與 `MEDAL_TEXT` 的對比皆 ≥ 4.5:1（沿用 `share-card-palette.spec.ts` 的亮度公式）（FR-009、憲章 VII）。
+- [X] T020 [US1] 實作 `web/app/core/group-share-card/leaderboard-card-model.ts`：`buildLeaderboardCardModel(history, context)`，另 export `countPlayers(standings)`（有出賽的列數，US3 共用）。只用 `filter`（`total_matches ≥ 1`）、`slice(0, 6)`、`find(is_self)`——**不得**呼叫 `sort`、不得重新計算或重新編號 `rank`（FR-008、憲章 X）。檔名的安全字元處理與日期格式化寫成本檔的私有小函式。讓 T015 全綠。
+- [X] T021 [US1] 實作 `web/app/core/group-share-card/leaderboard-card-renderer.ts`：`renderLeaderboardCard(ctx, model, env)`，結構為背景 → 標題區（團名 bold 44px 於 y=72；副標「排行榜 · 日期 · N 位球員」30px 於 y=136，日期用 `formatDate(model.date, env.text('shareCard.dateFormat'), 'en-US')`）→ `stackBlocks()` 排中段 → `drawPromoFooter(ctx, env.footer, env)`。中段區塊（contracts/group-share-card.md §2 尺寸表）：頒獎台區塊每列 120（列與列之間不另加間距）、一般列區塊每列 76、本人附列區塊 116（分隔符號「⋯」40＋一列 76）；三個區塊都不給 `minHeight`。獎牌一律用 `arc`＋數字文字繪製、不用 emoji，顏色取自 `MEDAL_COLORS`／`MEDAL_TEXT`；獎牌依 `rank ≤ 3`，頒獎台的大字級與列高依 `podium`；本人列以 `palette.panel` 為列底色，「我」以 `pill`（`palette.badgeBackground`）＋文字（`palette.badgeText`）呈現。讓 T016 全綠。
+- [X] T022 [US1] 實作 `web/app/core/group-share-card/group-share-cards.ts`：`availableGroupCards(history, context): ShareCardOption[]`，本階段只組排行榜選項。讓 T017 全綠。
+- [X] T023 [US1] 接線 `web/app/features/member/my-groups/group-history/group-history.component.{ts,html,scss}`（contracts/group-share-card.md §3）：新增 signal `createdAt`，初始化時訂閱 `friends.getMyGroups()`，以路由的 `groupId` 找出該團的 `created_at`，錯誤時維持 `null` 且不碰 `errorKey`；`shareOptions = computed(…)`；標題列加上原生 `<button type="button">`（`@if (shareOptions().length > 0)`），點擊呼叫 `preview().open(shareOptions())`；範本加入 `<app-share-card-preview>` 並在 `imports` 登記。既有的比賽詳情 dialog 與其 `shareContext` 不動。讓 T018 全綠。
+- [X] T024 [US1] 在 `apps/web` 執行 `npx ng test --watch=false`、`npx ng lint`、`npx ng build` 全部通過；重跑 T014 的 `git diff --stat` 指令，但把最後一個路徑 `…/member/my-groups` 換成 `…/member/my-groups/my-groups.component.ts`，輸出必須為空。Commit：「我的團的團戰績頁可以產生排行榜分享圖卡：前三名頒獎台、第 4–6 名，並標出自己」。
 
 **Checkpoint**：MVP 可以單獨交付——排行榜卡可預覽、下載、分享、複製；頁尾仍為品牌字樣。
 

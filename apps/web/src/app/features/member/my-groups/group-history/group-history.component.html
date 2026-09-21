@@ -1,5 +1,16 @@
 @if (history(); as h) {
-  <h1 class="page-title">{{ h.group_name }}</h1>
+  <div class="page-header">
+    <h1 class="page-title">{{ h.group_name }}</h1>
+    @if (!errorKey() && shareOptions().length > 0) {
+      <button
+        type="button"
+        class="btn btn--secondary group-history__share"
+        (click)="openShareCards()"
+      >
+        {{ 'groupShareCard.openButton' | translate }}
+      </button>
+    }
+  </div>
 }
 
 @if (errorKey()) {
@@ -224,3 +235,5 @@
   [loadError]="detailLoadError()"
   [shareContext]="shareContext()"
 />
+
+<app-share-card-preview />
