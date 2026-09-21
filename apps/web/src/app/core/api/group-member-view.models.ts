@@ -295,6 +295,10 @@ export interface EndingStats {
 // (recording started mid-match), "none" (no events at all — a match
 // completed before this feature shipped).
 export interface MatchRecordDetailResponse extends MatchRecordSummary {
+  // 040-match-share-card FR-012a: the match's own points-to-win, snapshot at
+  // match creation (matches.target_score) — never the group's current
+  // setting. Scales the share card's highlight thresholds.
+  target_score: number;
   record_completeness: 'complete' | 'partial' | 'none';
   events: ScoreEventSummary[];
   // research.md (032) Decision 4: `[]` is the single signal for "no player

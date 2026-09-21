@@ -64,6 +64,7 @@ const completeDetail: MatchRecordDetailResponse = {
   winner_team: 'A',
   started_at: '2026-01-01T10:00:00Z',
   ended_at: '2026-01-01T10:01:00Z',
+  target_score: 21,
   record_completeness: 'complete',
   events: [
     { side: 'A', delta: 1, score_a: 1, score_b: 0, elapsed_seconds: 10, detail: null },

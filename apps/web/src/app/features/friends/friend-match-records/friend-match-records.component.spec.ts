@@ -123,6 +123,7 @@ function setup(options: {
           winner_team: 'A',
           started_at: '2026-09-14T10:00:00Z',
           ended_at: '2026-09-14T10:20:00Z',
+          target_score: 21,
           record_completeness: 'complete',
           events: [],
           player_stats: [],

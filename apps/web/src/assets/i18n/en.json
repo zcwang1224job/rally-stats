@@ -1136,6 +1136,43 @@
       }
     }
   },
+  "matchShareCard": {
+    "openButton": "Share card",
+    "previewTitle": "Share card",
+    "themeLabel": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "share": "Share",
+    "copy": "Copy image",
+    "copied": "Image copied",
+    "download": "Download image",
+    "close": "Close",
+    "generating": "Creating card…",
+    "generateError": "Couldn't create the card. Please try again.",
+    "shareError": "Sharing failed. You can use “Download image” instead.",
+    "copyError": "Copying failed. You can use “Download image” instead.",
+    "badge": {
+      "win": "WIN",
+      "victory": "Victory",
+      "defeat": "Defeat"
+    },
+    "dateFormat": "MMM d, yyyy",
+    "round": "Round {{round}}",
+    "duration": "Duration {{minutes}}m {{seconds}}s",
+    "durationHours": "Duration {{hours}}h {{minutes}}m",
+    "avgPerPoint": "{{seconds}}s per point",
+    "brand": "Rally Stats",
+    "altText": "Match card: {{first}} {{firstScore}}, {{second}} {{secondScore}}. {{winner}} won",
+    "highlight": {
+      "comeback": "Came back from {{deficit}} down",
+      "matchPointsSaved": "Saved {{count}} match point(s)",
+      "deuceWin": "Won in extra points {{scoreFor}}:{{scoreAgainst}}",
+      "run": "{{length}} points in a row",
+      "winnerRate": "{{percent}} of points were winners",
+      "leadChanges": "Lead changed {{count}} times",
+      "bigMargin": "Won by {{margin}} points"
+    }
+  },
   "errors": {
     "VALIDATION_ERROR": "Some fields are invalid — please check them and try again",
     "OAUTH_PROVIDER_UNKNOWN": "That sign-in method isn't supported",
