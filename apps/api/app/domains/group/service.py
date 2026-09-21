@@ -15,7 +15,7 @@ from datetime import UTC, datetime, time, timedelta
 from itertools import permutations
 from typing import Literal
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -701,10 +701,19 @@ async def list_groups(
     group_name: str | None = None,
     creator_nickname: str | None = None,
     match_mode: str | None = None,
+    pinned_group_id: uuid.UUID | None = None,
+    pinned_creator_member_id: uuid.UUID | None = None,
 ) -> tuple[list[Group], int]:
     """Browse query (US1 base, extended by US5's filters); `joined_by_me`
     personalization (US6) is layered on top of this function's result set
     by the router, not here.
+
+    The viewer's own groups sort ahead of the rest (each part newest first):
+    `pinned_group_id` is the group they're currently in, and
+    `pinned_creator_member_id` also pins every group they created. Pinning
+    only reorders — it never lets a group past the filters — and happens in
+    the query rather than per page, so the pinned rows land on page 1 and
+    later pages neither repeat nor skip anything.
 
     research.md #7: the court name filter matches if ANY of the group's
     (non-deleted) courts hits — a group can have multiple courts. Time
@@ -759,10 +768,17 @@ async def list_groups(
     total = count_result.scalar_one()
     total_pages = max(1, (total + _GROUP_LIST_PAGE_SIZE - 1) // _GROUP_LIST_PAGE_SIZE)
 
+    pins = []
+    if pinned_group_id is not None:
+        pins.append(Group.id == pinned_group_id)
+    if pinned_creator_member_id is not None:
+        pins.append(Group.created_by_member_id == pinned_creator_member_id)
+    query = select(Group).where(*conditions)
+    if pins:
+        query = query.order_by(case((or_(*pins), 0), else_=1))
+
     result = await session.execute(
-        select(Group)
-        .where(*conditions)
-        .order_by(Group.created_at.desc())
+        query.order_by(Group.created_at.desc())
         .limit(_GROUP_LIST_PAGE_SIZE)
         .offset((page - 1) * _GROUP_LIST_PAGE_SIZE)
     )

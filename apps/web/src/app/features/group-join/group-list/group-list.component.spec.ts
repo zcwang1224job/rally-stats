@@ -329,4 +329,26 @@ describe('GroupListComponent', () => {
     expect(li.textContent).not.toContain('groupJoin.alreadyJoinedLabel');
     expect(li.querySelector('button')).not.toBeNull();
   });
+
+  it("asks for a Guest's verified group to be pinned to the top", () => {
+    const listGroups = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    setup(1, [group], { isLoggedIn: false, verifiedActiveGuestGroupId: 'g1', listGroups });
+
+    expect(listGroups).toHaveBeenCalledTimes(1);
+    expect(listGroups).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ pinned_group_id: 'g1' }),
+    );
+  });
+
+  it('pins nothing for a Guest with no tracked group or for a Member', () => {
+    const guestList = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    setup(1, [group], { isLoggedIn: false, verifiedActiveGuestGroupId: null, listGroups: guestList });
+    expect(guestList).toHaveBeenCalledWith(1, expect.objectContaining({ pinned_group_id: undefined }));
+
+    TestBed.resetTestingModule();
+    const memberList = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    setup(1, [group], { listGroups: memberList });
+    expect(memberList).toHaveBeenCalledWith(1, expect.objectContaining({ pinned_group_id: undefined }));
+  });
 });
