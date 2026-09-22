@@ -124,15 +124,44 @@
     [winRate]="r.win_rate"
   />
 
-  <!-- On a phone the list sits below the insights, the dashboard and the
-       matchup tables — thousands of pixels down. One tap gets there. -->
-  @if (r.matches.length > 0) {
-    <button type="button" class="jump-to-list" data-jump-to-list (click)="scrollToMatchList()">
-      <span aria-hidden="true">↓</span>
-      {{ 'member.matchHistory.jumpToList' | translate: { total: r.total_matches } }}
+  <!-- Two tabs under the summary: the matches themselves (first — it is what
+       most visits are for) and the analysis. The filters above apply to
+       both. Both panels stay rendered, so switching keeps each one's state
+       (an open section, a chosen range, the page of matches). -->
+  <nav class="tabs match-history-tabs" role="tablist" [attr.aria-label]="'nav.matchHistory' | translate">
+    <button
+      type="button"
+      role="tab"
+      class="tabs__tab"
+      id="match-history-tab-matches"
+      data-tab="matches"
+      aria-controls="match-history-panel-matches"
+      [attr.aria-selected]="activeTab() === 'matches'"
+      (click)="activeTab.set('matches')"
+    >
+      {{ 'member.matchHistory.tabs.matches' | translate: { total: r.total_matches } }}
     </button>
-  }
+    <button
+      type="button"
+      role="tab"
+      class="tabs__tab"
+      id="match-history-tab-stats"
+      data-tab="stats"
+      aria-controls="match-history-panel-stats"
+      [attr.aria-selected]="activeTab() === 'stats'"
+      (click)="activeTab.set('stats')"
+    >
+      {{ 'member.matchHistory.tabs.stats' | translate }}
+    </button>
+  </nav>
 
+  <div
+    role="tabpanel"
+    id="match-history-panel-stats"
+    aria-labelledby="match-history-tab-stats"
+    data-panel="stats"
+    [hidden]="activeTab() !== 'stats'"
+  >
   <!-- The big sections run as an accordion: all collapsed on arrival, and
        opening one folds away whichever was open, so the page is a short list
        of titles above the matches rather than a long scroll through all of
@@ -233,7 +262,15 @@
       />
     }
   </div>
+  </div>
 
+  <div
+    role="tabpanel"
+    id="match-history-panel-matches"
+    aria-labelledby="match-history-tab-matches"
+    data-panel="matches"
+    [hidden]="activeTab() !== 'matches'"
+  >
   @if (r.matches.length === 0) {
     <p class="empty-state card">{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
   } @else {
@@ -251,6 +288,7 @@
     </ul>
     <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />
   }
+  </div>
 } @else {
   <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 }

@@ -274,7 +274,10 @@
         "empty": "No match records yet"
       },
       "groupRecordsTitle": "Match Records",
-      "jumpToList": "Jump to the match list ({{total}} matches)",
+      "tabs": {
+        "matches": "Matches ({{total}})",
+        "stats": "Stats"
+      },
       "filters": {
         "nickname": "Player Nickname",
         "nicknamePlaceholder": "Search matches this player appears in",

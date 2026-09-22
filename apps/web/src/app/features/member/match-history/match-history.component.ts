@@ -48,6 +48,9 @@ import { FriendsService } from '../../friends/friends.service';
  * 統計，僅登入會員可見（路由層由既有 member 功能區塊之登入檢查涵蓋）。
  * 篩選（對手/隊友暱稱、勝負、日期、輪次、比分）交由後端計算，所有統計卡
  * 片與圖表都反映篩選後的完整結果集，而非僅目前頁面。 */
+/** The two tabs under the summary. */
+export type MatchHistoryTab = 'matches' | 'stats';
+
 /** The page's big sections, run as an accordion (one open at a time). */
 export type MatchHistorySection =
   | 'insights'
@@ -96,7 +99,12 @@ export class MatchHistoryComponent {
   private readonly dashboardRef = viewChild(PlayerDashboardComponent);
   private readonly matchList = viewChild<ElementRef<HTMLElement>>('matchList');
 
-  /** The big sections, one open at a time, all folded on arrival. */
+  /** The matches first — what most visits are for; the analysis one tap
+   * away. The filters apply to both. */
+  readonly activeTab = signal<MatchHistoryTab>('matches');
+
+  /** The big sections (on the analysis tab), one open at a time, all folded
+   * on arrival. */
   readonly sections = new SectionAccordion<MatchHistorySection>();
 
   focusMetric(key: DashboardMetricKey): void {
@@ -237,6 +245,8 @@ export class MatchHistoryComponent {
   pickPlayer(role: MatchupRole, record: MatchupRecord): void {
     this.pickedPlayer.set({ role, record });
     this.applyFilters();
+    // The row click is "show me our matches": they are on the other tab.
+    this.activeTab.set('matches');
   }
 
   clearPickedPlayer(): void {
@@ -293,8 +303,7 @@ export class MatchHistoryComponent {
     this.load(page, { scrollToList: true });
   }
 
-  /** On a phone the match list starts far below the summary, the dashboard
-   * and the matchup tables; this brings its top edge into view. */
+  /** Brings the match list's top edge into view (after a page flip). */
   scrollToMatchList(): void {
     this.matchList()?.nativeElement.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   }

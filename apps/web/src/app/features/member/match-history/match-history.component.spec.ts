@@ -714,30 +714,68 @@ describe('MatchHistoryComponent', () => {
   // On a phone the list sits thousands of pixels below the summary and the
   // dashboard: a jump button gets there, and a page flip lands on the NEW
   // page's first card rather than at the pagination under it.
-  describe('getting to the match list on a phone', () => {
+  // Two tabs under the summary: the matches (first) and the analysis.
+  describe('matches and analysis tabs', () => {
+    const tab = (root: HTMLElement, name: string) =>
+      root.querySelector<HTMLButtonElement>(`[role="tab"][data-tab="${name}"]`)!;
+    const panel = (root: HTMLElement, name: string) =>
+      root.querySelector<HTMLElement>(`[role="tabpanel"][data-panel="${name}"]`)!;
+
+    it('opens on the matches, with the total in the tab', () => {
+      const fixture = setup([], { records: { ...recordsResponse, total_matches: 42 } });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(tab(root, 'matches').getAttribute('aria-selected')).toBe('true');
+      expect(tab(root, 'stats').getAttribute('aria-selected')).toBe('false');
+      expect(tab(root, 'matches').textContent).toContain('member.matchHistory.tabs.matches');
+      expect(panel(root, 'matches').hidden).toBe(false);
+      expect(panel(root, 'stats').hidden).toBe(true);
+      expect(panel(root, 'matches').querySelector('.match-card')).not.toBeNull();
+      expect(panel(root, 'stats').querySelector('app-player-dashboard')).not.toBeNull();
+    });
+
+    it('switches to the analysis and back, keeping both rendered', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+
+      tab(root, 'stats').click();
+      fixture.detectChanges();
+      expect(tab(root, 'stats').getAttribute('aria-selected')).toBe('true');
+      expect(panel(root, 'stats').hidden).toBe(false);
+      expect(panel(root, 'matches').hidden).toBe(true);
+
+      tab(root, 'matches').click();
+      fixture.detectChanges();
+      expect(panel(root, 'matches').hidden).toBe(false);
+      expect(panel(root, 'stats').hidden).toBe(true);
+    });
+
+    it('picking a partner shows their matches on the matches tab', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+      tab(root, 'stats').click();
+      fixture.detectChanges();
+
+      fixture.componentInstance.pickPlayer('partner', recordsResponse.partner_records[0]);
+      fixture.detectChanges();
+
+      expect(panel(root, 'matches').hidden).toBe(false);
+      expect(root.querySelector('[data-picked-player]')).not.toBeNull();
+    });
+
+    it('has no jump-to-list button any more — the tab is the way there', () => {
+      const fixture = setup();
+      expect(fixture.nativeElement.querySelector('[data-jump-to-list]')).toBeNull();
+    });
+  });
+
+  describe('paging the match list', () => {
     function spyOnListScroll(fixture: ReturnType<typeof setup>) {
       const list = fixture.nativeElement.querySelector('#match-list') as HTMLElement;
       const scroll = vi.fn();
       list.scrollIntoView = scroll;
       return scroll;
     }
-
-    it('the jump button scrolls the list into view and shows the total', () => {
-      const fixture = setup([], { records: { ...recordsResponse, total_matches: 42 } });
-      const scroll = spyOnListScroll(fixture);
-      const button = fixture.nativeElement.querySelector('[data-jump-to-list]') as HTMLButtonElement;
-
-      expect(button.textContent).toContain('member.matchHistory.jumpToList');
-      button.click();
-
-      expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
-    });
-
-    it('has no jump button when there is no match to jump to', () => {
-      const fixture = setup([], { records: { ...recordsResponse, matches: [], total_matches: 0 } });
-
-      expect(fixture.nativeElement.querySelector('[data-jump-to-list]')).toBeNull();
-    });
 
     it('a page flip brings the top of the new page into view', () => {
       const fixture = setup();
