@@ -48,7 +48,7 @@ Technical Context 沒有 NEEDS CLARIFICATION——技術堆疊完全沿用既有
 - **查證**：`scheduler/auto_disband.py` 用 APScheduler 每分鐘跑 `sweep_idle_groups()`：`status='active' AND last_activity_at < now - auto_disband_idle_minutes`（設定檔預設 **60 分鐘**）→ `disband_group()`（進行中比賽全部 abandoned、pending 邀請 invalidated、發布 `group.disbanded` 到每個場地頻道）。`apply_score_delta()` 每次計分都更新 `last_activity_at`。by-token 回應在解散後回 `group_disbanded: true`（不是 `LINK_NOT_FOUND`），控制板與計分板已有對應畫面。
 - **Decision**：
   - 「結束」與等待中的「取消」＝`disband_group()`；已收尾的連結顯示既有的 `group_disbanded` 畫面，文字依 `group_kind` 換成「這場快速比賽已結束」（FR-023、US5 情境 4）。
-  - sweep 的條件拆成兩段：`kind='normal'` 維持 60 分鐘；`kind='quick'` 用 `system_config.quick_session_idle_minutes`（依 spec FR-022 預設 **1440**）。**提醒使用者**：既有的一般團一小時就自動解散，快速比賽若也用一小時會更一致、且能更早釋放 FR-020 的「一人一團」占用；這只是一個設定值，實作時改預設即可，不影響設計。
+  - sweep 的條件拆成兩段：`kind='normal'` 維持 60 分鐘；`kind='quick'` 用 `system_config.quick_session_idle_minutes`，預設 **60**（使用者於 2026-09-22 決定與一般團相同；規格 FR-022 已同步）。仍獨立成一個 `system_config` 鍵而不直接共用設定檔的 `auto_disband_idle_minutes`，是因為 FR-022 要求它可在系統共用設定中調整、且日後可與一般團分開調。
   - 快速比賽的每個動作端點都 `_touch_activity()`。
 - **Rationale**：不新增排程工作、不新增狀態欄位——「已收尾」就是 `status='disbanded'`。
 - **FR-020 的自動收尾**：`_raise_if_active_elsewhere()` 找到的 active 團若 `kind='quick'` 且沒有 `in_progress` 的比賽 → 透過注入的 hook 呼叫 `quick_match.service.close_quick_session()`（內部即 `disband_group()`）後放行；有比賽進行中 → 照舊拋 `ALREADY_ACTIVE_IN_ANOTHER_GROUP`，`detail` 加 `group_kind` 讓前端換提示文字。

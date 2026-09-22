@@ -12,7 +12,7 @@
 2. **協調層（Decision 2、3）**：新 domain `quick_match` 自己組團／場地／名單，每一場都走既有的 `manual_assign()`，輪次固定 1。`create_group()` 一行不改。
 3. **好友接受（Decision 4）**：邀請列與通知沿用 `group_invites` + `notifications`（新型別 `quick_match_invite`），接受仍由 `join_group()` 單一路徑寫入；新表 `quick_match_slots` 記錄「哪個位置等誰」，全部 ready 才開賽；拒絕／逾時／「不等了」把位置轉為訪客。逾時惰性判定＋每分鐘 sweep 兜底。
 4. **憑證（Decision 5，Q1）**：所有快速比賽動作以控制板 token 授權、守門條件 `kind == 'quick'`；對 Constitution IV 的有界例外，見 Complexity Tracking。
-5. **收尾（Decision 6）**：結束／取消／閒置＝既有 `disband_group()`；sweep 對 `quick` 用 `system_config.quick_session_idle_minutes`（依 spec 預設 1440，**建議使用者考慮改 60 與一般團一致**）。FR-020 的自動收尾掛在 `_raise_if_active_elsewhere()` 的 hook。
+5. **收尾（Decision 6）**：結束／取消／閒置＝既有 `disband_group()`；sweep 對 `quick` 用 `system_config.quick_session_idle_minutes`（預設 60，與一般團相同，2026-09-22 使用者決定）。FR-020 的自動收尾掛在 `_raise_if_active_elsewhere()` 的 hook。
 6. **呈現（Decision 7、8）**：既有回應只新增 `group_kind`，前端依它換語系標籤、隱藏輪次、排除列表；新 feature `quick-match`（表單＋等待畫面）、控制板內嵌 `quick-actions`、首頁 CTA 與橫幅、通知路由一條。
 
 ## Technical Context
@@ -21,7 +21,7 @@
 
 **Primary Dependencies**：沿用既有堆疊，**不新增任何第三方套件**。即時同步 Ably（`core/realtime.py::publish()`）、Turnstile（`core/turnstile.py::verify_turnstile_token()`）、速率限制 slowapi（`core/rate_limit.py`）。
 
-**Storage**：PostgreSQL。**一支 migration**（接在 `b7e2d4a9c130` 之後）：`groups.kind VARCHAR(16) NOT NULL DEFAULT 'normal'` + 索引、新表 `quick_match_slots`、`system_config` 兩列（`quick_match_invite_timeout_seconds='120'`、`quick_session_idle_minutes='1440'`）。純新增、可 downgrade。詳見 [data-model.md](./data-model.md)。
+**Storage**：PostgreSQL。**一支 migration**（接在 `b7e2d4a9c130` 之後）：`groups.kind VARCHAR(16) NOT NULL DEFAULT 'normal'` + 索引、新表 `quick_match_slots`、`system_config` 兩列（`quick_match_invite_timeout_seconds='120'`、`quick_session_idle_minutes='60'`）。純新增、可 downgrade。詳見 [data-model.md](./data-model.md)。
 
 **Testing**：
 - 後端 pytest：
@@ -64,7 +64,7 @@
 
 **Gate 結果**：一項有界例外（IV），已於 Complexity Tracking 記錄並需使用者確認；其餘 PASS。
 
-**Post-design re-check（Phase 1 完成後）**：data-model.md 與 contracts/ 確認——儲存變更為一欄、一表、兩列設定，皆純新增；既有端點只增欄位與查詢參數，一般團回應零變動；控制板的 quick 端點全部以 `kind == 'quick'` 守門，一般團打到任何一支都是 404 語意。設計期間三處回頭對照規格：(1) 規格 Key Entities 沒有「位置」這個實體——`quick_match_slots` 是 FR-027／FR-030 的內部依據（哪個位置等誰、換人時誰保留），不對外呈現，與 037 的 `roster_rest_periods` 同性質；(2) 規格 FR-022 的閒置期限預設一天——查證後發現一般團既有的自動解散是 60 分鐘，設計保留規格值但把建議寫進 research Decision 6 與本文 Summary，由使用者決定；(3) 規格 FR-020 只講「會員」——訪客建立者沒有跨團身分，沿用既有「訪客不受一人一團限制、前端以本機紀錄擋」的作法（`getActiveGuestGroupId()`），不需修改規格。Gate 結果維持不變。
+**Post-design re-check（Phase 1 完成後）**：data-model.md 與 contracts/ 確認——儲存變更為一欄、一表、兩列設定，皆純新增；既有端點只增欄位與查詢參數，一般團回應零變動；控制板的 quick 端點全部以 `kind == 'quick'` 守門，一般團打到任何一支都是 404 語意。設計期間三處回頭對照規格：(1) 規格 Key Entities 沒有「位置」這個實體——`quick_match_slots` 是 FR-027／FR-030 的內部依據（哪個位置等誰、換人時誰保留），不對外呈現，與 037 的 `roster_rest_periods` 同性質；(2) 規格 FR-022 的閒置期限原草案為一天——查證後發現一般團既有的自動解散是 60 分鐘，使用者決定改為 60 分鐘，規格、research Decision 6、data-model 已同步；(3) 規格 FR-020 只講「會員」——訪客建立者沒有跨團身分，沿用既有「訪客不受一人一團限制、前端以本機紀錄擋」的作法（`getActiveGuestGroupId()`），不需修改規格。Gate 結果維持不變。
 
 ## Project Structure
 

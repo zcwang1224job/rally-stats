@@ -73,7 +73,7 @@ friend ──建立時 send_invite()──▶ pending ──好友接受(join_gr
 | `round_history` | 建立時一列 `(group_id, 1)` |
 | `group_invites` | 好友位置的邀請列：`inviter_member_id` = 建立者、狀態沿用 `pending | accepted | declined | invalidated | cancelled` |
 | `notifications` | `type = 'quick_match_invite'`、`source_id = invite_id`；既有唯一鍵 `(type, source_id, member_id)` 自然去重 |
-| `system_config` | 新列 `quick_match_invite_timeout_seconds`（`'120'`）、`quick_session_idle_minutes`（`'1440'`；見 research Decision 6 的提醒） |
+| `system_config` | 新列 `quick_match_invite_timeout_seconds`（`'120'`）、`quick_session_idle_minutes`（`'60'`，與一般團相同） |
 
 ## 4. 快速比賽的整體狀態（推導，不儲存）
 
