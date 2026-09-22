@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
 import { RecordHeroComponent } from '../../../shared/record-hero/record-hero.component';
@@ -31,6 +31,7 @@ import {
   setBenchmarkGroup,
 } from '../../../core/benchmark-group-preference';
 import { localDayStart } from '../../../core/local-day';
+import { SectionAccordion } from '../../../core/section-accordion/section-accordion';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import {
   MatchupRecordsComponent,
@@ -47,6 +48,18 @@ import { FriendsService } from '../../friends/friends.service';
  * 統計，僅登入會員可見（路由層由既有 member 功能區塊之登入檢查涵蓋）。
  * 篩選（對手/隊友暱稱、勝負、日期、輪次、比分）交由後端計算，所有統計卡
  * 片與圖表都反映篩選後的完整結果集，而非僅目前頁面。 */
+/** The two tabs under the summary. */
+export type MatchHistoryTab = 'matches' | 'stats';
+
+/** The page's big sections, run as an accordion (one open at a time). */
+export type MatchHistorySection =
+  | 'insights'
+  | 'dashboard'
+  | 'benchmark'
+  | 'roundTrend'
+  | 'partners'
+  | 'opponents';
+
 @Component({
   selector: 'app-match-history',
   imports: [
@@ -84,8 +97,18 @@ export class MatchHistoryComponent {
   /** 036 FR-010: an insight sentence jumps to the card it is about. Optional —
    * the dashboard only exists once the records have loaded. */
   private readonly dashboardRef = viewChild(PlayerDashboardComponent);
+  private readonly matchList = viewChild<ElementRef<HTMLElement>>('matchList');
+
+  /** The matches first — what most visits are for; the analysis one tap
+   * away. The filters apply to both. */
+  readonly activeTab = signal<MatchHistoryTab>('matches');
+
+  /** The big sections (on the analysis tab), one open at a time, all folded
+   * on arrival. */
+  readonly sections = new SectionAccordion<MatchHistorySection>();
 
   focusMetric(key: DashboardMetricKey): void {
+    this.sections.openNow('dashboard');
     this.dashboardRef()?.focusMetric(key);
   }
 
@@ -222,6 +245,8 @@ export class MatchHistoryComponent {
   pickPlayer(role: MatchupRole, record: MatchupRecord): void {
     this.pickedPlayer.set({ role, record });
     this.applyFilters();
+    // The row click is "show me our matches": they are on the other tab.
+    this.activeTab.set('matches');
   }
 
   clearPickedPlayer(): void {
@@ -235,10 +260,7 @@ export class MatchHistoryComponent {
     if (!row) {
       return;
     }
-    const details = row.closest('details');
-    if (details) {
-      details.open = true;
-    }
+    this.sections.openNow(target.role === 'partner' ? 'partners' : 'opponents');
     row.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
     (row.querySelector('button') ?? row).focus?.({ preventScroll: true });
   }
@@ -278,10 +300,19 @@ export class MatchHistoryComponent {
 
   goToPage(page: number): void {
     this.page.set(page);
-    this.load(page);
+    this.load(page, { scrollToList: true });
   }
 
-  private load(page: number): void {
+  /** Brings the match list's top edge into view (after a page flip). */
+  scrollToMatchList(): void {
+    this.matchList()?.nativeElement.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }
+
+  /** `scrollToList`: a page flip is tapped from the pagination under the
+   * list — without it a phone user lands at the BOTTOM of the new page. The
+   * old list stays rendered until the response arrives, so its top edge is
+   * already where the new one will be. */
+  private load(page: number, { scrollToList = false } = {}): void {
     const raw = this.filterForm.getRawValue();
     const filters: MemberMatchRecordFilters = {
       opponent1: raw.opponent1 || undefined,
@@ -312,6 +343,9 @@ export class MatchHistoryComponent {
       next: (response) => {
         this.records.set(response);
         this.loadInviteCandidates(response);
+        if (scrollToList) {
+          this.scrollToMatchList();
+        }
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });

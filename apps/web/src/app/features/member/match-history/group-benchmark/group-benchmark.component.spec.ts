@@ -191,3 +191,22 @@ describe('GroupBenchmarkComponent — scope and failure', () => {
     );
   });
 });
+
+// The page runs its sections as an accordion and drives this one's state.
+describe('GroupBenchmarkComponent — open state', () => {
+  it('follows the `open` input and reports every toggle', () => {
+    const fixture = setup({ groups: null });
+    const details = (fixture.nativeElement as HTMLElement).querySelector('details')!;
+    const changes: boolean[] = [];
+    fixture.componentInstance.openChange.subscribe((open) => changes.push(open));
+    expect(details.open).toBe(false);
+
+    fixture.componentRef.setInput('open', true);
+    fixture.detectChanges();
+    expect(details.open).toBe(true);
+
+    details.open = false;
+    details.dispatchEvent(new Event('toggle'));
+    expect(changes).toEqual([false]);
+  });
+});

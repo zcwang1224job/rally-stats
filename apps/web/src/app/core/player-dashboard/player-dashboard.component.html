@@ -1,5 +1,7 @@
-<section class="dashboard card" [attr.aria-busy]="loading()">
-  <h2 class="dashboard__title">{{ 'playerDashboard.title' | translate }}</h2>
+<section class="dashboard" [class.card]="!bare()" [attr.aria-busy]="loading()">
+  @if (!bare()) {
+    <h2 class="dashboard__title">{{ 'playerDashboard.title' | translate }}</h2>
+  }
 
   @if (dashboard(); as d) {
     @if (d.total_matches === 0) {

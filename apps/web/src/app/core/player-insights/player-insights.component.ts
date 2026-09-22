@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, output } from '@angular/core';
+import { booleanAttribute, Component, computed, inject, input, output } from '@angular/core';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import {
   DashboardInsight,
@@ -53,6 +53,9 @@ export class PlayerInsightsComponent {
   readonly pendingBenchmark = input(false);
   /** A benchmark group is chosen, but page filters are active (FR-034). */
   readonly benchmarkOmittedByFilters = input(false);
+  /** Inside a host page's own collapsible panel, whose summary already
+   * carries the title: no card frame and no heading of its own. */
+  readonly bare = input(false, { transform: booleanAttribute });
 
   readonly metricPicked = output<DashboardMetricKey>();
   /** `role` says which table the sentence is about — one player can be in

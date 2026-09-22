@@ -1,3 +1,5 @@
+@use '../../../../styles/breakpoints';
+
 :host {
   display: block;
 }
@@ -11,6 +13,11 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
+
+  // Half a phone's width: the tile's own padding is the room the text needs.
+  @media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
+    padding: var(--space-sm);
+  }
 }
 
 .metric__label {

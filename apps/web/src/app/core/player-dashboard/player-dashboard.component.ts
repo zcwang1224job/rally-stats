@@ -1,5 +1,5 @@
 import { RatioPercentPipe } from '../../shared/percent/ratio-percent.pipe';
-import { Component, ElementRef, computed, inject, input, signal } from '@angular/core';
+import { booleanAttribute, Component, ElementRef, computed, inject, input, signal } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import {
   DashboardErrorsByType,
@@ -91,6 +91,9 @@ export class PlayerDashboardComponent {
    * host page has filtered down to singles matches; a mix of singles and
    * doubles has no single right court, so it stays doubles. */
   readonly singlesCourt = input(false);
+  /** Inside a host page's own collapsible panel, whose summary already
+   * carries the title: no card frame and no heading of its own. */
+  readonly bare = input(false, { transform: booleanAttribute });
 
   readonly groups = GROUPS;
 

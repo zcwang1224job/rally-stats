@@ -1,3 +1,5 @@
+@use '../../../styles/breakpoints';
+
 :host {
   display: block;
 }
@@ -97,4 +99,37 @@
   // punched out via mask, giving it the more legible donut shape without a
   // second stacked element.
   mask: radial-gradient(farthest-side, transparent calc(100% - 30px), #000 calc(100% - 30px));
+}
+
+// Phones: a smaller ring BESIDE the record rather than a big one above it,
+// so the whole card is one short row instead of a tall, half-empty block.
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
+  .hero-card {
+    flex-wrap: nowrap;
+    gap: var(--space-md);
+  }
+
+  .hero-card__ring-wrap {
+    width: 104px;
+    height: 104px;
+  }
+
+  .hero-card__ring-value {
+    font-size: 1.25rem;
+  }
+
+  .hero-card__info {
+    min-width: 0;
+  }
+
+  // "24勝–18敗" on one line in what the ring leaves of a 360px phone.
+  .hero-card__record {
+    flex-wrap: wrap;
+    font-size: 1.75rem;
+  }
+
+  // A thinner ring keeps the hole wide enough for "100%".
+  .donut-chart {
+    mask: radial-gradient(farthest-side, transparent calc(100% - 14px), #000 calc(100% - 14px));
+  }
 }

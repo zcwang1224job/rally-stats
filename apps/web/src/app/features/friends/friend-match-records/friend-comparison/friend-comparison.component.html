@@ -1,14 +1,16 @@
 @if (failed()) {
-  <p class="comparison__note card" role="alert" data-failed>
+  <p class="comparison__note" [class.card]="!bare()" role="alert" data-failed>
     {{ 'friendComparison.failed' | translate }}
   </p>
 } @else if (loading() || !comparison()) {
-  <p class="comparison__note card" aria-busy="true" data-loading>
+  <p class="comparison__note" [class.card]="!bare()" aria-busy="true" data-loading>
     {{ 'friendComparison.loading' | translate }}
   </p>
 } @else if (comparison(); as c) {
-  <section class="comparison card">
-    <h2 class="comparison__title">{{ 'friendComparison.toggle' | translate }}</h2>
+  <section class="comparison" [class.card]="!bare()">
+    @if (!bare()) {
+      <h2 class="comparison__title">{{ 'friendComparison.toggle' | translate }}</h2>
+    }
 
     <ul class="comparison__rows">
       <li class="comparison__row comparison__row--head" aria-hidden="true">

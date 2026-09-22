@@ -1,6 +1,7 @@
 <!-- Open by default: the opponent ranking this replaces was always visible,
-     and SC-005's "two clicks to one partner's matches" counts from here. -->
-<details class="matchups card" [attr.data-role]="role()" open>
+     and SC-005's "two clicks to one partner's matches" counts from here. A
+     host page that runs its sections as an accordion drives `open` itself. -->
+<details class="matchups card" [attr.data-role]="role()" [open]="open()" (toggle)="onToggle($event)">
   <summary class="matchups__title">{{ titleKey() | translate }}</summary>
 
   @if (records().length === 0) {

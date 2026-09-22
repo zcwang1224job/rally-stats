@@ -1,4 +1,4 @@
-<details class="benchmark card" (toggle)="onToggle($event)">
+<details class="benchmark card" [open]="open()" (toggle)="onToggle($event)">
   <summary class="benchmark__title">{{ 'groupBenchmark.title' | translate }}</summary>
   <p class="benchmark__intro">{{ 'groupBenchmark.intro' | translate }}</p>
 

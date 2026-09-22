@@ -97,6 +97,7 @@ from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.schemas import ParticipantSummary
 from app.system_config.service import (
     get_default_page_size,
+    get_match_records_page_size,
     get_password_reset_token_ttl_hours,
     get_resend_verification_cooldown_minutes,
     get_verification_token_ttl_hours,
@@ -1561,7 +1562,7 @@ async def build_member_match_records(
     # see `matchups` for what the nickname tally this replaces got wrong.
     matchup = matchups.build(_matchup_inputs(filtered))
 
-    page_size = await get_default_page_size(session)
+    page_size = await get_match_records_page_size(session)
     total_pages = max(1, (total_matches + page_size - 1) // page_size)
     start = (page - 1) * page_size
     end = start + page_size

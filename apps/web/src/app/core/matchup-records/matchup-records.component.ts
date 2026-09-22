@@ -42,6 +42,14 @@ export class MatchupRecordsComponent {
   readonly clickable = input(true);
 
   readonly picked = output<MatchupRecord>();
+  /** Starts open; a host page running its sections as an accordion binds it
+   * and listens to `openChange` for the reader's own clicks. */
+  readonly open = input(true);
+  readonly openChange = output<boolean>();
+
+  onToggle(event: Event): void {
+    this.openChange.emit((event.target as HTMLDetailsElement).open);
+  }
 
   readonly sorts = SORTS;
   readonly sort = signal<MatchupSort>('matches');

@@ -274,6 +274,10 @@
         "empty": "尚無比賽紀錄"
       },
       "groupRecordsTitle": "對戰紀錄",
+      "tabs": {
+        "matches": "比賽紀錄（{{total}} 場）",
+        "stats": "統計分析"
+      },
       "filters": {
         "nickname": "球員暱稱",
         "nicknamePlaceholder": "搜尋出現這位球員的比賽",

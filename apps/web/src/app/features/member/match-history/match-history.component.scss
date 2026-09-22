@@ -21,35 +21,75 @@
   @media (min-width: breakpoints.$breakpoint-tablet) {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  // Fields in a narrow grid cell must be allowed to shrink below their
+  // intrinsic width (a date input's is wider than half a phone).
+  > label {
+    min-width: 0;
+  }
+
+  input,
+  select {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 // The two filters most people reach for first (who did I play, did I win)
 // stay in view; everything else is one tap away behind "進階篩選" — fewer
 // fields on first paint reads as friendlier than a wall of inputs.
 .filters-grid--quick {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-sm);
+
   @media (min-width: breakpoints.$breakpoint-tablet) {
     grid-template-columns: 2fr 1fr;
+    gap: var(--space-md);
   }
 }
 
 .advanced-filters {
-  margin-top: var(--space-md);
+  // Phones: the form's own gap is spacing enough above the summary, whose
+  // line height already pads it to a full touch target.
+  margin-top: calc(-1 * var(--space-sm));
 
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    margin-top: var(--space-md);
+  }
+
+  // One line tall — a line height of a full touch target (not flex, which
+  // would drop the ▸ marker) makes the whole row an easy tap.
   summary {
+    line-height: var(--touch-target-min);
     cursor: pointer;
     font-weight: var(--font-weight-bold);
     font-size: var(--font-size-caption);
     color: var(--color-text-muted);
-    padding: var(--space-xs) 0;
   }
 
   &[open] summary {
     margin-bottom: var(--space-sm);
   }
 
+  // Phones: two across, so each from/to pair (dates, rounds) and the two
+  // nicknames share a row instead of stacking into a ten-field column; the
+  // mode select and the score comparisons (a select + a number) keep a row
+  // of their own.
   .filters-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-sm);
+
     @media (min-width: breakpoints.$breakpoint-tablet) {
       grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-md);
+    }
+  }
+
+  .filters-field--wide {
+    grid-column: 1 / -1;
+
+    @media (min-width: breakpoints.$breakpoint-tablet) {
+      grid-column: auto;
     }
   }
 }
@@ -71,15 +111,29 @@
 .filters-actions {
   display: flex;
   gap: var(--space-sm);
-  margin-top: var(--space-md);
+
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    margin-top: var(--space-md);
+  }
+
+  // Phones: full-width buttons are the easy thumb target.
+  .btn {
+    flex: 1;
+
+    @media (min-width: breakpoints.$breakpoint-tablet) {
+      flex: none;
+    }
+  }
 }
 
-.chart-card {
-  margin-bottom: var(--space-lg);
+// The matches / analysis tabs under the summary card.
+.match-history-tabs {
+  margin-bottom: var(--space-md);
+}
 
-  h2 {
-    margin: 0 0 var(--space-md);
-  }
+// Clears the sticky nav bar when the list is scrolled to.
+.record-list {
+  scroll-margin-top: calc(var(--touch-target-min) + var(--space-xl));
 }
 
 .chart-empty {

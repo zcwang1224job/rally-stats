@@ -34,9 +34,15 @@ export class GroupBenchmarkComponent {
 
   readonly opened = output<void>();
   readonly groupChanged = output<string>();
+  /** The page runs its sections as an accordion: it says when this one is
+   * open, and hears about the reader's own clicks through `openChange`. */
+  readonly open = input(false);
+  readonly openChange = output<boolean>();
 
   onToggle(event: Event): void {
-    if ((event.target as HTMLDetailsElement).open) {
+    const open = (event.target as HTMLDetailsElement).open;
+    this.openChange.emit(open);
+    if (open) {
       this.opened.emit();
     }
   }

@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { provideTranslateService } from '@ngx-translate/core';
 import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { Observable, Subject, of, throwError } from 'rxjs';
+import { vi } from 'vitest';
 import { MemberMatchRecordsResponse } from '../../../core/api/group-member-view.models';
 import { InviteCandidatesResponse } from '../../../core/api/friend.models';
 import {
@@ -707,6 +708,209 @@ describe('MatchHistoryComponent', () => {
       expect(group.open).toBe(true);
       expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
       root.remove();
+    });
+  });
+
+  // On a phone the list sits thousands of pixels below the summary and the
+  // dashboard: a jump button gets there, and a page flip lands on the NEW
+  // page's first card rather than at the pagination under it.
+  // Two tabs under the summary: the matches (first) and the analysis.
+  describe('matches and analysis tabs', () => {
+    const tab = (root: HTMLElement, name: string) =>
+      root.querySelector<HTMLButtonElement>(`[role="tab"][data-tab="${name}"]`)!;
+    const panel = (root: HTMLElement, name: string) =>
+      root.querySelector<HTMLElement>(`[role="tabpanel"][data-panel="${name}"]`)!;
+
+    it('opens on the matches, with the total in the tab', () => {
+      const fixture = setup([], { records: { ...recordsResponse, total_matches: 42 } });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(tab(root, 'matches').getAttribute('aria-selected')).toBe('true');
+      expect(tab(root, 'stats').getAttribute('aria-selected')).toBe('false');
+      expect(tab(root, 'matches').textContent).toContain('member.matchHistory.tabs.matches');
+      expect(panel(root, 'matches').hidden).toBe(false);
+      expect(panel(root, 'stats').hidden).toBe(true);
+      expect(panel(root, 'matches').querySelector('.match-card')).not.toBeNull();
+      expect(panel(root, 'stats').querySelector('app-player-dashboard')).not.toBeNull();
+    });
+
+    it('switches to the analysis and back, keeping both rendered', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+
+      tab(root, 'stats').click();
+      fixture.detectChanges();
+      expect(tab(root, 'stats').getAttribute('aria-selected')).toBe('true');
+      expect(panel(root, 'stats').hidden).toBe(false);
+      expect(panel(root, 'matches').hidden).toBe(true);
+
+      tab(root, 'matches').click();
+      fixture.detectChanges();
+      expect(panel(root, 'matches').hidden).toBe(false);
+      expect(panel(root, 'stats').hidden).toBe(true);
+    });
+
+    it('picking a partner shows their matches on the matches tab', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+      tab(root, 'stats').click();
+      fixture.detectChanges();
+
+      fixture.componentInstance.pickPlayer('partner', recordsResponse.partner_records[0]);
+      fixture.detectChanges();
+
+      expect(panel(root, 'matches').hidden).toBe(false);
+      expect(root.querySelector('[data-picked-player]')).not.toBeNull();
+    });
+
+    it('has no jump-to-list button any more — the tab is the way there', () => {
+      const fixture = setup();
+      expect(fixture.nativeElement.querySelector('[data-jump-to-list]')).toBeNull();
+    });
+  });
+
+  describe('paging the match list', () => {
+    function spyOnListScroll(fixture: ReturnType<typeof setup>) {
+      const list = fixture.nativeElement.querySelector('#match-list') as HTMLElement;
+      const scroll = vi.fn();
+      list.scrollIntoView = scroll;
+      return scroll;
+    }
+
+    it('a page flip brings the top of the new page into view', () => {
+      const fixture = setup();
+      const scroll = spyOnListScroll(fixture);
+
+      fixture.componentInstance.goToPage(2);
+
+      expect(scroll).toHaveBeenCalledTimes(1);
+    });
+
+    it('applying filters does not scroll — the reader is looking at the form', () => {
+      const fixture = setup();
+      const scroll = spyOnListScroll(fixture);
+
+      fixture.componentInstance.applyFilters();
+
+      expect(scroll).not.toHaveBeenCalled();
+    });
+  });
+
+  // The big sections run as an accordion: all folded on arrival, and
+  // opening one folds whichever was open.
+  describe('sections as an accordion', () => {
+    const SECTIONS = ['insights', 'dashboard', 'benchmark', 'roundTrend', 'partners', 'opponents'];
+
+    // Opening the group comparison remembers a group, which would then load
+    // by itself in the next test and take over the summary.
+    afterEach(() => localStorage.clear());
+
+    /** The <details> of a section — the panel itself, or the one a child
+     * component renders inside its host. */
+    function panel(root: HTMLElement, section: string): HTMLDetailsElement {
+      const el = root.querySelector<HTMLElement>(`[data-section="${section}"]`)!;
+      return (el instanceof HTMLDetailsElement ? el : el.querySelector('details'))!;
+    }
+
+    /** What a tap on the summary does: flip `open`, then `toggle` fires. */
+    function tap(fixture: ReturnType<typeof setup>, section: string): void {
+      const details = panel(fixture.nativeElement, section);
+      details.open = !details.open;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    }
+
+    const openSections = (root: HTMLElement) => SECTIONS.filter((section) => panel(root, section).open);
+
+    it('shows every section, all folded, on arrival', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+
+      for (const section of SECTIONS) {
+        expect(panel(root, section), section).toBeTruthy();
+      }
+      expect(openSections(root)).toEqual([]);
+    });
+
+    it('opening one section folds the one that was open', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+
+      tap(fixture, 'insights');
+      expect(openSections(root)).toEqual(['insights']);
+
+      tap(fixture, 'dashboard');
+      expect(openSections(root)).toEqual(['dashboard']);
+
+      tap(fixture, 'partners');
+      expect(openSections(root)).toEqual(['partners']);
+      expect(fixture.componentInstance.sections.openSection()).toBe('partners');
+    });
+
+    it('folding the open section leaves every section folded', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+
+      tap(fixture, 'roundTrend');
+      tap(fixture, 'roundTrend');
+
+      expect(openSections(root)).toEqual([]);
+      expect(fixture.componentInstance.sections.openSection()).toBeNull();
+    });
+
+    it('opening the group comparison still starts loading it', () => {
+      const benchmarkGroupCalls: unknown[][] = [];
+      const fixture = setup([], { benchmarkGroupCalls });
+
+      tap(fixture, 'benchmark');
+
+      expect(benchmarkGroupCalls.length).toBe(1);
+      expect(openSections(fixture.nativeElement)).toEqual(['benchmark']);
+    });
+
+    it('an insight about a metric opens the dashboard and folds the summary', () => {
+      const fixture = setup([], {
+        dashboard: of(
+          dashboardFixture({
+            insights: insightsFixture({ strengths: [insightFixture({ metric_key: 'winner_share' })] }),
+          }),
+        ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      tap(fixture, 'insights');
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(openSections(root)).toEqual(['dashboard']);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
+    });
+
+    it('an opened section whose title the fold pushed off screen is scrolled back to', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+      const dashboard = root.querySelector<HTMLElement>('[data-section="dashboard"]')!;
+      const scroll = vi.fn();
+      dashboard.scrollIntoView = scroll;
+      vi.spyOn(dashboard, 'getBoundingClientRect').mockReturnValue({ top: -300 } as DOMRect);
+
+      tap(fixture, 'dashboard');
+
+      expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+    });
+
+    it('does not scroll when the opened section is already in view', () => {
+      const fixture = setup();
+      const root: HTMLElement = fixture.nativeElement;
+      const dashboard = root.querySelector<HTMLElement>('[data-section="dashboard"]')!;
+      const scroll = vi.fn();
+      dashboard.scrollIntoView = scroll;
+      vi.spyOn(dashboard, 'getBoundingClientRect').mockReturnValue({ top: 200 } as DOMRect);
+
+      tap(fixture, 'dashboard');
+
+      expect(scroll).not.toHaveBeenCalled();
     });
   });
 });
