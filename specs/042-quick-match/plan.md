@@ -62,7 +62,7 @@
 | X. 伺服器為可信來源 | `quickMatch.lineupChanged`、`rotation.updated` 只由後端 commit 後發布；前端收到只重新載入；開賽判定在後端交易內（`FOR UPDATE`）。 | PASS |
 | XI. 防濫用 | `POST /quick-matches` 是「建立新資源」端點：Turnstile fail-closed + `20/minute` 速率限制（比 `POST /groups` 多了速率限制，為本功能新增）。其餘動作端點以控制板 token 為憑證、不建立新團。 | PASS |
 
-**Gate 結果**：一項有界例外（IV），已於 Complexity Tracking 記錄並需使用者確認；其餘 PASS。
+**Gate 結果**：一項有界例外（IV），已於 Complexity Tracking 記錄，**專案負責人於 2026-09-22 確認同意**；其餘 PASS。
 
 **Post-design re-check（Phase 1 完成後）**：data-model.md 與 contracts/ 確認——儲存變更為一欄、一表、兩列設定，皆純新增；既有端點只增欄位與查詢參數，一般團回應零變動；控制板的 quick 端點全部以 `kind == 'quick'` 守門，一般團打到任何一支都是 404 語意。設計期間三處回頭對照規格：(1) 規格 Key Entities 沒有「位置」這個實體——`quick_match_slots` 是 FR-027／FR-030 的內部依據（哪個位置等誰、換人時誰保留），不對外呈現，與 037 的 `roster_rest_periods` 同性質；(2) 規格 FR-022 的閒置期限原草案為一天——查證後發現一般團既有的自動解散是 60 分鐘，使用者決定改為 60 分鐘，規格、research Decision 6、data-model 已同步；(3) 規格 FR-020 只講「會員」——訪客建立者沒有跨團身分，沿用既有「訪客不受一人一團限制、前端以本機紀錄擋」的作法（`getActiveGuestGroupId()`），不需修改規格。Gate 結果維持不變。
 
@@ -160,4 +160,4 @@ apps/web/src/
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| Constitution IV：無需驗證的控制板提供「再打一場／換人再打／結束／取消／不等了」——這些是建立比賽、改名單、解散的管理性質操作 | 快速比賽刻意沒有管理頁與 PIN（spec 背景、FR-002）；使用者於 2026-09-22 決定（Q1）控制板連結是唯一憑證、不區分建立者。這些動作的破壞力不超過控制板既有的「提前結束」；守門條件 `group.kind == 'quick'` 讓一般團的邊界一行不變（一般團打到這些端點一律 `QUICK_SESSION_ONLY`）。 | (a) 把建立時的管理 token 存在瀏覽器——訪客關掉分頁後整場卡住，且違反 Q1 的決定；(b) 快速比賽也給一個管理頁——把本功能要消除的「團」概念又帶回來。**需專案負責人確認**後才進入 `/speckit-tasks`（Constitution Governance）。 |
+| Constitution IV：無需驗證的控制板提供「再打一場／換人再打／結束／取消／不等了」——這些是建立比賽、改名單、解散的管理性質操作 | 快速比賽刻意沒有管理頁與 PIN（spec 背景、FR-002）；使用者於 2026-09-22 決定（Q1）控制板連結是唯一憑證、不區分建立者。這些動作的破壞力不超過控制板既有的「提前結束」；守門條件 `group.kind == 'quick'` 讓一般團的邊界一行不變（一般團打到這些端點一律 `QUICK_SESSION_ONLY`）。 | (a) 把建立時的管理 token 存在瀏覽器——訪客關掉分頁後整場卡住，且違反 Q1 的決定；(b) 快速比賽也給一個管理頁——把本功能要消除的「團」概念又帶回來。**專案負責人於 2026-09-22 確認同意此例外**（Constitution Governance）。 |
