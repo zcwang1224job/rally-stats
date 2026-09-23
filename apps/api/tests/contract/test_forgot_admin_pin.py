@@ -54,6 +54,21 @@ async def test_my_groups_and_forgot_admin_pin_contract(
     assert len(groups) == 1
     assert groups[0]["group_id"] == created["group_id"]
     assert groups[0]["status"] == "active"
+    assert groups[0]["match_count"] == 0
+
+    # match-count bounds: both inclusive, never negative
+    at_most_zero = await client.get(
+        "/members/me/groups", params={"match_count_max": 0}, headers=headers
+    )
+    assert [g["group_id"] for g in at_most_zero.json()["groups"]] == [created["group_id"]]
+    at_least_one = await client.get(
+        "/members/me/groups", params={"match_count_min": 1}, headers=headers
+    )
+    assert at_least_one.json()["groups"] == []
+    negative = await client.get(
+        "/members/me/groups", params={"match_count_min": -1}, headers=headers
+    )
+    assert negative.status_code == 422
 
     forgot_response = await client.post(
         f"/groups/{created['group_id']}/forgot-admin-pin", headers=headers

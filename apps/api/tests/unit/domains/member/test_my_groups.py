@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.group.schemas import CreateGroupRequest
 from app.domains.group.service import create_group, disband_group, join_group, leave_group
 from app.domains.member.service import get_my_groups, register
+from app.domains.schedule.models import Match, MatchParticipant
 
 pytestmark = pytest.mark.asyncio
 
@@ -364,6 +365,70 @@ async def test_my_groups_filters_by_created_and_disbanded_time_ranges(
         disbanded_from=day(9, 25),
         disbanded_before=day(9, 26),
     ) == {"Early Bird"}
+
+
+async def _add_match(
+    session: AsyncSession, group_id: uuid.UUID, team_a: list[uuid.UUID], *, status: str
+) -> None:
+    match = Match(
+        group_id=group_id,
+        round_number=1,
+        status=status,
+        target_score=21,
+        deuce_threshold=20,
+        cap_score=30,
+    )
+    session.add(match)
+    await session.flush()
+    for roster_entry_id in team_a:
+        session.add(MatchParticipant(match_id=match.id, roster_entry_id=roster_entry_id, team="A"))
+    await session.commit()
+
+
+async def test_my_groups_counts_and_filters_by_my_completed_matches(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "mygroups18@example.com", "abc12345")
+    member.nickname = "場數篩選者"
+    other = await register(db_session, "mygroups19@example.com", "abc12345")
+    other.nickname = "隊友"
+    await db_session.commit()
+
+    busy, my_entry, *_ = await create_group(db_session, _group_payload("Busy"), member=member)
+    other_entry, _created_new = await join_group(
+        db_session, busy, member=other, password=None, nickname=None
+    )
+    await _add_match(db_session, busy.id, [my_entry.id, other_entry.id], status="completed")
+    await _add_match(db_session, busy.id, [my_entry.id], status="completed")
+    # neither a match I sat out nor an unfinished one counts
+    await _add_match(db_session, busy.id, [other_entry.id], status="completed")
+    await _add_match(db_session, busy.id, [my_entry.id], status="in_progress")
+    await disband_group(db_session, busy)
+    single, single_entry, *_ = await create_group(
+        db_session, _group_payload("Single"), member=member
+    )
+    await _add_match(db_session, single.id, [single_entry.id], status="completed")
+    await disband_group(db_session, single)
+    await create_group(db_session, _group_payload("Quiet"), member=member)
+
+    result = await get_my_groups(db_session, member.id)
+    assert {group.name: group.match_count for group in result.groups} == {
+        "Busy": 2,
+        "Single": 1,
+        "Quiet": 0,
+    }
+    # both ends inclusive, either side open-ended
+    assert await _my_group_names(db_session, member.id, match_count_min=1) == {"Busy", "Single"}
+    assert await _my_group_names(db_session, member.id, match_count_max=1) == {"Single", "Quiet"}
+    assert await _my_group_names(
+        db_session, member.id, match_count_min=2, match_count_max=2
+    ) == {"Busy"}
+    assert await _my_group_names(db_session, member.id, match_count_max=0) == {"Quiet"}
+    assert await _my_group_names(db_session, member.id, match_count_min=3) == set()
+    # combines with the other filters
+    assert await _my_group_names(db_session, member.id, match_count_min=1, name="sin") == {
+        "Single"
+    }
 
 
 async def test_my_groups_paginates_newest_first(

@@ -43,6 +43,14 @@
             {{ 'myGroups.filters.disbandedTo' | translate }}
             <input type="date" formControlName="disbanded_to" />
           </label>
+          <label>
+            {{ 'myGroups.filters.matchCountMin' | translate }}
+            <input type="number" inputmode="numeric" min="0" step="1" formControlName="match_count_min" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.matchCountMax' | translate }}
+            <input type="number" inputmode="numeric" min="0" step="1" formControlName="match_count_max" />
+          </label>
         </div>
       </details>
 
@@ -96,6 +104,9 @@
                 @if (group.disbanded_at) {
                   ・{{ 'myGroups.disbandedAt' | translate }}：{{ group.disbanded_at | date: 'yyyy/M/d HH:mm' }}
                 }
+              </span>
+              <span class="group-dates">
+                {{ 'myGroups.matchCount' | translate: { count: group.match_count } }}
               </span>
             </span>
             <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>

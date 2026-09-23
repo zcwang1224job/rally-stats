@@ -2017,6 +2017,8 @@ async def get_my_groups(
     created_before: datetime | None = None,
     disbanded_from: datetime | None = None,
     disbanded_before: datetime | None = None,
+    match_count_min: int | None = None,
+    match_count_max: int | None = None,
     group_id: uuid.UUID | None = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
@@ -2042,7 +2044,11 @@ async def get_my_groups(
     group opened at 07:00 Taipei time is found under that local date, not
     under the previous day's UTC date. Either `disbanded_*` bound drops
     every group without a `disbanded_at` (still active, or disbanded before
-    that column existed)."""
+    that column existed).
+
+    `match_count` is how many of the group's completed matches this member
+    played in (the group-history page's "場數"); `match_count_min`/
+    `match_count_max` filter on it, both ends inclusive."""
     roster_result = await session.execute(
         select(RosterEntry.group_id, RosterEntry.status)
         .where(RosterEntry.member_id == member_id)
@@ -2074,6 +2080,24 @@ async def get_my_groups(
         .where(Group.id.in_(all_group_ids))
         .order_by(Group.created_at.desc())
     )
+    group_rows = result.all()
+
+    # Same definition as `_filtered_member_matches()`: completed matches
+    # with one of this member's roster entries among the participants.
+    participant_exists = (
+        select(MatchParticipant.id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(MatchParticipant.match_id == Match.id, RosterEntry.member_id == member_id)
+        .exists()
+    )
+    match_count_result = await session.execute(
+        _completed_matches_query()
+        .with_only_columns(Match.group_id, func.count(Match.id))
+        .where(Match.group_id.in_(all_group_ids), participant_exists)
+        .group_by(Match.group_id)
+    )
+    match_count_by_group: dict[uuid.UUID, int] = dict(match_count_result.tuples().all())
+
     groups = [
         MyGroupSummary(
             group_id=str(row.id),
@@ -2084,14 +2108,17 @@ async def get_my_groups(
             disbanded_at=row.disbanded_at,
             is_creator=row.id in created_group_ids,
             member_status=member_status_by_group[row.id],
+            match_count=match_count_by_group.get(row.id, 0),
         )
-        for row in result.all()
+        for row in group_rows
         if (group_id is None or row.id == group_id)
         and (not name or name.lower() in row.name.lower())
         and (not group_number or group_number in str(row.group_number))
         and (role is None or (row.id in created_group_ids) == (role == "creator"))
         and _within(row.created_at, created_from, created_before)
         and _within(row.disbanded_at, disbanded_from, disbanded_before)
+        and (match_count_min is None or match_count_by_group.get(row.id, 0) >= match_count_min)
+        and (match_count_max is None or match_count_by_group.get(row.id, 0) <= match_count_max)
     ]
     page_size = await get_default_page_size(session)
     total_pages = max(1, (len(groups) + page_size - 1) // page_size)

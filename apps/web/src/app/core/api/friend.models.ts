@@ -78,6 +78,9 @@ export interface MyGroupSummary {
   // can leave and rejoin the same group, producing multiple historical
   // entries; this reflects the newest one.
   member_status: 'active' | 'left' | 'kicked';
+  // How many of the group's completed matches this member played in — the
+  // same count as the group-history page's "場數".
+  match_count: number;
 }
 
 export interface MyGroupsResponse {
@@ -92,7 +95,8 @@ export interface MyGroupsResponse {
  * < `before`) as ISO strings WITH a UTC offset — the caller turns the
  * viewer's local day into instants, so the filter agrees with the local
  * times the list shows; a `disbanded_*` bound also drops every group that
- * has no `disbanded_at`. `group_id` pins one exact group — for a caller
+ * has no `disbanded_at`. `match_count_min`/`match_count_max` bound
+ * `match_count`, both ends inclusive. `group_id` pins one exact group — for a caller
  * that needs that one row whatever page it would land on. */
 export interface MyGroupsFilters {
   name?: string;
@@ -102,6 +106,8 @@ export interface MyGroupsFilters {
   created_before?: string;
   disbanded_from?: string;
   disbanded_before?: string;
+  match_count_min?: number;
+  match_count_max?: number;
   group_id?: string;
 }
 

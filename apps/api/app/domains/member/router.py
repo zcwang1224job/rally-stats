@@ -422,6 +422,8 @@ async def get_my_groups(
     created_before: Annotated[AwareDatetime | None, Query()] = None,
     disbanded_from: Annotated[AwareDatetime | None, Query()] = None,
     disbanded_before: Annotated[AwareDatetime | None, Query()] = None,
+    match_count_min: Annotated[int | None, Query(ge=0)] = None,
+    match_count_max: Annotated[int | None, Query(ge=0)] = None,
     group_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
@@ -441,7 +443,10 @@ async def get_my_groups(
     viewer's local calendar day into instants, so the filter agrees with
     the local times the list displays — unlike a bare `date`, which would
     be compared against the UTC date. A `disbanded_*` bound also drops
-    every group that has no `disbanded_at`."""
+    every group that has no `disbanded_at`.
+
+    `match_count_min`/`match_count_max` filter (both ends inclusive) on each
+    row's `match_count`: the completed matches this member played there."""
     return await service.get_my_groups(
         session,
         member.id,
@@ -453,6 +458,8 @@ async def get_my_groups(
         created_before=created_before,
         disbanded_from=disbanded_from,
         disbanded_before=disbanded_before,
+        match_count_min=match_count_min,
+        match_count_max=match_count_max,
         group_id=group_id,
     )
 

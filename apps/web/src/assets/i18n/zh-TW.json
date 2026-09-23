@@ -221,7 +221,9 @@
       "createdFrom": "開團時間（起）",
       "createdTo": "開團時間（迄）",
       "disbandedFrom": "解散時間（起）",
-      "disbandedTo": "解散時間（迄）"
+      "disbandedTo": "解散時間（迄）",
+      "matchCountMin": "比賽場數（最少）",
+      "matchCountMax": "比賽場數（最多）"
     },
     "forgotPinButton": "忘記管理 PIN 碼",
     "forgotPinConfirmTitle": "確定重設此團的管理 PIN 碼？",
@@ -229,6 +231,7 @@
     "viewHistoryAriaLabel": "查看「{{name}}」的比賽紀錄",
     "createdAt": "開團時間",
     "disbandedAt": "解散時間",
+    "matchCount": "我打了 {{count}} 場比賽",
     "role": {
       "creator": "團長",
       "member": "團員"
