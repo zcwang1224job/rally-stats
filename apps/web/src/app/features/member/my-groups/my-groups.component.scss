@@ -29,12 +29,27 @@
 
 .advanced-filters-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  // `minmax(0, …)`, not a bare `1fr` (whose minimum is the content's own
+  // width): Safari gives date/number inputs a ~215px intrinsic width, so
+  // two such columns overflowed the card at tablet/desktop widths.
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-md);
 
-  // Two columns, so each from/to pair of dates shares a row.
+  // Two columns, so each from/to pair shares a row.
   @media (min-width: breakpoints.$breakpoint-tablet) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  input,
+  select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  // Safari ignores `min-height` on a native <select>, which left 我的身分
+  // shorter than the 團編號 input sharing its row.
+  select {
+    height: var(--touch-target-min);
   }
 }
 
