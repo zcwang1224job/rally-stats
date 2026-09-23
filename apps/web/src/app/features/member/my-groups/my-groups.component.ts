@@ -13,6 +13,17 @@ import { FriendsService } from '../../friends/friends.service';
 
 type RoleFilter = '' | 'creator' | 'member';
 
+/** A match-count bound from a `type="number"` input: a whole number >= 0,
+ * or undefined for an empty/invalid field. Unlike a truthiness check, 0 is
+ * a real bound ("groups I never played a match in"). */
+function toMatchCount(value: string | number | null): number | undefined {
+  if (value === null || value === '') {
+    return undefined;
+  }
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 0 ? count : undefined;
+}
+
 /** 我的團 + 忘記管理 PIN 碼 (US7, completes 006-member-friends US4):
  * everything this member has ever created (any status), each with a
  * "忘記管理 PIN 碼" recovery behind a two-step confirm dialog — the reset
@@ -20,7 +31,7 @@ type RoleFilter = '' | 'creator' | 'member';
  * Constitution V treatment as disband/regenerate-PIN.
  *
  * Filterable (name / group number / role / opened-between /
- * disbanded-between) and paginated — same filter-panel +
+ * disbanded-between / match count) and paginated — same filter-panel +
  * `<app-pagination>` convention as the friend list. */
 @Component({
   selector: 'app-my-groups',
@@ -58,6 +69,9 @@ export class MyGroupsComponent {
     created_to: [''],
     disbanded_from: [''],
     disbanded_to: [''],
+    // my completed matches in the group, both ends inclusive
+    match_count_min: [''],
+    match_count_max: [''],
   });
 
   /** Snapshot of the filters a load() call actually used — separate from
@@ -102,7 +116,15 @@ export class MyGroupsComponent {
     const raw = this.filterForm.getRawValue();
     const name = raw.name.trim();
     const groupNumber = raw.group_number.trim();
-    this.appliedFilters.set({ ...raw, name, group_number: groupNumber });
+    const matchCountMin = toMatchCount(raw.match_count_min);
+    const matchCountMax = toMatchCount(raw.match_count_max);
+    this.appliedFilters.set({
+      ...raw,
+      name,
+      group_number: groupNumber,
+      match_count_min: matchCountMin === undefined ? '' : String(matchCountMin),
+      match_count_max: matchCountMax === undefined ? '' : String(matchCountMax),
+    });
     this.friends
       .getMyGroups(this.page(), {
         name: name || undefined,
@@ -114,6 +136,8 @@ export class MyGroupsComponent {
         created_before: localDayStart(raw.created_to, 1),
         disbanded_from: localDayStart(raw.disbanded_from),
         disbanded_before: localDayStart(raw.disbanded_to, 1),
+        match_count_min: matchCountMin,
+        match_count_max: matchCountMax,
       })
       .subscribe({
         next: (response) => {

@@ -104,6 +104,7 @@ const myGroupsResponse: MyGroupsResponse = {
       disbanded_at: '2026-09-16T12:00:00Z',
       is_creator: false,
       member_status: 'active',
+      match_count: 0,
     },
   ],
   page: 1,

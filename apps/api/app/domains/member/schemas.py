@@ -242,6 +242,9 @@ class MyGroupSummary(BaseModel):
     # leaving, producing multiple historical rows; this reflects the
     # newest one.
     member_status: str
+    # How many of this group's completed matches this member played in —
+    # the same count as the group-history page's "場數".
+    match_count: int
 
 
 class MyGroupsResponse(BaseModel):

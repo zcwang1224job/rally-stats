@@ -1,6 +1,6 @@
 import { Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
-import { provideTranslateService } from '@ngx-translate/core';
+import { provideTranslateService, TranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { FriendsService } from '../../friends/friends.service';
@@ -15,6 +15,7 @@ const group = {
   disbanded_at: null,
   is_creator: true,
   member_status: 'active' as const,
+  match_count: 3,
 };
 
 describe('MyGroupsComponent', () => {
@@ -253,6 +254,8 @@ describe('MyGroupsComponent', () => {
         created_to: '2026-09-30',
         disbanded_from: '2026-10-05',
         disbanded_to: '2026-10-05',
+        match_count_min: '2',
+        match_count_max: '10',
       });
       fixture.nativeElement
         .querySelector('form.filter-form')
@@ -269,6 +272,8 @@ describe('MyGroupsComponent', () => {
         created_before: new Date(2026, 9, 1).toISOString(),
         disbanded_from: new Date(2026, 9, 5).toISOString(),
         disbanded_before: new Date(2026, 9, 6).toISOString(),
+        match_count_min: 2,
+        match_count_max: 10,
       });
       expect(component.page()).toBe(1);
       expect(component.hasActiveFilters()).toBe(true);
@@ -300,6 +305,8 @@ describe('MyGroupsComponent', () => {
         created_to: '',
         disbanded_from: '',
         disbanded_to: '',
+        match_count_min: '',
+        match_count_max: '',
       });
       expect(getMyGroups).toHaveBeenLastCalledWith(1, {
         name: undefined,
@@ -388,6 +395,53 @@ describe('MyGroupsComponent', () => {
         disbanded_from: undefined,
         disbanded_before: undefined,
       });
+    });
+
+    it('filters by match count, where 0 is a real bound and an invalid value is dropped', () => {
+      const { fixture, getMyGroups } = setup({ groups: [group], page: 1, total_pages: 1 });
+      const component = fixture.componentInstance;
+      const details = (): HTMLDetailsElement =>
+        fixture.nativeElement.querySelector('details.advanced-filters');
+      const countControls = Array.from<HTMLInputElement>(
+        fixture.nativeElement.querySelectorAll('details.advanced-filters input[type="number"]'),
+      ).map((input) => input.getAttribute('formcontrolname'));
+      expect(countControls).toEqual(['match_count_min', 'match_count_max']);
+
+      // "groups I never played in": max 0
+      component.filterForm.patchValue({ match_count_max: '0' });
+      component.applyFilters();
+      fixture.detectChanges();
+      expect(getMyGroups).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({ match_count_min: undefined, match_count_max: 0 }),
+      );
+      expect(component.hasActiveFilters()).toBe(true);
+      expect(details().open).toBe(true);
+
+      // a number input hands over a number; negatives and fractions are ignored
+      component.filterForm.patchValue({
+        match_count_min: -1 as unknown as string,
+        match_count_max: '1.5',
+      });
+      component.applyFilters();
+      fixture.detectChanges();
+      expect(getMyGroups).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({ match_count_min: undefined, match_count_max: undefined }),
+      );
+      expect(component.hasActiveFilters()).toBe(false);
+    });
+
+    it('shows how many matches I played in each group', () => {
+      const { fixture } = setup({ groups: [group], page: 1, total_pages: 1 });
+      const translate = TestBed.inject(TranslateService);
+      translate.setTranslation('zh-TW', { myGroups: { matchCount: '我打了 {{count}} 場比賽' } });
+      translate.use('zh-TW');
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.group-list li').textContent).toContain(
+        '我打了 3 場比賽',
+      );
     });
 
     it('tells "no groups at all" apart from "nothing matches the filters"', () => {

@@ -221,7 +221,9 @@
       "createdFrom": "Created (From)",
       "createdTo": "Created (To)",
       "disbandedFrom": "Disbanded (From)",
-      "disbandedTo": "Disbanded (To)"
+      "disbandedTo": "Disbanded (To)",
+      "matchCountMin": "Matches played (min)",
+      "matchCountMax": "Matches played (max)"
     },
     "forgotPinButton": "Forgot Admin PIN",
     "forgotPinConfirmTitle": "Reset this group's admin PIN?",
@@ -229,6 +231,7 @@
     "viewHistoryAriaLabel": "View match records for \"{{name}}\"",
     "createdAt": "Created",
     "disbandedAt": "Disbanded",
+    "matchCount": "{{count}} matches played",
     "role": {
       "creator": "Creator",
       "member": "Member"
