@@ -29,6 +29,15 @@ os.environ.setdefault("ABLY_API_KEY", "dummy.test:key")
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _register_sport_types() -> None:
+    # 043: service-layer tests call core code without importing app.main, so
+    # the test suite is its own composition root for the sport type plugins.
+    from app.sports.types import register_all
+
+    register_all()
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _migrate_test_db() -> None:
     env = {**os.environ, "DATABASE_URL": TEST_DATABASE_URL}
     api_dir = os.path.dirname(os.path.dirname(__file__))

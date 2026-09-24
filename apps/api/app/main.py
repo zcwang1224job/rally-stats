@@ -25,6 +25,10 @@ from app.domains.notification.router import router as notification_router
 from app.domains.schedule.router import router as schedule_router
 from app.scheduler.auto_disband import start_scheduler, stop_scheduler
 
+# Composition root (constitution XII): the only app module allowed to import
+# the sport type plugins. Every core module talks to them via app.sports.registry.
+from app.sports.types import register_all as register_sport_types
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -51,6 +55,7 @@ _CLOUDFRONT_REMAP_NOTE = (
 
 
 def create_app() -> FastAPI:
+    register_sport_types()
     settings = get_settings()
     description = _BASE_DESCRIPTION + (
         _CLOUDFRONT_REMAP_NOTE if settings.remap_403_404_for_cloudfront else ""

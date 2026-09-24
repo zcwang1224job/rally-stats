@@ -99,7 +99,8 @@
           "options": {
             "runner": "vitest",
             "buildTarget": "::development",
-            "tsConfig": "tsconfig.spec.json"
+            "tsConfig": "tsconfig.spec.json",
+            "setupFiles": ["src/test-setup.ts"]
           }
         },
         "lint": {

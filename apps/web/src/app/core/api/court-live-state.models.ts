@@ -2,6 +2,7 @@
 // apps/api/app/domains/schedule/schemas.py (data-model.md).
 
 import { CourtLinkType } from './court-link.models';
+import { EndMode, SportSummary } from './sport.models';
 
 export type Team = 'A' | 'B';
 /** 037-rest-ready-toggle adds held_for_rest and not_enough_ready. Display
@@ -69,7 +70,18 @@ export interface MatchLiveDetail {
    * `deuce_threshold` is absent on purpose — it takes no part in the win
    * test (see core/match-point.ts). */
   target_score?: number;
-  cap_score?: number;
+  /** 043: null when the match has no cap (only the win_by lead ends it). */
+  cap_score?: number | null;
+  /** 043 sport snapshot and common parameters. Optional so an older
+   * backend reads as a badminton match. */
+  sport?: SportSummary;
+  end_mode?: EndMode;
+  win_by?: number;
+  allow_draw?: boolean;
+  score_steps?: number[];
+  /** Sport-type-specific live state (e.g. the frames plugin's frame score);
+   * null for net rally. */
+  sport_state?: unknown;
 }
 
 export interface NextUpPreview {
@@ -104,12 +116,17 @@ export interface CourtStateResponse {
   current_match: MatchLiveDetail | null;
   waiting_reason: WaitingReason | null;
   next_up: NextUpPreview | null;
+  /** 043: the group's activity, so a host can pick the sport type module
+   * even while no match is on the court. */
+  sport?: SportSummary;
 }
 
 export interface AllCourtsLiveState {
   group_id: string;
   round_number: number;
   courts: CourtLiveState[];
+  /** 043: see CourtStateResponse.sport. */
+  sport?: SportSummary;
 }
 
 export interface ScoreMutationResult {
@@ -130,6 +147,8 @@ export interface ScoreMutationResult {
   // ended this point (no more serve state to show) or the mutation wasn't
   // applied.
   serve: ServeStationInfo | null;
+  /** 043: the sport type's live state after this mutation (null for net rally). */
+  sport_state?: unknown;
 }
 
 export interface ShotPlacementAttachResponse {

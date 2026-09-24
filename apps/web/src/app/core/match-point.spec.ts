@@ -57,4 +57,17 @@ describe('isMatchPoint', () => {
     expect(isMatchPoint(20, 15, TARGET, undefined)).toBe(false);
     expect(isMatchPoint(20, 15, undefined, undefined)).toBe(false);
   });
+
+  // 043: `null` cap means there is none — table tennis 11 points, lead by 2.
+  it('no cap: only the win_by lead makes a match point, however long it runs', () => {
+    expect(isMatchPoint(10, 8, 11, null)).toBe(true);
+    expect(isMatchPoint(10, 10, 11, null)).toBe(false);
+    expect(isMatchPoint(14, 13, 11, null)).toBe(true);
+    expect(isMatchPoint(39, 39, 11, null)).toBe(false);
+  });
+
+  it('a one-point win_by (first to N frames) warns one frame out', () => {
+    expect(isMatchPoint(4, 4, 5, null, 1)).toBe(true);
+    expect(isMatchPoint(3, 4, 5, null, 1)).toBe(false);
+  });
 });

@@ -70,6 +70,7 @@ from app.domains.schedule.schemas import (
     WaitingOnRest,
     WaitingReason,
 )
+from app.sports import scoring
 
 _ACTIVE_MATCH_STATUSES = ("queued", "in_progress")
 
@@ -379,6 +380,17 @@ async def create_match_with_participants(
         # already-created row to in_progress, this value is already fixed.
         detailed_scoring_enabled=group.detailed_scoring_enabled,
         queue_position=queue_position,
+        # 043 data-model §3: the sport and its common parameters, fixed for
+        # the life of the match whatever the group changes later.
+        sport_key=group.sport_key,
+        type_key=group.type_key,
+        sport_name=group.sport_name,
+        team_size=group.team_size,
+        end_mode=group.end_mode,
+        win_by=group.win_by,
+        allow_draw=group.allow_draw,
+        score_steps=list(group.score_steps),
+        type_params=dict(group.type_params),
     )
     session.add(match)
     await session.flush()
@@ -3071,11 +3083,20 @@ async def preview_random_partner_pairing(
 # --- 007-live-scoreboard: 即時計分板與控制板 ---
 
 
-def match_wins(score_x: int, score_y: int, target_score: int, cap_score: int) -> bool:
+def match_wins(
+    score_x: int,
+    score_y: int,
+    target_score: int,
+    cap_score: int | None,
+    win_by: int = 2,
+) -> bool:
     """達標判定公式（research.md #2）——`deuce_threshold` 不參與運算：
     001 之兩組固定預設值（21/20/30、15/14/21）已交叉驗證此公式與其定義
-    完全一致，無需額外讀取 deuce 門檻欄位。"""
-    return score_x >= cap_score or (score_x >= target_score and score_x - score_y >= 2)
+    完全一致，無需額外讀取 deuce 門檻欄位。
+
+    043 起委派 `app.sports.scoring.match_wins`（research Decision 3）；
+    `win_by` 預設 2 讓既有呼叫端與羽球行為不變。"""
+    return scoring.match_wins(score_x, score_y, target=target_score, win_by=win_by, cap=cap_score)
 
 
 async def _fetch_match_for_court(
@@ -3394,7 +3415,7 @@ async def apply_score_delta(
     # response below (not just published) — None when the match ends this
     # point (no more serve state to show).
     serve_payload: dict[str, str | None] | None = None
-    if match_wins(my_score, opp_score, match.target_score, match.cap_score):
+    if match_wins(my_score, opp_score, match.target_score, match.cap_score, match.win_by):
         await session.execute(
             update(Match)
             .where(Match.id == match_id, Match.status == "in_progress")

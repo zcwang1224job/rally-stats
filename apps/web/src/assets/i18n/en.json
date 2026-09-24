@@ -1340,5 +1340,12 @@
       "opponentRecord": "{{wins}}W {{losses}}L",
       "altText": "{{group}} my stats: {{winRate}} win rate, {{wins}} wins, {{losses}} losses"
     }
+  },
+  "sections": {
+    "empty": "No data yet",
+    "unsupported": "This section needs a newer version of Rally Stats to display fully",
+    "groupAverage": "Group average",
+    "scoreTimeline": "Score log",
+    "team": "Team {{team}}"
   }
 }

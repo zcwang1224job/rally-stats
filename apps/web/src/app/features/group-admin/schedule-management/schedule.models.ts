@@ -5,6 +5,7 @@ import type {
   SubstitutionPreview,
   WaitingReason,
 } from '../../../core/api/court-live-state.models';
+import type { EndMode, SportSummary } from '../../../core/api/sport.models';
 
 export type { SubstitutionPreview, WaitingReason };
 export type Team = 'A' | 'B';
@@ -56,7 +57,15 @@ export interface MatchSummary {
    * `deuce_threshold` is absent on purpose — it takes no part in the win
    * test (see core/match-point.ts). */
   target_score?: number;
-  cap_score?: number;
+  /** 043: null when the match has no cap. */
+  cap_score?: number | null;
+  /** 043 sport snapshot and common parameters; see MatchLiveDetail. */
+  sport?: SportSummary;
+  end_mode?: EndMode;
+  win_by?: number;
+  allow_draw?: boolean;
+  score_steps?: number[];
+  sport_state?: unknown;
 }
 
 export interface CourtScheduleStatus {
@@ -129,6 +138,8 @@ export interface ScheduleResponse {
   round_phase: RoundPhase | null;
   courts: CourtScheduleStatus[];
   roster: RosterScheduleStatus[];
+  /** 043: the group's activity (picks the court-control sport type module). */
+  sport?: SportSummary;
 }
 
 export interface MatchDetailResponse {

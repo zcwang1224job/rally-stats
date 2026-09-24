@@ -22,7 +22,8 @@ export function isMatchPoint(
   scoringSideScore: number,
   opponentScore: number,
   targetScore: number | undefined,
-  capScore: number | undefined,
+  capScore: number | null | undefined,
+  winBy = 2,
 ): boolean {
   // An older backend doesn't send these; fall back to "never warn", which
   // is exactly how every screen behaved before this feature.
@@ -30,5 +31,9 @@ export function isMatchPoint(
     return false;
   }
   const after = scoringSideScore + 1;
-  return after >= capScore || (after >= targetScore && after - opponentScore >= 2);
+  // 043: `null` is "no cap" — only the win_by lead can end the match.
+  if (capScore !== null && after >= capScore) {
+    return true;
+  }
+  return after >= targetScore && after - opponentScore >= winBy;
 }

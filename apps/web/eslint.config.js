@@ -39,5 +39,51 @@ module.exports = tseslint.config(
       ...angular.configs.templateAccessibility,
     ],
     rules: {},
+  },
+  // Sport type plugin boundary (spec 043, constitution XII). Core code and the
+  // plugin foundation never import a sport type module; sport type modules
+  // never import each other. The only exceptions are the composition roots
+  // (src/app/sports/registry.ts's lazy loaders, src/test-setup.ts), which carry
+  // an inline disable comment.
+  {
+    files: [
+      "src/app/core/**/*.ts",
+      "src/app/features/**/*.ts",
+      "src/app/shared/**/*.ts",
+      "src/app/sports/*.ts",
+      "src/app/sports/section-outlet/**/*.ts",
+      "src/app/sports/generic-sections/**/*.ts",
+      "src/app/sports/hosts/**/*.ts",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: ["**/sports/types/**"] }],
+    },
+  },
+  {
+    files: ["src/app/sports/types/net-rally/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["**/sports/types/frames/**", "**/sports/types/generic/**"] },
+      ],
+    },
+  },
+  {
+    files: ["src/app/sports/types/frames/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["**/sports/types/net-rally/**", "**/sports/types/generic/**"] },
+      ],
+    },
+  },
+  {
+    files: ["src/app/sports/types/generic/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["**/sports/types/net-rally/**", "**/sports/types/frames/**"] },
+      ],
+    },
   }
 );

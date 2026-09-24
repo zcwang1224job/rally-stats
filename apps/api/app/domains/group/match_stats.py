@@ -13,6 +13,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.sports import scoring
+
 Team = Literal["A", "B"]
 # 035-point-ending-type: how a rally ended. A deliberate copy of
 # `schedule.schemas.EndingType` — this module imports nothing from the ORM
@@ -443,12 +445,14 @@ def tempo_stats(points: list[EffectivePoint]) -> TempoResult | None:
     )
 
 
-def _wins(score_x: int, score_y: int, target_score: int, cap_score: int) -> bool:
-    """034 research.md Decision 2: the write path's win rule
-    (`schedule.service.match_wins()`), restated because that module drags in
-    the ORM and realtime publishing. test_match_stats.py pins the two
-    together over a grid so they cannot drift apart."""
-    return score_x >= cap_score or (score_x >= target_score and score_x - score_y >= 2)
+def _wins(
+    score_x: int, score_y: int, target_score: int, cap_score: int | None, win_by: int = 2
+) -> bool:
+    """034 research.md Decision 2: the write path's win rule. Since 043 both
+    this and `schedule.service.match_wins()` delegate to the one pure rule in
+    `app.sports.scoring` (research Decision 3), so they cannot drift apart;
+    test_match_stats.py still pins the two together over a grid."""
+    return scoring.match_wins(score_x, score_y, target=target_score, win_by=win_by, cap=cap_score)
 
 
 # Below this target an "endgame" of the last three points would swallow half
@@ -458,7 +462,7 @@ _ENDGAME_WINDOW = 3
 
 
 def clutch_stats(
-    points: list[EffectivePoint], target_score: int, cap_score: int
+    points: list[EffectivePoint], target_score: int, cap_score: int | None, win_by: int = 2
 ) -> ClutchResult:
     """034 research.md Decision 1-3. Every phase is judged by the score a
     point STARTS from — the previous effective point's re-accumulated score,
@@ -497,7 +501,7 @@ def clutch_stats(
                 if applies:
                     tally[0] += won
                     tally[1] += 1
-            if _wins(mine + 1, theirs, target_score, cap_score):
+            if _wins(mine + 1, theirs, target_score, cap_score, win_by):
                 held[team] += 1
                 if won:
                     converted_on[team] = held[team]

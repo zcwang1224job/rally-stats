@@ -1881,7 +1881,7 @@ async def _build_derived_stats(
 
     assert match.winner_team is not None  # always set for completed matches
     clutch_stats = _clutch_stats_schema(
-        match_stats.clutch_stats(points, match.target_score, match.cap_score),
+        match_stats.clutch_stats(points, match.target_score, match.cap_score, match.win_by),
         momentum,
         match.winner_team,  # type: ignore[arg-type]
     )

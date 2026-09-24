@@ -4,6 +4,7 @@
 
 import { ParticipantSummary, Team } from '../../features/group-admin/schedule-management/schedule.models';
 import { EndingType } from './court-live-state.models';
+import { Section, SportSummary } from './sport.models';
 
 // A per-round *tally*, not a single outcome: singles fair_rotation's full
 // round-robin can complete several matches for one Member within the same
@@ -104,7 +105,11 @@ export interface ShotPlacementDetail {
 // deliberately not a wall-clock timestamp).
 export interface ScoreEventSummary {
   side: Team;
-  delta: 1 | -1;
+  /** ±1 for net rally; 043 generic activities score in larger steps. */
+  delta: number;
+  /** 043 spine kind — 'point' for every scoring event. Optional so an
+   * older backend reads as 'point'. */
+  kind?: string;
   score_a: number;
   score_b: number;
   elapsed_seconds: number;
@@ -317,6 +322,11 @@ export interface MatchRecordDetailResponse extends MatchRecordSummary {
   // 035: same rule again, and null as well when not one point of the
   // match recorded an ending (every pre-035 match).
   ending_stats: EndingStats | null;
+  /** 043: the match's activity and its detail-page sections, decided by
+   * the sport type (FR-021). Optional so an older backend reads as a
+   * badminton match rendered by the net rally module. */
+  sport?: SportSummary;
+  sections?: Section[];
 }
 
 export interface RoundWinRatePoint {

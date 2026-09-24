@@ -14,6 +14,7 @@ from app.core.db import Base
 from app.domains.court.models import Court  # noqa: F401
 from app.domains.group.models import Group  # noqa: F401
 from app.domains.member.models import Member  # noqa: F401
+from app.domains.member.sports_models import MemberSport  # noqa: F401
 from app.domains.roster.models import RosterEntry  # noqa: F401
 from app.domains.schedule.models import (  # noqa: F401
     Match,

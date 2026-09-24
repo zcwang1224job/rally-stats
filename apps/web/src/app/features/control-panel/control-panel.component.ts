@@ -279,7 +279,7 @@ export class ControlPanelComponent {
     }
     const own = side === 'A' ? match.score_a : match.score_b;
     const other = side === 'A' ? match.score_b : match.score_a;
-    if (!isMatchPoint(own, other, match.target_score, match.cap_score)) {
+    if (!isMatchPoint(own, other, match.target_score, match.cap_score, match.win_by)) {
       this.score(side, 1);
       return;
     }

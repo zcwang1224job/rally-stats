@@ -1340,5 +1340,12 @@
       "opponentRecord": "{{wins}} 勝 {{losses}} 敗",
       "altText": "{{group}} 我的成績：勝率 {{winRate}}，{{wins}} 勝 {{losses}} 敗"
     }
+  },
+  "sections": {
+    "empty": "目前沒有資料",
+    "unsupported": "這個區塊需要更新版本的 Rally Stats 才能完整顯示",
+    "groupAverage": "團內平均",
+    "scoreTimeline": "比分紀錄",
+    "team": "{{team}} 隊"
   }
 }

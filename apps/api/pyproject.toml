@@ -28,3 +28,44 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+# Sport type plugin boundary (spec 043, constitution XII). Composition roots
+# (app.main, alembic/env.py) and tests are deliberately outside these contracts.
+[tool.importlinter]
+root_package = "app"
+
+[[tool.importlinter.contracts]]
+name = "core must not import sport type plugins"
+type = "forbidden"
+source_modules = [
+    "app.core",
+    "app.domains",
+    "app.system_config",
+    "app.scheduler",
+    "app.sports.registry",
+    "app.sports.plugin",
+    "app.sports.presentation",
+    "app.sports.scoring",
+    "app.sports.catalog",
+]
+forbidden_modules = ["app.sports.types"]
+
+[[tool.importlinter.contracts]]
+name = "sport type plugins are independent"
+type = "independence"
+modules = [
+    "app.sports.types.net_rally",
+    "app.sports.types.frames",
+    "app.sports.types.generic",
+]
+
+[[tool.importlinter.contracts]]
+name = "plugins never publish or touch core services"
+type = "forbidden"
+source_modules = ["app.sports.types"]
+forbidden_modules = [
+    "app.core.realtime",
+    "app.domains.schedule.service",
+    "app.domains.group.service",
+    "app.domains.member.service",
+]

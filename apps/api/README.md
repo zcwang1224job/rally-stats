@@ -55,10 +55,16 @@ python -m pytest tests/ -v
 source .venv/bin/activate
 ruff check app/ tests/
 mypy app/
+lint-imports
 ```
 
-Both are treated as blocking checks (constitution principle I — strict type
-safety).
+All three are treated as blocking checks: ruff and mypy for constitution
+principle I (strict type safety), `lint-imports` for principle XII (sport type
+plugin boundary — core code must not import `app.sports.types`, plugins must
+not import each other or publish realtime events; contracts live in
+`pyproject.toml` under `[tool.importlinter]`). On the frontend, `npm run lint`
+enforces the same boundary with `no-restricted-imports` rules in
+`apps/web/eslint.config.js`.
 
 ## Project layout
 

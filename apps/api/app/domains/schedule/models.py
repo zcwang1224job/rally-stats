@@ -3,9 +3,18 @@ specs/003-schedule-rotation/data-model.md §1-4."""
 
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import TIMESTAMP, UUID
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Float,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+)
+from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -30,11 +39,28 @@ class Match(Base):
     score_a: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     score_b: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     winner_team: Mapped[str | None] = mapped_column(String(1), nullable=True)
+    # A | B | D (043 draw); non-NULL iff status == 'completed'.
 
     # Match Scoring Settings snapshot (copied from groups at creation time)
     target_score: Mapped[int] = mapped_column(Integer, nullable=False)
     deuce_threshold: Mapped[int] = mapped_column(Integer, nullable=False)
-    cap_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 043: nullable — no cap means only the win_by lead ends the match.
+    cap_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # 043-sport-type-plugin-foundation (data-model §3): the group's sport and
+    # common parameters, snapshotted by create_match_with_participants() so a
+    # later settings change never alters a match already created (constitution
+    # III). Python defaults are the badminton values, for the many call sites
+    # and tests that build Match() directly.
+    sport_key: Mapped[str] = mapped_column(String(32), nullable=False, default="badminton")
+    type_key: Mapped[str] = mapped_column(String(16), nullable=False, default="net_rally")
+    sport_name: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    team_size: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
+    end_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="target")
+    win_by: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=2)
+    allow_draw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    score_steps: Mapped[list[int]] = mapped_column(JSONB, nullable=False, default=lambda: [1])
+    type_params: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     # 031-shot-placement-scoring: snapshot of group.detailed_scoring_enabled
     # at creation time (research.md Decision 6). Unlike the three scoring-
     # settings fields above, this DOES carry a Python-level default (False,
@@ -76,7 +102,13 @@ class Match(Base):
 class ScoreEvent(Base):
     """One +1/-1 scoring action applied to a match, per apply_score_delta()
     (service.py) — an append-only audit trail alongside Match's running
-    score_a/score_b totals."""
+    score_a/score_b totals.
+
+    043: this table is the match event spine (research Decision 1). `kind`
+    'point' rows change the match score; plugin-declared kinds
+    (`<type_key>.<name>`, delta 0) only take a place in the sequence, with
+    their details in the plugin's own tables. Core readers that mean "the
+    scoring sequence" MUST filter kind == 'point'."""
 
     __tablename__ = "score_events"
 
@@ -89,8 +121,11 @@ class ScoreEvent(Base):
     group_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("groups.id"), nullable=False, index=True
     )
-    side: Mapped[str] = mapped_column(String(1), nullable=False)  # 'A' | 'B'
-    delta: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 | -1
+    kind: Mapped[str] = mapped_column(String(24), nullable=False, default="point")
+    # 'A' | 'B'; typed non-optional because every 'point' row has one — a
+    # plugin event may store NULL (the column is nullable since 043).
+    side: Mapped[str] = mapped_column(String(1), nullable=True)
+    delta: Mapped[int] = mapped_column(Integer, nullable=False)  # point: ±step; other kinds: 0
     score_a: Mapped[int] = mapped_column(Integer, nullable=False)  # resulting totals
     score_b: Mapped[int] = mapped_column(Integer, nullable=False)
     # which control surface issued the action: control_panel | admin |

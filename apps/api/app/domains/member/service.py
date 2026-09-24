@@ -1617,7 +1617,9 @@ def _match_derivations(
         return _MatchDerivations(participants, None, None, None, None)
     return _MatchDerivations(
         participants=participants,
-        clutch=match_stats.clutch_stats(points, match.target_score, match.cap_score),
+        clutch=match_stats.clutch_stats(
+            points, match.target_score, match.cap_score, match.win_by
+        ),
         serve=match_stats.serve_stats(points, inputs.snapshots, participants),
         landings=match_stats.player_landings(points, inputs.placements, participants),
         # 035: the same placements again, read for their ending this time.
