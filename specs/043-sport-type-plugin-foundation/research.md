@@ -99,7 +99,7 @@
 
 ## Decision 10：`match_stats.py` 拆成「核心純函式」與「隔網回合制純函式」
 
-**Decision**：`group/match_stats.py` 中只依 `point` 事件的部分（`effective_points`、`momentum_stats`、`tempo_stats`、`clutch_stats`、`_wins`→Decision 3）留在核心；依發球快照與落點的部分（`serve_stats`、`player_landings`、`landing_distribution`、`ending_stats`、`_receiver`、`EndingType` 複本）搬到 `app/sports/types/net_rally/stats.py`。測試 `test_match_stats.py` 改匯入路徑；`match_stats.EndingType is schedule.schemas.EndingType` 的釘點改為 `net_rally.stats.EndingType is net_rally.schemas.EndingType`（`EndingType` 型別同樣搬進外掛的 schemas，`schedule/schemas.py` 不再定義它）。
+**Decision**：`group/match_stats.py` 中只依 `point` 事件的部分（`effective_points`、`momentum_stats`、`tempo_stats`、`clutch_stats`、`_wins`→Decision 3）留在核心；依發球快照與落點的部分（`serve_stats`、`player_landings`、`landing_distribution`、`ending_stats`、`_receiver`、`EndingType` 複本）搬到 `app/sports/types/net_rally/stats.py`。測試 `test_match_stats.py` 改匯入路徑；`match_stats.EndingType is schedule.schemas.EndingType` 的釘點改為 `net_rally.stats.EndingType is schedule.schemas.EndingType`。`EndingType` 與 `RecordShotPlacementRequest` **留在核心** `schedule/schemas.py`：落點端點的 router 與請求 schema 在核心（三個授權面共用），若把型別搬進外掛，核心 schema 就得匯入外掛而違反 Decision 15；外掛以匯入方式重用（外掛→核心方向允許）。這是核心中僅存的羽球語彙，屬「端點合約」而非規則邏輯（tasks T029、T120）。
 
 **Rationale**：規格 FR-025：隔網回合制的非羽球活動也要 endgame／deuce／match point 等只靠比分的指標，這些正是核心該保留的；發球與落點是模組。
 
