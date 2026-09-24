@@ -51,7 +51,7 @@
 </div>
 
 <div class="match-card__result">
-  @switch (result()) {
+  @switch (shownResult()) {
     @case ('win') {
       <span class="status-badge status-badge--success">
         ✓ {{ 'member.matchHistory.resultWinBadge' | translate }}
@@ -60,6 +60,11 @@
     @case ('loss') {
       <span class="status-badge status-badge--danger">
         ✕ {{ 'member.matchHistory.resultLossBadge' | translate }}
+      </span>
+    }
+    @case ('draw') {
+      <span class="status-badge" data-result="draw">
+        = {{ 'common.draw' | translate }}
       </span>
     }
     @default {

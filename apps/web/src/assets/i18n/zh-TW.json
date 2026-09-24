@@ -758,7 +758,8 @@
         "did_not_play": "－ 未上場",
         "left": "⏏ 已離開",
         "kicked": "🚫 已被踢除"
-      }
+      },
+      "recordLabelWithDraws": "{{wins}} 勝 {{losses}} 敗 {{draws}} 和"
     },
     "matchRecords": {
       "empty": "尚無已完成的比賽",

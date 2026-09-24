@@ -758,7 +758,8 @@
         "did_not_play": "－ Did Not Play",
         "left": "⏏ Left",
         "kicked": "🚫 Removed"
-      }
+      },
+      "recordLabelWithDraws": "{{wins}} W {{losses}} L {{draws}} D"
     },
     "matchRecords": {
       "empty": "No completed matches yet",

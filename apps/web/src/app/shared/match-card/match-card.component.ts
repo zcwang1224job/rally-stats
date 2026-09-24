@@ -9,7 +9,7 @@ import { AddFriendButtonComponent } from '../add-friend-button/add-friend-button
 
 /** Whose perspective the card is read from: the viewer's own result
  * (match history, a friend's records) or the group's (who won). */
-export type MatchCardResult = 'win' | 'loss' | null;
+export type MatchCardResult = 'win' | 'loss' | 'draw' | null;
 
 /** One completed match as a scorecard row — used by every match list (my
  * match history, a friend's records, a group's records and history).
@@ -31,8 +31,8 @@ export type MatchCardResult = 'win' | 'loss' | null;
   styleUrl: './match-card.component.scss',
   host: {
     class: 'card match-card record-row--clickable',
-    '[class.match-card--win]': "result() === 'win'",
-    '[class.match-card--loss]': "result() === 'loss'",
+    '[class.match-card--win]': "shownResult() === 'win'",
+    '[class.match-card--loss]': "shownResult() === 'loss'",
     role: 'button',
     tabindex: '0',
     '(click)': 'opened.emit()',
@@ -52,6 +52,11 @@ export class MatchCardComponent {
     null,
   );
   readonly opened = output<void>();
+
+  /** 043: a draw is a draw whoever reads the card. */
+  readonly shownResult = computed<MatchCardResult>(() =>
+    this.match().winner_team === 'D' ? 'draw' : this.result(),
+  );
 
   readonly winnerNames = computed(() => {
     const match = this.match();

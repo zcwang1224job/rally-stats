@@ -17,6 +17,8 @@ import { Section, SportSummary } from './sport.models';
 export interface RoundRecord {
   wins: number;
   losses: number;
+  /** 043: draws (left out by the server when 0). */
+  draws?: number;
   left: boolean;
 }
 
@@ -32,6 +34,8 @@ export interface MemberStandingRow {
   rank: number;
   total_wins: number;
   total_losses: number;
+  /** 043: draws (left out by the server when 0). */
+  total_draws?: number;
 }
 
 export interface GroupStandingsResponse {
@@ -56,6 +60,8 @@ export interface FinalStandingRow {
   total_matches: number;
   total_wins: number;
   total_losses: number;
+  /** 043: draws (left out by the server when 0). */
+  total_draws?: number;
 }
 
 export interface MatchRecordSummary {
@@ -341,6 +347,8 @@ export interface OpponentRecord {
   nickname: string;
   wins: number;
   losses: number;
+  /** 043: draws (left out by the server when 0). */
+  draws?: number;
   matches: number;
   win_rate: number;
 }
@@ -369,6 +377,8 @@ export interface MemberMatchRecordsResponse {
   total_matches: number;
   total_wins: number;
   total_losses: number;
+  /** 043: draws (left out by the server when 0). */
+  total_draws?: number;
   win_rate: number;
   round_win_rates: RoundWinRatePoint[];
   opponent_records: MatchupRecord[];

@@ -10,6 +10,8 @@ import { GroupMemberViewService } from '../group-member-view.service';
 export interface WinLossRecord {
   wins: number;
   losses: number;
+  /** 043: only when there are any. */
+  draws?: number;
 }
 
 /** US2 (005-member-view，FR-005~010): 戰績頁。
@@ -97,17 +99,28 @@ export class StandingsComponent {
   /** FR-007/SC-004: "尚無比賽紀錄" — zero wins AND zero losses across every
    * round means this member has never had a completed match. */
   hasNoRecordYet(member: MemberStandingRow): boolean {
-    return member.total_wins === 0 && member.total_losses === 0;
+    return member.total_wins === 0 && member.total_losses === 0 && !member.total_draws;
   }
 
   /** did_not_play/left rounds carry no wins/losses to show — this is the
    * "should this cell show a win/loss count" guard. */
   hasRecord(member: MemberStandingRow, round: number): boolean {
     const record = member.rounds[String(round)];
-    return record !== undefined && !record.left && (record.wins > 0 || record.losses > 0);
+    return (
+      record !== undefined &&
+      !record.left &&
+      (record.wins > 0 || record.losses > 0 || (record.draws ?? 0) > 0)
+    );
   }
 
   totalRecord(member: MemberStandingRow): WinLossRecord {
-    return { wins: member.total_wins, losses: member.total_losses };
+    const record: WinLossRecord = { wins: member.total_wins, losses: member.total_losses };
+    return member.total_draws ? { ...record, draws: member.total_draws } : record;
+  }
+
+  /** 043: the record label, with draws only when there are any — a
+   * badminton group reads exactly as before. */
+  recordKey(draws: number | undefined): string {
+    return draws ? 'groupMemberView.standings.recordLabelWithDraws' : 'groupMemberView.standings.recordLabel';
   }
 }

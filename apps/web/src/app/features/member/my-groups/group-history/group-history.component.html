@@ -50,8 +50,11 @@
                     {{ 'groupMemberView.standings.noRecordYet' | translate }}
                   } @else {
                     {{
-                      'groupMemberView.standings.recordLabel'
-                        | translate: { wins: row.total_wins, losses: row.total_losses }
+                      (row.total_draws
+                        ? 'groupMemberView.standings.recordLabelWithDraws'
+                        : 'groupMemberView.standings.recordLabel')
+                        | translate
+                          : { wins: row.total_wins, losses: row.total_losses, draws: row.total_draws ?? 0 }
                     }}
                   }
                 </td>

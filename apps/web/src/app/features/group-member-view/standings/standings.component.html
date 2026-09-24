@@ -50,9 +50,13 @@
                       "
                     >
                       {{
-                        'groupMemberView.standings.recordLabel'
+                        recordKey(member.rounds[round].draws)
                           | translate
-                            : { wins: member.rounds[round].wins, losses: member.rounds[round].losses }
+                            : {
+                                wins: member.rounds[round].wins,
+                                losses: member.rounds[round].losses,
+                                draws: member.rounds[round].draws ?? 0,
+                              }
                       }}
                     </span>
                   }
@@ -62,7 +66,7 @@
                 @if (hasNoRecordYet(member)) {
                   {{ 'groupMemberView.standings.noRecordYet' | translate }}
                 } @else {
-                  {{ 'groupMemberView.standings.recordLabel' | translate: { wins: totalRecord(member).wins, losses: totalRecord(member).losses } }}
+                  {{ recordKey(totalRecord(member).draws) | translate: totalRecord(member) }}
                 }
               </td>
             </tr>
