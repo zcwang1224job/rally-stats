@@ -59,7 +59,7 @@
 
 **Gate 結果**：原則 III 的完賽定義需修訂憲章（已於本 plan 完成後以 `/speckit-constitution` 修訂為 1.1.0，同時新增原則 XII）；原則 VI 的「核心匯入外掛 registry」為介面依賴（非實作依賴）且限組裝根，記錄於 Complexity Tracking。其餘無違反。
 
-**Post-design re-check（Phase 1 完成後）**：data-model.md 確認所有新 NOT NULL 欄位皆有 `server_default`、外掛表皆 cascade 到脊椎、`completed ⇒ winner_team ∈ {A,B,D}` 不變量成立；contracts/ 確認既有端點只做新增欄位或放寬型別（`delta: int`、`cap_score: int | null`、`winner_team` 加 `D`）、三個釘死形狀的端點零變更、新動作只在既有三個授權面；plugin-boundary.md 確認 import-linter／eslint 規則可在不新增前端套件下落地。Gate 結果維持 PASS（附憲章修訂）。
+**Post-design re-check（Phase 1 完成後）**：data-model.md 確認所有新 NOT NULL 欄位皆有 `server_default`、外掛表皆 cascade 到脊椎、`completed ⇒ winner_team ∈ {A,B,D}` 不變量成立；contracts/ 確認既有端點只做新增欄位或放寬型別（`delta: int`、`cap_score: int | null`、`winner_team` 加 `D`）、三個釘死形狀的端點零變更、新動作只在既有三個授權面；plugin-boundary.md 確認 import-linter／eslint 規則可在不新增前端套件下落地。Gate 結果維持 PASS（附憲章修訂）。妥協：`EndingType`／`RecordShotPlacementRequest` 仍留在核心 `schedule/schemas.py`（既有請求形狀釘點與 `net_rally.stats.EndingType is schedule.schemas.EndingType` 同一性），由隔網回合制外掛引用，見 research.md Decision 10。
 
 ## Project Structure
 

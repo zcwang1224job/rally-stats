@@ -1,0 +1,20 @@
+{
+  "generic_kinds": [
+    "metric_grid",
+    "score_timeline",
+    "stat_table",
+    "text_note"
+  ],
+  "types": {
+    "frames": [
+      "frames.dashboard_summary",
+      "frames.frame_list",
+      "frames.frame_trend"
+    ],
+    "generic": [],
+    "net_rally": [
+      "net_rally.dashboard",
+      "net_rally.match_detail"
+    ]
+  }
+}

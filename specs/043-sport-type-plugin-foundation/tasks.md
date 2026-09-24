@@ -297,9 +297,9 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 **Independent Test**: quickstart §7。
 
-- [ ] T116 [P] [US7] 先寫 `api/tests/unit/sports/test_plugin_contracts.py`：對每個已註冊外掛驗證 `event_schemas()` 的 kind 以 `<type_key>.` 為前綴、`match_detail()`／`dashboard_sections()` 產出的 kind ⊆ `section_kinds ∪ GENERIC_KINDS`、`params_schema()` 可產生 JSON Schema、`tables()` 的每張表都有 `score_event_id` 外鍵 cascade；並把 `section_kinds` 匯出成 `api/app/sports/section-kinds.json`（`pytest --update-section-kinds` 更新、預設模式比對不得漂移）
+- [X] T116 [P] [US7] 先寫 `api/tests/unit/sports/test_plugin_contracts.py`：對每個已註冊外掛驗證 `event_schemas()` 的 kind 以 `<type_key>.` 為前綴、`match_detail()`／`dashboard_sections()` 產出的 kind ⊆ `section_kinds ∪ GENERIC_KINDS`、`params_schema()` 可產生 JSON Schema、`tables()` 的每張表都有 `score_event_id` 外鍵 cascade；並把 `section_kinds` 匯出成 `api/app/sports/section-kinds.json`（`pytest --update-section-kinds` 更新、預設模式比對不得漂移）
 - [ ] T117 [P] [US7] 先寫 `web/sports/section-outlet/section-outlet.contract.spec.ts`：讀 `apps/api/app/sports/section-kinds.json`（以相對路徑匯入 JSON），對每個 kind 斷言三個類型模組（測試中同步註冊）有元件或屬於 `GENERIC_KINDS`；`unknown.kind` 走退路（SC-008）
-- [ ] T118 [US7] 建立 `api/scripts/check_plugin_scope.sh`（quickstart §7 的 SC-005 指令：給定 commit 範圍與 `type_key`，列出不在允許路徑內的改動檔，非空即失敗）並在 tasks 提交紀錄上驗證 `frames` 與 `generic` 各自的實作提交範圍為空
+- [X] T118 [US7] 建立 `api/scripts/check_plugin_scope.sh`（quickstart §7 的 SC-005 指令：給定 commit 範圍與 `type_key`，列出不在允許路徑內的改動檔，非空即失敗）並在 tasks 提交紀錄上驗證 `frames` 與 `generic` 各自的實作提交範圍為空
 - [ ] T119 [US7] 執行 quickstart §7 的邊界破壞測試（核心加一行匯入外掛 → `lint-imports` 失敗；前端同理 → `npm run lint` 失敗），把結果記錄到 `docs/043-extensibility-check/`（本機文件）
 - [ ] T120 [US7] 在 `apps/web/` 執行 `npx ng build --configuration production`：`apps/web/dist/` 有 `net-rally`、`frames`、`generic` 三個獨立 chunk 且 `main-*.js` 不含 `frames.frame_list`（SC-006）
 
@@ -310,8 +310,8 @@ description: "Task list for 043-sport-type-plugin-foundation"
 ## Phase 10: Polish & Cross-Cutting Concerns
 
 - [ ] T121 [P] 更新 `docs/features.md`（功能總覽加「活動與比賽類型」、移除「羽球專用」描述、我的團活動頁籤）、`docs/tools.md`（`system_config` 新 key）、`docs/cicd-pipeline.md`（關卡指令加 `lint-imports`）——本機 docs，直接改主 checkout
-- [ ] T122 [P] 在 `specs/043-sport-type-plugin-foundation/plan.md` 的 Post-design re-check 段補一句：`EndingType`／`RecordShotPlacementRequest` 留在核心 schema 的妥協（research.md Decision 10 已於 tasks 階段更新）
-- [ ] T123 [P] 移除死碼：`api/app/domains/schedule/service.py` 的 `_FALLBACK_MINUTES_PER_TARGET_POINT`、`api/app/domains/group/service.py` 中已搬走的發球／落點查詢；`api/scripts/reset_data.py` TRUNCATE 清單加 `member_sports`、`frames_frame_results`、`frames_frame_points`
+- [X] T122 [P] 在 `specs/043-sport-type-plugin-foundation/plan.md` 的 Post-design re-check 段補一句：`EndingType`／`RecordShotPlacementRequest` 留在核心 schema 的妥協（research.md Decision 10 已於 tasks 階段更新）
+- [X] T123 [P] 移除死碼：`api/app/domains/schedule/service.py` 的 `_FALLBACK_MINUTES_PER_TARGET_POINT`、`api/app/domains/group/service.py` 中已搬走的發球／落點查詢；`api/scripts/reset_data.py` TRUNCATE 清單加 `member_sports`、`frames_frame_results`、`frames_frame_points`
 - [ ] T124 [P] i18n 全量 parity：確認所有新增 key 在 `i18n/zh-TW.json` 與 `i18n/en.json` 一致（既有 parity spec 全綠，`grep -c` 對照）（SC-007）
 - [ ] T125 [P] 無障礙檢查：以 `docs/043-a11y-check/shoot.mjs`（沿用 `docs/my-groups-match-count-check/shoot.mjs` 的 360／414／1280 與 WebKit 模式）檢查 `web/features/group-admin/create-group/` 的活動卡片、`web/sports/types/{frames,generic}/control-panel/` 的 `+N`／「標記本局勝方」／「結束並記錄結果」按鈕觸控目標 ≥ 44px、鍵盤可達、`aria-pressed`／`aria-label`；平手與勝敗標籤不只靠顏色；360px 無橫向捲動（憲章 VII）
 - [ ] T126 執行完整 quickstart（§1～§8）並把各節結果記錄到 `docs/043-quickstart-run.md`（本機文件）
