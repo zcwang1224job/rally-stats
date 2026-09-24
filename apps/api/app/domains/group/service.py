@@ -10,7 +10,7 @@ import dataclasses
 import secrets
 import uuid
 from collections import defaultdict
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime, time, timedelta
 from itertools import permutations
 from typing import Literal
@@ -26,40 +26,18 @@ from app.domains.court.models import Court
 from app.domains.group import match_stats
 from app.domains.group.models import Group, RoundHistory
 from app.domains.group.schemas import (
-    ClutchComeback,
-    ClutchMatchPoints,
-    ClutchPhaseCounts,
-    ClutchStateCounts,
-    ClutchStats,
     CreateGroupRequest,
     EditGroupRequest,
     EditScoringSettingsRequest,
-    EndingStats,
-    ErrorsByType,
     FinalStandingRow,
     GroupMatchRecordsResponse,
     GroupStandingsResponse,
-    LandingPoint,
-    LeadChange,
-    LongestPoint,
     MatchRecordDetailResponse,
     MatchRecordSummary,
-    MaxLead,
     MemberStandingRow,
-    MomentumStats,
     OpponentRecord,
-    PlayerEndingStat,
-    PlayerLandingDistribution,
-    PlayerScoringStat,
-    PlayerServeStat,
     RoundRecord,
     ScoreEventSummary,
-    ScoringRun,
-    ServeStats,
-    ShotPlacementSummary,
-    TeamEndingStat,
-    TeamServeStat,
-    TempoStats,
 )
 from app.domains.group.security import (
     decrypt_group_password,
@@ -69,14 +47,20 @@ from app.domains.group.security import (
     issue_admin_token,
     verify_admin_pin,
 )
+from app.domains.group.sport_params import CommonParams, SportParamsError, validate_common_params
+from app.domains.group.sport_setup import (
+    SCORING_PRESETS,
+    check_team_size,
+    resolve_params,
+    resolve_sport,
+    validate_type_params,
+)
 from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import (
     Match,
     MatchParticipant,
     ScoreEvent,
-    ScoreServeRecord,
-    ShotPlacementRecord,
 )
 from app.domains.schedule.rest import set_rest_state
 from app.domains.schedule.schemas import ParticipantSummary, RestStateResponse
@@ -85,6 +69,8 @@ from app.domains.schedule.service import (
     handle_member_left,
     refresh_courts_after_roster_change,
 )
+from app.sports import catalog, registry
+from app.sports.plugin import NO_STAT_EXTRAS, MatchDetailContext, StatExtras
 from app.system_config.service import (
     get_default_court_name,
     get_default_group_name_suffix,
@@ -99,10 +85,7 @@ AbandonMatchesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
 # import group_invite.service directly.
 InvalidatePendingInvitesHook = Callable[[AsyncSession, uuid.UUID], Awaitable[None]]
 
-_SCORING_PRESETS = {
-    "21pt": (21, 20, 30),
-    "15pt": (15, 14, 21),
-}
+# 043: the named scoring presets moved to sport_setup.SCORING_PRESETS.
 # 021-group-creation-defaults FR-001/FR-006 (research.md #1/#2): the default
 # group name suffix and default court name now live in system_config
 # (`default_group_name_suffix` / `default_court_name`), not here.
@@ -204,19 +187,35 @@ async def create_group(
     # computed (immediately before building RosterEntry).
     nickname = member.nickname if member else stripped_creator_nickname
     assert nickname is not None
+
+    # 043 contracts/sports-api.md §3: the activity, then its parameters —
+    # the request's own values over the activity's defaults.
+    sport = await resolve_sport(
+        session,
+        sport_key=payload.sport.sport_key if payload.sport else None,
+        custom_sport_id=payload.sport.custom_sport_id if payload.sport else None,
+        name=payload.sport.name if payload.sport else None,
+        member_id=member.id if member else None,
+    )
+    assert payload.team_size is not None  # CreateGroupRequest.resolve_team_size
+    check_team_size(sport, payload.team_size)
+    custom = payload.custom_scoring
+    params = resolve_params(
+        sport,
+        given=payload.given_common_params(),
+        scoring_mode=payload.scoring_mode,
+        custom_scoring=(
+            (custom.target_score, custom.deuce_threshold, custom.cap_score)
+            if custom is not None
+            else None
+        ),
+    )
+
     if payload.name:
         resolved_name = payload.name
     else:
-        default_suffix = await get_default_group_name_suffix(session)
+        default_suffix = await get_default_group_name_suffix(session, sport.sport_key)
         resolved_name = f"{nickname}{default_suffix}"
-
-    if payload.scoring_mode == "custom":
-        assert payload.custom_scoring is not None
-        target_score = payload.custom_scoring.target_score
-        deuce_threshold = payload.custom_scoring.deuce_threshold
-        cap_score = payload.custom_scoring.cap_score
-    else:
-        target_score, deuce_threshold, cap_score = _SCORING_PRESETS[payload.scoring_mode]
 
     password_ciphertext: bytes | None = None
     password_nonce: bytes | None = None
@@ -237,13 +236,27 @@ async def create_group(
         status="active",
         created_by_member_id=member.id if member else None,
         admin_pin_hash=hash_admin_pin(admin_pin),
-        scoring_mode=payload.scoring_mode,
-        target_score=target_score,
-        deuce_threshold=deuce_threshold,
-        cap_score=cap_score,
+        scoring_mode=params.scoring_mode,
+        target_score=params.target_score,
+        deuce_threshold=params.deuce_threshold,
+        cap_score=params.cap_score,
+        sport_key=sport.sport_key,
+        type_key=sport.type_key,
+        sport_name=sport.sport_name,
+        custom_sport_id=sport.custom_sport_id,
+        end_mode=params.end_mode,
+        win_by=params.win_by,
+        allow_draw=params.allow_draw,
+        score_steps=params.score_steps,
+        type_params=params.type_params,
     )
     session.add(group)
     await session.flush()  # populate group.id via default
+    if params.cap_score is None:
+        # The ORM fills a column's Python default (cap 30) in for an explicit
+        # None on INSERT; "no cap" has to be written after the row exists.
+        group.cap_score = None
+        await session.flush()
 
     guest_token = secrets.token_urlsafe(32) if member is None else None
 
@@ -264,7 +277,7 @@ async def create_group(
     # transaction — a failure anywhere above means neither the Group nor
     # this Court is persisted (FR-007). No name-collision handling is
     # needed: this is necessarily the group's first-ever court.
-    default_court_name = await get_default_court_name(session)
+    default_court_name = await get_default_court_name(session, sport.sport_key)
     default_court = Court(group_id=group.id, name=default_court_name)
     session.add(default_court)
 
@@ -333,6 +346,25 @@ async def edit_group(
         raise ApiError("GROUP_DISBANDED", status_code=409)
     if payload.expected_version != group.base_settings_version:
         raise ApiError("VERSION_CONFLICT", status_code=409)
+
+    # 043 FR-007: a group's activity is fixed once it exists.
+    if payload.sport is not None and (
+        payload.sport.sport_key != group.sport_key
+        or (
+            payload.sport.custom_sport_id is not None
+            and payload.sport.custom_sport_id != group.custom_sport_id
+        )
+    ):
+        raise ApiError("SPORT_IMMUTABLE", status_code=409)
+
+    # 043 research Decision 6: team_size is match_mode by another name.
+    if payload.team_size is not None:
+        implied: Literal["singles", "doubles"] = (
+            "singles" if payload.team_size == 1 else "doubles"
+        )
+        if payload.match_mode is not None and payload.match_mode != implied:
+            raise ApiError("VALIDATION_ERROR", status_code=422)
+        payload.match_mode = implied
 
     if payload.match_mode is not None and payload.match_mode != group.match_mode:
         effective_max = (
@@ -414,18 +446,50 @@ async def edit_scoring_settings(
             1 <= payload.deuce_threshold <= payload.target_score
         ):
             raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
-        if payload.cap_score is None or payload.cap_score < payload.deuce_threshold:
-            raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
-        if payload.cap_score < payload.target_score:
-            raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
+        # 043: an explicit `cap_score: null` is "no cap"; leaving it out is
+        # still an incomplete custom setting, as before.
+        no_cap = payload.cap_score is None and "cap_score" in payload.model_fields_set
+        if not no_cap:
+            if payload.cap_score is None or payload.cap_score < payload.deuce_threshold:
+                raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
+            if payload.cap_score < payload.target_score:
+                raise ApiError("INVALID_CUSTOM_SCORING", status_code=422)
         group.target_score = payload.target_score
         group.deuce_threshold = payload.deuce_threshold
         group.cap_score = payload.cap_score
     else:
-        target_score, deuce_threshold, cap_score = _SCORING_PRESETS[payload.scoring_mode]
+        target_score, deuce_threshold, cap_score = SCORING_PRESETS[payload.scoring_mode]
         group.target_score = target_score
         group.deuce_threshold = deuce_threshold
         group.cap_score = cap_score
+
+    # 043: the other common parameters and type_params, each only if sent.
+    fields = payload.model_fields_set
+    if "end_mode" in fields and payload.end_mode is not None:
+        group.end_mode = payload.end_mode
+    if "win_by" in fields and payload.win_by is not None:
+        group.win_by = payload.win_by
+    if "allow_draw" in fields and payload.allow_draw is not None:
+        group.allow_draw = payload.allow_draw
+    if "score_steps" in fields and payload.score_steps is not None:
+        group.score_steps = list(payload.score_steps)
+    try:
+        validate_common_params(
+            CommonParams(
+                end_mode=group.end_mode,
+                target_score=group.target_score,
+                win_by=group.win_by,
+                cap_score=group.cap_score,
+                allow_draw=group.allow_draw,
+                score_steps=list(group.score_steps),
+            )
+        )
+    except SportParamsError as error:
+        raise ApiError(
+            "INVALID_SPORT_PARAMS", status_code=422, detail={"field": error.field}
+        ) from error
+    if "type_params" in fields and payload.type_params is not None:
+        group.type_params = validate_type_params(group.type_key, payload.type_params)
 
     group.scoring_mode = payload.scoring_mode
     group.base_settings_version += 1
@@ -473,7 +537,14 @@ async def set_detailed_scoring(session: AsyncSession, group: Group, enabled: boo
     `match.nextRound` refetch trigger. Only affects `matches.detailed_scoring_enabled`
     for matches created AFTER this call (that field is a snapshot taken in
     `create_match_with_participants()`, FR-006) — this function itself has
-    no notion of "existing matches" at all."""
+    no notion of "existing matches" at all.
+
+    043: detailed scoring is the shot-placement module of the group's sport
+    type; an activity without it cannot switch it on."""
+    if enabled and not registry.get(group.type_key).module_enabled(
+        group.type_params, "shot_placement"
+    ):
+        raise ApiError("MODULE_NOT_SUPPORTED", status_code=409)
     group.detailed_scoring_enabled = enabled
     await session.commit()
     await session.refresh(group)
@@ -1602,40 +1673,6 @@ def _to_raw_events(
     ]
 
 
-def _to_serve_snapshots(
-    records: Iterable[ScoreServeRecord],
-) -> dict[uuid.UUID, match_stats.ServeSnapshot]:
-    return {
-        record.score_event_id: match_stats.ServeSnapshot(
-            server_team=record.server_team,  # type: ignore[arg-type]
-            server_id=record.server_roster_entry_id,
-            team_a_right=record.team_a_right_roster_entry_id,
-            team_a_left=record.team_a_left_roster_entry_id,
-            team_b_right=record.team_b_right_roster_entry_id,
-            team_b_left=record.team_b_left_roster_entry_id,
-        )
-        for record in records
-    }
-
-
-def _to_placements(
-    placements: Iterable[ShotPlacementRecord],
-) -> dict[uuid.UUID, match_stats.Placement]:
-    return {
-        placement.score_event_id: match_stats.Placement(
-            scorer_id=placement.roster_entry_id,
-            loser_id=placement.losing_roster_entry_id,
-            landing=(
-                (placement.landing_x, placement.landing_y)
-                if placement.landing_x is not None and placement.landing_y is not None
-                else None
-            ),
-            ending=placement.ending_type,  # type: ignore[arg-type]
-        )
-        for placement in placements
-    }
-
-
 @dataclasses.dataclass(frozen=True)
 class MatchStatInputs:
     """One match's point-level history, already converted to `match_stats`'
@@ -1672,270 +1709,63 @@ async def load_group_completed_matches(
 _STAT_INPUT_BATCH = 500
 
 
-async def load_match_stat_inputs(
-    session: AsyncSession, matches: Sequence[Match]
-) -> dict[uuid.UUID, MatchStatInputs]:
-    """034-clutch-points-player-dashboard research.md Decision 7: the same
-    three tables `build_match_record_detail()` reads for ONE match, loaded
-    for MANY with `match_id IN (...)` — three queries per batch however many
-    matches there are, never one detail build per match. Rows go through the
-    very converters the single-match path uses, so a match contributes the
-    same numbers to the cross-match dashboard as it shows on its own
-    (FR-003). Every requested match gets an entry, event-less ones
-    included."""
-    events_by_match: dict[uuid.UUID, list[ScoreEvent]] = {match.id: [] for match in matches}
-    serve_by_match: dict[uuid.UUID, list[ScoreServeRecord]] = defaultdict(list)
-    placements_by_match: dict[uuid.UUID, list[ShotPlacementRecord]] = defaultdict(list)
-
-    match_ids = list(events_by_match)
-    for offset in range(0, len(match_ids), _STAT_INPUT_BATCH):
-        batch = match_ids[offset : offset + _STAT_INPUT_BATCH]
+async def load_point_events(
+    session: AsyncSession, match_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[ScoreEvent]]:
+    """043: every match's scoring sequence — the spine's `point` events only
+    (research Decision 1), in `created_at, id` order. One query per batch of
+    500 matches; every requested match gets an entry, event-less ones
+    included. Other spine kinds never change the score and are the sport
+    type plugin's business."""
+    events_by_match: dict[uuid.UUID, list[ScoreEvent]] = {match_id: [] for match_id in match_ids}
+    ids = list(events_by_match)
+    for offset in range(0, len(ids), _STAT_INPUT_BATCH):
+        batch = ids[offset : offset + _STAT_INPUT_BATCH]
         events_result = await session.execute(
             select(ScoreEvent)
-            .where(ScoreEvent.match_id.in_(batch))
+            .where(ScoreEvent.match_id.in_(batch), ScoreEvent.kind == "point")
             .order_by(ScoreEvent.match_id, ScoreEvent.created_at, ScoreEvent.id)
         )
         for event in events_result.scalars():
             events_by_match[event.match_id].append(event)
-        serve_result = await session.execute(
-            select(ScoreServeRecord).where(ScoreServeRecord.match_id.in_(batch))
-        )
-        for record in serve_result.scalars():
-            serve_by_match[record.match_id].append(record)
-        placements_result = await session.execute(
-            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id.in_(batch))
-        )
-        for placement in placements_result.scalars():
-            placements_by_match[placement.match_id].append(placement)
+    return events_by_match
+
+
+async def load_match_stat_inputs(
+    session: AsyncSession, matches: Sequence[Match]
+) -> dict[uuid.UUID, MatchStatInputs]:
+    """034-clutch-points-player-dashboard research.md Decision 7: the same
+    history `build_match_record_detail()` reads for ONE match, loaded for
+    MANY with `match_id IN (...)` — a fixed number of queries per batch
+    however many matches there are, never one detail build per match. Rows
+    go through the very converters the single-match path uses, so a match
+    contributes the same numbers to the cross-match dashboard as it shows on
+    its own (FR-003). Every requested match gets an entry, event-less ones
+    included.
+
+    043: core reads the spine; each match's sport type plugin loads its own
+    per-point history (badminton: serve snapshots and shot placements)."""
+    events_by_match = await load_point_events(session, [match.id for match in matches])
+    by_type: dict[str, list[Match]] = defaultdict(list)
+    for match in matches:
+        by_type[match.type_key].append(match)
+    extras: dict[uuid.UUID, StatExtras] = {}
+    for type_key, typed_matches in by_type.items():
+        extras.update(await registry.get(type_key).load_stat_extras(session, typed_matches))
 
     inputs: dict[uuid.UUID, MatchStatInputs] = {}
     for match in matches:
         score_events = events_by_match[match.id]
         started_at = match.started_at
         assert started_at is not None  # always set for completed matches
+        extra = extras.get(match.id, NO_STAT_EXTRAS)
         inputs[match.id] = MatchStatInputs(
             completeness=_record_completeness(score_events),
             raw_events=_to_raw_events(score_events, started_at),
-            snapshots=_to_serve_snapshots(serve_by_match[match.id]),
-            placements=_to_placements(placements_by_match[match.id]),
+            snapshots=dict(extra.snapshots),
+            placements=dict(extra.placements),
         )
     return inputs
-
-
-_DerivedStats = tuple[
-    ServeStats | None,
-    MomentumStats | None,
-    TempoStats | None,
-    list[PlayerLandingDistribution],
-    ClutchStats | None,
-    EndingStats | None,
-]
-_NO_DERIVED_STATS: _DerivedStats = (None, None, None, [], None, None)
-
-
-def _clutch_stats_schema(
-    clutch: match_stats.ClutchResult,
-    momentum: match_stats.MomentumResult,
-    winner: Literal["A", "B"],
-) -> ClutchStats:
-    """`comeback` is read off 033's `max_leads` rather than recomputed: the
-    winner's deepest deficit IS the loser's biggest lead, so the two blocks
-    cannot disagree (034 research.md Decision 4)."""
-    teams: tuple[match_stats.Team, match_stats.Team] = ("A", "B")
-
-    def _phase(
-        counts: dict[match_stats.Team, match_stats.PhaseCounts] | None,
-    ) -> list[ClutchPhaseCounts] | None:
-        if counts is None:
-            return None
-        return [
-            ClutchPhaseCounts(team=team, **dataclasses.asdict(counts[team])) for team in teams
-        ]
-
-    loser_lead = next(lead for lead in momentum.max_leads if lead.team != winner)
-    comeback = (
-        ClutchComeback(
-            winner=winner,
-            max_deficit=loser_lead.margin,
-            score_a=loser_lead.score_a,
-            score_b=loser_lead.score_b,
-        )
-        if loser_lead.margin > 0
-        and loser_lead.score_a is not None
-        and loser_lead.score_b is not None
-        else None
-    )
-    return ClutchStats(
-        endgame_from=clutch.endgame_from,
-        endgame=_phase(clutch.endgame),
-        deuce=_phase(clutch.deuce),
-        match_points=[
-            ClutchMatchPoints(team=team, **dataclasses.asdict(clutch.match_points[team]))
-            for team in teams
-        ],
-        by_state=[
-            ClutchStateCounts(team=team, **dataclasses.asdict(clutch.by_state[team]))
-            for team in teams
-        ],
-        comeback=comeback,
-    )
-
-
-async def _build_derived_stats(
-    session: AsyncSession,
-    match: Match,
-    summary: MatchRecordSummary,
-    score_events: list[ScoreEvent],
-    placements: list[ShotPlacementRecord],
-) -> _DerivedStats:
-    """033-match-record-derived-stats: the querying/conversion half of the
-    four derived blocks — every actual rule lives in `match_stats` (pure,
-    no session). Only called for a `"complete"` record: a partial history
-    has no trustworthy starting score to re-accumulate from. Reads the one
-    table nothing displayed before (`ScoreServeRecord`, written since 030);
-    `placements` is 032's existing query result, reused rather than
-    re-queried."""
-    no_data = _NO_DERIVED_STATS
-
-    started_at = match.started_at
-    assert started_at is not None  # always set for completed matches
-    points = match_stats.effective_points(
-        _to_raw_events(score_events, started_at), match.score_a, match.score_b
-    )
-    if points is None:
-        return no_data
-
-    participants = summary.team_a + summary.team_b
-    nickname_by_id = {uuid.UUID(p.roster_entry_id): p.nickname for p in participants}
-    stat_participants = [
-        match_stats.Participant(uuid.UUID(p.roster_entry_id), p.team) for p in participants
-    ]
-
-    serve_result = await session.execute(
-        select(ScoreServeRecord).where(ScoreServeRecord.match_id == match.id)
-    )
-    serve = match_stats.serve_stats(
-        points, _to_serve_snapshots(serve_result.scalars()), stat_participants
-    )
-    serve_stats = (
-        ServeStats(
-            teams=[
-                TeamServeStat(team=team, **dataclasses.asdict(counts))
-                for team, counts in serve.teams.items()  # built in A, B order
-            ],
-            players=[
-                PlayerServeStat(
-                    roster_entry_id=p.roster_entry_id,
-                    nickname=p.nickname,
-                    team=p.team,
-                    **dataclasses.asdict(serve.players[uuid.UUID(p.roster_entry_id)]),
-                )
-                for p in participants
-                if uuid.UUID(p.roster_entry_id) in serve.players
-            ],
-            excluded_points=serve.excluded_points,
-        )
-        if serve is not None
-        else None
-    )
-
-    momentum = match_stats.momentum_stats(points)
-    momentum_stats = MomentumStats(
-        longest_runs=[ScoringRun(**dataclasses.asdict(run)) for run in momentum.longest_runs],
-        max_leads=[MaxLead(**dataclasses.asdict(lead)) for lead in momentum.max_leads],
-        lead_changes=[
-            LeadChange(**dataclasses.asdict(change)) for change in momentum.lead_changes
-        ],
-    )
-
-    tempo = match_stats.tempo_stats(points)
-    tempo_stats = (
-        TempoStats(
-            average_seconds=tempo.average_seconds,
-            counted_points=tempo.counted_points,
-            longest=LongestPoint(
-                seconds=tempo.longest_seconds,
-                score_a=tempo.longest_score_a,
-                score_b=tempo.longest_score_b,
-            ),
-        )
-        if tempo is not None
-        else None
-    )
-
-    stat_placements = _to_placements(placements)
-    landing_distribution = [
-        PlayerLandingDistribution(
-            roster_entry_id=str(player.roster_entry_id),
-            nickname=nickname_by_id[player.roster_entry_id],
-            team=player.team,
-            scored=[LandingPoint(x=x, y=y) for x, y in player.scored],
-            scored_total=player.scored_total,
-            lost=[LandingPoint(x=x, y=y) for x, y in player.lost],
-            lost_total=player.lost_total,
-        )
-        for player in match_stats.landing_distribution(
-            points, stat_placements, stat_participants
-        )
-    ]
-
-    assert match.winner_team is not None  # always set for completed matches
-    clutch_stats = _clutch_stats_schema(
-        match_stats.clutch_stats(points, match.target_score, match.cap_score, match.win_by),
-        momentum,
-        match.winner_team,  # type: ignore[arg-type]
-    )
-
-    # 035-point-ending-type: None when not one point recorded an ending
-    # (the pure function's own rule), so a pre-035 match shows the single
-    # "no data" notice rather than a table of zeros.
-    ending = match_stats.ending_stats(points, stat_placements, stat_participants)
-    ending_stats = (
-        EndingStats(
-            recorded_points=ending.recorded_points,
-            total_points=ending.total_points,
-            teams=[
-                TeamEndingStat(
-                    team=team.team,
-                    winners=team.winners,
-                    errors=team.errors,
-                    errors_by_type=ErrorsByType(
-                        out=team.errors_by_type["out"],
-                        net=team.errors_by_type["net"],
-                        serve_fault=team.errors_by_type["serve_fault"],
-                        other_error=team.errors_by_type["other_error"],
-                    ),
-                )
-                for team in ending.teams.values()  # built in A, B order
-            ],
-            players=[
-                PlayerEndingStat(
-                    roster_entry_id=p.roster_entry_id,
-                    nickname=p.nickname,
-                    team=p.team,
-                    winners=split.winners,
-                    opponent_errors=split.opponent_errors,
-                    scored_unrecorded=split.scored_unrecorded,
-                    beaten_by_winners=split.beaten_by_winners,
-                    own_errors=split.own_errors,
-                    lost_unrecorded=split.lost_unrecorded,
-                )
-                for p in participants
-                for split in (ending.players[uuid.UUID(p.roster_entry_id)],)
-            ],
-        )
-        if ending is not None
-        else None
-    )
-
-    return (
-        serve_stats,
-        momentum_stats,
-        tempo_stats,
-        landing_distribution,
-        clutch_stats,
-        ending_stats,
-    )
 
 
 async def build_match_record_detail(
@@ -1943,7 +1773,7 @@ async def build_match_record_detail(
 ) -> MatchRecordDetailResponse:
     """016-match-score-timeline research.md #2/#3: reuses
     `_build_match_record_summaries()` for the existing basic-info fields,
-    then layers on the `score_events` log (007-live-scoreboard's
+    then layers on the scoring log (007-live-scoreboard's
     `apply_score_delta()` write path — this function never writes, only
     reads) as `elapsed_seconds`-stamped events plus a three-state
     `record_completeness` derived purely from the events themselves (no
@@ -1956,144 +1786,58 @@ async def build_match_record_detail(
     Ordered by `created_at, id` — `id` is a secondary sort key only for
     determinism when two events share a `created_at` (concurrent scoring,
     see `test_score_concurrency.py`); it carries no write-order meaning of
-    its own."""
+    its own.
+
+    043 research Decision 12: the sport type plugin supplies each event's
+    detail, the derived blocks and the page's sections (FR-021); core owns
+    the summary, the scoring sequence and its completeness."""
     [summary] = await _build_match_record_summaries(session, [match])
-
-    events_result = await session.execute(
-        select(ScoreEvent)
-        .where(ScoreEvent.match_id == match.id)
-        .order_by(ScoreEvent.created_at, ScoreEvent.id)
-    )
-    score_events = list(events_result.scalars())
-
+    score_events = (await load_point_events(session, [match.id]))[match.id]
     completeness = _record_completeness(score_events)
 
     started_at = match.started_at
     assert started_at is not None  # always set for completed matches (see MatchRecordSummary)
 
-    # 032-match-record-scoring-stats: one query for every ShotPlacementRecord
-    # this match ever wrote (031/032-shot-placement-scoring), reused below
-    # both to attach each event's own `detail` and to aggregate `player_stats`.
-    placements_result = await session.execute(
-        select(ShotPlacementRecord).where(ShotPlacementRecord.match_id == match.id)
+    parts = await registry.get(match.type_key).match_detail(
+        session,
+        MatchDetailContext(
+            match=match,
+            summary=summary,
+            point_events=score_events,
+            raw_events=_to_raw_events(score_events, started_at),
+            completeness=completeness,
+        ),
     )
-    placements = list(placements_result.scalars())
-    placement_by_event_id = {placement.score_event_id: placement for placement in placements}
-
-    nickname_ids = {
-        entry_id
-        for placement in placements
-        for entry_id in (placement.roster_entry_id, placement.losing_roster_entry_id)
-        if entry_id is not None
-    }
-    nickname_by_id: dict[uuid.UUID, str] = {}
-    if nickname_ids:
-        nickname_result = await session.execute(
-            select(RosterEntry.id, RosterEntry.nickname).where(RosterEntry.id.in_(nickname_ids))
-        )
-        nickname_by_id = {row.id: row.nickname for row in nickname_result.all()}
-
-    def _detail_for(event: ScoreEvent) -> ShotPlacementSummary | None:
-        placement = placement_by_event_id.get(event.id)
-        if placement is None:
-            return None
-        # research.md Decision 2: a row with all its fields NULL (confirmed
-        # with nothing picked) renders identically to no row at all. 035
-        # made that five fields: a row carrying only an ending type IS a
-        # recorded detail (research.md Decision 4).
-        if (
-            placement.roster_entry_id is None
-            and placement.losing_roster_entry_id is None
-            and placement.landing_x is None
-            and placement.landing_y is None
-            and placement.ending_type is None
-        ):
-            return None
-        return ShotPlacementSummary(
-            scoring_roster_entry_id=(
-                str(placement.roster_entry_id) if placement.roster_entry_id else None
-            ),
-            scoring_nickname=(
-                nickname_by_id.get(placement.roster_entry_id)
-                if placement.roster_entry_id
-                else None
-            ),
-            losing_roster_entry_id=(
-                str(placement.losing_roster_entry_id)
-                if placement.losing_roster_entry_id
-                else None
-            ),
-            losing_nickname=(
-                nickname_by_id.get(placement.losing_roster_entry_id)
-                if placement.losing_roster_entry_id
-                else None
-            ),
-            landing_x=placement.landing_x,
-            landing_y=placement.landing_y,
-            ending_type=placement.ending_type,
-        )
 
     event_summaries = [
         ScoreEventSummary(
             side=event.side,
             delta=event.delta,
+            kind=event.kind,
             score_a=event.score_a,
             score_b=event.score_b,
             elapsed_seconds=int((event.created_at - started_at).total_seconds()),
-            detail=_detail_for(event),
+            detail=parts.event_details.get(event.id),
         )
         for event in score_events
     ]
-
-    # research.md Decision 3/4: two independent per-field aggregations —
-    # scored_count from roster_entry_id, fault_count from
-    # losing_roster_entry_id — over the SAME placements queried above; an
-    # empty combined result means "no data at all" (player_stats stays []),
-    # otherwise every one of this match's actual participants is listed,
-    # zero counts included (FR-009).
-    scored_counts: dict[uuid.UUID, int] = defaultdict(int)
-    fault_counts: dict[uuid.UUID, int] = defaultdict(int)
-    for placement in placements:
-        if placement.roster_entry_id is not None:
-            scored_counts[placement.roster_entry_id] += 1
-        if placement.losing_roster_entry_id is not None:
-            fault_counts[placement.losing_roster_entry_id] += 1
-
-    player_stats: list[PlayerScoringStat] = []
-    if scored_counts or fault_counts:
-        for participant in summary.team_a + summary.team_b:
-            entry_id = uuid.UUID(participant.roster_entry_id)
-            player_stats.append(
-                PlayerScoringStat(
-                    roster_entry_id=participant.roster_entry_id,
-                    nickname=participant.nickname,
-                    team=participant.team,
-                    scored_count=scored_counts.get(entry_id, 0),
-                    fault_count=fault_counts.get(entry_id, 0),
-                )
-            )
-
-    # 033-match-record-derived-stats FR-004: a partial/absent history gets
-    # the "no data" defaults for every derived block, never numbers
-    # computed from an incomplete record.
-    serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats, ending_stats = (
-        await _build_derived_stats(session, match, summary, score_events, placements)
-        if completeness == "complete"
-        else _NO_DERIVED_STATS
-    )
 
     return MatchRecordDetailResponse(
         **summary.model_dump(),
         target_score=match.target_score,
         record_completeness=completeness,
         events=event_summaries,
-        player_stats=player_stats,
-        serve_stats=serve_stats,
-        momentum_stats=momentum_stats,
-        tempo_stats=tempo_stats,
-        landing_distribution=landing_distribution,
-        clutch_stats=clutch_stats,
-        ending_stats=ending_stats,
+        player_stats=parts.player_stats,
+        serve_stats=parts.serve_stats,
+        momentum_stats=parts.momentum_stats,
+        tempo_stats=parts.tempo_stats,
+        landing_distribution=parts.landing_distribution,
+        clutch_stats=parts.clutch_stats,
+        ending_stats=parts.ending_stats,
+        sport=catalog.summary_for(
+            sport_key=match.sport_key, type_key=match.type_key, sport_name=match.sport_name
+        ),
+        sections=parts.sections,
     )
 
 

@@ -42,7 +42,10 @@ def validate_common_params(params: CommonParams) -> None:
     if params.end_mode == "target":
         if params.allow_draw:
             raise SportParamsError("allow_draw", "draws only exist in manual end mode")
-        if params.target_score < params.win_by:
+        # With a cap every match ends by the cap at the latest (pre-043
+        # groups use target 1 / cap 1 for one-point matches), so the lead
+        # rule only has to make sense when there is no cap.
+        if params.cap_score is None and params.target_score < params.win_by:
             raise SportParamsError("target_score", "target_score must be at least win_by")
         if params.cap_score is not None and params.cap_score < params.target_score:
             raise SportParamsError("cap_score", "cap_score must be at least target_score")

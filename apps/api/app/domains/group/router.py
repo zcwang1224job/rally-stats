@@ -54,6 +54,7 @@ from app.domains.group.schemas import (
     VerifyPasswordResponse,
 )
 from app.domains.group.security import issue_admin_token, require_admin
+from app.domains.group.sport_setup import scoring_presets_for
 from app.domains.group_invite.service import invalidate_pending_invites_for_group
 from app.domains.member import service as member_service
 from app.domains.member.models import Member
@@ -80,6 +81,7 @@ from app.domains.schedule.service import (
     clear_partnerships_on_exit,
     court_live_state,
     end_match_early,
+    group_sport_summary,
     undo_match_completion,
 )
 
@@ -105,6 +107,8 @@ def _to_public(group: Group) -> GroupPublicResponse:
         activity_time_end=group.activity_time_end,
         status=group.status,
         created_by_member=group.created_by_member_id is not None,
+        sport=group_sport_summary(group),
+        team_size=group.team_size,
     )
 
 
@@ -125,6 +129,12 @@ def _to_admin_view(group: Group) -> AdminGroupResponse:
         target_score=group.target_score,
         deuce_threshold=group.deuce_threshold,
         cap_score=group.cap_score,
+        end_mode=group.end_mode,
+        win_by=group.win_by,
+        allow_draw=group.allow_draw,
+        score_steps=list(group.score_steps),
+        type_params=dict(group.type_params),
+        scoring_presets=scoring_presets_for(group.sport_key),
     )
 
 
@@ -674,7 +684,10 @@ async def get_all_courts_state(
     group, courts = await service.get_group_by_all_courts_token(session, token)
     states = [await court_live_state(session, court) for court in courts]
     return AllCourtsLiveState(
-        group_id=str(group.id), round_number=group.current_round_number, courts=states
+        group_id=str(group.id),
+        round_number=group.current_round_number,
+        courts=states,
+        sport=group_sport_summary(group),
     )
 
 

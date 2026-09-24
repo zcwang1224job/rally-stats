@@ -26,6 +26,10 @@ export interface SectionComponent {
 
 export type SportTypeKey = 'net_rally' | 'frames' | 'generic';
 
+/** The sport type of a response from a backend older than 043, which has
+ * no `sport` field: every group then was badminton. */
+export const LEGACY_SPORT_TYPE: SportTypeKey = 'net_rally';
+
 /**
  * One sport type's frontend module (contracts/plugin-boundary.md §4). Hosts
  * depend only on this interface and `SportTypeRegistry`.

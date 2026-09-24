@@ -470,6 +470,7 @@ def _court_state_response(
         current_match=state.current_match,
         waiting_reason=state.waiting_reason,
         next_up=state.next_up,
+        sport=service.group_sport_summary(group),
     )
 
 

@@ -34,3 +34,57 @@
   letter-spacing: 0.1em;
   text-align: center;
 }
+
+// 043 activity picker: large tap targets (constitution VII), selection shown
+// by border + weight + aria-pressed, never colour alone.
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 6.5rem), 1fr));
+  gap: var(--space-sm);
+}
+
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 44px;
+  padding: var(--space-sm);
+  border: 2px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+
+  &--selected {
+    border-color: var(--color-brand-primary);
+    font-weight: var(--font-weight-bold);
+    box-shadow: inset 0 0 0 1px var(--color-brand-primary);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+.activity-card__icon {
+  font-size: 1.5rem;
+}
+
+.activity-subheading {
+  margin: var(--space-sm) 0 0;
+  font-size: 1rem;
+}
+
+.generic-scoring {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}

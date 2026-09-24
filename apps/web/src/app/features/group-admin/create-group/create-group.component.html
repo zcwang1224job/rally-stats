@@ -30,15 +30,74 @@
     <button type="button" class="btn" (click)="goToAdmin()">{{ 'createGroup.goToAdmin' | translate }}</button>
   </section>
 } @else {
-  <form class="form" [formGroup]="form" (ngSubmit)="submit()">
-    <h1>{{ 'createGroup.title' | translate }}</h1>
+  <h1 class="create-group-title">{{ 'createGroup.title' | translate }}</h1>
 
+  <!-- 043: outside <form> so the form's own first button stays its submit / back action. -->
+  <div class="form" [formGroup]="form">
+    <!-- 043 FR-006: choosing the activity is the first step; badminton is preselected. -->
+    <div class="card form-section activity-section" data-section="activity">
+      <h2 id="activity-heading">{{ 'createGroup.section.activity' | translate }}</h2>
+      <div class="activity-grid" role="group" aria-labelledby="activity-heading">
+        @for (sport of catalog().builtin; track sport.sport_key) {
+          <button
+            type="button"
+            class="activity-card"
+            [class.activity-card--selected]="isSelected(sport.sport_key)"
+            [attr.aria-pressed]="isSelected(sport.sport_key)"
+            [attr.data-sport]="sport.sport_key"
+            (click)="selectSport(sport.sport_key)"
+          >
+            <span class="activity-card__icon" aria-hidden="true">{{ iconFor(sport.icon) }}</span>
+            <span class="activity-card__name">{{ sport.name_key | translate }}</span>
+          </button>
+        }
+      </div>
+      @if (customSports().length > 0) {
+        <h3 class="activity-subheading">{{ 'createGroup.activityMine' | translate }}</h3>
+        <div class="activity-grid" role="group" [attr.aria-label]="'createGroup.activityMine' | translate">
+          @for (sport of customSports(); track sport.id) {
+            <button
+              type="button"
+              class="activity-card"
+              [class.activity-card--selected]="isSelected('custom:' + sport.id)"
+              [attr.aria-pressed]="isSelected('custom:' + sport.id)"
+              [attr.data-sport]="'custom:' + sport.id"
+              (click)="selectSport('custom:' + sport.id)"
+            >
+              <span class="activity-card__icon" aria-hidden="true">{{ iconFor('other') }}</span>
+              <span class="activity-card__name">{{ sport.name }}</span>
+            </button>
+          }
+        </div>
+      }
+      @if (isOther()) {
+        <label>
+          {{ 'createGroup.activityOtherName' | translate }}
+          <input type="text" formControlName="other_name" maxlength="20" />
+        </label>
+        @if (form.controls.other_name.touched && form.controls.other_name.errors?.['required']) {
+          <p role="alert">{{ 'createGroup.activityOtherNameRequired' | translate }}</p>
+        }
+      }
+    </div>
+  </div>
+
+  <form class="form" [formGroup]="form" (ngSubmit)="submit()">
     <div class="card form-section">
       <h2>{{ 'createGroup.section.basics' | translate }}</h2>
 
       <label>
         {{ 'createGroup.name' | translate }}
-        <input type="text" formControlName="name" [attr.placeholder]="'createGroup.namePlaceholder' | translate" maxlength="30" />
+        <input
+          type="text"
+          formControlName="name"
+          [attr.placeholder]="
+            usesPresets()
+              ? ('createGroup.namePlaceholder' | translate)
+              : ('createGroup.namePlaceholderSport' | translate: { sport: sportLabel() | translate })
+          "
+          maxlength="30"
+        />
       </label>
       @if (form.controls.name.touched && form.controls.name.errors?.['maxlength']) {
         <p role="alert">{{ 'createGroup.nameTooLong' | translate }}</p>
@@ -56,8 +115,16 @@
       <label>
         {{ 'createGroup.matchMode' | translate }}
         <select formControlName="match_mode" (change)="onMatchModeChange()">
-          <option value="singles">{{ 'createGroup.matchModeSingles' | translate }}</option>
-          <option value="doubles">{{ 'createGroup.matchModeDoubles' | translate }}</option>
+          @if (selectedSport().teamSizes.includes(1)) {
+            <option value="singles">
+              {{ usesPresets() ? ('createGroup.matchModeSingles' | translate) : ('createGroup.teamSizeOption' | translate: { count: 1 }) }}
+            </option>
+          }
+          @if (selectedSport().teamSizes.includes(2)) {
+            <option value="doubles">
+              {{ usesPresets() ? ('createGroup.matchModeDoubles' | translate) : ('createGroup.teamSizeOption' | translate: { count: 2 }) }}
+            </option>
+          }
         </select>
       </label>
 
@@ -94,13 +161,64 @@
     <div class="card form-section">
       <h2>{{ 'createGroup.scoringMode' | translate }}</h2>
 
+      @if (!usesPresets()) {
+        <!-- 043 FR-008: the common parameters of an activity without presets. -->
+        <div class="generic-scoring" data-section="generic-scoring">
+          <label>
+            {{ 'createGroup.generic.endMode' | translate }}
+            <select formControlName="end_mode">
+              <option value="target">{{ 'createGroup.generic.endModeTarget' | translate }}</option>
+              <option value="manual">{{ 'createGroup.generic.endModeManual' | translate }}</option>
+            </select>
+          </label>
+          @if (form.controls.end_mode.value === 'target') {
+            <label>
+              {{ 'createGroup.generic.targetScore' | translate: { noun: scoreNoun() | translate } }}
+              <input type="number" formControlName="target_score" min="1" />
+            </label>
+            <label>
+              {{ 'createGroup.generic.winBy' | translate }}
+              <input type="number" formControlName="win_by" min="1" />
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" formControlName="has_cap" />
+              {{ 'createGroup.generic.hasCap' | translate }}
+            </label>
+            @if (form.controls.has_cap.value) {
+              <label>
+                {{ 'createGroup.generic.capScore' | translate }}
+                <input type="number" formControlName="cap_score" min="1" />
+              </label>
+            }
+          } @else {
+            <label class="checkbox-label">
+              <input type="checkbox" formControlName="allow_draw" />
+              {{ 'createGroup.generic.allowDraw' | translate }}
+            </label>
+          }
+          <label>
+            {{ 'createGroup.generic.scoreSteps' | translate }}
+            <input type="text" formControlName="score_steps" inputmode="numeric" />
+          </label>
+          <p class="form-hint">{{ 'createGroup.generic.scoreStepsHint' | translate }}</p>
+          @if (form.errors?.['genericScoringInvalid']; as field) {
+            <p role="alert">{{ 'createGroup.generic.invalid.' + field | translate }}</p>
+          }
+          <app-sport-surface
+            [typeKey]="selectedSport().typeKey"
+            surface="createFormFields"
+            [inputs]="{ form: typeParams, defaults: selectedSport().defaults.type_params }"
+          />
+        </div>
+      } @else {
       <select formControlName="scoring_mode">
         <option value="21pt">{{ 'createGroup.scoring21pt' | translate }}</option>
         <option value="15pt">{{ 'createGroup.scoring15pt' | translate }}</option>
         <option value="custom">{{ 'createGroup.scoringCustom' | translate }}</option>
       </select>
+      }
 
-      @if (form.controls.scoring_mode.value === 'custom') {
+      @if (usesPresets() && form.controls.scoring_mode.value === 'custom') {
         <label>
           {{ 'createGroup.customTargetScore' | translate }}
           <input type="number" formControlName="custom_target_score" min="1" />

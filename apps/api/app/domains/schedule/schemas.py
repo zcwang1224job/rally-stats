@@ -2,9 +2,11 @@
 specs/003-schedule-rotation/contracts/schedule-api.md."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer
+
+from app.sports.presentation import SportSummary
 
 Team = Literal["A", "B"]
 # 037-rest-ready-toggle adds: held_for_rest (every queued match is waiting on
@@ -96,7 +98,16 @@ class MatchSummary(BaseModel):
     # win test (see match_wins() in service.py), and exposing it would only
     # invite someone to use it.
     target_score: int
-    cap_score: int
+    # 043: None when the match has no cap (only the win_by lead ends it).
+    cap_score: int | None
+    # 043 contracts/match-events-api.md §7: the match's activity and common
+    # parameters (snapshots), plus the sport type's own live state.
+    sport: SportSummary | None = None
+    end_mode: str = "target"
+    win_by: int = 2
+    allow_draw: bool = False
+    score_steps: list[int] = [1]
+    sport_state: Any = None
 
 
 class CourtScheduleStatus(BaseModel):
@@ -138,6 +149,9 @@ class ScheduleResponse(BaseModel):
     round_phase: RoundPhase | None
     courts: list[CourtScheduleStatus]
     roster: list[RosterScheduleStatus]
+    # 043: the group's activity (the admin page picks its court-control
+    # sport type module from it).
+    sport: SportSummary | None = None
 
 
 class RoundMatchSummary(BaseModel):
@@ -282,7 +296,7 @@ class MatchDetailResponse(BaseModel):
     participants: list[ParticipantSummary]
     target_score: int
     deuce_threshold: int
-    cap_score: int
+    cap_score: int | None  # 043: None = no cap
 
 
 class KickMemberResponse(BaseModel):
@@ -401,6 +415,17 @@ class ScoreMutationResult(BaseModel):
     # `applied` is false, when the match just ended (no more serve state to
     # show), or for a mutation with no serve concept (end_match_early()).
     serve: ServeStationInfo | None = None
+    # 043: the sport type's live state after this mutation. Left out of the
+    # body when there is none (every net rally match), so a badminton
+    # response is byte-for-byte what it was before 043 (FR-022).
+    sport_state: Any = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_sport_state(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if data.get("sport_state") is None:
+            data.pop("sport_state", None)
+        return data
 
 
 class MatchLiveDetail(BaseModel):
@@ -421,7 +446,14 @@ class MatchLiveDetail(BaseModel):
     # identical pair on MatchSummary above for why they're snapshots, why
     # they have no default, and why deuce_threshold is deliberately absent.
     target_score: int
-    cap_score: int
+    cap_score: int | None
+    # 043: see MatchSummary.
+    sport: SportSummary | None = None
+    end_mode: str = "target"
+    win_by: int = 2
+    allow_draw: bool = False
+    score_steps: list[int] = [1]
+    sport_state: Any = None
 
 
 class CourtLiveState(BaseModel):
@@ -436,6 +468,8 @@ class AllCourtsLiveState(BaseModel):
     group_id: str
     round_number: int
     courts: list[CourtLiveState]
+    # 043: the group's activity.
+    sport: SportSummary | None = None
 
 
 class CourtStateResponse(BaseModel):
@@ -459,3 +493,6 @@ class CourtStateResponse(BaseModel):
     current_match: MatchLiveDetail | None
     waiting_reason: WaitingReason | None
     next_up: NextUpPreview | None
+    # 043: the group's activity, so a host can pick the sport type module
+    # while the court is idle too.
+    sport: SportSummary | None = None

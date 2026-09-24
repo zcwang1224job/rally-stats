@@ -42,7 +42,8 @@ import {
 } from '../schedule-management/schedule.models';
 import { ManualAssignComponent } from '../schedule-management/manual-assign.component';
 import { PartnershipSettingsComponent } from '../schedule-management/partnership-settings.component';
-import { CourtControlComponent } from '../schedule-management/court-control.component';
+import { SportSurfaceComponent } from '../../../sports/hosts/sport-surface.component';
+import { LEGACY_SPORT_TYPE } from '../../../sports/sport-type-module';
 import { RoundMatchesListComponent } from '../schedule-management/round-matches-list.component';
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // spec FR-035: 30s heartbeat fallback ceiling
@@ -69,7 +70,7 @@ type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'settings';
     QRCodeComponent,
     ManualAssignComponent,
     PartnershipSettingsComponent,
-    CourtControlComponent,
+    SportSurfaceComponent,
     RoundMatchesListComponent,
     AddFriendButtonComponent,
     RestToggleButtonComponent,
@@ -118,6 +119,10 @@ export class AdminPageComponent {
   readonly copiedPin = signal(false);
   readonly copyPinErrorKey = signal<string | null>(null);
   readonly schedule = signal<ScheduleResponse | null>(null);
+  /** 043: older backends send no `sport`; every group then was badminton. */
+  readonly legacySportType = LEGACY_SPORT_TYPE;
+  /** 043: the court-control surface's `changed` output (a stable object). */
+  readonly courtControlOutputs = { changed: () => this.loadSchedule() };
   // 026-match-record-friend-invite (roster-list redesign): batched
   // relationship + eligibility status for every roster member, re-batched
   // by the effect below whenever the roster's member id set changes. The

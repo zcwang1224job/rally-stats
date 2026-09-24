@@ -1,12 +1,14 @@
 """Pydantic request/response schemas for the group domain, per
 specs/001-create-manage-group/contracts/groups-api.md."""
 
+import uuid
 from datetime import datetime, time
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domains.schedule.schemas import EndingType, ParticipantSummary
+from app.sports.presentation import Section, SportSummary
 
 MatchMode = Literal["singles", "doubles"]
 SchedulingMechanism = Literal["fair_rotation", "fixed_partner", "individual_mixed", "manual"]
@@ -30,18 +32,84 @@ class CustomScoring(BaseModel):
         return self
 
 
+class SportRef(BaseModel):
+    """043 contracts/sports-api.md §3: which activity a new group is for —
+    a built-in `sport_key`, `custom` + the member's `custom_sport_id`, or
+    `other` + a `name` typed on the spot."""
+
+    sport_key: str = Field(min_length=1, max_length=32)
+    custom_sport_id: uuid.UUID | None = None
+    name: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def name_length(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            return None
+        if len(stripped) > 20:
+            raise ValueError("name must be 1-20 chars after trimming")
+        return stripped
+
+
+# 043: the common parameters a create request may set; any left out come from
+# the activity's defaults (contracts/sports-api.md §3).
+COMMON_PARAM_FIELDS = (
+    "end_mode",
+    "target_score",
+    "win_by",
+    "cap_score",
+    "allow_draw",
+    "score_steps",
+    "type_params",
+)
+
+
 class CreateGroupRequest(BaseModel):
     name: str | None = None
     password: str | None = None
     max_members: int
-    match_mode: MatchMode
+    # 043 research Decision 6: team_size supersedes match_mode; either (or
+    # both, if they agree) may be sent — the validator below fills the other.
+    match_mode: MatchMode | None = None
+    team_size: int | None = Field(default=None, ge=1, le=2)
     scheduling_mechanism: SchedulingMechanism
-    scoring_mode: ScoringMode = "21pt"
+    # None = the activity's own default (badminton: 21pt, as before 043).
+    scoring_mode: ScoringMode | None = None
     custom_scoring: CustomScoring | None = None
     activity_time_start: time | None = None
     activity_time_end: time | None = None
     creator_nickname: str | None = None
     turnstile_token: str
+    # 043: omitted = badminton, so every pre-043 request is unchanged.
+    sport: SportRef | None = None
+    end_mode: Literal["target", "manual"] | None = None
+    target_score: int | None = Field(default=None, ge=1)
+    win_by: int | None = Field(default=None, ge=1)
+    cap_score: int | None = Field(default=None, ge=1)
+    allow_draw: bool | None = None
+    score_steps: list[int] | None = None
+    type_params: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def resolve_team_size(self) -> "CreateGroupRequest":
+        if self.team_size is None and self.match_mode is None:
+            raise ValueError("match_mode or team_size is required")
+        if self.team_size is not None and self.match_mode is not None:
+            if (self.team_size, self.match_mode) not in ((1, "singles"), (2, "doubles")):
+                raise ValueError("match_mode and team_size disagree")
+        elif self.team_size is not None:
+            self.match_mode = "singles" if self.team_size == 1 else "doubles"
+        else:
+            self.team_size = 1 if self.match_mode == "singles" else 2
+        return self
+
+    def given_common_params(self) -> dict[str, Any]:
+        """Only the common parameters this request actually sent."""
+        sent = self.model_fields_set
+        return {name: getattr(self, name) for name in COMMON_PARAM_FIELDS if name in sent}
 
     @field_validator("name")
     @classmethod
@@ -93,14 +161,23 @@ class CreateGroupRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_max_members_min(self) -> "CreateGroupRequest":
-        minimum = 2 if self.match_mode == "singles" else 4
+        # 043 FR-010: two teams of team_size players (2 for singles, 4 for doubles).
+        minimum = 2 * (self.team_size or 1)
         if self.max_members < minimum:
             raise ValueError(f"max_members must be >= {minimum} for {self.match_mode}")
         return self
 
     @model_validator(mode="after")
     def check_custom_scoring_present(self) -> "CreateGroupRequest":
-        if self.scoring_mode == "custom" and self.custom_scoring is None:
+        # Pre-043 requests (no sport, no explicit target) keep this rule; a
+        # 043 request may instead give target/cap directly or take the
+        # activity's defaults.
+        if (
+            self.scoring_mode == "custom"
+            and self.custom_scoring is None
+            and self.sport is None
+            and "target_score" not in self.model_fields_set
+        ):
             raise ValueError("custom_scoring is required when scoring_mode=custom")
         return self
 
@@ -151,6 +228,10 @@ class GroupPublicResponse(BaseModel):
     # admin page's "邀請好友" section is offered at all (FR-012). Not
     # sensitive (a boolean, never reveals which member).
     created_by_member: bool = False
+    # 043: the group's activity and players per team (match_mode stays for
+    # compatibility, research Decision 6).
+    sport: SportSummary | None = None
+    team_size: int = 1
 
 
 class ReauthRequest(BaseModel):
@@ -168,6 +249,10 @@ class EditGroupRequest(BaseModel):
     name: str | None = None
     password: str | None = None
     match_mode: MatchMode | None = None
+    # 043: same meaning as match_mode (either may be sent); the activity
+    # itself can never change (FR-007) — a different `sport` is refused.
+    team_size: int | None = Field(default=None, ge=1, le=2)
+    sport: SportRef | None = None
     scheduling_mechanism: SchedulingMechanism | None = None
     partner_source: PartnerSource | None = None
     max_members: int | None = None
@@ -200,6 +285,13 @@ class EditScoringSettingsRequest(BaseModel):
     target_score: int | None = None
     deuce_threshold: int | None = None
     cap_score: int | None = None
+    # 043: the other common parameters and type_params; omitted = unchanged.
+    # (With scoring_mode=custom, an explicit `cap_score: null` means no cap.)
+    end_mode: Literal["target", "manual"] | None = None
+    win_by: int | None = Field(default=None, ge=1)
+    allow_draw: bool | None = None
+    score_steps: list[int] | None = None
+    type_params: dict[str, Any] | None = None
 
 
 class RegeneratePinResponse(BaseModel):
@@ -232,7 +324,15 @@ class AdminGroupResponse(BaseModel):
     scoring_mode: ScoringMode
     target_score: int
     deuce_threshold: int
-    cap_score: int
+    # 043: None = no cap; plus the rest of the common parameters.
+    cap_score: int | None
+    end_mode: Literal["target", "manual"] = "target"
+    win_by: int = 2
+    allow_draw: bool = False
+    score_steps: list[int] = [1]
+    type_params: dict[str, Any] = {}
+    # 043: the named presets this activity offers ([] = edit the numbers).
+    scoring_presets: list[str] = ["21pt", "15pt"]
 
 
 class ScoreboardScoringRequest(BaseModel):
@@ -305,6 +405,9 @@ class GroupListItem(BaseModel):
     # (ALREADY_ACTIVE_IN_ANOTHER_GROUP would still reject it server-side
     # either way — this is a UI nicety, not the enforcement).
     member_active_elsewhere: bool | None = None
+    # 043: see GroupPublicResponse.
+    sport: SportSummary | None = None
+    team_size: int = 1
 
 
 class GroupListResponse(BaseModel):
@@ -337,6 +440,9 @@ class JoinLinkPreviewResponse(BaseModel):
     creator_nickname: str
     already_joined: bool
     roster_entry_id: str | None = None
+    # 043: see GroupPublicResponse.
+    sport: SportSummary | None = None
+    team_size: int = 1
 
 
 class JoinGroupRequest(BaseModel):
@@ -559,7 +665,11 @@ class ShotPlacementSummary(BaseModel):
 
 class ScoreEventSummary(BaseModel):
     side: Literal["A", "B"]
-    delta: Literal[1, -1]
+    # ±1 for net rally; 043's generic activities score in larger steps.
+    delta: int
+    # 043: the spine kind — always "point" here (only scoring events are
+    # listed); carried so clients can tell once other kinds are shown.
+    kind: str = "point"
     score_a: int
     score_b: int
     elapsed_seconds: int
@@ -798,6 +908,11 @@ class MatchRecordDetailResponse(MatchRecordSummary):
     # (every pre-035 match). 032's `player_stats` above is unchanged —
     # this is the split UNDER those totals, not a replacement.
     ending_stats: EndingStats | None = None
+    # 043 FR-021 / contracts/sections-manifest.md §4: the match's activity
+    # and the sections its sport type lays the page out with. Every
+    # net-rally-only field above is empty for other sport types.
+    sport: SportSummary | None = None
+    sections: list[Section] = []
 
 
 class RoundWinRatePoint(BaseModel):

@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
 from app.domains.roster.models import RosterEntry
-from app.domains.schedule.service import (
+from app.domains.schedule.service import create_match_with_participants
+from app.sports.types.net_rally.serve import (
     _advance_serve_state_and_snapshot,
     _compute_station,
     _initialize_serve_state,
-    create_match_with_participants,
 )
 
 # --- _compute_station() — pure function, no DB needed -----------------------

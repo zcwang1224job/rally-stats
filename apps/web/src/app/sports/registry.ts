@@ -11,10 +11,16 @@ export type SportTypeLoader = () => Promise<SportTypeModule>;
  * never downloads it. Composition root: each loader line carries an eslint
  * exception for the plugin boundary rule.
  */
-export const SPORT_TYPE_LOADERS: Partial<Record<SportTypeKey, SportTypeLoader>> = {};
+export const SPORT_TYPE_LOADERS: Partial<Record<SportTypeKey, SportTypeLoader>> = {
+  // eslint-disable-next-line no-restricted-syntax -- composition root (constitution XII)
+  net_rally: () => import('./types/net-rally/net-rally.module').then((m) => m.NET_RALLY),
+};
 
-// Module-level on purpose: TestBed builds a fresh injector per test, and the
-// vitest setup (src/test-setup.ts) preloads once for the whole run.
+// Outside any injector on purpose: a loaded chunk stays loaded for the app's
+// lifetime, and TestBed builds a fresh injector per test. Specs preload the
+// modules they exercise from their own bundle (a module preloaded from a
+// separate setup bundle would carry its own copies of every class and DI
+// token — research Decision 14 revisited in implementation).
 const loaded = new Map<string, SportTypeModule>();
 const pending = new Map<string, Promise<SportTypeModule>>();
 

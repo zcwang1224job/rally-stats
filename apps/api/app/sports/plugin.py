@@ -10,14 +10,18 @@ wants published it returns (`SpineEffect.live_payload`,
 overrides what it needs.
 """
 
+import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ApiError
 from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent
+from app.domains.schedule.schemas import ServeStationInfo
+from app.sports.presentation import Section
 
 Team = Literal["A", "B"]
 
@@ -34,19 +38,34 @@ class EmptyParams(BaseModel):
 
 @dataclass(frozen=True)
 class SpineEventContext:
-    """A `point` row core has just added (not yet committed)."""
+    """A `point` row core has just added (not yet committed). `event.score_a`
+    / `event.score_b` are the totals the scoring UPDATE just produced —
+    `match.score_a`/`score_b` are not refreshed until after the commit."""
 
     match: Match
     event: ScoreEvent
-    participants: Sequence[MatchParticipant]
 
 
 @dataclass(frozen=True)
 class SpineEffect:
-    """What a plugin wants attached to a scoring change: `live_payload` is
-    sent to clients with it (badminton: the serve station)."""
+    """What a plugin wants sent to clients with a scoring change: `serve` is
+    the serve station (ServeStationInfo's shape) for sport types that track
+    one, `sport_state` any other live state."""
 
-    live_payload: Any = None
+    serve: dict[str, str | None] | None = None
+    sport_state: Any = None
+
+
+@dataclass(frozen=True)
+class PointDetail:
+    """Detail attached to one point after it was scored (badminton's shot
+    placement: who scored, who lost it, where it landed, how it ended)."""
+
+    roster_entry_id: uuid.UUID | None
+    losing_roster_entry_id: uuid.UUID | None
+    landing_x: float | None
+    landing_y: float | None
+    ending_type: str | None
 
 
 @dataclass(frozen=True)
@@ -56,7 +75,6 @@ class PluginEventContext:
     match: Match
     event: ScoreEvent
     payload: BaseModel
-    participants: Sequence[MatchParticipant]
 
 
 @dataclass(frozen=True)
@@ -71,6 +89,47 @@ class FollowUpPoint:
 class PluginEventResult:
     follow_up_point: FollowUpPoint | None = None
     live_payload: Any = None
+
+
+@dataclass(frozen=True)
+class StatExtras:
+    """A sport type's per-point history beyond the spine, as the pure
+    `match_stats` functions take it (badminton: serve snapshots and shot
+    placements, keyed by score event id)."""
+
+    snapshots: Mapping[uuid.UUID, Any]
+    placements: Mapping[uuid.UUID, Any]
+
+
+NO_STAT_EXTRAS = StatExtras(snapshots={}, placements={})
+
+
+@dataclass(frozen=True)
+class MatchDetailContext:
+    """What core has already loaded for one completed match's detail page."""
+
+    match: Match
+    summary: Any  # group.schemas.MatchRecordSummary
+    point_events: Sequence[ScoreEvent]  # kind == 'point', in created_at, id order
+    raw_events: Sequence[Any]  # match_stats.RawEvent for point_events
+    completeness: str  # complete | partial | none
+
+
+@dataclass(frozen=True)
+class MatchDetailParts:
+    """The sport-type-specific part of MatchRecordDetailResponse: per-event
+    detail (keyed by score event id), the derived blocks, and the sections
+    the page renders (FR-021). Every field defaults to "nothing"."""
+
+    event_details: Mapping[uuid.UUID, Any] = field(default_factory=dict)
+    player_stats: list[Any] = field(default_factory=list)
+    serve_stats: Any = None
+    momentum_stats: Any = None
+    tempo_stats: Any = None
+    landing_distribution: list[Any] = field(default_factory=list)
+    clutch_stats: Any = None
+    ending_stats: Any = None
+    sections: list[Section] = field(default_factory=list)
 
 
 class BasePlugin:
@@ -92,6 +151,11 @@ class BasePlugin:
     def event_schemas(self) -> Mapping[str, type[BaseModel]]:
         return {}
 
+    def module_enabled(self, type_params: Mapping[str, Any], module: str) -> bool:
+        """Whether an optional module (e.g. `shot_placement`) is on for a
+        group or match with these `type_params`. Types without modules: never."""
+        return False
+
     def tables(self) -> Sequence[str]:
         """Names of the tables this plugin owns (core never queries them)."""
         return ()
@@ -102,15 +166,41 @@ class BasePlugin:
         return None
 
     async def on_match_requeued(self, session: AsyncSession, match: Match) -> None:
+        """A match that had started goes back to the queue (undo of the
+        previous match's completion): clear whatever on_match_start set."""
         return None
 
     async def on_spine_event(self, session: AsyncSession, ctx: SpineEventContext) -> SpineEffect:
         return SpineEffect()
 
+    async def serve_station(self, session: AsyncSession, match: Match) -> ServeStationInfo | None:
+        """The live serve station of an in-progress match, if this sport type
+        tracks one."""
+        return None
+
+    async def record_point_detail(
+        self, session: AsyncSession, match: Match, score_event_id: uuid.UUID, detail: PointDetail
+    ) -> None:
+        """Attach detail (e.g. badminton's shot placement) to a point already
+        scored. Sport types without such a module refuse."""
+        raise ApiError("MODULE_NOT_SUPPORTED", status_code=409)
+
     async def apply_event(
         self, session: AsyncSession, ctx: PluginEventContext
     ) -> PluginEventResult:
         raise NotImplementedError(f"{self.type_key} declares no events")
+
+    async def load_stat_extras(
+        self, session: AsyncSession, matches: Sequence[Match]
+    ) -> dict[uuid.UUID, StatExtras]:
+        """Batch-load this type's per-point history for many matches (the
+        member dashboard and group benchmark). Missing matches mean none."""
+        return {}
+
+    async def match_detail(
+        self, session: AsyncSession, ctx: MatchDetailContext
+    ) -> MatchDetailParts:
+        return MatchDetailParts()
 
     def can_undo(self, match: Match) -> bool:
         return True
@@ -121,8 +211,11 @@ class BasePlugin:
     async def live_state(self, session: AsyncSession, match: Match) -> Any:
         return None
 
-    def estimate_minutes(self, match: Match) -> float:
-        """Rough playing time of one match, for queue-time estimates."""
-        if match.end_mode == "manual":
+    def estimate_minutes(
+        self, *, end_mode: str, target_score: int, type_params: Mapping[str, Any]
+    ) -> float:
+        """Rough playing time of one match before the group has measured any
+        (queue-time estimates). About 0.6 minutes per point of the target."""
+        if end_mode == "manual":
             return 15.0
-        return 0.6 * match.target_score
+        return target_score * 0.6

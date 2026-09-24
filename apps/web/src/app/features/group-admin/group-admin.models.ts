@@ -17,6 +17,13 @@ export interface CustomScoring {
   cap_score: number;
 }
 
+/** 043 contracts/sports-api.md §3: which activity a new group is for. */
+export interface SportRef {
+  sport_key: string;
+  custom_sport_id?: string;
+  name?: string;
+}
+
 export interface CreateGroupRequest {
   name: string;
   password?: string | null;
@@ -29,6 +36,16 @@ export interface CreateGroupRequest {
   activity_time_end?: string | null;
   creator_nickname?: string | null;
   turnstile_token: string;
+  // 043: the activity and its common parameters (left out = its defaults).
+  sport?: SportRef;
+  team_size?: number;
+  end_mode?: 'target' | 'manual';
+  target_score?: number;
+  win_by?: number;
+  cap_score?: number | null;
+  allow_draw?: boolean;
+  score_steps?: number[];
+  type_params?: Record<string, unknown>;
 }
 
 export interface CreateGroupResponse {

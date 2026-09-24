@@ -434,7 +434,8 @@
     "reject": "Reject",
     "copied": "Copied",
     "offlineBanner": "Connection lost, attempting to reconnect…",
-    "readOnlyBanner": "This group has been disbanded — read-only view"
+    "readOnlyBanner": "This group has been disbanded — read-only view",
+    "retry": "Retry"
   },
   "createGroup": {
     "title": "Create a Group Session",
@@ -442,7 +443,8 @@
       "basics": "Basic Info",
       "matchAndSchedule": "Match Format & Scheduling",
       "activityTime": "Activity Time",
-      "creator": "Creator Info"
+      "creator": "Creator Info",
+      "activity": "Activity"
     },
     "name": "Group Name",
     "namePlaceholder": "Leave blank to default to \"Your Nickname's Badminton Group\"",
@@ -478,7 +480,30 @@
     "adminPin": "Admin PIN",
     "adminPinNotice": "Please save this PIN somewhere safe — it won't be shown in plain text again.",
     "anonymousRecoveryWarning": "Be sure to screenshot or write down this group number and PIN — if you lose both and didn't create the group as a member, admin access cannot be recovered",
-    "goToAdmin": "Go to Admin Page"
+    "goToAdmin": "Go to Admin Page",
+    "activityMine": "My activities",
+    "activityOtherName": "Activity name",
+    "activityOtherNameRequired": "Please enter the activity name",
+    "namePlaceholderSport": "{{sport}} Group",
+    "teamSizeOption": "{{count}} per team",
+    "generic": {
+      "endMode": "How a match ends",
+      "endModeTarget": "First to reach the target wins",
+      "endModeManual": "The scorer ends it (higher score wins)",
+      "targetScore": "Target ({{noun}})",
+      "winBy": "Winning lead",
+      "hasCap": "Set a cap (reaching it wins outright)",
+      "capScore": "Cap",
+      "allowDraw": "A level score at the end is a draw",
+      "scoreSteps": "Score steps",
+      "scoreStepsHint": "Comma-separated, e.g. 1 or 1,2,3",
+      "invalid": {
+        "target_score": "The target must be at least 1, and without a cap at least the winning lead",
+        "win_by": "The winning lead must be at least 1",
+        "cap_score": "The cap cannot be below the target",
+        "score_steps": "Score steps must be increasing positive whole numbers, e.g. 1,2,3"
+      }
+    }
   },
   "reauth": {
     "title": "Re-authenticate Admin Access",
@@ -1294,7 +1319,14 @@
     "GROUP_INVITE_NOT_PENDING": "This invite has already been handled",
     "GROUP_INVITE_CANCELLED": "The group creator cancelled this invite, so you can no longer join",
     "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records",
-    "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again."
+    "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again.",
+    "SPORT_IMMUTABLE": "A group's activity cannot change once it is created",
+    "MODULE_NOT_SUPPORTED": "This activity does not support that feature",
+    "TEAM_SIZE_NOT_ALLOWED": "This activity does not allow that team size",
+    "UNKNOWN_SPORT": "Activity not found",
+    "SPORT_NAME_REQUIRED": "Please enter the activity name",
+    "INVALID_SPORT_PARAMS": "The match settings are invalid — check the target, cap and score steps",
+    "sportModuleLoadFailed": "Could not load this activity's screen. Check your connection and retry."
   },
   "shareCard": {
     "brand": "Rally Stats",
@@ -1347,5 +1379,30 @@
     "groupAverage": "Group average",
     "scoreTimeline": "Score log",
     "team": "Team {{team}}"
+  },
+  "sports": {
+    "badminton": "Badminton",
+    "table_tennis": "Table tennis",
+    "pickleball": "Pickleball",
+    "tennis_tiebreak": "Tennis (tie-break)",
+    "billiards": "Billiards",
+    "darts": "Darts",
+    "board_game": "Board game",
+    "esports": "Esports",
+    "other": "Other",
+    "nouns": {
+      "court": "Court",
+      "table": "Table",
+      "board": "Board",
+      "arena": "Arena",
+      "station": "Station",
+      "venue": "Venue",
+      "point": "points",
+      "frame": "frames",
+      "score": "score",
+      "player": "Player",
+      "member": "Member",
+      "competitor": "Competitor"
+    }
   }
 }

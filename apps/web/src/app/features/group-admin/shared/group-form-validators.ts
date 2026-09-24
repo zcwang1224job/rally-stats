@@ -58,9 +58,68 @@ export function schedulingMechanismMatchModeValidator(
   };
 }
 
+/** 043: "1,2,3" → [1, 2, 3]; null unless every step is a positive whole
+ * number and they strictly increase (FR-012). */
+export function parseScoreSteps(text: string): number[] | null {
+  const parts = text
+    .split(/[,，、\s]+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    return null;
+  }
+  const steps = parts.map((part) => Number(part));
+  if (steps.some((step) => !Number.isInteger(step) || step <= 0)) {
+    return null;
+  }
+  for (let i = 1; i < steps.length; i += 1) {
+    if (steps[i] <= steps[i - 1]) {
+      return null;
+    }
+  }
+  return steps;
+}
+
+/** 043 FR-012: the common parameters of an activity without named presets
+ * (only checked while the form shows them — `uses_generic_params`). With a
+ * cap every match ends by the cap, so target ≥ win_by only matters without
+ * one (mirrors the backend's validate_common_params). */
+export function genericScoringValidator(group: AbstractControl): ValidationErrors | null {
+  const formGroup = group as FormGroup;
+  if (formGroup.get('uses_generic_params')?.value !== true) {
+    return null;
+  }
+  const endMode = formGroup.get('end_mode')?.value as string;
+  const target = formGroup.get('target_score')?.value as number | null;
+  const winBy = formGroup.get('win_by')?.value as number | null;
+  const hasCap = formGroup.get('has_cap')?.value === true;
+  const cap = formGroup.get('cap_score')?.value as number | null;
+  const steps = parseScoreSteps(String(formGroup.get('score_steps')?.value ?? ''));
+  if (steps === null) {
+    return { genericScoringInvalid: 'score_steps' };
+  }
+  if (target == null || target < 1) {
+    return { genericScoringInvalid: 'target_score' };
+  }
+  if (winBy == null || winBy < 1) {
+    return { genericScoringInvalid: 'win_by' };
+  }
+  if (endMode === 'target') {
+    if (hasCap && (cap == null || cap < target)) {
+      return { genericScoringInvalid: 'cap_score' };
+    }
+    if (!hasCap && target < winBy) {
+      return { genericScoringInvalid: 'target_score' };
+    }
+  }
+  return null;
+}
+
 export function customScoringValidator(group: AbstractControl): ValidationErrors | null {
   const formGroup = group as FormGroup;
-  if (formGroup.get('scoring_mode')?.value !== 'custom') {
+  // 043: an activity without named presets edits the common parameters
+  // instead of these three fields.
+  if (formGroup.get('scoring_mode')?.value !== 'custom' || formGroup.get('uses_generic_params')?.value === true) {
     return null;
   }
   const target = formGroup.get('custom_target_score')?.value as number | null;

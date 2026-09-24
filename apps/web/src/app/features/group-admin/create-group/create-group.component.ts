@@ -3,14 +3,49 @@ import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { GroupAdminService } from '../group-admin.service';
-import { CreateGroupResponse, MatchMode, ScoringMode, SchedulingMechanism } from '../group-admin.models';
+import {
+  CreateGroupRequest,
+  CreateGroupResponse,
+  MatchMode,
+  ScoringMode,
+  SchedulingMechanism,
+  SportRef,
+} from '../group-admin.models';
 import { TurnstileWidgetComponent } from '../shared/turnstile-widget.component';
 import {
   activityTimePairValidator,
   customScoringValidator,
+  genericScoringValidator,
   maxMembersValidator,
+  parseScoreSteps,
   schedulingMechanismMatchModeValidator,
 } from '../shared/group-form-validators';
+import { BADMINTON_FALLBACK, FALLBACK_CATALOG, SportsService } from '../../../core/api/sports.service';
+import { EndMode, SportDefaults, SportsCatalogResponse, SportTypeKey } from '../../../core/api/sport.models';
+import { SportSurfaceComponent } from '../../../sports/hosts/sport-surface.component';
+
+/** Decorative only — every card also shows the activity's name. */
+const SPORT_ICONS: Record<string, string> = {
+  shuttle: '🏸',
+  paddle: '🏓',
+  pickleball: '🥒',
+  tennis: '🎾',
+  billiards: '🎱',
+  darts: '🎯',
+  board_game: '🎲',
+  esports: '🎮',
+  other: '🏅',
+};
+
+interface SelectedSport {
+  /** A built-in sport_key, `other`, or `custom:<id>`. */
+  key: string;
+  typeKey: SportTypeKey;
+  teamSizes: number[];
+  defaults: SportDefaults;
+  name: string | null;
+  nameKey: string | null;
+}
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
 import { AuthService } from '../../auth/auth.service';
@@ -18,7 +53,7 @@ import { GroupJoinService } from '../../group-join/group-join.service';
 
 @Component({
   selector: 'app-create-group',
-  imports: [ReactiveFormsModule, TranslatePipe, TurnstileWidgetComponent],
+  imports: [ReactiveFormsModule, TranslatePipe, TurnstileWidgetComponent, SportSurfaceComponent],
   templateUrl: './create-group.component.html',
   styleUrl: './create-group.component.scss',
 })
@@ -29,6 +64,7 @@ export class CreateGroupComponent {
   private readonly translate = inject(TranslateService);
   private readonly auth = inject(AuthService);
   private readonly groupJoin = inject(GroupJoinService);
+  private readonly sports = inject(SportsService);
 
   readonly submitting = signal(false);
   readonly errorKey = signal<string | null>(null);
@@ -82,6 +118,18 @@ export class CreateGroupComponent {
       activity_time_start: [''],
       activity_time_end: [''],
       creator_nickname: ['', [Validators.required, Validators.maxLength(20)]],
+      // 043: the activity (a built-in sport_key, `other`, or `custom:<id>`)
+      // and, for activities without named presets, the common parameters.
+      sport: [BADMINTON_FALLBACK.sport_key],
+      uses_generic_params: [false],
+      other_name: ['', [Validators.maxLength(20)]],
+      end_mode: ['target' as EndMode],
+      target_score: [21],
+      win_by: [2],
+      has_cap: [true],
+      cap_score: [30],
+      allow_draw: [false],
+      score_steps: ['1'],
     },
     {
       validators: [
@@ -89,11 +137,49 @@ export class CreateGroupComponent {
         activityTimePairValidator,
         customScoringValidator,
         schedulingMechanismMatchModeValidator('match_mode', 'scheduling_mechanism'),
+        genericScoringValidator,
       ],
     },
   );
 
+  /** 043 FR-001: the activity catalogue; the form starts on badminton. */
+  readonly catalog = signal<SportsCatalogResponse>(FALLBACK_CATALOG);
+  private readonly selectedKey = signal(BADMINTON_FALLBACK.sport_key);
+  /** Type-specific parameters, filled by the sport type module's own
+   * create-form fields (e.g. frames' "first to N frames" options). */
+  readonly typeParams = this.fb.group({});
+
+  readonly selectedSport = computed<SelectedSport>(() => {
+    const key = this.selectedKey();
+    const catalog = this.catalog();
+    if (key.startsWith('custom:')) {
+      const custom = catalog.custom.find((sport) => `custom:${sport.id}` === key);
+      if (custom) {
+        return { key, typeKey: custom.type_key, teamSizes: custom.team_size_options, defaults: custom.defaults, name: custom.name, nameKey: null };
+      }
+    }
+    const builtin = catalog.builtin.find((sport) => sport.sport_key === key) ?? BADMINTON_FALLBACK;
+    return {
+      key: builtin.sport_key,
+      typeKey: builtin.type_key,
+      teamSizes: builtin.team_size_options,
+      defaults: builtin.defaults,
+      name: null,
+      nameKey: builtin.name_key,
+    };
+  });
+
+  /** Activities with named scoring presets (badminton's 21/15 points) keep
+   * the preset select; every other activity edits the common parameters. */
+  readonly usesPresets = computed(() => {
+    const mode = this.selectedSport().defaults.scoring_mode;
+    return mode === '21pt' || mode === '15pt';
+  });
+  readonly isOther = computed(() => this.selectedSport().key === 'other');
+  readonly customSports = computed(() => this.catalog().custom);
+
   constructor() {
+    this.loadCatalog();
     if (!this.auth.isLoggedIn()) {
       if (this.groupJoin.getActiveGuestGroupId() !== null) {
         this.checkingGuestGroup.set(true);
@@ -137,6 +223,63 @@ export class CreateGroupComponent {
     }
   }
 
+  /** 043: picking an activity brings in its defaults (FR-009). */
+  selectSport(key: string): void {
+    this.selectedKey.set(key);
+    this.form.controls.sport.setValue(key);
+    const sport = this.selectedSport();
+    const d = sport.defaults;
+    const teamSize = sport.teamSizes.includes(d.team_size) ? d.team_size : sport.teamSizes[0];
+    this.form.controls.match_mode.setValue(teamSize === 1 ? 'singles' : 'doubles');
+    this.onMatchModeChange();
+    if (this.usesPresets()) {
+      this.form.controls.scoring_mode.setValue((d.scoring_mode ?? '21pt') as ScoringMode);
+    } else {
+      this.form.controls.scoring_mode.setValue('custom');
+    }
+    this.form.controls.other_name.setValidators(
+      key === 'other' ? [Validators.required, Validators.maxLength(20)] : [Validators.maxLength(20)],
+    );
+    this.form.controls.other_name.updateValueAndValidity();
+    this.form.patchValue({
+      uses_generic_params: !this.usesPresets(),
+      end_mode: d.end_mode,
+      target_score: d.target_score,
+      win_by: d.win_by,
+      has_cap: d.cap_score !== null,
+      cap_score: d.cap_score ?? d.target_score,
+      allow_draw: d.allow_draw,
+      score_steps: d.score_steps.join(','),
+    });
+    for (const name of Object.keys(this.typeParams.controls)) {
+      this.typeParams.removeControl(name as never);
+    }
+  }
+
+  isSelected(key: string): boolean {
+    return this.selectedKey() === key;
+  }
+
+  /** What to call the activity: an i18n key, or a custom / "other" name. */
+  sportLabel(): string {
+    const sport = this.selectedSport();
+    if (sport.key === 'other') {
+      return this.form.controls.other_name.value.trim() || 'sports.other';
+    }
+    return sport.name ?? sport.nameKey ?? 'sports.other';
+  }
+
+  /** "Target score" in the activity's own unit (points, frames, …). */
+  scoreNoun(): string {
+    const key = this.selectedSport().key;
+    const builtin = this.catalog().builtin.find((sport) => sport.sport_key === key);
+    return `sports.nouns.${builtin?.nouns.score ?? 'point'}`;
+  }
+
+  iconFor(icon: string): string {
+    return SPORT_ICONS[icon] ?? SPORT_ICONS['other'];
+  }
+
   onTurnstileVerified(token: string): void {
     this.turnstileToken.set(token);
   }
@@ -176,6 +319,7 @@ export class CreateGroupComponent {
           activity_time_end: raw.activity_time_end || null,
           creator_nickname: this.memberNickname() === null ? raw.creator_nickname : null,
           turnstile_token: this.turnstileToken()!,
+          ...this.sportPayload(raw),
         },
         this.memberAuthHeader(),
       )
@@ -225,6 +369,42 @@ export class CreateGroupComponent {
 
   get turnstileLanguage(): string {
     return this.translate.currentLang() === 'zh-TW' ? 'zh-tw' : 'auto';
+  }
+
+  private loadCatalog(): void {
+    const token = this.auth.isLoggedIn() ? (this.auth.getAccessToken?.() ?? null) : null;
+    this.sports
+      .getCatalog(token ? { Authorization: `Bearer ${token}` } : undefined)
+      .subscribe((catalog) => {
+        this.catalog.set(catalog.builtin.length > 0 ? catalog : FALLBACK_CATALOG);
+      });
+  }
+
+  /** 043 contracts/sports-api.md §3: what the activity adds to the request. */
+  private sportPayload(raw: ReturnType<typeof this.form.getRawValue>): Partial<CreateGroupRequest> {
+    const sport = this.selectedSport();
+    const teamSize = raw.match_mode === 'singles' ? 1 : 2;
+    const ref: SportRef = sport.key.startsWith('custom:')
+      ? { sport_key: 'custom', custom_sport_id: sport.key.slice('custom:'.length) }
+      : sport.key === 'other'
+        ? { sport_key: 'other', name: raw.other_name.trim() }
+        : { sport_key: sport.key };
+    const payload: Partial<CreateGroupRequest> = { sport: ref, team_size: teamSize };
+    if (!this.usesPresets()) {
+      payload.scoring_mode = 'custom';
+      payload.custom_scoring = null;
+      payload.end_mode = raw.end_mode;
+      payload.target_score = raw.target_score;
+      payload.win_by = raw.win_by;
+      payload.cap_score = raw.has_cap ? raw.cap_score : null;
+      payload.allow_draw = raw.end_mode === 'manual' ? raw.allow_draw : false;
+      payload.score_steps = parseScoreSteps(raw.score_steps) ?? [1];
+    }
+    const typeParams = this.typeParams.getRawValue() as Record<string, unknown>;
+    if (Object.keys(typeParams).length > 0) {
+      payload.type_params = typeParams;
+    }
+    return payload;
   }
 
   private memberAuthHeader(): Record<string, string> | undefined {

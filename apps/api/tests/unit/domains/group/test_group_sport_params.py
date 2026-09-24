@@ -60,7 +60,7 @@ def test_valid_badminton_params_pass() -> None:
 @pytest.mark.parametrize(
     ("overrides", "field"),
     [
-        ({"target_score": 1, "win_by": 2}, "target_score"),
+        ({"target_score": 1, "win_by": 2, "cap_score": None}, "target_score"),
         ({"cap_score": 20}, "cap_score"),
         ({"win_by": 0}, "win_by"),
         ({"score_steps": []}, "score_steps"),
@@ -84,3 +84,8 @@ def test_manual_end_mode_ignores_target_and_cap_and_allows_draws() -> None:
 
 def test_no_cap_is_valid() -> None:
     validate_common_params(_params(target_score=11, cap_score=None))
+
+
+def test_a_one_point_match_with_a_cap_stays_valid() -> None:
+    # Pre-043 custom scoring (target 1 / cap 1) ends on the cap.
+    validate_common_params(_params(target_score=1, win_by=2, cap_score=1))

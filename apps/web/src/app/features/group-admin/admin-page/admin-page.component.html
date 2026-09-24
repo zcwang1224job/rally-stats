@@ -107,7 +107,13 @@
                     <div class="court-control-block card">
                       <h3>{{ court.name }}</h3>
                       @if (court.current_match) {
-                        <app-court-control [groupId]="groupId" [court]="court" (changed)="loadSchedule()" />
+                        <!-- 043: court control comes from the group's sport type module. -->
+                        <app-sport-surface
+                          [typeKey]="sched.sport?.type_key ?? legacySportType"
+                          surface="courtControl"
+                          [inputs]="{ groupId: groupId, court: court }"
+                          [outputs]="courtControlOutputs"
+                        />
                       } @else if (court.waiting_reason === 'manual_assignment') {
                         <app-manual-assign
                           [groupId]="groupId"

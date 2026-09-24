@@ -24,6 +24,7 @@ from app.domains.member.router import router as member_router
 from app.domains.notification.router import router as notification_router
 from app.domains.schedule.router import router as schedule_router
 from app.scheduler.auto_disband import start_scheduler, stop_scheduler
+from app.sports.router import router as sports_router
 
 # Composition root (constitution XII): the only app module allowed to import
 # the sport type plugins. Every core module talks to them via app.sports.registry.
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(group_invite_router)
     app.include_router(group_invite_invite_router)
     app.include_router(realtime_router)
+    app.include_router(sports_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

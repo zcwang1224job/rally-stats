@@ -50,13 +50,39 @@ module.exports = tseslint.config(
       "src/app/core/**/*.ts",
       "src/app/features/**/*.ts",
       "src/app/shared/**/*.ts",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: ["**/sports/types/**"] }],
+      // no-restricted-imports does not look at dynamic import().
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportExpression[source.value=/sports\\/types\\//]",
+          message: "Core code must not load a sport type module (constitution XII).",
+        },
+      ],
+    },
+  },
+  {
+    // The plugin foundation itself, which reaches types/ by shorter paths.
+    files: [
       "src/app/sports/*.ts",
       "src/app/sports/section-outlet/**/*.ts",
       "src/app/sports/generic-sections/**/*.ts",
       "src/app/sports/hosts/**/*.ts",
     ],
     rules: {
-      "no-restricted-imports": ["error", { patterns: ["**/sports/types/**"] }],
+      "no-restricted-imports": [
+        "error",
+        { patterns: ["**/sports/types/**", "./types/**", "../types/**"] },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "ImportExpression[source.value=/(^|\\/)types\\//]",
+          message: "Only the registry's loaders may load a sport type module (constitution XII).",
+        },
+      ],
     },
   },
   {

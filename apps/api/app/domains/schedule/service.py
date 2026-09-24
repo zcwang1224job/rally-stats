@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import cast, get_args
+from typing import Any, cast
 
 from sqlalchemy import ColumnElement, Exists, Select, delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -40,13 +40,10 @@ from app.domains.schedule.models import (
     PairHistory,
     Partnership,
     ScoreEvent,
-    ScoreServeRecord,
-    ShotPlacementRecord,
 )
 from app.domains.schedule.schemas import (
     CourtLiveState,
     CourtScheduleStatus,
-    EndingType,
     MatchDetailResponse,
     MatchLiveDetail,
     MatchSummary,
@@ -70,7 +67,9 @@ from app.domains.schedule.schemas import (
     WaitingOnRest,
     WaitingReason,
 )
-from app.sports import scoring
+from app.sports import catalog, registry, scoring
+from app.sports.plugin import PointDetail, SpineEventContext
+from app.sports.presentation import SportSummary
 
 _ACTIVE_MATCH_STATUSES = ("queued", "in_progress")
 
@@ -204,73 +203,11 @@ async def get_pair_count(
     return result.scalar_one_or_none() or 0
 
 
-@dataclass(frozen=True)
-class StationResult:
-    """Output of `_compute_station()` — one snapshot of "who's serving and
-    where everyone stands", per specs/030-score-serve-record/data-model.md
-    站位計算公式. Field names mirror `ScoreServeRecord`'s columns 1:1."""
-
-    server_roster_entry_id: uuid.UUID
-    server_team: Team
-    team_a_right_roster_entry_id: uuid.UUID | None
-    team_a_left_roster_entry_id: uuid.UUID | None
-    team_b_right_roster_entry_id: uuid.UUID | None
-    team_b_left_roster_entry_id: uuid.UUID | None
-
-
-def _team_station(
-    reference_server_id: uuid.UUID, participants: Sequence[uuid.UUID], score: int
-) -> tuple[uuid.UUID | None, uuid.UUID | None]:
-    """One team's (right, left) station occupants — research.md Decision 3:
-    the reference server stands right when their team's score is even, left
-    when odd; the other participant (doubles only — `None` for singles)
-    always takes the opposite box. For singles (`other` is `None`), this
-    correctly leaves the box the reference server isn't in as `None` in
-    either parity, rather than swapping which box is empty."""
-    other = next((p for p in participants if p != reference_server_id), None)
-    if score % 2 == 0:
-        return reference_server_id, other
-    return other, reference_server_id
-
-
-def _compute_station(
-    serving_team: Team,
-    team_a_participants: Sequence[uuid.UUID],
-    team_b_participants: Sequence[uuid.UUID],
-    team_a_reference_server_id: uuid.UUID,
-    team_b_reference_server_id: uuid.UUID,
-    score_a: int,
-    score_b: int,
-) -> StationResult:
-    """Pure function — 030-score-serve-record research.md Decision 3. Given
-    which team currently serves, each team's reference server, and the
-    current score, derives all four station slots (singles: one slot per
-    team stays `None`) and who's currently serving."""
-    team_a_right, team_a_left = _team_station(
-        team_a_reference_server_id, team_a_participants, score_a
-    )
-    team_b_right, team_b_left = _team_station(
-        team_b_reference_server_id, team_b_participants, score_b
-    )
-    server_roster_entry_id = (
-        team_a_reference_server_id if serving_team == "A" else team_b_reference_server_id
-    )
-    return StationResult(
-        server_roster_entry_id=server_roster_entry_id,
-        server_team=serving_team,
-        team_a_right_roster_entry_id=team_a_right,
-        team_a_left_roster_entry_id=team_a_left,
-        team_b_right_roster_entry_id=team_b_right,
-        team_b_left_roster_entry_id=team_b_left,
-    )
-
-
 async def _match_participants_by_team(
     session: AsyncSession, match_id: uuid.UUID
 ) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
     """Returns (team_a_roster_entry_ids, team_b_roster_entry_ids) for a
-    match — shared by `_initialize_serve_state()`,
-    `_advance_serve_state_and_snapshot()`, and `_build_serve_station()`."""
+    match."""
     result = await session.execute(
         select(MatchParticipant.roster_entry_id, MatchParticipant.team).where(
             MatchParticipant.match_id == match_id
@@ -283,66 +220,18 @@ async def _match_participants_by_team(
     return team_a, team_b
 
 
-async def _build_serve_station(session: AsyncSession, match: Match) -> ServeStationInfo | None:
-    """029-serve-rotation-display: the *live* equivalent of a
-    `ScoreServeRecord` snapshot — computed fresh from `match`'s currently
-    persisted serve state + score, not stored anywhere itself. `None` when
-    the match has no serve state yet (research.md Decision 4 — a match
-    created before 030-score-serve-record's migration).
-
-    Shared by `court_live_state()` (every read) and `apply_score_delta()`'s
-    `delta < 0` branch (`-1` doesn't advance the serve state, so there's no
-    fresh `ScoreServeRecord` to reuse there like the `delta > 0` branch
-    does — this recomputes from the unchanged serve state + corrected
-    score instead, per FR-010)."""
-    if match.serving_team is None:
-        return None
-    team_a, team_b = await _match_participants_by_team(session, match.id)
-    station = _compute_station(
-        cast(Team, match.serving_team),
-        team_a,
-        team_b,
-        cast(uuid.UUID, match.team_a_reference_server_id),
-        cast(uuid.UUID, match.team_b_reference_server_id),
-        match.score_a,
-        match.score_b,
-    )
-    return ServeStationInfo(
-        server_roster_entry_id=str(station.server_roster_entry_id),
-        server_team=station.server_team,
-        team_a_right_roster_entry_id=_opt_str(station.team_a_right_roster_entry_id),
-        team_a_left_roster_entry_id=_opt_str(station.team_a_left_roster_entry_id),
-        team_b_right_roster_entry_id=_opt_str(station.team_b_right_roster_entry_id),
-        team_b_left_roster_entry_id=_opt_str(station.team_b_left_roster_entry_id),
-    )
-
-
-def _opt_str(value: uuid.UUID | None) -> str | None:
-    return str(value) if value is not None else None
-
-
-async def _initialize_serve_state(session: AsyncSession, match: Match) -> None:
-    """030-score-serve-record FR-001/FR-002 (research.md Decision 4/5):
-    called once, exactly when a match becomes `in_progress` (only via
-    `_start_match()`) — randomly assigns the serving team
-    and, for doubles, each team's own reference server (both the serving
-    and the receiving side, so `_compute_station()` has a starting point
-    for all four slots). Mutates `match` in place; caller flushes/commits."""
-    team_a, team_b = await _match_participants_by_team(session, match.id)
-    match.serving_team = random.choice(("A", "B"))
-    match.team_a_reference_server_id = random.choice(team_a)
-    match.team_b_reference_server_id = random.choice(team_b)
-
-
 async def _start_match(session: AsyncSession, match: Match, court_id: uuid.UUID | None) -> None:
     """Puts a match on `court_id` as `in_progress`: the one place a match
     starts, whether it was queued (`pull_queued_match_for_court()`) or
     created straight onto a court (`create_match_with_participants()`).
-    Also where the match enters PairHistory. Flushes, never commits."""
+    Also where the match enters PairHistory. Flushes, never commits.
+
+    043: whatever the sport type sets up at the start (badminton: the serve
+    state, 030) is the plugin's `on_match_start()`."""
     match.court_id = court_id
     match.status = "in_progress"
     match.started_at = datetime.now(UTC)
-    await _initialize_serve_state(session, match)
+    await registry.get(match.type_key).on_match_start(session, match, ())
     team_a, team_b = await _match_participants_by_team(session, match.id)
     await _record_pair_history(session, match.group_id, team_a, team_b)
     await session.flush()
@@ -830,7 +719,7 @@ async def _generate_fair_rotation_matches(
     out of scope for this feature (spec.md User Story 1) and keeps its
     original "fill exactly `len(courts)` matches by wait_count priority"
     behavior unchanged below."""
-    if group.match_mode == "singles":
+    if group.team_size == 1:
         await _generate_singles_round_robin_matches(session, group, round_number)
         return
 
@@ -1835,7 +1724,7 @@ def _continuous_rotation_applies(group: Group) -> bool:
     return (
         group.continuous_rotation
         and group.scheduling_mechanism == "fair_rotation"
-        and group.match_mode == "doubles"
+        and group.team_size == 2
     )
 
 
@@ -1954,7 +1843,7 @@ async def _can_generate_any_match(session: AsyncSession, group: Group) -> bool:
         partnered = {pid for team in partnerships for pid in team}
         free = sum(1 for pid in ready if pid not in partnered)
         return whole_teams + free // 2 >= 2
-    return len(ready) >= (2 if group.match_mode == "singles" else _DOUBLES_PER_MATCH)
+    return len(ready) >= (2 if group.team_size == 1 else _DOUBLES_PER_MATCH)
 
 
 async def round_would_auto_advance(
@@ -2027,7 +1916,7 @@ async def set_continuous_rotation(session: AsyncSession, group: Group, enabled: 
     `_continuous_rotation_applies()` ignores it. Turning it on mid-round
     seats waiting players on any court that is idle right now."""
     if enabled and not (
-        group.scheduling_mechanism == "fair_rotation" and group.match_mode == "doubles"
+        group.scheduling_mechanism == "fair_rotation" and group.team_size == 2
     ):
         raise ApiError("CONTINUOUS_ROTATION_NOT_SUPPORTED", status_code=400)
     group.continuous_rotation = enabled
@@ -2079,10 +1968,12 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
                 participants=entry[1],
                 score_a=entry[0].score_a,
                 score_b=entry[0].score_b,
-                serve=await _build_serve_station(session, entry[0]),
+                serve=await registry.get(entry[0].type_key).serve_station(session, entry[0]),
                 detailed_scoring_enabled=entry[0].detailed_scoring_enabled,
                 target_score=entry[0].target_score,
                 cap_score=entry[0].cap_score,
+                **match_sport_fields(entry[0]),
+                sport_state=await registry.get(entry[0].type_key).live_state(session, entry[0]),
             )
             waiting_reason = None
         else:
@@ -2139,6 +2030,7 @@ async def build_schedule_snapshot(session: AsyncSession, group: Group) -> Schedu
         round_phase=round_phase,
         courts=court_statuses,
         roster=roster_statuses,
+        sport=group_sport_summary(group),
     )
 
 
@@ -2300,10 +2192,10 @@ async def build_round_matches_list(session: AsyncSession, group: Group) -> Round
     )
 
 
-# Used until the group has finished enough matches of its own to measure.
-# Roughly 0.6 minutes per point of the target score: about 13 minutes for
-# a 21-point game, 9 for 15 points.
-_FALLBACK_MINUTES_PER_TARGET_POINT = 0.6
+# Used until the group has finished enough matches of its own to measure:
+# the sport type's own guess (043 research Decision 18; net rally: roughly
+# 0.6 minutes per point of the target score — about 13 minutes for a
+# 21-point game, 9 for 15 points).
 _MIN_MATCHES_FOR_MEASURED_DURATION = 3
 _MEASURED_DURATION_SAMPLE = 30
 
@@ -2328,7 +2220,10 @@ async def _typical_match_minutes(session: AsyncSession, group: Group) -> float:
     ]
     if len(durations) >= _MIN_MATCHES_FOR_MEASURED_DURATION:
         return float(statistics.median(durations))
-    return max(group.target_score * _FALLBACK_MINUTES_PER_TARGET_POINT, 5.0)
+    guess = registry.get(group.type_key).estimate_minutes(
+        end_mode=group.end_mode, target_score=group.target_score, type_params=group.type_params
+    )
+    return max(guess, 5.0)
 
 
 async def _estimate_remaining_minutes(
@@ -2594,7 +2489,7 @@ async def _schedule_late_joiner_matches(session: AsyncSession, group: Group) -> 
     everyone). Flushes, never commits. Returns whether any match was
     added."""
     mechanism = group.scheduling_mechanism
-    if mechanism == "manual" or (mechanism == "fair_rotation" and group.match_mode != "singles"):
+    if mechanism == "manual" or (mechanism == "fair_rotation" and group.team_size != 1):
         return False
     if await get_round_phase(session, group) == "awaiting_plan":
         return False
@@ -2789,7 +2684,7 @@ async def remove_roster_entry_from_schedule(
         return
 
     to_abandon = match_ids
-    if group.match_mode == "doubles" and group.scheduling_mechanism in (
+    if group.team_size == 2 and group.scheduling_mechanism in (
         "fair_rotation",
         "individual_mixed",
     ):
@@ -3114,6 +3009,7 @@ def _score_mutation_result(
     match: Match,
     score_event_id: uuid.UUID | None = None,
     serve: ServeStationInfo | None = None,
+    sport_state: object = None,
 ) -> ScoreMutationResult:
     return ScoreMutationResult(
         applied=applied,
@@ -3124,6 +3020,28 @@ def _score_mutation_result(
         winner_team=cast("Team | None", match.winner_team),
         score_event_id=str(score_event_id) if score_event_id is not None else None,
         serve=serve,
+        sport_state=sport_state,
+    )
+
+
+def match_sport_fields(match: Match) -> dict[str, Any]:
+    """043 contracts/match-events-api.md §7: the activity and common-parameter
+    snapshot every live match view carries (sport_state is added by the
+    caller, from the plugin)."""
+    return {
+        "sport": catalog.summary_for(
+            sport_key=match.sport_key, type_key=match.type_key, sport_name=match.sport_name
+        ),
+        "end_mode": match.end_mode,
+        "win_by": match.win_by,
+        "allow_draw": match.allow_draw,
+        "score_steps": list(match.score_steps),
+    }
+
+
+def group_sport_summary(group: Group) -> SportSummary:
+    return catalog.summary_for(
+        sport_key=group.sport_key, type_key=group.type_key, sport_name=group.sport_name
     )
 
 
@@ -3215,75 +3133,6 @@ async def _advance_after_terminal(session: AsyncSession, match: Match) -> Match 
     return pulled
 
 
-async def _advance_serve_state_and_snapshot(
-    session: AsyncSession, match: Match, side: Team, score_a: int, score_b: int
-) -> ScoreServeRecord:
-    """030-score-serve-record FR-001~003 (research.md Decision 2). Called
-    ONLY from `apply_score_delta()`'s `delta > 0` branch — `-1` MUST NOT
-    call this (Decision 5). `score_a`/`score_b` are the POST-increment
-    totals from that branch's `UPDATE ... RETURNING` — NOT `match.score_a`/
-    `score_b`, which the ORM instance doesn't reflect until refreshed.
-
-    Advances `match.serving_team`/`team_a_reference_server_id`/
-    `team_b_reference_server_id` in place (side-out swap when `side` isn't
-    the team that was already serving) and returns the immutable
-    `ScoreServeRecord` snapshot to insert — caller still needs to set
-    `score_event_id` and add it to the session."""
-    team_a, team_b = await _match_participants_by_team(session, match.id)
-
-    if side != match.serving_team:
-        # Side-out: serve passes to `side`. That team's reference server
-        # alternates to whichever of its (up to 2) participants doesn't
-        # currently hold it (singles: the same lone participant, a no-op).
-        participants = team_a if side == "A" else team_b
-        current = (
-            match.team_a_reference_server_id if side == "A" else match.team_b_reference_server_id
-        )
-        new_server = next((p for p in participants if p != current), current)
-        match.serving_team = side
-        if side == "A":
-            match.team_a_reference_server_id = new_server
-        else:
-            match.team_b_reference_server_id = new_server
-
-    station = _compute_station(
-        cast(Team, match.serving_team),
-        team_a,
-        team_b,
-        cast(uuid.UUID, match.team_a_reference_server_id),
-        cast(uuid.UUID, match.team_b_reference_server_id),
-        score_a,
-        score_b,
-    )
-    return ScoreServeRecord(
-        match_id=match.id,
-        group_id=match.group_id,
-        server_roster_entry_id=station.server_roster_entry_id,
-        server_team=station.server_team,
-        team_a_right_roster_entry_id=station.team_a_right_roster_entry_id,
-        team_a_left_roster_entry_id=station.team_a_left_roster_entry_id,
-        team_b_right_roster_entry_id=station.team_b_right_roster_entry_id,
-        team_b_left_roster_entry_id=station.team_b_left_roster_entry_id,
-    )
-
-
-async def _remove_last_shot_placement_record(
-    session: AsyncSession, match_id: uuid.UUID, side: Team
-) -> None:
-    """031-shot-placement-scoring FR-007: deletes the newest ShotPlacementRecord
-    for this match+team, if any — a plain no-op when none exists (every
-    simple-mode match, and a detailed-mode match with no prior point for
-    this side). data-model.md: "刪除（單筆）"."""
-    subquery = (
-        select(ShotPlacementRecord.id)
-        .where(ShotPlacementRecord.match_id == match_id, ShotPlacementRecord.team == side)
-        .order_by(ShotPlacementRecord.created_at.desc())
-        .limit(1)
-        .scalar_subquery()
-    )
-    await session.execute(delete(ShotPlacementRecord).where(ShotPlacementRecord.id == subquery))
-
-
 async def apply_score_delta(
     session: AsyncSession,
     court: Court,
@@ -3301,8 +3150,16 @@ async def apply_score_delta(
     exactly like a plain one — score-then-record (see attach_shot_placement()
     below) never blocks the score itself on the scorer filling in landing
     detail. The returned ScoreMutationResult.score_event_id is what a caller
-    then hands to attach_shot_placement()."""
+    then hands to attach_shot_placement().
+
+    043 research Decision 8 — a fixed skeleton around the sport type plugin:
+    atomic UPDATE → group activity → spine `point` event → the plugin's
+    `on_spine_event()` (badminton: serve advance/restore, shot-placement
+    cleanup) → commit → win test → terminal hooks → publish. The plugin only
+    returns what clients should see (`serve`, `sport_state`); every publish
+    stays here."""
     match = await _fetch_match_for_court(session, court, match_id)
+    plugin = registry.get(match.type_key)
 
     column = Match.score_a if side == "A" else Match.score_b
     conditions = [Match.id == match_id, Match.status == "in_progress"]
@@ -3327,83 +3184,19 @@ async def apply_score_delta(
     await session.execute(
         update(Group).where(Group.id == match.group_id).values(last_activity_at=datetime.now(UTC))
     )
-    score_event_id = uuid.uuid4()
-    session.add(
-        ScoreEvent(
-            id=score_event_id,
-            match_id=match_id,
-            group_id=match.group_id,
-            side=side,
-            delta=delta,
-            score_a=row.score_a,
-            score_b=row.score_b,
-            source=source,
-        )
+    event = ScoreEvent(
+        id=uuid.uuid4(),
+        match_id=match_id,
+        group_id=match.group_id,
+        kind="point",
+        side=side,
+        delta=delta,
+        score_a=row.score_a,
+        score_b=row.score_b,
+        source=source,
     )
-
-    if delta > 0:
-        # 030-score-serve-record FR-001/FR-004: only a genuine point (+1)
-        # advances the serve state and leaves a snapshot — `-1` MUST NOT.
-        serve_record = await _advance_serve_state_and_snapshot(
-            session, match, side, row.score_a, row.score_b
-        )
-        serve_record.score_event_id = score_event_id
-        session.add(serve_record)
-    else:
-        # 031-shot-placement-scoring FR-007/research.md Decision 3: a
-        # correction (-1) collapses the last point for this side — unconditional
-        # (no `match.detailed_scoring_enabled` check needed): a simple-mode
-        # match never has any ShotPlacementRecord to begin with, so this is a
-        # harmless no-op there.
-        await _remove_last_shot_placement_record(session, match_id, side)
-
-        # feature/control-panel-scoreboard-style: a `-1` correcting the
-        # point that just advanced the serve state (a side-out rotation
-        # swap — see _advance_serve_state_and_snapshot()) previously left
-        # match.serving_team/team_{a,b}_reference_server_id at their
-        # POST-point values while only the score itself rolled back — a
-        # stale, inconsistent combination that showed the wrong server
-        # whenever the undone point was a side-out. 030-score-serve-record's
-        # ScoreServeRecord rows are read-only history per its Clarifications
-        # (never written or deleted by `-1`) — this only reads them to
-        # restore match's own LIVE columns. `row.score_a`/`row.score_b` are
-        # this correction's resulting totals; the historical point that
-        # originally produced that exact score is exactly the state to
-        # restore back to (robust to undoing several points in a row, not
-        # just the single most recent one, since it matches by score
-        # rather than by position in the history).
-        prior = (
-            await session.execute(
-                select(ScoreServeRecord)
-                .join(ScoreEvent, ScoreServeRecord.score_event_id == ScoreEvent.id)
-                .where(
-                    ScoreServeRecord.match_id == match_id,
-                    ScoreEvent.score_a == row.score_a,
-                    ScoreEvent.score_b == row.score_b,
-                )
-                .order_by(ScoreServeRecord.created_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if prior is not None:
-            match.serving_team = prior.server_team
-            match.team_a_reference_server_id = (
-                prior.team_a_right_roster_entry_id
-                if row.score_a % 2 == 0
-                else prior.team_a_left_roster_entry_id
-            )
-            match.team_b_reference_server_id = (
-                prior.team_b_right_roster_entry_id
-                if row.score_b % 2 == 0
-                else prior.team_b_left_roster_entry_id
-            )
-        # else: undoing all the way back past this match's first recorded
-        # point — no earlier snapshot exists to restore from. If that
-        # first point wasn't itself a side-out, match's serve columns were
-        # never mutated for it and are already correct as-is; if it WAS, the
-        # true pre-match-start random assignment (_initialize_serve_state())
-        # was never persisted anywhere and can't be recovered here — a
-        # narrow, accepted gap rather than something this correction can fix.
+    session.add(event)
+    effect = await plugin.on_spine_event(session, SpineEventContext(match=match, event=event))
 
     await session.commit()
     await session.refresh(match)
@@ -3415,7 +3208,10 @@ async def apply_score_delta(
     # response below (not just published) — None when the match ends this
     # point (no more serve state to show).
     serve_payload: dict[str, str | None] | None = None
-    if match_wins(my_score, opp_score, match.target_score, match.cap_score, match.win_by):
+    sport_state: object = None
+    if match.end_mode == "target" and match_wins(
+        my_score, opp_score, match.target_score, match.cap_score, match.win_by
+    ):
         await session.execute(
             update(Match)
             .where(Match.id == match_id, Match.status == "in_progress")
@@ -3427,37 +3223,9 @@ async def apply_score_delta(
         await _publish_match_ended(session, match, court, pulled)
     else:
         # 029-serve-rotation-display FR-009/FR-010: `serve` rides the same
-        # event as the score itself. `delta > 0` already has a freshly
-        # computed station from `serve_record` above — reuse its fields
-        # rather than calling `_compute_station()` a second time. `delta <
-        # 0` never advances the serve state (research.md Decision 5), so
-        # there's no `serve_record` in scope here; recompute fresh from the
-        # unchanged serve state + corrected score instead (same helper
-        # `court_live_state()` uses).
-        if delta > 0:
-            serve_payload = {
-                "server_roster_entry_id": str(serve_record.server_roster_entry_id),
-                "server_team": serve_record.server_team,
-                "team_a_right_roster_entry_id": _opt_str(serve_record.team_a_right_roster_entry_id),
-                "team_a_left_roster_entry_id": _opt_str(serve_record.team_a_left_roster_entry_id),
-                "team_b_right_roster_entry_id": _opt_str(serve_record.team_b_right_roster_entry_id),
-                "team_b_left_roster_entry_id": _opt_str(serve_record.team_b_left_roster_entry_id),
-            }
-        else:
-            station = await _build_serve_station(session, match)
-            serve_payload = (
-                {
-                    "server_roster_entry_id": station.server_roster_entry_id,
-                    "server_team": station.server_team,
-                    "team_a_right_roster_entry_id": station.team_a_right_roster_entry_id,
-                    "team_a_left_roster_entry_id": station.team_a_left_roster_entry_id,
-                    "team_b_right_roster_entry_id": station.team_b_right_roster_entry_id,
-                    "team_b_left_roster_entry_id": station.team_b_left_roster_entry_id,
-                }
-                if station is not None
-                else None
-            )
-
+        # event as the score itself.
+        serve_payload = effect.serve
+        sport_state = effect.sport_state
         await publish(
             court_channel(str(match.group_id), str(court.id)),
             "match.scoreUpdated",
@@ -3466,14 +3234,16 @@ async def apply_score_delta(
                 "score_a": match.score_a,
                 "score_b": match.score_b,
                 "serve": serve_payload,
+                "sport_state": sport_state,
             },
         )
 
     return _score_mutation_result(
         applied=True,
         match=match,
-        score_event_id=score_event_id,
+        score_event_id=event.id,
         serve=ServeStationInfo(**serve_payload) if serve_payload is not None else None,
+        sport_state=sport_state,
     )
 
 
@@ -3547,18 +3317,12 @@ async def undo_match_completion(
         await _record_pair_history(
             session, replacement.group_id, replacement_team_a, replacement_team_b, delta=-1
         )
-        await session.execute(
-            update(Match)
-            .where(Match.id == replacement.id)
-            .values(
-                court_id=None,
-                status="queued",
-                started_at=None,
-                serving_team=None,
-                team_a_reference_server_id=None,
-                team_b_reference_server_id=None,
-            )
-        )
+        replacement.court_id = None
+        replacement.status = "queued"
+        replacement.started_at = None
+        # 043: whatever on_match_start() set up (badminton: serve state).
+        await registry.get(replacement.type_key).on_match_requeued(session, replacement)
+        await session.flush()
 
     await session.execute(
         update(Match)
@@ -3574,108 +3338,6 @@ async def undo_match_completion(
         await _publish_rotation_updated(session, match.group_id, court.id, match)
 
     return await apply_score_delta(session, court, match_id, side, -1, source="cancel_score")
-
-
-# 032-out-of-bounds-by-match-mode: a singles rally is only "in" within the
-# narrower singles sidelines, not the full doubles width — inset 0.46m from
-# each doubles sideline (the court's own drawn border, data-model.md
-# Decision 1's y=0/1) out of the 6.1m doubles width, same proportion as the
-# singles sideline drawn on the court diagram itself.
-_SINGLES_SIDELINE_INSET = 0.46 / 6.1
-
-# 032-serve-fault-landing: a serve that lands on the CREDITED side's own
-# half isn't necessarily a contradiction — it's exactly what a service
-# fault looks like (the serve never legally reached the receiver's box), and
-# the receiver (the credited side) wins the point immediately regardless of
-# where the shuttle actually came down. These two bands, measured from each
-# baseline, mark landings that could be such a fault rather than a genuine
-# rally return-failure:
-#   - short (never crossed the short service line): 1.98m from the net ->
-#     4.72/13.4 from each baseline.
-#   - long, DOUBLES ONLY (past the doubles long service line): 0.76/13.4
-#     from each baseline. Singles serves are legal all the way to the
-#     baseline, so there is no long-fault band for singles.
-#   - the wrong service court: a serve goes diagonally, and each side's
-#     right court is diagonal to the other side's right court, so the target
-#     is the receiver's right court when the server's score is even and its
-#     left court when odd. Only checked when the server's score is known.
-_SHORT_SERVICE_LINE_INSET = 4.72 / 13.4
-_LONG_SERVICE_LINE_INSET = 0.76 / 13.4
-
-# A landing that got past the check above while on the CREDITED side's own
-# half is a serve-fault landing — the credited side never returned it, so
-# its own winner can't have landed there, the loser netting it would have
-# left it on the loser's side, and it is in bounds. Only the loser's serve
-# fault or some other fault explains it. Mirrors the picker's
-# SERVE_FAULT_LANDING_CONTRADICTS.
-_SERVE_FAULT_LANDING_CONTRADICTS = ("winner", "out", "net")
-
-
-def _is_serve_fault_zone(
-    landing_x: float,
-    landing_y: float,
-    side: str,
-    is_doubles: bool,
-    server_score: int | None,
-) -> bool:
-    """Whether an in-bounds landing on `side`'s (the receiver's) half is
-    outside the serve's legal target. Teams face each other, so A's right
-    court is the bottom half of the diagram (y > 0.5) and B's the top half
-    (y < 0.5) — the station convention the scoreboard draws. The center
-    line itself counts as in, for both courts. Mirrors the picker's
-    isServeFaultZone()."""
-    if side == "A":
-        if _SHORT_SERVICE_LINE_INSET < landing_x < 0.5:
-            return True
-        if is_doubles and landing_x < _LONG_SERVICE_LINE_INSET:
-            return True
-    else:
-        if 0.5 < landing_x < 1 - _SHORT_SERVICE_LINE_INSET:
-            return True
-        if is_doubles and landing_x > 1 - _LONG_SERVICE_LINE_INSET:
-            return True
-    if server_score is None:
-        return False
-    target_is_right_court = server_score % 2 == 0
-    target_is_bottom = target_is_right_court == (side == "A")
-    return landing_y < 0.5 if target_is_bottom else landing_y > 0.5
-
-
-async def _serve_before_point(
-    session: AsyncSession, score_event: ScoreEvent
-) -> tuple[str, int] | None:
-    """(serving team, that team's own score) going into the rally that
-    `score_event` (a +1) credited — the score's parity says which service
-    court the serve came from. Its own ScoreServeRecord can't tell — that
-    snapshot is taken AFTER the point, and the winner always serves next, so
-    its server_team is always the scorer. The team that served this rally
-    is the one serving at the PRE-point
-    score, i.e. the server_team of the latest earlier +1 that produced that
-    exact score — the same match-by-score lookup apply_score_delta()'s -1
-    uses to restore the serve state, so undone points in between don't
-    confuse it. None for a match's first point (the pre-match serve
-    assignment isn't persisted) — callers then skip any serve-based check,
-    the same fallback the picker uses when it has no `servingTeam`."""
-    before_a = score_event.score_a - (1 if score_event.side == "A" else 0)
-    before_b = score_event.score_b - (1 if score_event.side == "B" else 0)
-    server_team = (
-        await session.execute(
-            select(ScoreServeRecord.server_team)
-            .join(ScoreEvent, ScoreServeRecord.score_event_id == ScoreEvent.id)
-            .where(
-                ScoreServeRecord.match_id == score_event.match_id,
-                ScoreEvent.score_a == before_a,
-                ScoreEvent.score_b == before_b,
-                ScoreEvent.created_at <= score_event.created_at,
-                ScoreEvent.id != score_event.id,
-            )
-            .order_by(ScoreEvent.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if server_team is None:
-        return None
-    return server_team, before_a if server_team == "A" else before_b
 
 
 async def attach_shot_placement(
@@ -3699,161 +3361,30 @@ async def attach_shot_placement(
     recent point", so a rapid string of points can never mismatch which
     point a given picker's answer lands on.
 
-    032-optional-shot-placement-detail: every one of `roster_entry_id`,
-    `losing_roster_entry_id`, and the `landing_x`/`landing_y` pair is
-    independently optional — the scorer can confirm with only whatever they
-    actually picked, rather than being forced to fill in all three before
-    submitting anything at all. Whichever ARE supplied are still validated
-    the same as before.
+    Every one of `roster_entry_id`, `losing_roster_entry_id`, the
+    `landing_x`/`landing_y` pair and `ending_type` is independently optional
+    (032/035); whichever ARE supplied are validated against the credited
+    side, the match's singles/doubles court width and the serve that started
+    the rally.
 
-    Which side scored is no longer inferred from `roster_entry_id` (031's
-    approach) — it's already fixed by the ScoreEvent itself (`.side`), so a
-    supplied `roster_entry_id` is validated AGAINST that side rather than
-    used to derive it, and the record's own `team` always comes from the
-    ScoreEvent regardless of whether a player was specified.
-    `losing_roster_entry_id`, if supplied, still must be on the other team —
-    and, per official badminton rules, a supplied in-bounds landing must be
-    on the side that actually failed to return the shuttle (i.e. NOT the
-    credited side's own half), UNLESS that landing falls in a serve-fault
-    band (_is_serve_fault_zone()) where the credited side could have won
-    the point on a service fault instead, without ever having to return
-    anything. Landing out of bounds leaves the return-failure question
-    ambiguous too, so only the opposing-team constraint applies there. This
-    landing-vs-credited-side check runs whenever a landing IS supplied,
-    independent of whether a specific player was too.
-
-    032-out-of-bounds-by-match-mode: "in bounds" itself depends on whether
-    this match is singles or doubles (official rules use a narrower court
-    width for singles) — derived from how many roster entries are actually
-    on this match (2 -> singles, 4 -> doubles) rather than trusting the
-    group's current match_mode, since that could have changed since this
-    specific match was created.
-
-    035-point-ending-type: `ending_type` is a fourth independently optional
-    detail — how the rally ended. The picker pre-selects it from the landing
-    where the landing leaves no doubt, but nothing is inferred HERE: what the
-    request says is what gets stored, so a scorer who deliberately cleared
-    the selection really does store "not recorded". Only combinations that
-    contradict themselves are refused, the same spirit as the
-    landing-vs-credited-side check — never the scorer's judgement: a winner
-    lands IN the court, a shot hit out lands OUT of it, and a serve-fault
-    landing (on the credited side's own half) admits only 'serve_fault' or
-    'other_error' (_SERVE_FAULT_LANDING_CONTRADICTS). Otherwise 'net',
-    'serve_fault' and 'other_error' say nothing about where the shuttle came
-    down, and without a landing there is nothing to contradict. The check
-    runs after the older landing check so that one keeps answering first.
-    Being refused is costlier than it looks — the callers drop a failed
-    request silently, losing the whole row — which is why the picker's own
-    in/out judgement is pinned to this one by a shared vector table
-    (035 data-model.md).
-
-    Both serve-fault readings need the credited side to have been
-    RECEIVING (_serve_before_point()): a fault always hands the point to
-    the receiver, so when the credited side itself served, 'serve_fault' is
-    refused (ENDING_TYPE_CONTRADICTS_SERVE) and a landing in its own
-    serve-fault band is the plain landing contradiction again — the same
-    gate as the picker's `isServeFault`. When the server is unknown (a
-    match's first point) neither applies, as before."""
+    043 research Decision 9: shot placement is a module of the net rally
+    sport type, and its rules and table belong to that plugin
+    (`app/sports/types/net_rally/placement.py`, where the full rules are
+    documented). Core only finds the match on this court and hands over; a
+    sport type without the module refuses with MODULE_NOT_SUPPORTED."""
     match = await _fetch_match_for_court(session, court, match_id)
-
-    if not match.detailed_scoring_enabled:
-        raise ApiError("DETAILED_SCORING_NOT_ENABLED", status_code=422)
-
-    if ending_type is not None and ending_type not in get_args(EndingType):
-        raise ApiError("INVALID_ENDING_TYPE", status_code=422)
-
-    if (landing_x is None) != (landing_y is None):
-        raise ApiError("INVALID_LANDING_COORDINATES", status_code=422)
-    if landing_x is not None and landing_y is not None:
-        if not (-0.3 <= landing_x <= 1.3) or not (-0.3 <= landing_y <= 1.3):
-            raise ApiError("INVALID_LANDING_COORDINATES", status_code=422)
-
-    score_event_result = await session.execute(
-        select(ScoreEvent).where(ScoreEvent.id == score_event_id, ScoreEvent.match_id == match_id)
-    )
-    score_event = score_event_result.scalar_one_or_none()
-    if score_event is None:
-        raise ApiError("SCORE_EVENT_NOT_FOUND", status_code=404)
-    if score_event.delta <= 0:
-        raise ApiError("SCORE_EVENT_NOT_A_POINT", status_code=422)
-
-    existing_result = await session.execute(
-        select(ShotPlacementRecord.id).where(ShotPlacementRecord.score_event_id == score_event_id)
-    )
-    if existing_result.scalar_one_or_none() is not None:
-        raise ApiError("SHOT_PLACEMENT_ALREADY_RECORDED", status_code=422)
-
-    participants_result = await session.execute(
-        select(MatchParticipant.roster_entry_id, MatchParticipant.team).where(
-            MatchParticipant.match_id == match_id,
-        )
-    )
-    participant_rows = participants_result.all()
-    team_by_entry: dict[uuid.UUID, str] = {entry_id: team for entry_id, team in participant_rows}
-    is_singles = len(participant_rows) <= 2
-
-    team: str | None = None
-    if roster_entry_id is not None:
-        team = team_by_entry.get(roster_entry_id)
-        if team is None:
-            raise ApiError("PARTICIPANT_NOT_IN_MATCH", status_code=422)
-        if team != score_event.side:
-            raise ApiError("SCORING_PLAYER_NOT_ON_CREDITED_SIDE", status_code=422)
-
-    losing_team: str | None = None
-    if losing_roster_entry_id is not None:
-        losing_team = team_by_entry.get(losing_roster_entry_id)
-        if losing_team is None:
-            raise ApiError("PARTICIPANT_NOT_IN_MATCH", status_code=422)
-
-    if team is not None and losing_team is not None and team == losing_team:
-        raise ApiError("SCORING_AND_LOSING_PLAYER_SAME_TEAM", status_code=422)
-
-    serve = await _serve_before_point(session, score_event)
-    credited_side_served = serve is not None and serve[0] == score_event.side
-    server_score = serve[1] if serve is not None else None
-
-    if landing_x is not None and landing_y is not None:
-        y_min, y_max = (
-            (_SINGLES_SIDELINE_INSET, 1 - _SINGLES_SIDELINE_INSET) if is_singles else (0.0, 1.0)
-        )
-        in_bounds = 0 <= landing_x <= 1 and y_min <= landing_y <= y_max
-        if in_bounds:
-            landing_side = "A" if landing_x < 0.5 else "B"
-            if score_event.side == landing_side and (
-                credited_side_served
-                or not _is_serve_fault_zone(
-                    landing_x, landing_y, landing_side, not is_singles, server_score
-                )
-            ):
-                raise ApiError("SCORING_PLAYER_WRONG_TEAM_FOR_LANDING", status_code=422)
-            if (
-                score_event.side == landing_side
-                and ending_type in _SERVE_FAULT_LANDING_CONTRADICTS
-            ):
-                raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
-        if (ending_type == "winner" and not in_bounds) or (
-            ending_type == "out" and in_bounds
-        ):
-            raise ApiError("ENDING_TYPE_CONTRADICTS_LANDING", status_code=422)
-
-    if ending_type == "serve_fault" and credited_side_served:
-        raise ApiError("ENDING_TYPE_CONTRADICTS_SERVE", status_code=422)
-
-    session.add(
-        ShotPlacementRecord(
-            score_event_id=score_event_id,
-            match_id=match_id,
-            group_id=match.group_id,
+    await registry.get(match.type_key).record_point_detail(
+        session,
+        match,
+        score_event_id,
+        PointDetail(
             roster_entry_id=roster_entry_id,
             losing_roster_entry_id=losing_roster_entry_id,
-            team=cast(Team, score_event.side),
             landing_x=landing_x,
             landing_y=landing_y,
             ending_type=ending_type,
-        )
+        ),
     )
-    await session.commit()
 
 
 async def end_match_early(
@@ -3933,10 +3464,12 @@ async def court_live_state(session: AsyncSession, court: Court) -> CourtLiveStat
             score_a=match.score_a,
             score_b=match.score_b,
             participants=[ParticipantSummary(**p) for p in participants],
-            serve=await _build_serve_station(session, match),
+            serve=await registry.get(match.type_key).serve_station(session, match),
             detailed_scoring_enabled=match.detailed_scoring_enabled,
             target_score=match.target_score,
             cap_score=match.cap_score,
+            **match_sport_fields(match),
+            sport_state=await registry.get(match.type_key).live_state(session, match),
         )
     else:
         waiting_reason, next_up = await _idle_court_status(session, group, court.id)

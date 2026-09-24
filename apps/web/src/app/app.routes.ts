@@ -172,10 +172,13 @@ export const routes: Routes = [
       ),
   },
   {
+    // 043: the host picks the group's sport type's scoreboard.
     path: 'scoreboard/:courtToken',
     loadComponent: () =>
-      import('./features/scoreboard/scoreboard.component').then((m) => m.ScoreboardComponent),
-    data: { navShell: false },
+      import('./sports/hosts/court-surface-host.component').then(
+        (m) => m.CourtSurfaceHostComponent,
+      ),
+    data: { navShell: false, surface: 'scoreboard' },
   },
   {
     path: 'control/all/:allCourtsToken',
@@ -186,12 +189,13 @@ export const routes: Routes = [
     data: { navShell: false },
   },
   {
+    // 043: the host picks the group's sport type's control panel.
     path: 'control/:courtToken',
     loadComponent: () =>
-      import('./features/control-panel/control-panel.component').then(
-        (m) => m.ControlPanelComponent,
+      import('./sports/hosts/court-surface-host.component').then(
+        (m) => m.CourtSurfaceHostComponent,
       ),
-    data: { navShell: false },
+    data: { navShell: false, surface: 'controlPanel' },
   },
   { path: '**', redirectTo: '' },
 ];
