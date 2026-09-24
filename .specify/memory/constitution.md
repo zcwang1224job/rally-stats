@@ -1,39 +1,42 @@
 <!--
 Sync Impact Report
-- Version change: (template, unratified) → 1.0.0
-- Rationale: Initial ratification. Template was fully unfilled (all bracket
-  placeholders); this is not an amendment but the first concrete constitution,
-  hence MAJOR version 1.0.0 per semantic versioning governance rules.
-- Modified principles: N/A (initial adoption)
+- Version change: 1.0.0 → 1.1.0
+- Rationale: MINOR. One principle materially expanded (III: definition of a
+  "completed" match now follows the group's chosen activity rules, not only
+  "reached target score"), one principle added (XII: sport type plugin
+  boundary), project identity widened from badminton-only to any round-based
+  competitive activity. No principle removed or redefined incompatibly:
+  abandoned-match handling in III is unchanged.
+- Amendment source: specs/043-sport-type-plugin-foundation (plan.md
+  Complexity Tracking + research.md Decision 21).
+- Modified principles:
+  - Project identity: 羽球揪團與即時計分系統 → 回合制對戰活動揪團與即時計分
+    系統 (title + Governance paragraph)
+  - III. 即時性與資料一致性 — 「比賽紀錄的完整性一致性」段落改寫
 - Added sections:
-  - Core Principles I–XI (code quality, test-first, real-time sync &
-    consistency, auth & security, UX confirmation, modularity, accessibility
-    & mobile-first, i18n & timezone architecture, portability/deployability,
-    real-time source of truth, anti-abuse)
-  - Section: 技術治理與品質關卡 (Technical Governance & Quality Gates)
-  - Section: 未來規劃事項（明確排除於當前實作範圍）(Deferred Roadmap Items)
-  - Governance (amendment procedure, versioning policy, compliance review)
-- Removed sections: none (template placeholders only)
+  - XII. 比賽類型外掛邊界（Sport Type Plugin Boundary）
+  - 技術治理與品質關卡: new bullet making the plugin boundary check a
+    blocking gate alongside lint / typecheck / tests
+- Removed sections: none
 - Templates requiring updates:
-  - ✅ .specify/templates/plan-template.md — generic "[Gates determined based
-    on constitution file]" placeholder already defers to this file; no edit
-    needed, but future /speckit-plan runs MUST enumerate the Constitution
-    Check gates from the principles below.
-  - ✅ .specify/templates/spec-template.md — no constitution-specific
-    references to update; mandatory sections remain compatible.
-  - ✅ .specify/templates/tasks-template.md — generic task categories remain
-    compatible; task generation MUST add categories for i18n/locale files,
-    accessibility checks, and abandoned-match handling where applicable.
-  - ⚠ README.md / docs/quickstart.md — do not yet exist in this repository;
-    create them during initial project scaffolding and ensure they reference
-    the principles here (Docker parity, i18n key usage, env var handling).
-- Follow-up TODOs: none — all placeholders resolved. Deferred product scope
-  (data retention/account deletion, observability, DB backup/DR, migration
-  execution strategy) is intentionally captured as a non-binding roadmap
-  section rather than a TODO, per explicit user instruction.
+  - ✅ .specify/templates/plan-template.md — Constitution Check placeholder
+    still defers to this file; /speckit-plan runs MUST now enumerate gates
+    I–XII (043's plan.md Constitution Check lists XII explicitly).
+  - ✅ .specify/templates/spec-template.md — no constitution-specific text;
+    no change.
+  - ✅ .specify/templates/tasks-template.md — generic; task generation MUST
+    add a "plugin boundary / contract test" category when a feature touches
+    app/sports or src/app/sports.
+  - ✅ .claude/skills/speckit-*/SKILL.md — generic guidance, no
+    constitution-specific references.
+  - ⚠ README.md (apps/api) / docs/features.md / docs/tools.md /
+    docs/cicd-pipeline.md — quality-gate command lists must add
+    `lint-imports` (backend) and note the eslint boundary rules; product
+    descriptions must drop "羽球專用" wording. Scheduled as 043 tasks.
+- Follow-up TODOs: none.
 -->
 
-# Rally Stats（羽球揪團與即時計分系統）Constitution
+# Rally Stats（回合制對戰活動揪團與即時計分系統）Constitution
 
 ## Core Principles
 
@@ -80,14 +83,20 @@ Match/Round 時複製當下設定值到該筆紀錄本身）落實，MUST NOT �
 當前團設定的方式取代快照，以避免管理員事後修改設定意外改變進行中活動的
 判定規則。
 
-**比賽紀錄的完整性一致性**：只有透過「達到目標分數自然結束」的比賽，才
-MUST 產生 MatchResult 並計入戰績與對戰紀錄。任何形式的強制中止或清空
-——包含但不限於單場「提前結束」、Round 層級「Next Round」清空、刪除場地、
-解散團——導致比賽尚未收尾的情況，一律 MUST 統一轉為「已捨棄
-（abandoned）」狀態，MUST NOT 產生 MatchResult、MUST NOT 計入任何一方的
-勝負統計。此為單一通用原則，適用於系統中所有會導致比賽提前終止的情境；
-日後新增任何會中止比賽的功能時，MUST 沿用同一套「已捨棄不計入紀錄」的
-處理方式，不得為個別情境各自發明例外規則。
+**比賽紀錄的完整性一致性**：只有「依該團所選活動的結束規則完賽」的
+比賽，才 MUST 產生 MatchResult 並計入戰績與對戰紀錄。完賽的定義由該團
+快照下來的結束模式決定，且只有兩種：達標模式（`target`）下「達到目標分數
+自然結束」；手動結束模式（`manual`）下「由計分員明確執行『結束並記錄
+結果』」，此時分高者勝，同分且該團允許平手時記為平手，不允許平手時 MUST
+拒絕結束。任何形式的強制中止或清空——包含但不限於單場「放棄比賽」（原
+「提前結束」）、Round 層級「Next Round」清空、刪除場地、解散團——導致比賽
+尚未依上述規則收尾的情況，一律 MUST 統一轉為「已捨棄（abandoned）」狀態，
+MUST NOT 產生 MatchResult、MUST NOT 計入任何一方的勝負統計。「放棄比賽」
+MUST 對所有活動類型與結束模式一律可用，且 MUST 與「結束並記錄結果」在
+介面上以不同名稱與確認文字區分。此為單一通用原則，適用於系統中所有會
+導致比賽提前終止的情境；日後新增任何會中止比賽的功能或新的活動類型時，
+MUST 沿用同一套「已捨棄不計入紀錄」的處理方式，不得為個別情境或個別類型
+各自發明例外規則。
 
 **Rationale**：即時計分系統的核心價值就是「畫面即真相」——任何不同步、
 陳舊快取或事後可回溯竄改的判定規則，都會直接破壞使用者對系統的信任；而
@@ -237,11 +246,43 @@ token 時效性處理）由對應功能的 `/plan` 規劃。
 主要目標；加入團雖然風險較低，但仍需保留漸進式加固的空間，不宜過度
 設計提前引入未驗證需求的摩擦。
 
+### XII. 比賽類型外掛邊界（Sport Type Plugin Boundary）
+
+本系統支援任何以回合或場次分勝負的活動。活動之間的差異（規則、可記錄的
+事件、專屬資料表、統計指標、頁面區塊、控制板與計分板呈現）MUST 全部由
+「比賽類型外掛」提供；核心（開團、排點、場地、即時同步、排行榜、我的團、
+好友、通知、分享）只依「活動參數」與「外掛介面」運作。具體規則：
+
+- 核心程式 MUST NOT 依特定活動或類型名稱做分支判斷（例如「如果是羽球
+  就……」）；所有差異 MUST 來自團上快照的活動參數與外掛回傳值。
+- 核心程式 MUST NOT 匯入任何類型外掛模組；唯一例外是組裝根（後端
+  `app/main.py` 與 `alembic/env.py`、前端 `src/app/sports/registry.ts` 與
+  測試 setup 檔），且 MUST 以行內註記標示。
+- 核心程式 MUST NOT 直接查詢外掛擁有的資料表；外掛表 MUST 以外鍵
+  cascade 到核心的比賽事件脊椎，核心透過外掛介面取得時間軸、統計與區塊。
+- 類型外掛之間 MUST NOT 互相匯入；外掛 MUST NOT 自行發布即時訊息（MUST
+  以回傳值交由核心發布，維持原則 X 的單一發布路徑）。
+- 新增一種比賽類型 MUST 只需新增該類型的外掛（前後端）、活動目錄資料與
+  語系檔；MUST NOT 修改核心或其他類型。每種類型 MUST 附帶其規則、統計
+  與頁面區塊的自動化測試。
+- 上述邊界 MUST 由自動化檢查強制：後端 `import-linter` 契約、前端 eslint
+  `no-restricted-imports` 規則，以及「每個類型宣告的區塊種類都有對應呈現
+  或通用退路」的契約測試；三者列入品質關卡（見下節）。
+
+**Rationale**：活動種類沒有上限，若差異散在核心，每新增一種活動都要修改
+核心並冒著破壞既有活動的風險；把差異封裝在外掛、以工具強制邊界，才能讓
+「新增活動」成為只做加法的工作，並讓既有活動的行為以既有測試作為回歸
+底線。
+
 ## 技術治理與品質關卡（Technical Governance & Quality Gates）
 
 - 每個 Pull Request MUST 在合併前通過：lint 檢查、型別檢查（原則 I）、
   相關單元/整合測試（原則 II）。CI pipeline MUST 將以上三者設為
   blocking check。
+- 外掛邊界檢查（原則 XII）——後端 `lint-imports`、前端 eslint 邊界規則、
+  區塊契約測試——MUST 與 lint／型別檢查同列為 blocking check；在 CI
+  pipeline 落地前，MUST 列於專案文件的品質關卡指令清單並於合併前手動
+  執行。
 - 涉及即時同步（原則 III、X）或權限/安全（原則 IV）的變更，MUST 在
   PR 描述中說明該變更如何維持「伺服器為唯一可信來源」與「管理員操作
   僅限管理頁」的邊界，供 review 時核對。
@@ -249,7 +290,7 @@ token 時效性處理）由對應功能的 `/plan` 規劃。
   VIII 的 i18n 架構（語系檔 key / error code），MUST NOT 引入寫死文字，
   作為 review checklist 的一部分。
 - 每個 `/speckit-plan` 產出的 Constitution Check 段落 MUST 逐條對照本
-  文件的核心原則（I–XI），列出該功能是否觸及、如何符合；若有偏離，
+  文件的核心原則（I–XII），列出該功能是否觸及、如何符合；若有偏離，
   MUST 記錄於該 plan 的 Complexity Tracking 表並附上理由。
 
 ## 未來規劃事項（明確排除於當前實作範圍）
@@ -277,7 +318,7 @@ token 時效性處理）由對應功能的 `/plan` 規劃。
 
 ## Governance
 
-本憲章是本專案（羽球揪團與即時計分系統）所有開發實務的最高準則，優先於
+本憲章是本專案（回合制對戰活動揪團與即時計分系統）所有開發實務的最高準則，優先於
 個別功能規格、實作計畫或程式碼慣例。任何 `/speckit-plan` 或
 `/speckit-tasks` 產出，若與本憲章原則衝突，MUST 在對應文件的
 Complexity Tracking 或等效章節中明確記錄衝突原因與替代方案，並取得
@@ -300,6 +341,6 @@ Complexity Tracking 或等效章節中明確記錄衝突原因與替代方案，
 合規檢查的一部分，審查者發現與本憲章牴觸之處 MUST 要求修正或於文件中
 記錄合理例外，複雜度提升 MUST 有正當理由（Complexity Tracking）。
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-31 | **Last Amended**: 2026-08-31
+**Version**: 1.1.0 | **Ratified**: 2026-08-31 | **Last Amended**: 2026-09-24
 </content>
 </invoke>

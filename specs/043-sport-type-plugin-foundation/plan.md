@@ -55,8 +55,9 @@
 | IX. 可攜性與可部署性 | 一支 migration，Docker 流程不變，無新環境變數；`import-linter` 只是 dev 依賴。既有測試 session 的 `downgrade base` 要求 migration downgrade 可用。 | PASS |
 | X. 伺服器為可信來源 | 區塊清單、勝負、平手、局數狀態、活動目錄全由伺服器決定；前端只渲染。外掛即時狀態隨 Ably 訊息由伺服器推送；前端不自行推導局數。 | PASS |
 | XI. 防濫用 | 開團仍走 Turnstile；`POST /members/me/sports` 是新的「建立資源」端點但只限已驗證會員且每人上限 20（`409 CUSTOM_SPORT_LIMIT`），不另加 CAPTCHA（與註冊／開團的公開端點性質不同，記錄於此供 review）。 | PASS |
+| XII. 比賽類型外掛邊界（憲章 1.1.0 新增） | 本功能即此原則的落地：核心不依活動分支（研究 Decision 3、8、11）、不匯入外掛（組裝根例外並以行內註記標示）、不查詢外掛表（grep 契約測試）、外掛互不匯入且不 publish、新增類型只加不改（contracts/plugin-boundary.md §5）、每型附測試；`import-linter`＋eslint＋區塊契約測試列入品質關卡（研究 Decision 15）。 | PASS |
 
-**Gate 結果**：原則 III 的完賽定義需修訂憲章；原則 VI 的「核心匯入外掛 registry」為介面依賴（非實作依賴）且限組裝根，記錄於 Complexity Tracking。其餘無違反。
+**Gate 結果**：原則 III 的完賽定義需修訂憲章（已於本 plan 完成後以 `/speckit-constitution` 修訂為 1.1.0，同時新增原則 XII）；原則 VI 的「核心匯入外掛 registry」為介面依賴（非實作依賴）且限組裝根，記錄於 Complexity Tracking。其餘無違反。
 
 **Post-design re-check（Phase 1 完成後）**：data-model.md 確認所有新 NOT NULL 欄位皆有 `server_default`、外掛表皆 cascade 到脊椎、`completed ⇒ winner_team ∈ {A,B,D}` 不變量成立；contracts/ 確認既有端點只做新增欄位或放寬型別（`delta: int`、`cap_score: int | null`、`winner_team` 加 `D`）、三個釘死形狀的端點零變更、新動作只在既有三個授權面；plugin-boundary.md 確認 import-linter／eslint 規則可在不新增前端套件下落地。Gate 結果維持 PASS（附憲章修訂）。
 
