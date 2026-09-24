@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
@@ -21,7 +21,15 @@ import {
   schedulingMechanismMatchModeValidator,
 } from '../shared/group-form-validators';
 import { BADMINTON_FALLBACK, FALLBACK_CATALOG, SportsService } from '../../../core/api/sports.service';
-import { EndMode, SportDefaults, SportsCatalogResponse, SportTypeKey } from '../../../core/api/sport.models';
+import {
+  CustomSport,
+  EndMode,
+  SportDefaults,
+  SportsCatalogResponse,
+  SportTypeKey,
+} from '../../../core/api/sport.models';
+import { CustomSportDialogComponent } from './custom-sport-dialog.component';
+import { ConfirmDialogComponent } from '../shared/confirm-dialog.component';
 import { SportSurfaceComponent } from '../../../sports/hosts/sport-surface.component';
 
 /** Decorative only — every card also shows the activity's name. */
@@ -53,7 +61,14 @@ import { GroupJoinService } from '../../group-join/group-join.service';
 
 @Component({
   selector: 'app-create-group',
-  imports: [ReactiveFormsModule, TranslatePipe, TurnstileWidgetComponent, SportSurfaceComponent],
+  imports: [
+    ReactiveFormsModule,
+    TranslatePipe,
+    TurnstileWidgetComponent,
+    SportSurfaceComponent,
+    CustomSportDialogComponent,
+    ConfirmDialogComponent,
+  ],
   templateUrl: './create-group.component.html',
   styleUrl: './create-group.component.scss',
 })
@@ -371,12 +386,52 @@ export class CreateGroupComponent {
     return this.translate.currentLang() === 'zh-TW' ? 'zh-tw' : 'auto';
   }
 
-  private loadCatalog(): void {
+  // --- 043 US4: my custom activities -----------------------------------
+
+  readonly pendingDelete = signal<CustomSport | null>(null);
+  readonly customSportErrorKey = signal<string | null>(null);
+  readonly deleteSportDialog = viewChild<ConfirmDialogComponent>('deleteSportDialog');
+
+  memberHeaders(): Record<string, string> {
+    return this.memberAuthHeader() ?? {};
+  }
+
+  /** A new activity is picked straight away. */
+  onCustomSportCreated(sport: CustomSport): void {
+    this.customSportErrorKey.set(null);
+    this.loadCatalog(true, `custom:${sport.id}`);
+  }
+
+  askDeleteCustomSport(sport: CustomSport): void {
+    this.pendingDelete.set(sport);
+    this.deleteSportDialog()?.open();
+  }
+
+  /** Groups already opened with it keep their name and settings. */
+  confirmDeleteCustomSport(): void {
+    const sport = this.pendingDelete();
+    if (!sport) {
+      return;
+    }
+    this.sports.deleteCustomSport(sport.id, this.memberHeaders()).subscribe({
+      next: () => {
+        this.customSportErrorKey.set(null);
+        const wasSelected = this.isSelected(`custom:${sport.id}`);
+        this.loadCatalog(true, wasSelected ? BADMINTON_FALLBACK.sport_key : null);
+      },
+      error: (error: ApiError) => this.customSportErrorKey.set(error?.i18nKey ?? 'errors.UNKNOWN_ERROR'),
+    });
+  }
+
+  private loadCatalog(refresh = false, select: string | null = null): void {
     const token = this.auth.isLoggedIn() ? (this.auth.getAccessToken?.() ?? null) : null;
     this.sports
-      .getCatalog(token ? { Authorization: `Bearer ${token}` } : undefined)
+      .getCatalog(token ? { Authorization: `Bearer ${token}` } : undefined, refresh)
       .subscribe((catalog) => {
         this.catalog.set(catalog.builtin.length > 0 ? catalog : FALLBACK_CATALOG);
+        if (select) {
+          this.selectSport(select);
+        }
       });
   }
 

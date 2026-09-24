@@ -508,6 +508,28 @@
         "cap_score": "上限不能小於目標",
         "score_steps": "每次加分需為遞增的正整數，例如 1,2,3"
       }
+    },
+    "customSport": {
+      "add": "新增自訂活動",
+      "title": "新增自訂活動",
+      "name": "活動名稱",
+      "nameRequired": "請輸入 1～20 字的活動名稱",
+      "type": "比賽方式",
+      "types": {
+        "generic": "只記比分（加分、手動或達標結束）",
+        "frames": "局數制（先贏幾局）",
+        "net_rally": "隔網回合制（像羽球、桌球）"
+      },
+      "teamSizes": "每隊人數",
+      "teamSizesRequired": "至少選一種每隊人數",
+      "nouns": "畫面上的稱呼",
+      "venueNoun": "場地叫做",
+      "scoreNoun": "分數叫做",
+      "memberNoun": "參加者叫做",
+      "save": "儲存",
+      "deleteLabel": "刪除自訂活動「{{name}}」",
+      "deleteTitle": "刪除這個自訂活動？",
+      "deleteBody": "刪除「{{name}}」後就不能再用它開團；已經開的團不受影響。"
     }
   },
   "reauth": {

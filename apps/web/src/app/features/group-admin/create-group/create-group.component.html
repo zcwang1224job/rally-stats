@@ -56,19 +56,54 @@
         <h3 class="activity-subheading">{{ 'createGroup.activityMine' | translate }}</h3>
         <div class="activity-grid" role="group" [attr.aria-label]="'createGroup.activityMine' | translate">
           @for (sport of customSports(); track sport.id) {
-            <button
-              type="button"
-              class="activity-card"
-              [class.activity-card--selected]="isSelected('custom:' + sport.id)"
-              [attr.aria-pressed]="isSelected('custom:' + sport.id)"
-              [attr.data-sport]="'custom:' + sport.id"
-              (click)="selectSport('custom:' + sport.id)"
-            >
-              <span class="activity-card__icon" aria-hidden="true">{{ iconFor('other') }}</span>
-              <span class="activity-card__name">{{ sport.name }}</span>
-            </button>
+            <div class="custom-activity">
+              <button
+                type="button"
+                class="activity-card"
+                [class.activity-card--selected]="isSelected('custom:' + sport.id)"
+                [attr.aria-pressed]="isSelected('custom:' + sport.id)"
+                [attr.data-sport]="'custom:' + sport.id"
+                (click)="selectSport('custom:' + sport.id)"
+              >
+                <span class="activity-card__icon" aria-hidden="true">{{ iconFor('other') }}</span>
+                <span class="activity-card__name">{{ sport.name }}</span>
+              </button>
+              <button
+                type="button"
+                class="btn btn--secondary custom-activity__delete"
+                [attr.data-delete-sport]="sport.id"
+                [attr.aria-label]="'createGroup.customSport.deleteLabel' | translate: { name: sport.name }"
+                (click)="askDeleteCustomSport(sport)"
+              >✕</button>
+            </div>
           }
         </div>
+      }
+      <!-- 043 FR-004: only a logged-in member can keep activities of their own. -->
+      @if (memberNickname() !== null) {
+        <button
+          type="button"
+          class="btn btn--secondary add-custom-sport"
+          data-action="add-custom-sport"
+          (click)="customSportDialog.open()"
+        >
+          + {{ 'createGroup.customSport.add' | translate }}
+        </button>
+        <app-custom-sport-dialog
+          #customSportDialog
+          [headers]="memberHeaders()"
+          (created)="onCustomSportCreated($event)"
+        />
+        <app-confirm-dialog
+          #deleteSportDialog
+          [title]="'createGroup.customSport.deleteTitle' | translate"
+          [body]="'createGroup.customSport.deleteBody' | translate: { name: pendingDelete()?.name ?? '' }"
+          (confirmed)="confirmDeleteCustomSport()"
+          (closed)="pendingDelete.set(null)"
+        />
+        @if (customSportErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
       }
       @if (isOther()) {
         <label>

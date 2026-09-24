@@ -508,6 +508,28 @@
         "cap_score": "The cap cannot be below the target",
         "score_steps": "Score steps must be increasing positive whole numbers, e.g. 1,2,3"
       }
+    },
+    "customSport": {
+      "add": "Add a custom activity",
+      "title": "New custom activity",
+      "name": "Activity name",
+      "nameRequired": "Enter a name of 1–20 characters",
+      "type": "How matches are played",
+      "types": {
+        "generic": "Score only (points, ends by hand or at a target)",
+        "frames": "Frames (first to N frames)",
+        "net_rally": "Net rally (like badminton, table tennis)"
+      },
+      "teamSizes": "Players per side",
+      "teamSizesRequired": "Choose at least one team size",
+      "nouns": "What the screens call things",
+      "venueNoun": "The playing area",
+      "scoreNoun": "A score",
+      "memberNoun": "A participant",
+      "save": "Save",
+      "deleteLabel": "Delete custom activity “{{name}}”",
+      "deleteTitle": "Delete this custom activity?",
+      "deleteBody": "Once “{{name}}” is deleted you can't open groups with it; groups already opened keep it."
     }
   },
   "reauth": {

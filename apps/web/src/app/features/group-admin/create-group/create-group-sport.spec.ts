@@ -200,3 +200,79 @@ describe('CreateGroupComponent — activity (043)', () => {
     expect(component.form.errors?.['genericScoringInvalid']).toBe('score_steps');
   });
 });
+
+describe('CreateGroupComponent — my custom activities (043 US4)', () => {
+  const MINE = {
+    id: 'cs-1',
+    name: '躲避球',
+    type_key: 'generic' as const,
+    team_size_options: [2],
+    defaults: {
+      team_size: 2,
+      end_mode: 'manual' as const,
+      target_score: 1,
+      win_by: 1,
+      cap_score: null,
+      allow_draw: true,
+      score_steps: [1],
+      type_params: {},
+    },
+    created_at: '2026-09-24T00:00:00Z',
+  };
+
+  function memberSetup(loggedIn: boolean) {
+    const getCatalog = vi.fn(() => of({ ...CATALOG, custom: loggedIn ? [MINE] : [] }));
+    const deleteCustomSport = vi.fn(() => of(undefined));
+    TestBed.configureTestingModule({
+      imports: [CreateGroupComponent],
+      providers: [
+        provideRouter([]),
+        provideTranslateService({}),
+        { provide: SportsService, useValue: { getCatalog, deleteCustomSport } },
+        { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
+        {
+          provide: AuthService,
+          useValue: {
+            isLoggedIn: () => loggedIn,
+            getAccessToken: () => 'tok',
+            getMe: () => of({ member_id: 'm1', nickname: '小華' }),
+          },
+        },
+        {
+          provide: GroupJoinService,
+          useValue: {
+            getActiveGuestGroupId: () => null,
+            setActiveGuestGroupId: () => undefined,
+            setGuestSessionToken: () => undefined,
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CreateGroupComponent);
+    fixture.detectChanges();
+    return { fixture, component: fixture.componentInstance, getCatalog, deleteCustomSport };
+  }
+
+  it('a guest sees no "add custom activity"', () => {
+    const { fixture } = memberSetup(false);
+    expect(fixture.nativeElement.querySelector('[data-action="add-custom-sport"]')).toBeNull();
+  });
+
+  it('a member picks, adds and deletes their own activities', () => {
+    const { fixture, component, getCatalog, deleteCustomSport } = memberSetup(true);
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-action="add-custom-sport"]')).not.toBeNull();
+    expect(el.querySelector('[data-sport="custom:cs-1"]')).not.toBeNull();
+
+    component.onCustomSportCreated({ ...MINE, id: 'cs-1' });
+    expect(getCatalog).toHaveBeenLastCalledWith({ Authorization: 'Bearer tok' }, true);
+    expect(component.isSelected('custom:cs-1')).toBe(true);
+
+    component.askDeleteCustomSport(MINE);
+    component.confirmDeleteCustomSport();
+    expect(deleteCustomSport).toHaveBeenCalledWith('cs-1', { Authorization: 'Bearer tok' });
+    // The deleted activity was the one picked: back to badminton.
+    expect(component.isSelected('badminton')).toBe(true);
+  });
+});
+
