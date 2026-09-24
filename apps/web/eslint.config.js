@@ -70,6 +70,7 @@ module.exports = tseslint.config(
       "src/app/sports/section-outlet/**/*.ts",
       "src/app/sports/generic-sections/**/*.ts",
       "src/app/sports/hosts/**/*.ts",
+      "src/app/sports/shells/**/*.ts",
     ],
     rules: {
       "no-restricted-imports": [

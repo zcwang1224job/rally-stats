@@ -435,7 +435,8 @@
     "copied": "已複製",
     "offlineBanner": "連線中斷，嘗試重新連線中…",
     "readOnlyBanner": "此團已解散，僅供唯讀查閱",
-    "retry": "重試"
+    "retry": "重試",
+    "draw": "平手"
   },
   "createGroup": {
     "title": "建立揪團場次",
@@ -1327,7 +1328,24 @@
     "UNKNOWN_SPORT": "找不到這個活動",
     "SPORT_NAME_REQUIRED": "請輸入活動名稱",
     "INVALID_SPORT_PARAMS": "比賽設定不正確，請檢查目標、上限與加分設定",
-    "sportModuleLoadFailed": "無法載入這個活動的畫面，請檢查網路後重試"
+    "sportModuleLoadFailed": "無法載入這個活動的畫面，請檢查網路後重試",
+    "EVENT_KIND_NOT_ALLOWED": "這個活動不支援這項操作。",
+    "NOTHING_TO_UNDO": "目前沒有可以復原的操作。",
+    "UNDO_NOT_SUPPORTED": "這個活動請用「−1」修正比分。",
+    "UNDO_CONFLICT": "無法復原：比分已經被其他操作改變。",
+    "SPORT_TYPE_NOT_SUPPORTED": "這個活動沒有此統計。",
+    "SCORE_STEP_NOT_ALLOWED": "這個團不允許這樣的加分。",
+    "FINISH_NOT_AVAILABLE": "這場比賽要打到達標分才會結束。",
+    "DRAW_NOT_ALLOWED": "這個活動不允許平手，請先分出高下。",
+    "FRAME_SCORING_DISABLED": "這個團沒有記錄局內比分。",
+    "FRAME_SCORE_FLOOR": "局內比分不能小於 0。",
+    "MATCH_NOT_IN_PROGRESS": "這場比賽已經結束。",
+    "CUSTOM_SPORT_NAME_TAKEN": "你已經有同名的自訂活動。",
+    "CUSTOM_SPORT_LIMIT": "自訂活動最多 20 個，請先刪除不用的。",
+    "CUSTOM_SPORT_NOT_FOUND": "找不到這個自訂活動。",
+    "CUSTOM_SPORT_FORBIDDEN": "只能用自己的自訂活動開團（需登入）。",
+    "INVALID_SPORT_FILTER": "活動篩選條件無效。",
+    "SPORT_REQUIRED": "請先選擇活動。"
   },
   "shareCard": {
     "brand": "Rally Stats",
@@ -1379,7 +1397,23 @@
     "unsupported": "這個區塊需要更新版本的 Rally Stats 才能完整顯示",
     "groupAverage": "團內平均",
     "scoreTimeline": "比分紀錄",
-    "team": "{{team}} 隊"
+    "team": "{{team}} 隊",
+    "opponents": "對手分析",
+    "column": {
+      "opponent": "對手"
+    },
+    "metric": {
+      "match_win_rate": "勝率",
+      "matches": "場數",
+      "wins": "勝",
+      "losses": "敗",
+      "draws": "平",
+      "avg_points_for": "平均得分",
+      "avg_points_against": "平均失分",
+      "points_a": "A 隊得分",
+      "points_b": "B 隊得分",
+      "margin": "分差"
+    }
   },
   "sports": {
     "badminton": "羽球",
@@ -1404,6 +1438,65 @@
       "player": "球員",
       "member": "成員",
       "competitor": "選手"
+    },
+    "shell": {
+      "undo": "復原上一步",
+      "abandon": "放棄比賽",
+      "abandonTitle": "放棄這場比賽？",
+      "abandonBody": "放棄後這場比賽不記錄成績，也不計入任何統計。"
     }
+  },
+  "frames": {
+    "pad": {
+      "frameNo": "第 {{n}} 局",
+      "firstTo": "先贏 {{n}} 局",
+      "addPoint": "{{team}} 本局加一分",
+      "removePoint": "{{team}} 本局減一分",
+      "markWinner": "標記本局勝方",
+      "teamWins": "{{team}} 贏本局",
+      "behindTitle": "確定由比分較低的一方贏本局？",
+      "behindBody": "{{team}} 目前本局比分落後。確定要把本局記為 {{team}} 獲勝嗎？"
+    },
+    "form": {
+      "targetHint": "上方的「達標分」就是先贏幾局。",
+      "frameScoring": "記錄每局的局內比分",
+      "frameTarget": "局內達標分（可留空）",
+      "frameTargetHint": "留空時由計分員標記每局勝方；填了分數，局內達標且領先足夠就自動結束該局。",
+      "frameWinBy": "局內需領先分"
+    },
+    "sections": {
+      "frameList": "逐局結果",
+      "frameTrend": "局數走勢",
+      "summary": "局數制摘要",
+      "frameNo": "局",
+      "winner": "勝方",
+      "frameScore": "局內比分",
+      "endedBy": "結束方式",
+      "ended": {
+        "target": "達標",
+        "manual": "標記"
+      },
+      "trendTable": "以表格檢視局數走勢",
+      "lead": "A 隊領先局數",
+      "deciders": "決勝局",
+      "decidersValue": "{{played}} 場中贏 {{won}} 場",
+      "longest": "最長一場",
+      "longestValue": "{{n}} 局"
+    },
+    "metric": {
+      "frame_win_rate": "局勝率",
+      "win_rate_after_first_frame": "先贏第一局後的勝率",
+      "avg_frames_per_match": "每場平均局數"
+    }
+  },
+  "genericSport": {
+    "addPoints": "{{team}} 加 {{n}} 分",
+    "finish": "結束並記錄結果",
+    "finishTitle": "結束比賽並記錄結果？",
+    "finishBodyWin": "目前 {{score}}，將記錄 {{team}} 獲勝。",
+    "finishBodyDraw": "目前 {{score}} 同分，將記錄為平手。",
+    "finishBodyNoDraw": "目前 {{score}} 同分，這個活動不允許平手，請先分出高下。",
+    "levelNow": "目前同分",
+    "formHint": "這個活動只記比分與勝負，沒有其他專屬設定。"
   }
 }

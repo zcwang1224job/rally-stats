@@ -435,7 +435,8 @@
     "copied": "Copied",
     "offlineBanner": "Connection lost, attempting to reconnect…",
     "readOnlyBanner": "This group has been disbanded — read-only view",
-    "retry": "Retry"
+    "retry": "Retry",
+    "draw": "Draw"
   },
   "createGroup": {
     "title": "Create a Group Session",
@@ -1327,7 +1328,24 @@
     "UNKNOWN_SPORT": "Activity not found",
     "SPORT_NAME_REQUIRED": "Please enter the activity name",
     "INVALID_SPORT_PARAMS": "The match settings are invalid — check the target, cap and score steps",
-    "sportModuleLoadFailed": "Could not load this activity's screen. Check your connection and retry."
+    "sportModuleLoadFailed": "Could not load this activity's screen. Check your connection and retry.",
+    "EVENT_KIND_NOT_ALLOWED": "This activity doesn't support that action.",
+    "NOTHING_TO_UNDO": "There's nothing to undo yet.",
+    "UNDO_NOT_SUPPORTED": "For this activity, correct the score with −1.",
+    "UNDO_CONFLICT": "Can't undo: the score has changed since.",
+    "SPORT_TYPE_NOT_SUPPORTED": "This activity has no such statistics.",
+    "SCORE_STEP_NOT_ALLOWED": "This group doesn't allow that score step.",
+    "FINISH_NOT_AVAILABLE": "This match ends when a side reaches the target score.",
+    "DRAW_NOT_ALLOWED": "This activity has no draws. Play on until one side leads.",
+    "FRAME_SCORING_DISABLED": "This group doesn't keep in-frame scores.",
+    "FRAME_SCORE_FLOOR": "A frame score can't go below 0.",
+    "MATCH_NOT_IN_PROGRESS": "This match has already ended.",
+    "CUSTOM_SPORT_NAME_TAKEN": "You already have a custom activity with this name.",
+    "CUSTOM_SPORT_LIMIT": "You can keep up to 20 custom activities. Delete one you no longer use first.",
+    "CUSTOM_SPORT_NOT_FOUND": "That custom activity no longer exists.",
+    "CUSTOM_SPORT_FORBIDDEN": "You can only open a group with your own custom activities (log in first).",
+    "INVALID_SPORT_FILTER": "That activity filter isn't valid.",
+    "SPORT_REQUIRED": "Choose an activity first."
   },
   "shareCard": {
     "brand": "Rally Stats",
@@ -1379,7 +1397,23 @@
     "unsupported": "This section needs a newer version of Rally Stats to display fully",
     "groupAverage": "Group average",
     "scoreTimeline": "Score log",
-    "team": "Team {{team}}"
+    "team": "Team {{team}}",
+    "opponents": "Opponents",
+    "column": {
+      "opponent": "Opponent"
+    },
+    "metric": {
+      "match_win_rate": "Win rate",
+      "matches": "Matches",
+      "wins": "Wins",
+      "losses": "Losses",
+      "draws": "Draws",
+      "avg_points_for": "Points for (avg)",
+      "avg_points_against": "Points against (avg)",
+      "points_a": "Team A points",
+      "points_b": "Team B points",
+      "margin": "Margin"
+    }
   },
   "sports": {
     "badminton": "Badminton",
@@ -1404,6 +1438,65 @@
       "player": "Player",
       "member": "Member",
       "competitor": "Competitor"
+    },
+    "shell": {
+      "undo": "Undo last action",
+      "abandon": "Abandon match",
+      "abandonTitle": "Abandon this match?",
+      "abandonBody": "An abandoned match records no result and counts in no statistics."
     }
+  },
+  "frames": {
+    "pad": {
+      "frameNo": "Frame {{n}}",
+      "firstTo": "First to {{n}}",
+      "addPoint": "Add a point to {{team}} in this frame",
+      "removePoint": "Remove a point from {{team}} in this frame",
+      "markWinner": "Mark this frame's winner",
+      "teamWins": "{{team}} wins the frame",
+      "behindTitle": "Give the frame to the side that's behind?",
+      "behindBody": "{{team}} is behind in this frame. Record the frame as won by {{team}}?"
+    },
+    "form": {
+      "targetHint": "The target score above is the number of frames to win.",
+      "frameScoring": "Keep the score within each frame",
+      "frameTarget": "In-frame target (optional)",
+      "frameTargetHint": "Leave empty and the scorer marks each frame's winner; with a target, a frame ends on its own once a side reaches it with the lead below.",
+      "frameWinBy": "In-frame lead needed"
+    },
+    "sections": {
+      "frameList": "Frame by frame",
+      "frameTrend": "Frames over the match",
+      "summary": "Frames summary",
+      "frameNo": "Frame",
+      "winner": "Winner",
+      "frameScore": "Frame score",
+      "endedBy": "Ended by",
+      "ended": {
+        "target": "Target",
+        "manual": "Marked"
+      },
+      "trendTable": "Show frames as a table",
+      "lead": "Team A frame lead",
+      "deciders": "Deciding frames",
+      "decidersValue": "Won {{won}} of {{played}}",
+      "longest": "Longest match",
+      "longestValue": "{{n}} frames"
+    },
+    "metric": {
+      "frame_win_rate": "Frame win rate",
+      "win_rate_after_first_frame": "Win rate after taking frame 1",
+      "avg_frames_per_match": "Frames per match"
+    }
+  },
+  "genericSport": {
+    "addPoints": "Add {{n}} to {{team}}",
+    "finish": "End and record result",
+    "finishTitle": "End the match and record the result?",
+    "finishBodyWin": "It's {{score}}: {{team}} will be recorded as the winner.",
+    "finishBodyDraw": "It's level at {{score}}: the match will be recorded as a draw.",
+    "finishBodyNoDraw": "It's level at {{score}} and this activity has no draws. Play on until one side leads.",
+    "levelNow": "Level",
+    "formHint": "This activity keeps only a score and a result; it has no settings of its own."
   }
 }

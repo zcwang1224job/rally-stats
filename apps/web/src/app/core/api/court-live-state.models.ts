@@ -135,7 +135,10 @@ export interface ScoreMutationResult {
   status: 'in_progress' | 'completed' | 'abandoned';
   score_a: number;
   score_b: number;
-  winner_team: Team | null;
+  /** 043: `D` is a draw (a manual end on a level score). */
+  winner_team: Team | 'D' | null;
+  /** 043: the spine `point` a sport type's event added (a frame won). */
+  follow_up_score_event_id?: string;
   // 032-score-then-record: the ScoreEvent this mutation created — null when
   // `applied` is false, or for a mutation that isn't a score change (e.g.
   // ending a match). A `+1`'s caller uses this to attach a

@@ -218,7 +218,7 @@ export class ScheduleService {
     courtId: string,
     matchId: string,
     side: Team,
-    delta: 1 | -1,
+    delta: number,
   ): Observable<ScoreMutationResult> {
     return this.api.post<ScoreMutationResult>(
       `/groups/${groupId}/courts/${courtId}/matches/${matchId}/score`,
@@ -326,5 +326,36 @@ export class ScheduleService {
   private authHeader(groupId: string): Record<string, string> {
     const token = this.groupAdmin.getAdminToken(groupId);
     return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+  // --- 043-sport-type-plugin-foundation: admin face of events/undo/finish ---
+
+  applyEvent(
+    groupId: string,
+    courtId: string,
+    matchId: string,
+    kind: string,
+    payload: Record<string, unknown>,
+  ): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/events`,
+      { kind, payload },
+      this.authHeader(groupId),
+    );
+  }
+
+  undoLastEvent(groupId: string, courtId: string, matchId: string): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/undo`,
+      {},
+      this.authHeader(groupId),
+    );
+  }
+
+  finishMatch(groupId: string, courtId: string, matchId: string): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/finish`,
+      {},
+      this.authHeader(groupId),
+    );
   }
 }

@@ -14,6 +14,10 @@ export type SportTypeLoader = () => Promise<SportTypeModule>;
 export const SPORT_TYPE_LOADERS: Partial<Record<SportTypeKey, SportTypeLoader>> = {
   // eslint-disable-next-line no-restricted-syntax -- composition root (constitution XII)
   net_rally: () => import('./types/net-rally/net-rally.module').then((m) => m.NET_RALLY),
+  // eslint-disable-next-line no-restricted-syntax -- composition root (constitution XII)
+  frames: () => import('./types/frames/frames.module').then((m) => m.FRAMES),
+  // eslint-disable-next-line no-restricted-syntax -- composition root (constitution XII)
+  generic: () => import('./types/generic/generic.module').then((m) => m.GENERIC),
 };
 
 // Outside any injector on purpose: a loaded chunk stays loaded for the app's

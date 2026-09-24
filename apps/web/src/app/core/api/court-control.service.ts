@@ -24,7 +24,7 @@ export class CourtControlService {
     token: string,
     matchId: string,
     side: Team,
-    delta: 1 | -1,
+    delta: number,
   ): Observable<ScoreMutationResult> {
     return this.api.post<ScoreMutationResult>(
       `/courts/by-token/${token}/matches/${matchId}/score`,
@@ -94,7 +94,7 @@ export class CourtControlService {
     courtId: string,
     matchId: string,
     side: Team,
-    delta: 1 | -1,
+    delta: number,
   ): Observable<ScoreMutationResult> {
     return this.api.post<ScoreMutationResult>(
       `/groups/by-all-courts-token/${token}/courts/${courtId}/matches/${matchId}/score`,
@@ -144,6 +144,59 @@ export class CourtControlService {
         landing_y: landingY,
         ending_type: endingType,
       },
+    );
+  }
+  // --- 043-sport-type-plugin-foundation (contracts/match-events-api.md) ---
+
+  /** An event the match's sport type declares (e.g. `frames.frame_end`). */
+  applyEvent(
+    token: string,
+    matchId: string,
+    kind: string,
+    payload: Record<string, unknown>,
+  ): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/courts/by-token/${token}/matches/${matchId}/events`,
+      { kind, payload },
+    );
+  }
+
+  /** Takes back the match's last action (not for net rally, which uses −1). */
+  undoLastEvent(token: string, matchId: string): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(`/courts/by-token/${token}/matches/${matchId}/undo`);
+  }
+
+  /** "End and record the result" of a manual-end match. */
+  finishMatch(token: string, matchId: string): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(`/courts/by-token/${token}/matches/${matchId}/finish`);
+  }
+
+  applyEventAllCourts(
+    token: string,
+    courtId: string,
+    matchId: string,
+    kind: string,
+    payload: Record<string, unknown>,
+  ): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/by-all-courts-token/${token}/courts/${courtId}/matches/${matchId}/events`,
+      { kind, payload },
+    );
+  }
+
+  undoLastEventAllCourts(
+    token: string,
+    courtId: string,
+    matchId: string,
+  ): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/by-all-courts-token/${token}/courts/${courtId}/matches/${matchId}/undo`,
+    );
+  }
+
+  finishMatchAllCourts(token: string, courtId: string, matchId: string): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/by-all-courts-token/${token}/courts/${courtId}/matches/${matchId}/finish`,
     );
   }
 }

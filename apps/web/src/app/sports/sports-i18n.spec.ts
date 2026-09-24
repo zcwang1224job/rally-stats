@@ -35,6 +35,64 @@ describe('043 i18n parity', () => {
     }
   });
 
+  it('every key the backend puts in a section exists in both languages', () => {
+    // Title / label / text keys emitted by app/sports (sections-manifest §2–§3).
+    const emitted = [
+      'sections.opponents',
+      'sections.scoreTimeline',
+      'sections.column.opponent',
+      'sections.metric.match_win_rate',
+      'sections.metric.matches',
+      'sections.metric.wins',
+      'sections.metric.losses',
+      'sections.metric.draws',
+      'sections.metric.avg_points_for',
+      'sections.metric.avg_points_against',
+      'sections.metric.points_a',
+      'sections.metric.points_b',
+      'sections.metric.margin',
+      'frames.sections.frameList',
+      'frames.sections.frameTrend',
+      'frames.sections.summary',
+      'frames.metric.frame_win_rate',
+      'frames.metric.win_rate_after_first_frame',
+      'frames.metric.avg_frames_per_match',
+      'playerDashboard.empty',
+    ];
+    const zhKeys = new Set(leafKeys(zhTW as Tree));
+    const enKeys = new Set(leafKeys(en as Tree));
+    for (const key of emitted) {
+      expect(zhKeys.has(key), key).toBe(true);
+      expect(enKeys.has(key), key).toBe(true);
+    }
+  });
+
+  it('every error code the sport type endpoints return has a message', () => {
+    const codes = [
+      'EVENT_KIND_NOT_ALLOWED',
+      'NOTHING_TO_UNDO',
+      'UNDO_NOT_SUPPORTED',
+      'UNDO_CONFLICT',
+      'SPORT_TYPE_NOT_SUPPORTED',
+      'SCORE_STEP_NOT_ALLOWED',
+      'FINISH_NOT_AVAILABLE',
+      'DRAW_NOT_ALLOWED',
+      'FRAME_SCORING_DISABLED',
+      'FRAME_SCORE_FLOOR',
+      'MATCH_NOT_IN_PROGRESS',
+      'CUSTOM_SPORT_NAME_TAKEN',
+      'CUSTOM_SPORT_LIMIT',
+      'CUSTOM_SPORT_NOT_FOUND',
+      'CUSTOM_SPORT_FORBIDDEN',
+      'INVALID_SPORT_FILTER',
+      'SPORT_REQUIRED',
+    ];
+    for (const code of codes) {
+      expect(((zhTW as Tree)['errors'] as Tree)[code], code).toBeTruthy();
+      expect(((en as Tree)['errors'] as Tree)[code], code).toBeTruthy();
+    }
+  });
+
   it('the create-group and error keys added for activities exist in both languages', () => {
     const zhKeys = new Set(leafKeys(zhTW as Tree));
     const enKeys = new Set(leafKeys(en as Tree));
