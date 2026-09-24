@@ -98,6 +98,25 @@ describe('SportSurfaceComponent', () => {
     expect((fixture.nativeElement.parentElement as HTMLElement).querySelector('.other')).not.toBeNull();
   });
 
+  it('a sport type that changes while the first one loads still renders', async () => {
+    // The all-courts page renders before it knows the group's activity.
+    let finishFirst!: () => void;
+    SPORT_TYPE_LOADERS.frames = () =>
+      new Promise((resolve) => (finishFirst = () => resolve(module('frames', ProbeBlockComponent))));
+    SPORT_TYPE_LOADERS.generic = () => Promise.resolve(module('generic', OtherBlockComponent));
+    const fixture = create('frames');
+    fixture.componentRef.setInput('typeKey', 'generic');
+    fixture.detectChanges();
+    finishFirst();
+    await fixture.whenStable();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const host = fixture.nativeElement.parentElement as HTMLElement;
+    expect(host.querySelector('.other')).not.toBeNull();
+    expect(host.querySelector('.probe')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-state="sport-module-loading"]')).toBeNull();
+  });
+
   it('a failed load shows a retry, and retrying renders the surface', async () => {
     let fail = true;
     SPORT_TYPE_LOADERS.generic = () =>

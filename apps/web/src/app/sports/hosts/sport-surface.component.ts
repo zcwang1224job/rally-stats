@@ -101,12 +101,20 @@ export class SportSurfaceComponent implements OnInit {
     this.failed.set(false);
     this.registry.resolve(typeKey).then(
       (module) => {
-        this.loading.set(false);
-        if (this.typeKey() === typeKey) {
-          this.render(module, typeKey);
+        if (this.typeKey() !== typeKey) {
+          // The sport type changed while this one loaded (a page that
+          // learns its group's activity after first render): load that one.
+          this.load();
+          return;
         }
+        this.loading.set(false);
+        this.render(module, typeKey);
       },
       () => {
+        if (this.typeKey() !== typeKey) {
+          this.load();
+          return;
+        }
         this.loading.set(false);
         this.failed.set(true);
       },

@@ -101,8 +101,15 @@ export class CourtLinkPageComponent {
   readonly errorKey = signal<string | null>(null);
   readonly connectionState = this.realtime.connectionState;
   private subscribed = false;
+  /** Realtime messages are sent after each request's response, one by one,
+   * so two quick actions can arrive in the wrong order and leave an older
+   * score on screen. Each push is shown at once, then the page reads the
+   * state again shortly after the last one. */
+  static readonly SETTLE_MS = 400;
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
+    this.destroyRef.onDestroy(() => clearTimeout(this.settleTimer));
     inject(ReconnectRefetchService)
       .onReconnect()
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -178,6 +185,8 @@ export class CourtLinkPageComponent {
               : {}),
           },
         });
+        clearTimeout(this.settleTimer);
+        this.settleTimer = setTimeout(() => this.loadState(), CourtLinkPageComponent.SETTLE_MS);
       });
     }
     for (const event of ['match.ended', 'rotation.updated', 'match.nextRound']) {
