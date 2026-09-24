@@ -111,11 +111,6 @@ export interface MyGroupsFilters {
   group_id?: string;
 }
 
-export interface ForgotAdminPinResponse {
-  admin_pin: string;
-  admin_token: string;
-}
-
 /** This member's own performance within one group — always reflects their
  * FULL history there, never narrowed by `MemberGroupHistoryResponse
  * .matches`' own nickname search (which searches the group's shared match

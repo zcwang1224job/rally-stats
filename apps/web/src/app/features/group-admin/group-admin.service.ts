@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, catchError, map, of } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
+import { AuthService } from '../auth/auth.service';
 import {
   CancelGroupInviteResponse,
   InvitableFriendsResponse,
@@ -30,6 +31,7 @@ const LAST_CREATED_GROUP_KEY = 'rally-stats:last-created-group-id';
 @Injectable({ providedIn: 'root' })
 export class GroupAdminService {
   private readonly api = inject(ApiClient);
+  private readonly auth = inject(AuthService);
 
   /** `headers` lets a logged-in Member attach their Bearer token so the
    * backend links the creator's roster entry to their Member identity
@@ -113,6 +115,23 @@ export class GroupAdminService {
       `/groups/${groupId}/creator-admin-token`,
       {},
       memberHeaders,
+    );
+  }
+
+  /** 登入會員（團長）不需要 PIN：用會員身分換一個新的管理權杖存進
+   * sessionStorage。回傳是否成功——沒登入、不是這個團的團長、或會員
+   * 登入本身也失效了，都回 false，由呼叫端決定要不要退回 PIN 重新驗證。 */
+  recoverCreatorAdminToken(groupId: string): Observable<boolean> {
+    const memberToken = this.auth.getAccessToken();
+    if (!memberToken) {
+      return of(false);
+    }
+    return this.getCreatorAdminToken(groupId, { Authorization: `Bearer ${memberToken}` }).pipe(
+      map((response) => {
+        this.setAdminToken(groupId, response.admin_token);
+        return true;
+      }),
+      catchError(() => of(false)),
     );
   }
 

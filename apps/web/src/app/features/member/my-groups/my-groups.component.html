@@ -112,8 +112,13 @@
             <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
           @if (group.is_creator && group.status !== 'disbanded') {
-            <button type="button" class="btn btn--secondary" (click)="openForgotPinDialog(group)">
-              {{ 'myGroups.forgotPinButton' | translate }}
+            <button
+              type="button"
+              class="btn btn--secondary"
+              [disabled]="enteringAdminGroupId() === group.group_id"
+              (click)="enterAdmin(group)"
+            >
+              {{ 'myGroups.enterAdminButton' | translate }}
             </button>
           }
         </li>
@@ -124,10 +129,3 @@
   }
 </main>
 
-<app-confirm-dialog
-  #forgotPinDialog
-  variant="primary"
-  [title]="'myGroups.forgotPinConfirmTitle' | translate"
-  [body]="'myGroups.forgotPinConfirmBody' | translate"
-  (confirmed)="confirmForgotPin()"
-/>

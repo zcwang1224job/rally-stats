@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
 import type * as Ably from 'ably';
 import { Subject, of, throwError } from 'rxjs';
@@ -95,6 +95,10 @@ describe('AdminPageComponent', () => {
           useValue: {
             getAdminToken: () => 'admin-tok',
             getAdminView: () => of({ ...adminGroupResponse, read_only: readOnly }),
+            clearAdminToken: () => undefined,
+            // Default: no member login to fall back on, so a missing/dead
+            // admin token still ends at /groups/reauth like before.
+            recoverCreatorAdminToken: () => of(false),
             ...groupAdminOverrides,
           },
         },
@@ -133,6 +137,74 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
     return fixture;
   }
+
+  describe('lost admin session', () => {
+    const unauthorized = {
+      errorCode: 'ADMIN_TOKEN_INVALID',
+      i18nKey: 'errors.ADMIN_TOKEN_INVALID',
+      detail: null,
+      status: 401,
+    };
+
+    function spyNavigate() {
+      return vi.spyOn(Router.prototype, 'navigate').mockResolvedValue(true);
+    }
+
+    it('with no admin token, a logged-in creator is let in on their member login — no PIN page', () => {
+      const navigate = spyNavigate();
+      const recoverCreatorAdminToken = vi.fn(() => of(true));
+      const getAdminView = vi.fn(() => of(adminGroupResponse));
+      const fixture = setup(false, {
+        getAdminToken: () => null,
+        recoverCreatorAdminToken,
+        getAdminView,
+      });
+
+      expect(recoverCreatorAdminToken).toHaveBeenCalledWith('g1');
+      expect(getAdminView).toHaveBeenCalledTimes(1);
+      expect(fixture.componentInstance.adminView()).not.toBeNull();
+      expect(navigate).not.toHaveBeenCalledWith(['/groups/reauth']);
+      navigate.mockRestore();
+    });
+
+    it('with no admin token and no creator login to fall back on, it goes to the PIN page', () => {
+      const navigate = spyNavigate();
+      const getAdminView = vi.fn(() => of(adminGroupResponse));
+      setup(false, { getAdminToken: () => null, getAdminView });
+
+      expect(navigate).toHaveBeenCalledWith(['/groups/reauth']);
+      expect(getAdminView).not.toHaveBeenCalled();
+      navigate.mockRestore();
+    });
+
+    it('a 401 re-issues the creator admin token and reloads instead of asking for the PIN', () => {
+      const navigate = spyNavigate();
+      const recoverCreatorAdminToken = vi.fn(() => of(true));
+      let calls = 0;
+      const getAdminView = vi.fn(() =>
+        ++calls === 1 ? throwError(() => unauthorized) : of(adminGroupResponse),
+      );
+      const fixture = setup(false, { recoverCreatorAdminToken, getAdminView });
+
+      expect(recoverCreatorAdminToken).toHaveBeenCalledTimes(1);
+      expect(getAdminView).toHaveBeenCalledTimes(2);
+      expect(fixture.componentInstance.adminView()).not.toBeNull();
+      expect(navigate).not.toHaveBeenCalledWith(['/groups/reauth']);
+      navigate.mockRestore();
+    });
+
+    it('if the re-issued token is rejected too, it stops retrying and goes to the PIN page', () => {
+      const navigate = spyNavigate();
+      const recoverCreatorAdminToken = vi.fn(() => of(true));
+      const getAdminView = vi.fn(() => throwError(() => unauthorized));
+      setup(false, { recoverCreatorAdminToken, getAdminView });
+
+      expect(recoverCreatorAdminToken).toHaveBeenCalledTimes(1);
+      expect(getAdminView).toHaveBeenCalledTimes(2);
+      expect(navigate).toHaveBeenCalledWith(['/groups/reauth']);
+      navigate.mockRestore();
+    });
+  });
 
   function navButtons(fixture: ReturnType<typeof setup>): HTMLButtonElement[] {
     return Array.from(fixture.nativeElement.querySelectorAll('.admin-nav button'));

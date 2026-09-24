@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -7,7 +7,6 @@ import { ApiError } from '../../../core/api/api-error';
 import { MyGroupSummary } from '../../../core/api/friend.models';
 import { localDayStart } from '../../../core/local-day';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
-import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
 import { GroupAdminService } from '../../group-admin/group-admin.service';
 import { FriendsService } from '../../friends/friends.service';
 
@@ -24,11 +23,11 @@ function toMatchCount(value: string | number | null): number | undefined {
   return Number.isInteger(count) && count >= 0 ? count : undefined;
 }
 
-/** 我的團 + 忘記管理 PIN 碼 (US7, completes 006-member-friends US4):
- * everything this member has ever created (any status), each with a
- * "忘記管理 PIN 碼" recovery behind a two-step confirm dialog — the reset
- * invalidates the current PIN immediately, so it gets the same
- * Constitution V treatment as disband/regenerate-PIN.
+/** 我的團 (US7): everything this member has ever created or joined (any
+ * status). A group the member created and hasn't disbanded gets a
+ * 「進入管理」button that goes straight to the admin page on the member's
+ * own login — no PIN, and unlike the old 忘記 PIN reset it leaves the
+ * current PIN and every other admin session untouched.
  *
  * Filterable (name / group number / role / opened-between /
  * disbanded-between / match count) and paginated — same filter-panel +
@@ -38,7 +37,6 @@ function toMatchCount(value: string | number | null): number | undefined {
   imports: [
     ReactiveFormsModule,
     TranslatePipe,
-    ConfirmDialogComponent,
     DatePipe,
     PaginationComponent,
   ],
@@ -51,14 +49,12 @@ export class MyGroupsComponent {
   private readonly groupAdmin = inject(GroupAdminService);
   private readonly router = inject(Router);
 
-  private readonly dialog = viewChild.required<ConfirmDialogComponent>('forgotPinDialog');
-
   readonly loading = signal(true);
   readonly groups = signal<MyGroupSummary[]>([]);
   readonly page = signal(1);
   readonly totalPages = signal(1);
   readonly errorKey = signal<string | null>(null);
-  readonly forgotPinTarget = signal<MyGroupSummary | null>(null);
+  readonly enteringAdminGroupId = signal<string | null>(null);
 
   readonly filterForm = this.fb.nonNullable.group({
     name: [''],
@@ -156,23 +152,16 @@ export class MyGroupsComponent {
     void this.router.navigate(['/member/my-groups', group.group_id]);
   }
 
-  openForgotPinDialog(group: MyGroupSummary): void {
-    this.forgotPinTarget.set(group);
+  enterAdmin(group: MyGroupSummary): void {
     this.errorKey.set(null);
-    this.dialog().open();
-  }
-
-  confirmForgotPin(): void {
-    const target = this.forgotPinTarget();
-    if (!target) {
-      return;
-    }
-    this.friends.forgotAdminPin(target.group_id).subscribe({
-      next: (response) => {
-        this.groupAdmin.setAdminToken(target.group_id, response.admin_token);
-        void this.router.navigate(['/groups', target.group_id, 'admin']);
-      },
-      error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+    this.enteringAdminGroupId.set(group.group_id);
+    this.groupAdmin.recoverCreatorAdminToken(group.group_id).subscribe((recovered) => {
+      this.enteringAdminGroupId.set(null);
+      if (recovered) {
+        void this.router.navigate(['/groups', group.group_id, 'admin']);
+      } else {
+        this.errorKey.set('myGroups.enterAdminFailed');
+      }
     });
   }
 }

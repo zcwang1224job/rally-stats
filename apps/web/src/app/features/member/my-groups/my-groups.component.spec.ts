@@ -51,9 +51,9 @@ describe('MyGroupsComponent', () => {
     expect(rows[0].classList).not.toContain('group-row--disbanded');
     expect(rows[1].classList).toContain('group-row--disbanded');
     expect(rows[1].textContent).not.toContain('myGroups.status.disbanded');
-    // A disbanded group's admin PIN can no longer be regenerated into
-    // anywhere useful — the creator of row 1 (disbanded) should lose the
-    // button that row 0's creator (active) still has.
+    // A disbanded group has no admin page worth entering — the creator of
+    // row 1 (disbanded) should lose the 進入管理 button that row 0's creator
+    // (active) still has.
     expect(rows[0].querySelectorAll('button').length).toBe(2);
     expect(rows[1].querySelectorAll('button').length).toBe(1);
   });
@@ -81,7 +81,7 @@ describe('MyGroupsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('errors.SOMETHING');
   });
 
-  it('renders each group with a forgot-PIN button', () => {
+  it('renders each group with an enter-admin button', () => {
     TestBed.configureTestingModule({
       imports: [MyGroupsComponent],
       providers: [
@@ -131,7 +131,7 @@ describe('MyGroupsComponent', () => {
     expect(rows[0].textContent).not.toContain('myGroups.status.active');
     expect(rows[1].textContent).toContain('myGroups.role.member');
     expect(rows[1].textContent).toContain('myGroups.status.left');
-    // Only the creator's own row gets the forgot-PIN button.
+    // Only the creator's own row gets the enter-admin button.
     expect(rows[0].querySelectorAll('button').length).toBe(2);
     expect(rows[1].querySelectorAll('button').length).toBe(1);
   });
@@ -163,29 +163,15 @@ describe('MyGroupsComponent', () => {
     expect(navigateCalls).toEqual([[['/member/my-groups', 'g1']]]);
   });
 
-  it('confirming forgot-PIN stores the new admin token and navigates to the admin page', () => {
-    let storedToken: { groupId: string; token: string } | undefined;
+  function setupEnterAdmin(recovered: boolean) {
     const navigateCalls: unknown[][] = [];
-
+    const recoverCreatorAdminToken = vi.fn(() => of(recovered));
     TestBed.configureTestingModule({
       imports: [MyGroupsComponent],
       providers: [
         provideTranslateService({}),
-        {
-          provide: FriendsService,
-          useValue: {
-            getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }),
-            forgotAdminPin: () => of({ admin_pin: '123456', admin_token: 'new-token' }),
-          },
-        },
-        {
-          provide: GroupAdminService,
-          useValue: {
-            setAdminToken: (groupId: string, token: string) => {
-              storedToken = { groupId, token };
-            },
-          },
-        },
+        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
+        { provide: GroupAdminService, useValue: { recoverCreatorAdminToken } },
         {
           provide: Router,
           useValue: {
@@ -199,12 +185,26 @@ describe('MyGroupsComponent', () => {
     });
     const fixture = TestBed.createComponent(MyGroupsComponent);
     fixture.detectChanges();
+    return { fixture, navigateCalls, recoverCreatorAdminToken };
+  }
 
-    fixture.componentInstance.openForgotPinDialog(group);
-    fixture.componentInstance.confirmForgotPin();
+  it('進入管理 gets an admin token from the member login (no PIN, no reset) and opens the admin page', () => {
+    const { fixture, navigateCalls, recoverCreatorAdminToken } = setupEnterAdmin(true);
 
-    expect(storedToken).toEqual({ groupId: 'g1', token: 'new-token' });
+    fixture.componentInstance.enterAdmin(group);
+
+    expect(recoverCreatorAdminToken).toHaveBeenCalledWith('g1');
     expect(navigateCalls).toEqual([[['/groups', 'g1', 'admin']]]);
+  });
+
+  it('進入管理 shows an error and stays put when the admin token cannot be obtained', () => {
+    const { fixture, navigateCalls } = setupEnterAdmin(false);
+
+    fixture.componentInstance.enterAdmin(group);
+    fixture.detectChanges();
+
+    expect(navigateCalls).toEqual([]);
+    expect(fixture.nativeElement.textContent).toContain('myGroups.enterAdminFailed');
   });
 
   describe('filters and pagination', () => {

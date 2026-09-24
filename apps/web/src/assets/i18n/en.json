@@ -225,9 +225,8 @@
       "matchCountMin": "Matches played (min)",
       "matchCountMax": "Matches played (max)"
     },
-    "forgotPinButton": "Forgot Admin PIN",
-    "forgotPinConfirmTitle": "Reset this group's admin PIN?",
-    "forgotPinConfirmBody": "The current PIN will be invalidated immediately. This cannot be undone.",
+    "enterAdminButton": "Manage group",
+    "enterAdminFailed": "Couldn't open the admin page. Please log in again and retry.",
     "viewHistoryAriaLabel": "View match records for \"{{name}}\"",
     "createdAt": "Created",
     "disbandedAt": "Disbanded",
@@ -477,6 +476,8 @@
     "groupNumber": "Group Number",
     "adminPin": "Admin PIN",
     "adminPinNotice": "Please save this PIN somewhere safe — it won't be shown in plain text again.",
+    "memberNoPinNotice": "You created this group as a member — you can get back to the admin page any time from My Groups or the group list, no PIN needed.",
+    "showAdminPinForOtherDevice": "Need to manage from a device that isn't logged in? Show the admin PIN",
     "anonymousRecoveryWarning": "Be sure to screenshot or write down this group number and PIN — if you lose both and didn't create the group as a member, admin access cannot be recovered",
     "goToAdmin": "Go to Admin Page"
   },

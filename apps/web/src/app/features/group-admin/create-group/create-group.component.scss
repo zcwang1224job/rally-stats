@@ -34,3 +34,18 @@
   letter-spacing: 0.1em;
   text-align: center;
 }
+
+// 會員開團時 PIN 收在這裡（見模板註解）；summary 撐到手指好點的高度。
+.pin-details {
+  summary {
+    cursor: pointer;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    color: var(--color-text-muted);
+  }
+
+  .link-section {
+    margin-top: var(--space-sm);
+  }
+}

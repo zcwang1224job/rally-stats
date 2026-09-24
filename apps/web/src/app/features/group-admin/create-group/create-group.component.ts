@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -18,7 +19,7 @@ import { GroupJoinService } from '../../group-join/group-join.service';
 
 @Component({
   selector: 'app-create-group',
-  imports: [ReactiveFormsModule, TranslatePipe, TurnstileWidgetComponent],
+  imports: [ReactiveFormsModule, TranslatePipe, TurnstileWidgetComponent, NgTemplateOutlet],
   templateUrl: './create-group.component.html',
   styleUrl: './create-group.component.scss',
 })

@@ -225,9 +225,8 @@
       "matchCountMin": "比賽場數（最少）",
       "matchCountMax": "比賽場數（最多）"
     },
-    "forgotPinButton": "忘記管理 PIN 碼",
-    "forgotPinConfirmTitle": "確定重設此團的管理 PIN 碼？",
-    "forgotPinConfirmBody": "重設後原本的 PIN 碼將立即失效，此操作無法復原。",
+    "enterAdminButton": "進入管理",
+    "enterAdminFailed": "無法進入管理頁，請重新登入後再試。",
     "viewHistoryAriaLabel": "查看「{{name}}」的比賽紀錄",
     "createdAt": "開團時間",
     "disbandedAt": "解散時間",
@@ -477,6 +476,8 @@
     "groupNumber": "組團編號",
     "adminPin": "管理 PIN 碼",
     "adminPinNotice": "請妥善保存此 PIN 碼，系統不會再次顯示明文。",
+    "memberNoPinNotice": "你是以會員身分開團，之後從「我的團」或團列表就能直接回到管理頁，不需要 PIN 碼。",
+    "showAdminPinForOtherDevice": "要讓其他未登入的裝置也能管理？顯示管理 PIN 碼",
     "anonymousRecoveryWarning": "請務必截圖或記下這組編號與 PIN 碼，若同時遺失且未以會員身份建團，將無法復原管理權限",
     "goToAdmin": "前往管理頁"
   },

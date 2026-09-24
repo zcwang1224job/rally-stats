@@ -127,6 +127,9 @@ export class AdminPageComponent {
   // renders (no batch call is even attempted).
   readonly inviteCandidates = signal<Map<string, InviteCandidateStatus>>(new Map());
   private lastBatchedRosterKey: string | null = null;
+  // 見 recoverAdminSession()。
+  private adminRecoveryInFlight = false;
+  private adminRecoveryUsed = false;
   readonly nextRoundErrorKey = signal<string | null>(null);
   // 018-plan-then-start UX polish: disables the 結束/規劃/開始 button while
   // its request is in flight, so a fast double-click can't fire it twice
@@ -214,12 +217,13 @@ export class AdminPageComponent {
   });
 
   constructor() {
-    const token = this.groupAdmin.getAdminToken(this.groupId);
-    if (!token) {
-      void this.router.navigate(['/groups/reauth']);
-      return;
+    // 沒有管理權杖時不直接 return：下面的 effect() 必須在 constructor 裡
+    // 註冊，所以只把第一次 load() 換成「先試著用會員身分拿回管理權」。
+    if (this.groupAdmin.getAdminToken(this.groupId)) {
+      this.load();
+    } else {
+      this.recoverAdminSession();
     }
-    this.load();
     this.subscribeToDisbandEvent();
     this.subscribeToRosterEvents();
     this.scheduleRefresh
@@ -282,6 +286,7 @@ export class AdminPageComponent {
   private load(): void {
     this.groupAdmin.getAdminView(this.groupId).subscribe({
       next: (view) => {
+        this.adminRecoveryUsed = false;
         this.adminView.set(view);
         this.loading.set(false);
         if (!view.read_only) {
@@ -467,10 +472,34 @@ export class AdminPageComponent {
     this.loading.set(false);
     if (error.status === 401) {
       this.groupAdmin.clearAdminToken(this.groupId);
-      void this.router.navigate(['/groups/reauth']);
+      this.recoverAdminSession();
       return;
     }
     this.errorKey.set(error.i18nKey);
+  }
+
+  /** 管理權杖不見或失效時：登入的團長直接用會員身分換一個新的，不用輸入
+   * PIN；換不到（沒登入、不是團長）才退回「團號＋PIN」重新驗證頁。
+   * 換權杖期間同時回來的其他 401 直接忽略；換到的權杖若在下次成功載入
+   * 前又被拒，就不再重試，改走 PIN 頁，避免無限循環。 */
+  private recoverAdminSession(): void {
+    if (this.adminRecoveryInFlight) {
+      return;
+    }
+    if (this.adminRecoveryUsed) {
+      void this.router.navigate(['/groups/reauth']);
+      return;
+    }
+    this.adminRecoveryInFlight = true;
+    this.adminRecoveryUsed = true;
+    this.groupAdmin.recoverCreatorAdminToken(this.groupId).subscribe((recovered) => {
+      this.adminRecoveryInFlight = false;
+      if (recovered) {
+        this.load();
+      } else {
+        void this.router.navigate(['/groups/reauth']);
+      }
+    });
   }
 
   /** 固定搭檔循環賽/個人全混搭循環賽僅適用於雙打——這兩個選項在單打模式下

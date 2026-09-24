@@ -13,18 +13,17 @@
     <p>
       {{ 'createGroup.groupNumber' | translate }}: <strong>{{ created.group_number }}</strong>
     </p>
-    <div class="link-section">
-      <p>{{ 'createGroup.adminPin' | translate }}</p>
-      <input type="text" readonly [value]="created.admin_pin" class="pin-display" />
-      <button type="button" class="btn btn--secondary" (click)="copyAdminPin()">
-        {{ (copiedPin() ? 'common.copied' : 'common.copy') | translate }}
-      </button>
-      @if (copyPinErrorKey(); as key) {
-        <p role="alert">{{ key | translate }}</p>
-      }
-    </div>
-    <p>{{ 'createGroup.adminPinNotice' | translate }}</p>
-    @if (memberNickname() === null) {
+    <!-- 會員開團：管理權跟著會員帳號走（我的團／團列表直接回管理頁），
+         PIN 只在要把管理權交給沒登入的裝置時才用得到，所以收進進階區塊。 -->
+    @if (memberNickname() !== null) {
+      <p>{{ 'createGroup.memberNoPinNotice' | translate }}</p>
+      <details class="pin-details">
+        <summary>{{ 'createGroup.showAdminPinForOtherDevice' | translate }}</summary>
+        <ng-container *ngTemplateOutlet="pinSection; context: { $implicit: created }" />
+      </details>
+    } @else {
+      <ng-container *ngTemplateOutlet="pinSection; context: { $implicit: created }" />
+      <p>{{ 'createGroup.adminPinNotice' | translate }}</p>
       <p role="alert">{{ 'createGroup.anonymousRecoveryWarning' | translate }}</p>
     }
     <button type="button" class="btn" (click)="goToAdmin()">{{ 'createGroup.goToAdmin' | translate }}</button>
@@ -175,3 +174,16 @@
     }
   </form>
 }
+
+<ng-template #pinSection let-created>
+  <div class="link-section">
+    <p>{{ 'createGroup.adminPin' | translate }}</p>
+    <input type="text" readonly [value]="created.admin_pin" class="pin-display" />
+    <button type="button" class="btn btn--secondary" (click)="copyAdminPin()">
+      {{ (copiedPin() ? 'common.copied' : 'common.copy') | translate }}
+    </button>
+    @if (copyPinErrorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    }
+  </div>
+</ng-template>

@@ -4,7 +4,6 @@ import { ApiClient } from '../../core/api/api-client';
 import {
   FriendListResponse,
   FriendRequestResponse,
-  ForgotAdminPinResponse,
   IncomingFriendRequestsResponse,
   InviteCandidatesResponse,
   MemberGroupHistoryFilters,
@@ -15,7 +14,7 @@ import {
 } from '../../core/api/friend.models';
 import { AuthService } from '../auth/auth.service';
 
-/** API layer for the friends system + "my groups"/forgot-admin-PIN recovery
+/** API layer for the friends system + "my groups"
  * (US7, 010-app-wide-ui-redesign) — completes the already-approved
  * 006-member-friends spec; every endpoint here already existed as a
  * contract before this feature, just unimplemented (see
@@ -138,14 +137,6 @@ export class FriendsService {
     return this.api.post<InviteCandidatesResponse>(
       '/friends/invite-candidates',
       { member_ids: memberIds },
-      this.authHeader(),
-    );
-  }
-
-  forgotAdminPin(groupId: string): Observable<ForgotAdminPinResponse> {
-    return this.api.post<ForgotAdminPinResponse>(
-      `/groups/${groupId}/forgot-admin-pin`,
-      {},
       this.authHeader(),
     );
   }

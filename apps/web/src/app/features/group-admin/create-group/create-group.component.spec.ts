@@ -107,6 +107,41 @@ describe('CreateGroupComponent', () => {
     expect(call!.headers).toEqual({ Authorization: 'Bearer access-tok' });
   });
 
+  it('success page, member: says no PIN is needed and tucks the PIN away behind a disclosure', () => {
+    const { fixture } = setup({
+      isLoggedIn: () => true,
+      getMe: () => of(nicknameMember),
+      getAccessToken: () => 'access-tok',
+    });
+    fixture.componentInstance.onTurnstileVerified('tok');
+    fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('createGroup.memberNoPinNotice');
+    expect(el.textContent).not.toContain('createGroup.adminPinNotice');
+    expect(el.textContent).not.toContain('createGroup.anonymousRecoveryWarning');
+    const details = el.querySelector('details.pin-details') as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    expect(details.open).toBe(false);
+    expect((details.querySelector('.pin-display') as HTMLInputElement).value).toBe('1234');
+  });
+
+  it('success page, guest: shows the PIN up front with the save-it notice and recovery warning', () => {
+    const { fixture } = setup({ isLoggedIn: () => false });
+    fixture.componentInstance.form.patchValue({ creator_nickname: '小華' });
+    fixture.componentInstance.onTurnstileVerified('tok');
+    fixture.componentInstance.submit();
+    fixture.detectChanges();
+
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('details.pin-details')).toBeNull();
+    expect((el.querySelector('.pin-display') as HTMLInputElement).value).toBe('1234');
+    expect(el.textContent).toContain('createGroup.adminPinNotice');
+    expect(el.textContent).toContain('createGroup.anonymousRecoveryWarning');
+    expect(el.textContent).not.toContain('createGroup.memberNoPinNotice');
+  });
+
   it('logged-in member with no nickname yet: redirects to /member/settings with returnTo', () => {
     const navigateCalls: unknown[][] = [];
     TestBed.configureTestingModule({
