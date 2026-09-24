@@ -70,6 +70,9 @@ export function renderLeaderboardCard(
     text('groupShareCard.leaderboard.title'),
     model.date ? formatDate(model.date, text('shareCard.dateFormat'), 'en-US') : null,
     text('groupShareCard.leaderboard.playerCount', { count: model.playerCount }),
+    model.activity
+      ? (model.activity.name ?? (model.activity.key ? text(model.activity.key) : null))
+      : null,
   ]
     .filter((part): part is string => !!part)
     .join(' · ');

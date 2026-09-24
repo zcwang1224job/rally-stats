@@ -27,6 +27,7 @@ export function buildLeaderboardCardModel(
   return {
     groupName: history.group_name,
     date: context.createdAt,
+    activity: context.activity ?? null,
     playerCount: played.length,
     rows,
     selfRow,

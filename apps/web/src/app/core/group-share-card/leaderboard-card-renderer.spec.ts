@@ -249,3 +249,26 @@ describe('renderLeaderboardCard — layout (041 contracts/share-card-core.md §6
     expect(draw(standings).texts()).toContain('獨行俠');
   });
 });
+
+describe('renderLeaderboardCard — activity (043 US6)', () => {
+  function withActivity(activity: { key: string | null; name: string | null } | null): string {
+    const model = buildLeaderboardCardModel(
+      makeHistory({ final_standings: makeStandings(4, { selfAt: 1 }), group_name: '週三撞球團' }),
+      { createdAt: CREATED_AT, activity },
+    )!;
+    const ctx = new RecordingContext();
+    renderLeaderboardCard(ctx, model, env());
+    return ctx.texts().join('\n');
+  }
+
+  it('names a built-in activity through its translation key', () => {
+    // fakeText renders a key as its last segment.
+    expect(withActivity({ key: 'sports.billiards', name: null })).toContain('billiards()');
+  });
+
+  it('names a custom activity as typed, and badminton not at all', () => {
+    expect(withActivity({ key: null, name: '躲避球' })).toContain('躲避球');
+    expect(withActivity(null)).not.toContain('billiards');
+  });
+});
+

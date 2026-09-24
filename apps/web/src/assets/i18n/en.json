@@ -1371,8 +1371,7 @@
     "generateError": "Couldn't create the card. Please try again.",
     "shareError": "Sharing failed. You can use “Download image” instead.",
     "copyError": "Copying failed. You can use “Download image” instead.",
-    "dateFormat": "MMM d, yyyy",
-    "activityLabel": "Activity: {{name}}"
+    "dateFormat": "MMM d, yyyy"
   },
   "groupShareCard": {
     "openButton": "Share card",

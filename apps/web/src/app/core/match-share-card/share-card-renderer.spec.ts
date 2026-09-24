@@ -349,3 +349,34 @@ describe('renderShareCard — room for the promo footer (041 FR-022, research.md
     expect(trend.y - (teamTop + 374)).toBe(48);
   });
 });
+
+describe('renderShareCard — activity name (043 US6)', () => {
+  const NOUNS = { venue: 'table', score: 'frame', member: 'player' } as const;
+
+  it('a badminton card has no activity on its meta line', () => {
+    const texts = draw(buildShareCardModel(makeDetail(), neutral)).texts().join('\n');
+    expect(texts).not.toContain('sports.');
+  });
+
+  it('another activity names itself on the meta line and skips the point-log parts', () => {
+    const detail = {
+      ...makeDetail(),
+      sport: { sport_key: 'billiards', type_key: 'frames' as const, name_key: 'sports.billiards', name: null, icon: 'billiards', nouns: NOUNS },
+    };
+    const model = buildShareCardModel(detail, neutral);
+    expect(model.activity).toEqual({ key: 'sports.billiards', name: null });
+    expect(model.trend).toBeNull();
+    expect(model.highlights).toEqual([]);
+    const texts = draw(model).texts().join('\n');
+    expect(texts).toContain('sports.billiards');
+  });
+
+  it('a custom activity shows the name its owner typed', () => {
+    const detail = {
+      ...makeDetail(),
+      sport: { sport_key: 'custom', type_key: 'generic' as const, name_key: null, name: '躲避球', icon: 'other', nouns: NOUNS },
+    };
+    expect(draw(buildShareCardModel(detail, neutral)).texts().join('\n')).toContain('躲避球');
+  });
+});
+

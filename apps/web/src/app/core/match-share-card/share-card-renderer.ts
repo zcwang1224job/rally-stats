@@ -106,7 +106,10 @@ function drawHeader(
     ? formatDate(model.startedAt, text('shareCard.dateFormat'), 'en-US')
     : null;
   const round = text('matchShareCard.round', { round: model.roundNumber });
-  const meta = [date, round].filter((part): part is string => !!part).join(' · ');
+  const activity = model.activity
+    ? (model.activity.name ?? (model.activity.key ? text(model.activity.key) : null))
+    : null;
+  const meta = [date, round, activity].filter((part): part is string => !!part).join(' · ');
   ctx.fillStyle = palette.textMuted;
   ctx.font = `30px ${fonts.base}`;
   ctx.fillText(truncateToWidth(ctx, meta, CONTENT_WIDTH), SHARE_CARD_PADDING, top + 64);

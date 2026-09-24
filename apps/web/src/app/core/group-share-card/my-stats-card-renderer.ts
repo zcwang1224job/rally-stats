@@ -56,6 +56,9 @@ export function renderMyStatsCard(
   const subtitle = [
     text('groupShareCard.myStats.title'),
     model.date ? formatDate(model.date, text('shareCard.dateFormat'), 'en-US') : null,
+    model.activity
+      ? (model.activity.name ?? (model.activity.key ? text(model.activity.key) : null))
+      : null,
   ]
     .filter((part): part is string => !!part)
     .join(' · ');

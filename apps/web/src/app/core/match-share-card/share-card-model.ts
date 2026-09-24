@@ -21,7 +21,14 @@ export function buildShareCardModel(
     cardTeam(detail, protagonist, context),
     cardTeam(detail, other, context),
   ];
-  const complete = detail.record_completeness === 'complete';
+  // 043: the score trend and highlights read a net rally point log.
+  const netRally = (detail.sport?.type_key ?? 'net_rally') === 'net_rally';
+  const complete = detail.record_completeness === 'complete' && netRally;
+  const sport = detail.sport;
+  const activity =
+    sport && sport.sport_key !== 'badminton'
+      ? { key: sport.name ? null : sport.name_key, name: sport.name }
+      : null;
   const winnerNames = (detail.winner_team === 'A' ? detail.team_a : detail.team_b)
     .map((p) => p.nickname)
     .join('、');
@@ -30,6 +37,7 @@ export function buildShareCardModel(
     groupName: context.groupName,
     startedAt: detail.started_at,
     roundNumber: detail.round_number,
+    activity,
     perspective: perspective.kind,
     teams,
     // FR-007/FR-009/FR-011: a partial or missing point record gets none of

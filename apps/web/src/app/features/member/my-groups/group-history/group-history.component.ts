@@ -114,12 +114,16 @@ export class GroupHistoryComponent {
    * fails the card simply has no date — the page itself is unaffected
    * (research.md Decision 7). */
   private readonly createdAt = signal<string | null>(null);
+  /** 043 US6: the group's activity for the share cards (none for badminton). */
+  private readonly activity = signal<{ key: string | null; name: string | null } | null>(null);
   readonly sharePreview = viewChild.required(ShareCardPreviewComponent);
   /** The group cards this history can make. The standings and my stats
    * ignore the match-list filters, so neither do the cards. */
   readonly shareOptions = computed<ShareCardOption[]>(() => {
     const history = this.history();
-    return history ? availableGroupCards(history, { createdAt: this.createdAt() }) : [];
+    return history
+      ? availableGroupCards(history, { createdAt: this.createdAt(), activity: this.activity() })
+      : [];
   });
 
   readonly filterForm = this.fb.nonNullable.group({
@@ -188,10 +192,16 @@ export class GroupHistoryComponent {
     // The list is paginated; `group_id` pins this group's row whatever
     // page it would otherwise land on.
     this.friends.getMyGroups(1, { group_id: this.groupId }).subscribe({
-      next: (response) =>
-        this.createdAt.set(
-          response.groups.find((group) => group.group_id === this.groupId)?.created_at ?? null,
-        ),
+      next: (response) => {
+        const row = response.groups.find((group) => group.group_id === this.groupId);
+        this.createdAt.set(row?.created_at ?? null);
+        const sport = row?.sport;
+        this.activity.set(
+          sport && sport.sport_key !== 'badminton'
+            ? { key: sport.name ? null : sport.name_key, name: sport.name }
+            : null,
+        );
+      },
       error: () => this.createdAt.set(null),
     });
   }

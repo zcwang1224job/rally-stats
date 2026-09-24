@@ -1371,8 +1371,7 @@
     "generateError": "圖卡產生失敗，請稍後再試。",
     "shareError": "分享失敗，可以改用「下載圖片」。",
     "copyError": "複製失敗，可以改用「下載圖片」。",
-    "dateFormat": "yyyy/M/d",
-    "activityLabel": "活動：{{name}}"
+    "dateFormat": "yyyy/M/d"
   },
   "groupShareCard": {
     "openButton": "分享圖卡",

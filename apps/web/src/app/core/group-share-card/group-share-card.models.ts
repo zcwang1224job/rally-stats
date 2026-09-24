@@ -6,6 +6,9 @@ export interface GroupShareCardContext {
   /** When the group was created (ISO) — the card's date; null when the
    * group list couldn't be read (research.md Decision 7). */
   createdAt: string | null;
+  /** 043 US6: the activity's name (translation key or typed name); null
+   * for badminton, whose cards stay as they were. */
+  activity?: { key: string | null; name: string | null } | null;
 }
 
 /** One leaderboard row. Holds no status and no ID (FR-011, FR-021). */
@@ -25,6 +28,9 @@ export interface LeaderboardRow {
 export interface MyStatsCardModel {
   groupName: string;
   date: string | null;
+  /** 043 US6: the activity's name (translation key or typed name); null
+   * for badminton, whose cards stay as they were. */
+  activity?: { key: string | null; name: string | null } | null;
   /** My name from my standings row; null (left out) when I'm not in it. */
   nickname: string | null;
   /** Exactly the page's wording, e.g. "60%" (FR-017). */
@@ -46,6 +52,9 @@ export interface MyStatsCardModel {
 export interface LeaderboardCardModel {
   groupName: string;
   date: string | null;
+  /** 043 US6: the activity's name (translation key or typed name); null
+   * for badminton, whose cards stay as they were. */
+  activity?: { key: string | null; name: string | null } | null;
   /** Players with at least one completed match. */
   playerCount: number;
   /** The first six players who played, in the server's order. */

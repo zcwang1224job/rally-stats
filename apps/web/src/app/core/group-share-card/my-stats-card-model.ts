@@ -24,6 +24,7 @@ export function buildMyStatsCardModel(
   return {
     groupName: history.group_name,
     date: context.createdAt,
+    activity: context.activity ?? null,
     nickname: me?.nickname ?? null,
     winRate: formatPercent(stats.win_rate),
     wins: stats.total_wins,

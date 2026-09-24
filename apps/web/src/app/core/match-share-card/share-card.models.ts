@@ -52,6 +52,10 @@ export interface ShareCardModel {
   /** ISO timestamp; formatted into a date by the renderer. */
   startedAt: string | null;
   roundNumber: number;
+  /** 043 US6: the activity's name on the meta line — a translation key
+   * (built-in) or the typed name (custom / other). Null for badminton,
+   * whose card stays exactly as it was. */
+  activity: { key: string | null; name: string | null } | null;
   perspective: 'neutral' | 'mine';
   /** The first team is the card's protagonist: the winner (neutral) or the
    * viewer's own team (mine). */
