@@ -169,12 +169,12 @@ description: "Task list for 043-sport-type-plugin-foundation"
 ### 前端
 
 - [X] T058 [US2] 在 `web/sports/types/net-rally/match-point.ts` 與 `net-rally` 各控制板的 `plusPressed`／match-point 判定處把 `cap_score` 可空納入（`isMatchPoint` 對 `cap=null` 只看 `target`＋`win_by`；`web/sports/types/net-rally/match-point.spec.ts` 加案例但既有案例不改）
-- [ ] T059 [P] [US2] 先寫 `web/core/api/sports.service.spec.ts`，再實作 `web/core/api/sports.service.ts::getCatalog()`（快取一次）
+- [X] T059 [P] [US2] 先寫 `web/core/api/sports.service.spec.ts`，再實作 `web/core/api/sports.service.ts::getCatalog()`（快取一次）
 - [X] T060 [P] [US2] 先寫 `web/sports/types/net-rally/create-form-fields/create-form-fields.component.spec.ts`（羽球顯示既有 `21pt/15pt/custom` 下拉且預設 `21pt`；桌球只顯示 `custom` 且預設 11／2／空；`modules` 不可編輯），再實作該元件（輸入 `form`、`sport`）
 - [X] T061 [US2] 實作 `web/sports/hosts/create-form-fields-host.component.{ts,spec.ts}`（依 `sport.type_key` 解析模組後渲染 `surfaces.createFormFields`）
 - [X] T062 [US2] `web/features/group-admin/create-group/create-group.component.{ts,html,scss}`：最上方新增「活動」區塊（內建活動卡片 `<button aria-pressed>` 含圖示與 i18n 名稱、「其他」需輸入名稱；預設羽球）；`match_mode` 下拉改為 `team_size`（1／2，依活動 `team_size_options`）並在 payload 同時送 `match_mode`；通用參數欄位（`end_mode`、`target_score`、`win_by`、`cap_score` 可空、`allow_draw`、`score_steps`）與類型欄位由 `app-create-form-fields-host` 渲染；團名佔位文字依活動名詞；既有 17 個 spec 不改（表單初始狀態不變），新增 spec 覆蓋活動切換與預設帶入（FR-006、FR-009、FR-012）
 - [X] T063 [US2] `web/features/group-admin/shared/group-form-validators.ts`：`minMembersForMode` 改以 `team_size`（`2 × team_size`）、新增 `genericScoringValidator`（`target ≥ win_by`、`cap ≥ target` 或空、`score_steps` 非空遞增）；spec 補案例、既有案例不改
-- [ ] T064 [US2] `web/features/group-admin/admin-page/admin-page.component.{ts,html}`：顯示活動標籤（不可編輯）；`editForm` 改 `team_size`（同步送 `match_mode`）與通用參數；`manual-assign.component.ts` 的 `singles ? 1 : 2` 改讀 `team_size`；`SPORT_IMMUTABLE` 錯誤提示
+- [X] T064 [US2] `web/features/group-admin/admin-page/admin-page.component.{ts,html}`：顯示活動標籤（不可編輯）；`editForm` 改 `team_size`（同步送 `match_mode`）與通用參數；`manual-assign.component.ts` 的 `singles ? 1 : 2` 改讀 `team_size`；`SPORT_IMMUTABLE` 錯誤提示
 - [X] T065 [US2] i18n：`i18n/zh-TW.json` 與 `i18n/en.json` 新增 `sports.*`（9 個活動名稱、名詞集合）、`createGroup.activity*`、`createGroup.generic*`（通用參數標籤與說明）、`errors.SPORT_IMMUTABLE`／`MODULE_NOT_SUPPORTED`；新增 `web/sports/sports-i18n.spec.ts` 做 key 一致性檢查（FR-037）
 - [ ] T066 [US2] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §2 手動驗證，撞球流程以碼錶計時並記錄於 `docs/043-quickstart-run.md`（SC-003）（US2 檢查點）
 

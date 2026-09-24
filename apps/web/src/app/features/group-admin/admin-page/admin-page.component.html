@@ -10,6 +10,12 @@
   <p role="alert">{{ key | translate }}</p>
 } @else if (adminView(); as view) {
   <h1>{{ 'adminPage.title' | translate }}</h1>
+  @if (view.group.sport; as sport) {
+    <!-- 043 FR-007: shown, never editable once the group exists. -->
+    <p class="status-badge admin-activity" data-state="activity">
+      {{ 'adminPage.activityLabel' | translate }}：{{ sport.name ?? (sport.name_key ?? 'sports.other' | translate) }}
+    </p>
+  }
   <p class="group-number">{{ 'adminPage.groupNumber' | translate }}: {{ view.group.group_number }}</p>
 
   @if (view.read_only) {
@@ -519,6 +525,7 @@
             <form class="form card" [formGroup]="scoringForm" (ngSubmit)="saveScoringSettings()">
               <h2>{{ 'adminPage.scoringSectionTitle' | translate }}</h2>
 
+              @if (usesPresets()) {
               <label>
                 {{ 'adminPage.scoringMode' | translate }}
                 <select formControlName="scoring_mode">
@@ -543,6 +550,27 @@
                 </label>
                 @if (scoringForm.errors?.['customScoringInvalid']) {
                   <p role="alert">{{ 'errors.INVALID_CUSTOM_SCORING' | translate }}</p>
+                }
+              }
+              } @else {
+                <!-- 043: an activity without named presets edits target, lead and cap. -->
+                <label>
+                  {{ 'adminPage.customTargetScore' | translate }}
+                  <input type="number" formControlName="custom_target_score" min="1" />
+                </label>
+                <label>
+                  {{ 'createGroup.generic.winBy' | translate }}
+                  <input type="number" formControlName="generic_win_by" min="1" />
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" formControlName="generic_has_cap" />
+                  {{ 'createGroup.generic.hasCap' | translate }}
+                </label>
+                @if (scoringForm.controls.generic_has_cap.value) {
+                  <label>
+                    {{ 'adminPage.customCapScore' | translate }}
+                    <input type="number" formControlName="custom_cap_score" min="1" />
+                  </label>
                 }
               }
 

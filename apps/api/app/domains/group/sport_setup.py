@@ -166,6 +166,26 @@ def validate_type_params(type_key: str, raw: dict[str, Any]) -> dict[str, Any]:
     return parsed.model_dump()
 
 
+async def team_size_options_for(
+    session: AsyncSession, *, sport_key: str, custom_sport_id: uuid.UUID | None
+) -> tuple[int, ...]:
+    """The team sizes a group's activity allows (editing may not leave them).
+    A deleted custom activity no longer says; any size this release supports
+    then stays allowed."""
+    if custom_sport_id is not None:
+        custom = (
+            await session.execute(
+                select(MemberSport.team_size_options).where(MemberSport.id == custom_sport_id)
+            )
+        ).scalar_one_or_none()
+        if custom is not None:
+            return tuple(custom)
+    builtin = catalog.get_builtin(sport_key)
+    if builtin is not None:
+        return builtin.team_size_options
+    return (1, 2)
+
+
 def scoring_presets_for(sport_key: str) -> list[str]:
     """The named presets a group's activity offers (the admin page's scoring
     select): those of a built-in whose default is a preset, none otherwise."""

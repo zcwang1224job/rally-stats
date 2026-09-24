@@ -557,7 +557,8 @@
     "disbandConfirmBody": "解散後所有連結將立即失效，此操作無法復原。",
     "groupLinksTitle": "團層級連結",
     "joinLinkTitle": "加入連結",
-    "disbandedNotice": "此團已解散"
+    "disbandedNotice": "此團已解散",
+    "activityLabel": "活動"
   },
   "controlPanel": {
     "endMatch": "提前結束",

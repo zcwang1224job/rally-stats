@@ -53,6 +53,7 @@ from app.domains.group.sport_setup import (
     check_team_size,
     resolve_params,
     resolve_sport,
+    team_size_options_for,
     validate_type_params,
 )
 from app.domains.member.models import Member
@@ -367,6 +368,14 @@ async def edit_group(
         payload.match_mode = implied
 
     if payload.match_mode is not None and payload.match_mode != group.match_mode:
+        new_size = 1 if payload.match_mode == "singles" else 2
+        allowed = await team_size_options_for(
+            session, sport_key=group.sport_key, custom_sport_id=group.custom_sport_id
+        )
+        if new_size not in allowed:
+            raise ApiError(
+                "TEAM_SIZE_NOT_ALLOWED", status_code=422, detail={"allowed": list(allowed)}
+            )
         effective_max = (
             payload.max_members if payload.max_members is not None else group.max_members
         )

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, ElementRef, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -21,6 +21,7 @@ import { FriendsService } from '../../friends/friends.service';
 import { GroupAdminService } from '../group-admin.service';
 import {
   AdminGroupResponse,
+  EditScoringSettingsRequest,
   MatchMode,
   PartnerSource,
   SchedulingMechanism,
@@ -210,9 +211,20 @@ export class AdminPageComponent {
       custom_target_score: [11],
       custom_deuce_threshold: [10],
       custom_cap_score: [15],
+      // 043: activities without named presets edit the lead and the cap
+      // (which may be off) instead of a deuce threshold.
+      generic_win_by: [2],
+      generic_has_cap: [true],
     },
     { validators: [customScoringValidator] },
   );
+
+  /** 043: the named presets the group's activity offers; an older backend
+   * sends none of this, which means badminton's two. */
+  readonly scoringPresets = computed(
+    () => this.adminView()?.scoring_presets ?? (['21pt', '15pt'] as string[]),
+  );
+  readonly usesPresets = computed(() => this.scoringPresets().length > 0);
 
   readonly addGuestForm = this.fb.nonNullable.group({
     nickname: ['', [Validators.required, Validators.maxLength(20)]],
@@ -454,7 +466,10 @@ export class AdminPageComponent {
           ? {
               custom_target_score: view.target_score,
               custom_deuce_threshold: view.deuce_threshold,
-              custom_cap_score: view.cap_score,
+              // 043: no cap keeps the target as the draft cap value.
+              custom_cap_score: view.cap_score ?? view.target_score,
+              generic_has_cap: view.cap_score !== null,
+              generic_win_by: view.win_by ?? 2,
             }
           : {}),
       });
@@ -545,14 +560,26 @@ export class AdminPageComponent {
     const raw = this.scoringForm.getRawValue();
     this.scoringErrorKey.set(null);
     this.scoringSaveSuccess.set(false);
+    const request: EditScoringSettingsRequest = this.usesPresets()
+      ? {
+          expected_version: view.base_settings_version,
+          scoring_mode: raw.scoring_mode,
+          target_score: raw.scoring_mode === 'custom' ? raw.custom_target_score : undefined,
+          deuce_threshold: raw.scoring_mode === 'custom' ? raw.custom_deuce_threshold : undefined,
+          cap_score: raw.scoring_mode === 'custom' ? raw.custom_cap_score : undefined,
+        }
+      : {
+          // 043: no presets — the numbers themselves, a deuce threshold the
+          // backend still stores (one below the target), the lead and cap.
+          expected_version: view.base_settings_version,
+          scoring_mode: 'custom',
+          target_score: raw.custom_target_score,
+          deuce_threshold: Math.max(1, raw.custom_target_score - 1),
+          cap_score: raw.generic_has_cap ? raw.custom_cap_score : null,
+          win_by: raw.generic_win_by,
+        };
     this.groupAdmin
-      .editScoringSettings(this.groupId, {
-        expected_version: view.base_settings_version,
-        scoring_mode: raw.scoring_mode,
-        target_score: raw.scoring_mode === 'custom' ? raw.custom_target_score : undefined,
-        deuce_threshold: raw.scoring_mode === 'custom' ? raw.custom_deuce_threshold : undefined,
-        cap_score: raw.scoring_mode === 'custom' ? raw.custom_cap_score : undefined,
-      })
+      .editScoringSettings(this.groupId, request)
       .subscribe({
         next: (updated) => {
           this.adminView.set(updated);

@@ -557,7 +557,8 @@
     "disbandConfirmBody": "All links will be invalidated immediately. This cannot be undone.",
     "groupLinksTitle": "Group links",
     "joinLinkTitle": "Join link",
-    "disbandedNotice": "This group has been disbanded"
+    "disbandedNotice": "This group has been disbanded",
+    "activityLabel": "Activity"
   },
   "controlPanel": {
     "endMatch": "End Early",

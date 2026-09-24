@@ -1,5 +1,7 @@
 // Mirrors apps/api/app/domains/group/schemas.py — see contracts/groups-api.md.
 
+import type { SportSummary } from '../../core/api/sport.models';
+
 export type MatchMode = 'singles' | 'doubles';
 export type SchedulingMechanism =
   | 'fair_rotation'
@@ -77,6 +79,10 @@ export interface GroupPublic {
   // 013-group-invite-friends: true only for a group created by a logged-in
   // Member — gates whether the admin page's "邀請好友" section is offered.
   created_by_member: boolean;
+  /** 043: the group's activity and players per team (optional so an older
+   * backend reads as badminton). */
+  sport?: SportSummary;
+  team_size?: number;
 }
 
 export interface ReauthResponse {
@@ -105,7 +111,16 @@ export interface AdminGroupResponse {
   scoring_mode: ScoringMode;
   target_score: number;
   deuce_threshold: number;
-  cap_score: number;
+  /** 043: null = no cap. */
+  cap_score: number | null;
+  // 043: the rest of the common parameters, and the named presets this
+  // activity offers ([] = edit the numbers). Optional for older backends.
+  end_mode?: 'target' | 'manual';
+  win_by?: number;
+  allow_draw?: boolean;
+  score_steps?: number[];
+  type_params?: Record<string, unknown>;
+  scoring_presets?: string[];
 }
 
 export interface EditGroupRequest {
@@ -125,7 +140,13 @@ export interface EditScoringSettingsRequest {
   scoring_mode: ScoringMode;
   target_score?: number;
   deuce_threshold?: number;
-  cap_score?: number;
+  /** 043: null (sent explicitly) = no cap. */
+  cap_score?: number | null;
+  end_mode?: 'target' | 'manual';
+  win_by?: number;
+  allow_draw?: boolean;
+  score_steps?: number[];
+  type_params?: Record<string, unknown>;
 }
 
 export interface RegeneratePinResponse {
