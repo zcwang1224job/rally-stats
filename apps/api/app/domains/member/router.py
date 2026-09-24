@@ -16,7 +16,7 @@ from app.core.errors import ApiError
 from app.core.rate_limit import limiter
 from app.core.turnstile import verify_turnstile_token
 from app.domains.group.schemas import MatchRecordDetailResponse, MemberMatchRecordsResponse
-from app.domains.member import security, service
+from app.domains.member import custom_sports, security, service
 from app.domains.member.models import Member
 from app.domains.member.oauth_providers import Provider
 from app.domains.member.player_identity import parse_player_key
@@ -58,6 +58,7 @@ from app.domains.member.schemas import (
     VerifyEmailResponse,
 )
 from app.domains.member.sport_filter import parse_sport_filter
+from app.sports.router import CustomSportView, custom_sport_view
 
 router = APIRouter(tags=["member"])
 
@@ -428,6 +429,7 @@ async def get_my_groups(
     match_count_min: Annotated[int | None, Query(ge=0)] = None,
     match_count_max: Annotated[int | None, Query(ge=0)] = None,
     group_id: Annotated[uuid.UUID | None, Query()] = None,
+    sport: Annotated[str | None, Query(max_length=60)] = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has ever had a roster entry in (any
@@ -464,6 +466,7 @@ async def get_my_groups(
         match_count_min=match_count_min,
         match_count_max=match_count_max,
         group_id=group_id,
+        sport=sport,
     )
 
 
@@ -715,6 +718,31 @@ async def get_member_activities(
     most matches first. Errors: `MEMBER_TOKEN_INVALID`,
     `EMAIL_NOT_VERIFIED`."""
     return await service.build_member_activities(session, member.id)
+
+
+@router.post("/members/me/sports", response_model=CustomSportView, status_code=201)
+async def create_member_sport(
+    payload: custom_sports.CustomSportCreate,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CustomSportView:
+    """043 contracts/sports-api.md §2: a new custom activity. Errors:
+    `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`, `VALIDATION_ERROR`,
+    `CUSTOM_SPORT_NAME_TAKEN`, `CUSTOM_SPORT_LIMIT`."""
+    sport = await custom_sports.create_custom_sport(session, member.id, payload)
+    return custom_sport_view(sport)
+
+
+@router.delete("/members/me/sports/{sport_id}", status_code=204)
+async def delete_member_sport(
+    sport_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    """043: delete one of my custom activities; groups keep their snapshot.
+    Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`,
+    `CUSTOM_SPORT_NOT_FOUND`."""
+    await custom_sports.delete_custom_sport(session, member.id, sport_id)
 
 
 @router.get("/members/me/supported-languages", response_model=SupportedLanguagesResponse)

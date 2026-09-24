@@ -262,8 +262,8 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 **Independent Test**: quickstart §5。
 
-- [ ] T103 [P] [US4] 先寫 `api/tests/contract/test_member_sports_endpoint.py`：`POST /members/me/sports`（201 形狀、未驗證會員 403、名稱長度 422、`type_key` 未註冊 422、`defaults` 不符 422、同名 `409 CUSTOM_SPORT_NAME_TAKEN`、`name="羽球"` 可成功建立（與內建同名允許）、第 21 筆 `409 CUSTOM_SPORT_LIMIT`）、`DELETE`（204、非本人 404、刪後既有團 `sport.name` 仍為快照）、`GET /sports` 登入後 `custom[]`；`POST /groups` 以 `custom` 開團（本人成功、他人 `403 CUSTOM_SPORT_FORBIDDEN`、未登入 403）；訪客 `other` 開團回應 `sport.name` 為輸入名稱（contracts/sports-api.md §2、§3）
-- [ ] T104 [US4] `api/app/domains/member/{schemas,service,router}.py`：`CustomSportCreate`／`CustomSportResponse`、`create_custom_sport`（上限、同名、`defaults` 依類型驗證）、`delete_custom_sport`、`list_custom_sports`；`api/app/sports/router.py::GET /sports` 帶 `custom[]`；`create_group` 支援 `sport_key='custom'`（快照 `sport_name`、`type_key`、`defaults`）；T103 全綠
+- [X] T103 [P] [US4] 先寫 `api/tests/contract/test_member_sports_endpoint.py`：`POST /members/me/sports`（201 形狀、未驗證會員 403、名稱長度 422、`type_key` 未註冊 422、`defaults` 不符 422、同名 `409 CUSTOM_SPORT_NAME_TAKEN`、`name="羽球"` 可成功建立（與內建同名允許）、第 21 筆 `409 CUSTOM_SPORT_LIMIT`）、`DELETE`（204、非本人 404、刪後既有團 `sport.name` 仍為快照）、`GET /sports` 登入後 `custom[]`；`POST /groups` 以 `custom` 開團（本人成功、他人 `403 CUSTOM_SPORT_FORBIDDEN`、未登入 403）；訪客 `other` 開團回應 `sport.name` 為輸入名稱（contracts/sports-api.md §2、§3）
+- [X] T104 [US4] `api/app/domains/member/{schemas,service,router}.py`：`CustomSportCreate`／`CustomSportResponse`、`create_custom_sport`（上限、同名、`defaults` 依類型驗證）、`delete_custom_sport`、`list_custom_sports`；`api/app/sports/router.py::GET /sports` 帶 `custom[]`；`create_group` 支援 `sport_key='custom'`（快照 `sport_name`、`type_key`、`defaults`）；T103 全綠
 - [ ] T105 [P] [US4] `web/core/api/sports.service.ts` 新增 `createCustomSport()`、`deleteCustomSport()` ＋ spec
 - [ ] T106 [US4] 先寫 spec 再實作 `web/features/group-admin/create-group/custom-sport-dialog.component.{ts,html,scss,spec.ts}`（名稱、類型、每隊人數選項、通用參數、類型欄位透過 `app-create-form-fields-host`、名詞選擇）；`create-group` 活動區塊新增「我的自訂」區（列出、選用、刪除含確認；只有已驗證會員可見）與訪客「其他」的名稱輸入（FR-004；US4 情境 3）
 - [ ] T107 [US4] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `createGroup.customSport*`、`errors.CUSTOM_SPORT_*`；更新 `web/sports/sports-i18n.spec.ts`
@@ -279,8 +279,8 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 **Independent Test**: quickstart §6。
 
-- [ ] T109 [P] [US6] 先寫 `api/tests/contract/test_group_list_sport_filter.py`（`sport=billiards`、`sport=custom_or_other`、與 `match_mode` 並用、無效值 422）與 `api/tests/contract/test_my_groups_sport_filter.py`（`sport=custom:<id>` 只列本人自訂活動的團、他人 id 空結果、與既有篩選並用）
-- [ ] T110 [US6] `api/app/domains/group/{router,service}.py::list_groups` 與 `api/app/domains/member/{router,service}.py::get_my_groups` 新增 `sport` 篩選；T109 全綠
+- [X] T109 [P] [US6] 先寫 `api/tests/contract/test_group_list_sport_filter.py`（`sport=billiards`、`sport=custom_or_other`、與 `match_mode` 並用、無效值 422）與 `api/tests/contract/test_my_groups_sport_filter.py`（`sport=custom:<id>` 只列本人自訂活動的團、他人 id 空結果、與既有篩選並用）
+- [X] T110 [US6] `api/app/domains/group/{router,service}.py::list_groups` 與 `api/app/domains/member/{router,service}.py::get_my_groups` 新增 `sport` 篩選；T109 全綠
 - [ ] T111 [P] [US6] `web/features/group-join/group-list/group-list.component.{ts,html}`＋`web/features/group-join/group-join.service.ts::listGroups`：活動篩選下拉（內建各一項＋「自訂／其他」）、篩選 chip、團卡活動名稱與圖示；`GroupListFilters` 加 `sport`；spec 補案例
 - [ ] T112 [P] [US6] `web/features/member/my-groups/my-groups.component.{ts,html}`＋`web/features/friends/friends.service.ts::getMyGroups`：活動篩選（內建＋「自訂／其他」＋本人自訂活動各一項，來源 `getCatalog().custom`）、團卡活動標籤；`MyGroupsFilters` 加 `sport`；spec 補案例
 - [ ] T113 [P] [US6] 分享圖卡活動名稱：`web/core/match-share-card/share-card-model.ts`／`share-card-renderer.ts`（標題下的 meta 行加活動名稱；亮點改為 `registry.peek(type_key)?.shareHighlights?.(detail, protagonist) ?? []`，空陣列則省略區塊；走勢圖只在 `net_rally` 且有 `point` 事件時繪製）、`web/core/group-share-card/{leaderboard,my-stats}-card-renderer.ts`（副標題加活動名稱）；既有 renderer spec 的 `texts()` 斷言不改，新增活動名稱案例與局數制單場卡案例（US6 情境 4）

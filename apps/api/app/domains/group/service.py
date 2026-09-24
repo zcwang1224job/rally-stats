@@ -47,6 +47,7 @@ from app.domains.group.security import (
     issue_admin_token,
     verify_admin_pin,
 )
+from app.domains.group.sport_list_filter import group_sport_condition
 from app.domains.group.sport_params import CommonParams, SportParamsError, validate_common_params
 from app.domains.group.sport_setup import (
     SCORING_PRESETS,
@@ -781,6 +782,7 @@ async def list_groups(
     group_name: str | None = None,
     creator_nickname: str | None = None,
     match_mode: str | None = None,
+    sport: str | None = None,
     pinned_group_id: uuid.UUID | None = None,
     pinned_creator_member_id: uuid.UUID | None = None,
 ) -> tuple[list[Group], int]:
@@ -841,6 +843,10 @@ async def list_groups(
         )
     if match_mode is not None:
         conditions.append(Group.match_mode == match_mode)
+    # 043 US6: a built-in activity or `custom_or_other`.
+    sport_condition = group_sport_condition(sport)
+    if sport_condition is not None:
+        conditions.append(sport_condition)
 
     count_result = await session.execute(
         select(func.count()).select_from(Group).where(*conditions)

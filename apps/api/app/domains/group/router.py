@@ -183,6 +183,7 @@ async def list_groups(
     creator_nickname: str | None = None,
     match_mode: MatchMode | None = None,
     pinned_group_id: uuid.UUID | None = None,
+    sport: Annotated[str | None, Query(max_length=40)] = None,
 ) -> GroupListResponse:
     """Public group browse list (US1/US5); an optional `Authorization`
     Bearer token adds per-item `joined_by_me` personalization (US6, research.md
@@ -211,6 +212,7 @@ async def list_groups(
         group_name=group_name,
         creator_nickname=creator_nickname,
         match_mode=match_mode,
+        sport=sport,
         pinned_group_id=active_group_id if member is not None else pinned_group_id,
         pinned_creator_member_id=member.id if member is not None else None,
     )

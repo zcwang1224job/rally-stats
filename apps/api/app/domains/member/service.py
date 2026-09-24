@@ -50,6 +50,7 @@ from app.domains.group.service import (
     resolve_guest_binding_target,
     verify_ever_group_member,
 )
+from app.domains.group.sport_list_filter import group_sport_condition
 from app.domains.member import group_benchmark, insights, matchups, player_dashboard
 from app.domains.member.models import (
     EmailVerificationToken,
@@ -2074,6 +2075,7 @@ async def get_my_groups(
     match_count_min: int | None = None,
     match_count_max: int | None = None,
     group_id: uuid.UUID | None = None,
+    sport: str | None = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has EVER had a `RosterEntry` in
@@ -2130,8 +2132,14 @@ async def get_my_groups(
             Group.status,
             Group.created_at,
             Group.disbanded_at,
+            Group.sport_key,
+            Group.type_key,
+            Group.sport_name,
         )
-        .where(Group.id.in_(all_group_ids))
+        .where(
+            Group.id.in_(all_group_ids),
+            *[c for c in (group_sport_condition(sport, member_id=member_id),) if c is not None],
+        )
         .order_by(Group.created_at.desc())
     )
     group_rows = result.all()
@@ -2163,6 +2171,9 @@ async def get_my_groups(
             is_creator=row.id in created_group_ids,
             member_status=member_status_by_group[row.id],
             match_count=match_count_by_group.get(row.id, 0),
+            sport=summary_for(
+                sport_key=row.sport_key, type_key=row.type_key, sport_name=row.sport_name
+            ),
         )
         for row in group_rows
         if (group_id is None or row.id == group_id)

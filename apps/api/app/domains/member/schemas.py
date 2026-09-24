@@ -246,6 +246,8 @@ class MyGroupSummary(BaseModel):
     # How many of this group's completed matches this member played in —
     # the same count as the group-history page's "場數".
     match_count: int
+    # 043 US6: the activity, for the card label.
+    sport: SportSummary | None = None
 
 
 class MyGroupsResponse(BaseModel):
