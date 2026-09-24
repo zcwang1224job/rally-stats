@@ -1,5 +1,7 @@
+import { ActivitySummary } from '../../core/api/sport.models';
+import { DashboardSectionsResponse } from '../../core/api/sports.service';
 import { Injectable, inject, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, map, tap } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
 import {
   BenchmarkGroupsResponse,
@@ -150,6 +152,24 @@ export class AuthService {
     );
   }
 
+  /** 043 contracts/sports-api.md §5: the activities I have played, most
+   * matches first. */
+  getActivities(): Observable<ActivitySummary[]> {
+    return this.api
+      .get<{ activities: ActivitySummary[] }>('/members/me/activities', this.authHeader())
+      .pipe(map((response) => response.activities));
+  }
+
+  /** 043 contracts/sections-manifest.md §4: one activity's dashboard, laid
+   * out by its sport type. `filters.sport` is required. */
+  getDashboardSections(filters: MemberMatchRecordFilters): Observable<DashboardSectionsResponse> {
+    const query = this.withMatchFilters(new URLSearchParams(), filters).toString();
+    return this.api.get<DashboardSectionsResponse>(
+      `/members/me/dashboard-sections${query ? `?${query}` : ''}`,
+      this.authHeader(),
+    );
+  }
+
   /** 036-match-insights-benchmarks US3: the groups I can compare within,
    * the one with most of my matches first. */
   getBenchmarkGroups(): Observable<BenchmarkGroupsResponse> {
@@ -265,9 +285,14 @@ export class AuthService {
    * privacy setting on every call, so this deliberately does NOT cache or
    * pre-check eligibility client-side (spec.md FR-008). Advanced filters
    * are intentionally not exposed here (research.md #1). */
-  getFriendMatchRecords(memberId: string, page = 1): Observable<MemberMatchRecordsResponse> {
+  getFriendMatchRecords(
+    memberId: string,
+    page = 1,
+    sport?: string,
+  ): Observable<MemberMatchRecordsResponse> {
+    const activity = sport ? `&sport=${encodeURIComponent(sport)}` : '';
     return this.api.get<MemberMatchRecordsResponse>(
-      `/members/${memberId}/match-records?page=${page}`,
+      `/members/${memberId}/match-records?page=${page}${activity}`,
       this.authHeader(),
     );
   }
@@ -275,9 +300,31 @@ export class AuthService {
   /** 034 US5: a friend's dashboard, behind the same per-request friendship
    * + privacy check as `getFriendMatchRecords()`. Unfiltered, like that
    * page. */
-  getFriendMatchDashboard(memberId: string): Observable<MemberMatchDashboardResponse> {
+  getFriendMatchDashboard(
+    memberId: string,
+    sport?: string,
+  ): Observable<MemberMatchDashboardResponse> {
+    const activity = sport ? `?sport=${encodeURIComponent(sport)}` : '';
     return this.api.get<MemberMatchDashboardResponse>(
-      `/members/${memberId}/match-dashboard`,
+      `/members/${memberId}/match-dashboard${activity}`,
+      this.authHeader(),
+    );
+  }
+
+  /** 043: a friend's activities, behind the same gate as their records. */
+  getFriendActivities(memberId: string): Observable<ActivitySummary[]> {
+    return this.api
+      .get<{ activities: ActivitySummary[] }>(`/members/${memberId}/activities`, this.authHeader())
+      .pipe(map((response) => response.activities));
+  }
+
+  /** 043: a friend's dashboard for one activity, laid out by its sport type. */
+  getFriendDashboardSections(
+    memberId: string,
+    sport: string,
+  ): Observable<DashboardSectionsResponse> {
+    return this.api.get<DashboardSectionsResponse>(
+      `/members/${memberId}/dashboard-sections?sport=${encodeURIComponent(sport)}`,
       this.authHeader(),
     );
   }

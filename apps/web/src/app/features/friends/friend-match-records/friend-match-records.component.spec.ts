@@ -95,6 +95,8 @@ function setup(options: {
   getFriendMatchRecordDetail?: () => unknown;
   getFriendMatchDashboard?: () => unknown;
   getFriendMatchComparison?: () => unknown;
+  getFriendActivities?: () => unknown;
+  getFriendDashboardSections?: () => unknown;
 }) {
   const getFriendMatchRecordsCalls: unknown[][] = [];
   const getFriendMatchDashboardCalls: unknown[][] = [];
@@ -107,6 +109,13 @@ function setup(options: {
     getFriendMatchDashboard: (...args: unknown[]) => {
       getFriendMatchDashboardCalls.push(args);
       return (options.getFriendMatchDashboard ?? (() => of(dashboardFixture())))();
+    },
+    // 043: one activity (or none) keeps the page exactly as before.
+    getFriendActivities: (...args: unknown[]) =>
+      (options.getFriendActivities ?? (() => of([])))(...(args as [])),
+    getFriendDashboardSections: (...args: unknown[]) => {
+      getFriendMatchDashboardCalls.push(['sections', ...args]);
+      return (options.getFriendDashboardSections ?? (() => of(null)))();
     },
     getFriendMatchComparison: (...args: unknown[]) => {
       getFriendMatchComparisonCalls.push(args);
@@ -637,3 +646,40 @@ describe('FriendMatchRecordsComponent', () => {
     });
   });
 });
+
+describe('FriendMatchRecordsComponent activity tabs (043)', () => {
+  const nouns = { venue: 'court', score: 'point', member: 'player' } as const;
+  const activities = [
+    {
+      sport: { sport_key: 'darts', type_key: 'frames', name_key: 'sports.darts.name', name: null, icon: 'darts', nouns },
+      filter_value: 'darts',
+      match_count: 4,
+    },
+    {
+      sport: { sport_key: 'badminton', type_key: 'net_rally', name_key: 'sports.badminton.name', name: null, icon: 'badminton', nouns },
+      filter_value: 'badminton',
+      match_count: 1,
+    },
+  ];
+
+  it('filters records and dashboard by the chosen activity', () => {
+    const { fixture, getFriendMatchRecordsCalls, getFriendMatchDashboardCalls } = setup({
+      getFriendActivities: () => of(activities),
+      getFriendDashboardSections: () =>
+        of({ sport: activities[0].sport, type_key: 'frames', total_matches: 4, sections: [] }),
+    });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const tabs = [...el.querySelectorAll('.activity-tabs [data-activity]')];
+    expect(tabs.map((tab) => tab.getAttribute('data-activity'))).toEqual(['darts', 'badminton']);
+    expect(getFriendMatchRecordsCalls.at(-1)).toEqual(['friend-1', 1, 'darts']);
+    expect(getFriendMatchDashboardCalls.at(-1)).toEqual(['sections', 'friend-1', 'darts']);
+    expect(el.querySelector('[data-section="activity-dashboard"]')).not.toBeNull();
+
+    (tabs[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(getFriendMatchRecordsCalls.at(-1)).toEqual(['friend-1', 1, 'badminton']);
+    expect(getFriendMatchDashboardCalls.at(-1)).toEqual(['friend-1', 'badminton']);
+  });
+});
+

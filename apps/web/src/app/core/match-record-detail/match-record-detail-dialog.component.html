@@ -72,7 +72,15 @@
       </div>
     </div>
 
-    @if (d.record_completeness === 'none') {
+    @if (d.winner_team === 'D') {
+      <p class="status-badge draw-badge" data-testid="draw-badge">{{ 'common.draw' | translate }}</p>
+    }
+
+    <!-- 043 FR-021: other sport types lay the page out with their own
+         sections; net rally keeps the blocks below. -->
+    @if (sectionTypeKey(d); as typeKey) {
+      <app-section-outlet [sections]="d.sections ?? []" [context]="{ typeKey: typeKey, source: d }" />
+    } @else if (d.record_completeness === 'none') {
       <p class="completeness-note">{{ 'matchRecordDetail.completeness.none' | translate }}</p>
     } @else {
       @if (d.record_completeness === 'partial') {

@@ -13,7 +13,9 @@ export function buildShareCardModel(
   context: ShareCardContext,
 ): ShareCardModel {
   const perspective = context.perspective;
-  const protagonist: Team = perspective.kind === 'mine' ? perspective.myTeam : detail.winner_team;
+  // 043: a draw has no winner; the card then takes team A's side.
+  const winner: Team = detail.winner_team === 'B' ? 'B' : 'A';
+  const protagonist: Team = perspective.kind === 'mine' ? perspective.myTeam : winner;
   const other: Team = protagonist === 'A' ? 'B' : 'A';
   const teams: [CardTeam, CardTeam] = [
     cardTeam(detail, protagonist, context),

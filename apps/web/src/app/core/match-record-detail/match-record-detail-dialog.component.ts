@@ -1,3 +1,5 @@
+import { SectionOutletComponent } from '../../sports/section-outlet/section-outlet.component';
+import { LEGACY_SPORT_TYPE } from '../../sports/sport-type-module';
 import { Component, ElementRef, computed, effect, input, signal, viewChild } from '@angular/core';
 import { TranslatePipe } from '@ngx-translate/core';
 import { MatchRecordDetailResponse, ShotPlacementDetail } from '../api/group-member-view.models';
@@ -67,6 +69,7 @@ export function nearestPointIndex(points: readonly { x: number }[], xPercent: nu
 @Component({
   selector: 'app-match-record-detail-dialog',
   imports: [
+    SectionOutletComponent,
     TranslatePipe,
     NicknameComponent,
     CourtDiagramComponent,
@@ -78,6 +81,14 @@ export function nearestPointIndex(points: readonly { x: number }[], xPercent: nu
 })
 export class MatchRecordDetailDialogComponent {
   readonly detail = input<MatchRecordDetailResponse | null>(null);
+
+  /** 043: the sport type whose sections lay this match out, or null for net
+   * rally (and any older backend's badminton match), which keeps the
+   * dialog's own blocks. */
+  sectionTypeKey(detail: MatchRecordDetailResponse): string | null {
+    const typeKey = detail.sport?.type_key ?? LEGACY_SPORT_TYPE;
+    return typeKey === LEGACY_SPORT_TYPE ? null : typeKey;
+  }
   readonly loading = input(false);
   readonly loadError = input(false);
   /** 040-match-share-card: the group name and perspective only the caller

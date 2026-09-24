@@ -9,6 +9,23 @@
 @if (errorKey(); as key) {
   <p role="alert">{{ key | translate }}</p>
 } @else if (records(); as r) {
+  @if (activities().length > 1) {
+    <nav class="tabs activity-tabs" role="tablist" [attr.aria-label]="'playerDashboard.activityTabs' | translate">
+      @for (activity of activities(); track activity.filter_value) {
+        <button
+          type="button"
+          role="tab"
+          class="tabs__tab"
+          [attr.data-activity]="activity.filter_value"
+          [attr.aria-selected]="selectedSport() === activity.filter_value"
+          (click)="selectActivity(activity.filter_value)"
+        >
+          {{ activity.sport.name ?? (activity.sport.name_key ?? '' | translate) }}
+          <span class="activity-tabs__count">{{ activity.match_count }}</span>
+        </button>
+      }
+    </nav>
+  }
   <section class="card stats-summary">
     <p class="stats-summary__total">
       {{ 'member.matchHistory.stats.totalSuffix' | translate: { total: r.total_matches } }}
@@ -55,7 +72,13 @@
     <!-- 034 US5: rendered only once it has loaded. A refusal (not friends /
          sharing off) already shows as the page's single alert above, so the
          dashboard never adds a second message for the same reason. -->
-    @if (dashboard(); as d) {
+    @if (usesSections()) {
+      @if (sectionsDashboard(); as board) {
+        <div data-section="activity-dashboard">
+          <app-section-outlet [sections]="board.sections" [context]="{ typeKey: board.type_key, source: board }" />
+        </div>
+      }
+    } @else if (dashboard(); as d) {
       <!-- 036 FR-037: the friend's whole summary, 待加強 included — it says
            nothing the dashboard does not already show, and it is gated by the
            same 023 setting. It can never carry an in-group sentence: those

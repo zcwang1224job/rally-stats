@@ -65,7 +65,8 @@ export interface MatchRecordSummary {
   team_b: ParticipantSummary[];
   score_a: number;
   score_b: number;
-  winner_team: Team;
+  /** 043: `D` is a draw. */
+  winner_team: Team | 'D';
   started_at: string | null;
   ended_at: string | null;
 }
@@ -404,6 +405,9 @@ export interface MemberMatchRecordFilters {
   // nickname-substring filters above.
   partner_key?: string;
   opponent_key?: string;
+  /** 043 FR-026: one activity (an activity's `filter_value`). Left out,
+   * only net rally matches count. */
+  sport?: string;
 }
 
 export interface LeaveGroupResponse {

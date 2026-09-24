@@ -952,7 +952,8 @@
         "serve_fault": "發球失誤",
         "other_error": "其他"
       }
-    }
+    },
+    "activityTabs": "依活動檢視"
   },
   "playerInsights": {
     "title": "優缺點摘要",

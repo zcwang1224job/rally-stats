@@ -1,3 +1,5 @@
+import { ActivitySummary } from '../../../core/api/sport.models';
+import { DashboardSectionsResponse } from '../../../core/api/sports.service';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideTranslateService } from '@ngx-translate/core';
@@ -122,6 +124,9 @@ function setup(
     benchmark?: (groupId: string) => Observable<GroupBenchmarkResponse>;
     benchmarkCalls?: string[];
     benchmarkGroupCalls?: unknown[][];
+    activities?: ActivitySummary[];
+    sections?: Observable<DashboardSectionsResponse>;
+    sectionsCalls?: unknown[][];
   } = {},
 ) {
   TestBed.configureTestingModule({
@@ -146,6 +151,12 @@ function setup(
           getGroupBenchmark: (groupId: string) => {
             options.benchmarkCalls?.push(groupId);
             return (options.benchmark ?? ((id: string) => of(benchmarkResponse(id))))(groupId);
+          },
+          // 043: one activity (or none) keeps the page exactly as before.
+          getActivities: () => of(options.activities ?? []),
+          getDashboardSections: (...args: unknown[]) => {
+            options.sectionsCalls?.push(args);
+            return options.sections ?? of(SECTIONS_RESPONSE);
           },
           getMatchRecordDetail: (...args: unknown[]) => {
             detailCalls.push(args);
@@ -912,5 +923,60 @@ describe('MatchHistoryComponent', () => {
 
       expect(scroll).not.toHaveBeenCalled();
     });
+  });
+});
+
+// --- 043 FR-026: activity tabs -------------------------------------------
+
+const NOUNS = { venue: 'court', score: 'point', member: 'player' } as const;
+const ACTIVITIES: ActivitySummary[] = [
+  {
+    sport: { sport_key: 'billiards', type_key: 'frames', name_key: 'sports.billiards.name', name: null, icon: 'billiards', nouns: NOUNS },
+    filter_value: 'billiards',
+    match_count: 5,
+  },
+  {
+    sport: { sport_key: 'badminton', type_key: 'net_rally', name_key: 'sports.badminton.name', name: null, icon: 'badminton', nouns: NOUNS },
+    filter_value: 'badminton',
+    match_count: 2,
+  },
+];
+const SECTIONS_RESPONSE: DashboardSectionsResponse = {
+  sport: ACTIVITIES[0].sport,
+  type_key: 'frames',
+  total_matches: 5,
+  sections: [{ kind: 'text_note', title_key: null, data: { text_key: 'playerDashboard.empty' } }],
+};
+
+describe('MatchHistoryComponent activity tabs (043)', () => {
+  it('one activity: no tab row, no sport filter', () => {
+    const recordCalls: unknown[][] = [];
+    const fixture = setup([], { recordCalls, activities: [ACTIVITIES[1]] });
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.activity-tabs')).toBeNull();
+    expect(recordCalls.every((call) => (call[1] as { sport?: string }).sport === undefined)).toBe(true);
+  });
+
+  it('several activities: the most played is chosen and filters the page', () => {
+    const recordCalls: unknown[][] = [];
+    const sectionsCalls: unknown[][] = [];
+    const dashboardCalls: unknown[][] = [];
+    const fixture = setup([], { recordCalls, sectionsCalls, dashboardCalls, activities: ACTIVITIES });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    const tabs = [...el.querySelectorAll('.activity-tabs [data-activity]')];
+    expect(tabs.map((tab) => tab.getAttribute('data-activity'))).toEqual(['billiards', 'badminton']);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect((recordCalls.at(-1)?.[1] as { sport?: string }).sport).toBe('billiards');
+    // Frames: the sections dashboard, not the net rally one.
+    expect((sectionsCalls.at(-1)?.[0] as { sport?: string }).sport).toBe('billiards');
+    expect(el.querySelector('[data-section="activity-dashboard"]')).not.toBeNull();
+    expect(el.querySelector('app-player-dashboard')).toBeNull();
+
+    (tabs[1] as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect((recordCalls.at(-1)?.[1] as { sport?: string }).sport).toBe('badminton');
+    expect((dashboardCalls.at(-1)?.[0] as { sport?: string }).sport).toBe('badminton');
+    expect(el.querySelector('app-player-dashboard')).not.toBeNull();
   });
 });

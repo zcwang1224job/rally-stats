@@ -128,6 +128,25 @@
        most visits are for) and the analysis. The filters above apply to
        both. Both panels stay rendered, so switching keeps each one's state
        (an open section, a chosen range, the page of matches). -->
+  <!-- 043 FR-026: one tab per activity played; never added up across. -->
+  @if (activities().length > 1) {
+    <nav class="tabs activity-tabs" role="tablist" [attr.aria-label]="'playerDashboard.activityTabs' | translate">
+      @for (activity of activities(); track activity.filter_value) {
+        <button
+          type="button"
+          role="tab"
+          class="tabs__tab"
+          [attr.data-activity]="activity.filter_value"
+          [attr.aria-selected]="selectedSport() === activity.filter_value"
+          (click)="selectActivity(activity.filter_value)"
+        >
+          {{ activity.sport.name ?? (activity.sport.name_key ?? '' | translate) }}
+          <span class="activity-tabs__count">{{ activity.match_count }}</span>
+        </button>
+      }
+    </nav>
+  }
+
   <nav class="tabs match-history-tabs" role="tablist" [attr.aria-label]="'nav.matchHistory' | translate">
     <button
       type="button"
@@ -166,6 +185,17 @@
        opening one folds away whichever was open, so the page is a short list
        of titles above the matches rather than a long scroll through all of
        them (SectionAccordion). -->
+  @if (usesSections()) {
+    <div class="section-stack" data-section="activity-dashboard">
+      @if (sectionsLoading()) {
+        <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
+      } @else if (sectionsFailed()) {
+        <p role="alert">{{ 'playerDashboard.failed' | translate }}</p>
+      } @else if (sectionsDashboard(); as board) {
+        <app-section-outlet [sections]="board.sections" [context]="{ typeKey: board.type_key, source: board }" />
+      }
+    </div>
+  } @else {
   <div class="section-stack">
     <!-- 036 US1: the conclusions first, the numbers behind them right below.
          Rides on the dashboard response, so it follows the same filters and
@@ -262,6 +292,7 @@
       />
     }
   </div>
+  }
   </div>
 
   <div

@@ -1,3 +1,7 @@
+import { ActivitySummary } from '../../../core/api/sport.models';
+import { DashboardSectionsResponse } from '../../../core/api/sports.service';
+import { SectionOutletComponent } from '../../../sports/section-outlet/section-outlet.component';
+import { LEGACY_SPORT_TYPE } from '../../../sports/sport-type-module';
 import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { TranslatePipe } from '@ngx-translate/core';
@@ -71,6 +75,7 @@ export type MatchHistorySection =
     ReactiveFormsModule,
     MatchRecordDetailDialogComponent,
     PlayerDashboardComponent,
+    SectionOutletComponent,
     PlayerInsightsComponent,
     MatchupRecordsComponent,
     GroupBenchmarkComponent,
@@ -144,6 +149,76 @@ export class MatchHistoryComponent {
   /** 034-clutch-points-player-dashboard: the cross-match dashboard, always
    * over the same filters as `records`. */
   readonly dashboard = signal<MemberMatchDashboardResponse | null>(null);
+
+  /** 043 FR-026: the activities I have played. With more than one, each is
+   * a tab and nothing is ever added up across them; the chosen one filters
+   * the whole page. A net rally activity keeps the dashboard below; the
+   * others show the sections their sport type lays out. */
+  readonly activities = signal<ActivitySummary[]>([]);
+  readonly selectedSport = signal<string | null>(null);
+  readonly selectedActivity = computed(
+    () => this.activities().find((a) => a.filter_value === this.selectedSport()) ?? null,
+  );
+  readonly usesSections = computed(() => {
+    const activity = this.selectedActivity();
+    return activity !== null && activity.sport.type_key !== LEGACY_SPORT_TYPE;
+  });
+  readonly sectionsDashboard = signal<DashboardSectionsResponse | null>(null);
+  readonly sectionsLoading = signal(false);
+  readonly sectionsFailed = signal(false);
+  private sectionsKey: string | null = null;
+
+  selectActivity(filterValue: string): void {
+    if (filterValue === this.selectedSport()) {
+      return;
+    }
+    this.selectedSport.set(filterValue);
+    this.pickedPlayer.set(null);
+    this.page.set(1);
+    this.load(1);
+  }
+
+  private loadActivities(): void {
+    this.auth.getActivities().subscribe({
+      next: (activities) => {
+        this.activities.set(activities);
+        if (activities.length > 1 && this.selectedSport() === null) {
+          this.selectActivity(activities[0].filter_value);
+        }
+      },
+      // Without the list the page stays on net rally, as before 043.
+      error: () => this.activities.set([]),
+    });
+  }
+
+  private loadSections(filters: MemberMatchRecordFilters): void {
+    const key = JSON.stringify(filters);
+    if (key === this.sectionsKey) {
+      return;
+    }
+    this.sectionsKey = key;
+    this.dashboardFiltersKey = null;
+    this.sectionsLoading.set(true);
+    this.sectionsFailed.set(false);
+    this.auth.getDashboardSections(filters).subscribe({
+      next: (response) => {
+        if (key !== this.sectionsKey) {
+          return;
+        }
+        this.sectionsDashboard.set(response);
+        this.sectionsLoading.set(false);
+      },
+      error: () => {
+        if (key !== this.sectionsKey) {
+          return;
+        }
+        this.sectionsDashboard.set(null);
+        this.sectionsFailed.set(true);
+        this.sectionsLoading.set(false);
+        this.sectionsKey = null;
+      },
+    });
+  }
   readonly dashboardLoading = signal(false);
   readonly dashboardFailed = signal(false);
   /** The landing court draws singles lines only when every match is one. */
@@ -271,6 +346,7 @@ export class MatchHistoryComponent {
 
   constructor() {
     this.load(this.page());
+    this.loadActivities();
   }
 
   applyFilters(): void {
@@ -336,6 +412,7 @@ export class MatchHistoryComponent {
       match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
       partner_key: this.pickedKey('partner'),
       opponent_key: this.pickedKey('opponent'),
+      sport: this.selectedSport() ?? undefined,
     };
     this.appliedFilters.set(filters);
     this.loadDashboard(filters);
@@ -362,6 +439,10 @@ export class MatchHistoryComponent {
    * `load()` re-reads the form on a page flip too: whatever path changed
    * the list's filters, the dashboard follows. */
   private loadDashboard(filters: MemberMatchRecordFilters): void {
+    if (this.usesSections()) {
+      this.loadSections(filters);
+      return;
+    }
     const key = JSON.stringify(filters);
     if (key === this.dashboardFiltersKey) {
       return;
@@ -433,7 +514,9 @@ export class MatchHistoryComponent {
     // 040-match-share-card FR-016: this is the viewer's own match list, so
     // the share card takes their side. Which side is read off this row
     // (won + winner_team), never matched against the logged-in member.
-    const myTeam = match.won ? match.winner_team : match.winner_team === 'A' ? 'B' : 'A';
+    // 043: a draw doesn't say which side was mine; the card takes team A's.
+    const winner = match.winner_team === 'D' ? 'A' : match.winner_team;
+    const myTeam = match.won ? winner : winner === 'A' ? 'B' : 'A';
     this.shareContext.set({
       groupName: match.group_name,
       perspective: { kind: 'mine', myTeam },

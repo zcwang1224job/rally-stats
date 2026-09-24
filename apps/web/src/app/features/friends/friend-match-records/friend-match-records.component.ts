@@ -1,5 +1,9 @@
+import { ActivitySummary } from '../../../core/api/sport.models';
+import { DashboardSectionsResponse } from '../../../core/api/sports.service';
+import { SectionOutletComponent } from '../../../sports/section-outlet/section-outlet.component';
+import { LEGACY_SPORT_TYPE } from '../../../sports/sport-type-module';
 import { RatioPercentPipe } from '../../../shared/percent/ratio-percent.pipe';
-import { Component, inject, signal, viewChild } from '@angular/core';
+import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { MatchCardComponent } from '../../../shared/match-card/match-card.component';
@@ -43,6 +47,7 @@ export type FriendRecordsSection = 'comparison' | 'insights' | 'dashboard' | 'pa
 @Component({
   selector: 'app-friend-match-records',
   imports: [
+    SectionOutletComponent,
     RatioPercentPipe,
     MatchCardComponent,
     PaginationComponent,
@@ -141,6 +146,39 @@ export class FriendMatchRecordsComponent {
   constructor() {
     this.load(this.page());
     this.loadDashboard();
+    this.loadActivities();
+  }
+
+  /** 043 FR-026: one tab per activity the friend has played; see the
+   * member's own match history for the same rule. */
+  readonly activities = signal<ActivitySummary[]>([]);
+  readonly selectedSport = signal<string | null>(null);
+  readonly usesSections = computed(() => {
+    const activity = this.activities().find((a) => a.filter_value === this.selectedSport());
+    return activity !== undefined && activity.sport.type_key !== LEGACY_SPORT_TYPE;
+  });
+  readonly sectionsDashboard = signal<DashboardSectionsResponse | null>(null);
+
+  selectActivity(filterValue: string): void {
+    if (filterValue === this.selectedSport()) {
+      return;
+    }
+    this.selectedSport.set(filterValue);
+    this.page.set(1);
+    this.load(1);
+    this.loadDashboard();
+  }
+
+  private loadActivities(): void {
+    this.auth.getFriendActivities(this.memberId).subscribe({
+      next: (activities) => {
+        this.activities.set(activities);
+        if (activities.length > 1 && this.selectedSport() === null) {
+          this.selectActivity(activities[0].filter_value);
+        }
+      },
+      error: () => this.activities.set([]),
+    });
   }
 
   goToPage(page: number): void {
@@ -150,7 +188,11 @@ export class FriendMatchRecordsComponent {
 
   private load(page: number): void {
     this.errorKey.set(null);
-    this.auth.getFriendMatchRecords(this.memberId, page).subscribe({
+    const sport = this.selectedSport();
+    const request = sport
+      ? this.auth.getFriendMatchRecords(this.memberId, page, sport)
+      : this.auth.getFriendMatchRecords(this.memberId, page);
+    request.subscribe({
       next: (response) => this.records.set(response),
       error: (error: ApiError) => {
         this.records.set(null);
@@ -169,7 +211,20 @@ export class FriendMatchRecordsComponent {
    * not change what the dashboard covers. A failure is silent on purpose:
    * see the template. */
   private loadDashboard(): void {
-    this.auth.getFriendMatchDashboard(this.memberId).subscribe({
+    const sport = this.selectedSport();
+    if (sport && this.usesSections()) {
+      this.dashboard.set(null);
+      this.auth.getFriendDashboardSections(this.memberId, sport).subscribe({
+        next: (response) => this.sectionsDashboard.set(response),
+        error: () => this.sectionsDashboard.set(null),
+      });
+      return;
+    }
+    this.sectionsDashboard.set(null);
+    const request = sport
+      ? this.auth.getFriendMatchDashboard(this.memberId, sport)
+      : this.auth.getFriendMatchDashboard(this.memberId);
+    request.subscribe({
       next: (response) => this.dashboard.set(response),
       error: () => this.dashboard.set(null),
     });

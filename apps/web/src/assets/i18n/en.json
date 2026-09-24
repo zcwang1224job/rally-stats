@@ -952,7 +952,8 @@
         "serve_fault": "Serve fault",
         "other_error": "Other"
       }
-    }
+    },
+    "activityTabs": "By activity"
   },
   "playerInsights": {
     "title": "Strengths and weaknesses",
