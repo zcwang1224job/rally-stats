@@ -342,5 +342,3 @@ Complexity Tracking 或等效章節中明確記錄衝突原因與替代方案，
 記錄合理例外，複雜度提升 MUST 有正當理由（Complexity Tracking）。
 
 **Version**: 1.1.0 | **Ratified**: 2026-08-31 | **Last Amended**: 2026-09-24
-</content>
-</invoke>
