@@ -38,6 +38,27 @@ interface FramesDefaults {
       }
     </div>
   `,
+  styles: `
+    .frames-fields {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+    .checkbox-label {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-sm);
+      min-height: 44px;
+    }
+    .checkbox-label input[type='checkbox'] {
+      width: 1.25rem;
+      height: 1.25rem;
+      min-height: 0;
+      flex: none;
+      margin: 0;
+    }
+  `,
 })
 export class FramesCreateFormFieldsComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);

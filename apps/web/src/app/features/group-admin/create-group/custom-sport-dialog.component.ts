@@ -153,6 +153,20 @@ const MEMBERS: readonly MemberNoun[] = ['player', 'member', 'competitor'];
     </dialog>
   `,
   styles: `
+    .checkbox-label {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-sm);
+      min-height: 44px;
+    }
+    .checkbox-label input[type='checkbox'] {
+      width: 1.25rem;
+      height: 1.25rem;
+      min-height: 0;
+      flex: none;
+      margin: 0;
+    }
     .team-sizes,
     .nouns {
       display: flex;

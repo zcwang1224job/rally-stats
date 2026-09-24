@@ -176,7 +176,7 @@ description: "Task list for 043-sport-type-plugin-foundation"
 - [X] T063 [US2] `web/features/group-admin/shared/group-form-validators.ts`：`minMembersForMode` 改以 `team_size`（`2 × team_size`）、新增 `genericScoringValidator`（`target ≥ win_by`、`cap ≥ target` 或空、`score_steps` 非空遞增）；spec 補案例、既有案例不改
 - [X] T064 [US2] `web/features/group-admin/admin-page/admin-page.component.{ts,html}`：顯示活動標籤（不可編輯）；`editForm` 改 `team_size`（同步送 `match_mode`）與通用參數；`manual-assign.component.ts` 的 `singles ? 1 : 2` 改讀 `team_size`；`SPORT_IMMUTABLE` 錯誤提示
 - [X] T065 [US2] i18n：`i18n/zh-TW.json` 與 `i18n/en.json` 新增 `sports.*`（9 個活動名稱、名詞集合）、`createGroup.activity*`、`createGroup.generic*`（通用參數標籤與說明）、`errors.SPORT_IMMUTABLE`／`MODULE_NOT_SUPPORTED`；新增 `web/sports/sports-i18n.spec.ts` 做 key 一致性檢查（FR-037）
-- [ ] T066 [US2] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §2 手動驗證，撞球流程以碼錶計時並記錄於 `docs/043-quickstart-run.md`（SC-003）（US2 檢查點）
+- [X] T066 [US2] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §2 手動驗證，撞球流程以碼錶計時並記錄於 `docs/043-quickstart-run.md`（SC-003）（US2 檢查點）
 
 **Checkpoint**: 可用目錄中任一隔網活動開團計分；撞球可開團但控制板仍是通用 +1（局數制在 US3 補上）。
 
@@ -207,16 +207,16 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 ### 前端
 
-- [ ] T078 [P] [US3] `web/core/api/court-control.service.ts` 與 `web/features/group-admin/schedule-management/schedule.service.ts` 新增 `applyEvent(kind, payload)`、`undoLastEvent()`（三個授權面）＋ spec
-- [ ] T079 [P] [US3] `web/core/api/sports.service.ts` 新增 `getActivities(memberId?)`、`getDashboardSections(filters, sport, memberId?)` ＋ spec
-- [ ] T080 [P] [US3] 先寫 spec 再實作 `web/sports/types/frames/scoreboard/frames-scoreboard.component.{ts,html,scss,spec.ts}`（雙方局數大字、目前局次／先贏幾局、啟用時本局比分；訂閱 `match.scoreUpdated`、`match.eventApplied`、`match.ended`、`rotation.updated`、`match.nextRound`；下一組預告與離線提示沿用既有樣式）（FR-019）
-- [ ] T081 [P] [US3] 先寫 spec 再實作 `web/sports/types/frames/control-panel/frames-control.component.{ts,html,scss,spec.ts}`（本局 +1／−1 各隊、「標記本局勝方」A／B、分低者被標勝二次確認、「復原」、「放棄比賽」沿用既有確認；未啟用局內比分時只顯示標記與復原）與其包裝成三個 surface 的元件 `frames-control-panel`（token）、`frames-all-courts-block`、`frames-court-control`（管理頁 `ScheduleService`）（FR-018）
-- [ ] T082 [P] [US3] 先寫 spec 再實作區塊元件 `web/sports/types/frames/sections/{frame-list,frame-trend,dashboard-summary}-section.component.ts`（`frame_list` 為表格：局序、勝方、局內比分、結束方式；`frame_trend` 用 `shared/line-chart`）
-- [ ] T083 [P] [US3] 先寫 spec 再實作 `web/sports/types/frames/create-form-fields/frames-create-form-fields.component.ts`（先贏幾局＝`target_score`、記局內比分開關、局內達標分可空、局內需領先分）
-- [ ] T084 [US3] `web/sports/types/frames/frames.module.ts` 匯出 `FRAMES`；`web/sports/registry.ts` 載入表加 `frames`
-- [ ] T085 [US3] `web/features/member/match-history/match-history.component.{ts,html}`：「統計」頁籤改為活動頁籤（`getActivities()`；只有一筆時不顯示頁籤列；每個頁籤渲染 `app-dashboard-host` 並把 `filter_value` 併入篩選）；`friend-match-records` 同樣處理；既有 46＋27 個 spec 依允許變更清單補 mock 方法，斷言不改（FR-026）
-- [ ] T086 [US3] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `frames.*`（控制板、計分板、區塊標題、指標名稱、確認文案）、`playerDashboard.activityTabs*`、`errors.EVENT_KIND_NOT_ALLOWED`／`NOTHING_TO_UNDO`／`UNDO_NOT_SUPPORTED`／`UNDO_CONFLICT`／`SPORT_TYPE_NOT_SUPPORTED`；更新 `web/sports/sports-i18n.spec.ts`
-- [ ] T087 [US3] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §3 手動驗證；`apps/web/dist/` 出現 `frames` 獨立 chunk（SC-006）（US3 檢查點）
+- [X] T078 [P] [US3] `web/core/api/court-control.service.ts` 與 `web/features/group-admin/schedule-management/schedule.service.ts` 新增 `applyEvent(kind, payload)`、`undoLastEvent()`（三個授權面）＋ spec
+- [X] T079 [P] [US3] `web/core/api/sports.service.ts` 新增 `getActivities(memberId?)`、`getDashboardSections(filters, sport, memberId?)` ＋ spec
+- [X] T080 [P] [US3] 先寫 spec 再實作 `web/sports/types/frames/scoreboard/frames-scoreboard.component.{ts,html,scss,spec.ts}`（雙方局數大字、目前局次／先贏幾局、啟用時本局比分；訂閱 `match.scoreUpdated`、`match.eventApplied`、`match.ended`、`rotation.updated`、`match.nextRound`；下一組預告與離線提示沿用既有樣式）（FR-019）
+- [X] T081 [P] [US3] 先寫 spec 再實作 `web/sports/types/frames/control-panel/frames-control.component.{ts,html,scss,spec.ts}`（本局 +1／−1 各隊、「標記本局勝方」A／B、分低者被標勝二次確認、「復原」、「放棄比賽」沿用既有確認；未啟用局內比分時只顯示標記與復原）與其包裝成三個 surface 的元件 `frames-control-panel`（token）、`frames-all-courts-block`、`frames-court-control`（管理頁 `ScheduleService`）（FR-018）
+- [X] T082 [P] [US3] 先寫 spec 再實作區塊元件 `web/sports/types/frames/sections/{frame-list,frame-trend,dashboard-summary}-section.component.ts`（`frame_list` 為表格：局序、勝方、局內比分、結束方式；`frame_trend` 用 `shared/line-chart`）
+- [X] T083 [P] [US3] 先寫 spec 再實作 `web/sports/types/frames/create-form-fields/frames-create-form-fields.component.ts`（先贏幾局＝`target_score`、記局內比分開關、局內達標分可空、局內需領先分）
+- [X] T084 [US3] `web/sports/types/frames/frames.module.ts` 匯出 `FRAMES`；`web/sports/registry.ts` 載入表加 `frames`
+- [X] T085 [US3] `web/features/member/match-history/match-history.component.{ts,html}`：「統計」頁籤改為活動頁籤（`getActivities()`；只有一筆時不顯示頁籤列；每個頁籤渲染 `app-dashboard-host` 並把 `filter_value` 併入篩選）；`friend-match-records` 同樣處理；既有 46＋27 個 spec 依允許變更清單補 mock 方法，斷言不改（FR-026）
+- [X] T086 [US3] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `frames.*`（控制板、計分板、區塊標題、指標名稱、確認文案）、`playerDashboard.activityTabs*`、`errors.EVENT_KIND_NOT_ALLOWED`／`NOTHING_TO_UNDO`／`UNDO_NOT_SUPPORTED`／`UNDO_CONFLICT`／`SPORT_TYPE_NOT_SUPPORTED`；更新 `web/sports/sports-i18n.spec.ts`
+- [X] T087 [US3] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §3 手動驗證；`apps/web/dist/` 出現 `frames` 獨立 chunk（SC-006）（US3 檢查點）
 
 **Checkpoint**: 撞球等局數制活動完整可用；羽球與桌球頁籤與之前相同。
 
@@ -244,13 +244,13 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 ### 前端
 
-- [ ] T096 [P] [US5] `web/core/api/court-control.service.ts`、`schedule.service.ts` 新增 `finishMatch()`；`score()` 的 `delta` 型別放寬為 `number` ＋ spec
-- [ ] T097 [P] [US5] 先寫 spec 再實作 `web/sports/types/generic/control-panel/generic-control.component.{ts,html,scss,spec.ts}`（依 `score_steps` 渲染 +N 各隊與「復原」；`end_mode='manual'` 顯示「結束並記錄結果」（確認文案含目前比分與平手提示）與「放棄比賽」（既有確認），兩者名稱、圖示、確認文字不同；`target` 模式只顯示「放棄比賽」）與三個 surface 包裝（token／all-courts／court-control）（FR-017a、憲章 V）
-- [ ] T098 [P] [US5] 先寫 spec 再實作 `web/sports/types/generic/scoreboard/generic-scoreboard.component.*`（比分大字、平手結果顯示「平」文字）與 `web/sports/types/generic/create-form-fields/generic-create-form-fields.component.*`（本期無類型專屬欄位，僅說明文字）
-- [ ] T099 [US5] `web/sports/types/generic/generic.module.ts` 匯出 `GENERIC`；`web/sports/registry.ts` 載入表加 `generic`
-- [ ] T100 [US5] 排行榜與紀錄畫面顯示平手：`web/features/group-admin/**`（團內排行榜）、`web/features/member/my-groups/group-history/**`（最終排名）、`web/features/group-member-view/**`、`shared/match-card`（勝／敗／平標籤，文字不只靠顏色）；相關 spec 補案例
-- [ ] T101 [US5] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `genericSport.*`、`controlPanel.finish*`／`abandon*`、`common.draw`、`errors.SCORE_STEP_NOT_ALLOWED`／`FINISH_NOT_AVAILABLE`／`DRAW_NOT_ALLOWED`；更新 `web/sports/sports-i18n.spec.ts`
-- [ ] T102 [US5] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §4 手動驗證；`apps/web/dist/` 出現 `generic` 獨立 chunk（US5 檢查點）
+- [X] T096 [P] [US5] `web/core/api/court-control.service.ts`、`schedule.service.ts` 新增 `finishMatch()`；`score()` 的 `delta` 型別放寬為 `number` ＋ spec
+- [X] T097 [P] [US5] 先寫 spec 再實作 `web/sports/types/generic/control-panel/generic-control.component.{ts,html,scss,spec.ts}`（依 `score_steps` 渲染 +N 各隊與「復原」；`end_mode='manual'` 顯示「結束並記錄結果」（確認文案含目前比分與平手提示）與「放棄比賽」（既有確認），兩者名稱、圖示、確認文字不同；`target` 模式只顯示「放棄比賽」）與三個 surface 包裝（token／all-courts／court-control）（FR-017a、憲章 V）
+- [X] T098 [P] [US5] 先寫 spec 再實作 `web/sports/types/generic/scoreboard/generic-scoreboard.component.*`（比分大字、平手結果顯示「平」文字）與 `web/sports/types/generic/create-form-fields/generic-create-form-fields.component.*`（本期無類型專屬欄位，僅說明文字）
+- [X] T099 [US5] `web/sports/types/generic/generic.module.ts` 匯出 `GENERIC`；`web/sports/registry.ts` 載入表加 `generic`
+- [X] T100 [US5] 排行榜與紀錄畫面顯示平手：`web/features/group-admin/**`（團內排行榜）、`web/features/member/my-groups/group-history/**`（最終排名）、`web/features/group-member-view/**`、`shared/match-card`（勝／敗／平標籤，文字不只靠顏色）；相關 spec 補案例
+- [X] T101 [US5] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `genericSport.*`、`controlPanel.finish*`／`abandon*`、`common.draw`、`errors.SCORE_STEP_NOT_ALLOWED`／`FINISH_NOT_AVAILABLE`／`DRAW_NOT_ALLOWED`；更新 `web/sports/sports-i18n.spec.ts`
+- [X] T102 [US5] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §4 手動驗證；`apps/web/dist/` 出現 `generic` 獨立 chunk（US5 檢查點）
 
 **Checkpoint**: 任何 1v1／2v2 的活動都能以「其他」開團並完整記錄勝敗平。
 
@@ -264,10 +264,10 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 - [X] T103 [P] [US4] 先寫 `api/tests/contract/test_member_sports_endpoint.py`：`POST /members/me/sports`（201 形狀、未驗證會員 403、名稱長度 422、`type_key` 未註冊 422、`defaults` 不符 422、同名 `409 CUSTOM_SPORT_NAME_TAKEN`、`name="羽球"` 可成功建立（與內建同名允許）、第 21 筆 `409 CUSTOM_SPORT_LIMIT`）、`DELETE`（204、非本人 404、刪後既有團 `sport.name` 仍為快照）、`GET /sports` 登入後 `custom[]`；`POST /groups` 以 `custom` 開團（本人成功、他人 `403 CUSTOM_SPORT_FORBIDDEN`、未登入 403）；訪客 `other` 開團回應 `sport.name` 為輸入名稱（contracts/sports-api.md §2、§3）
 - [X] T104 [US4] `api/app/domains/member/{schemas,service,router}.py`：`CustomSportCreate`／`CustomSportResponse`、`create_custom_sport`（上限、同名、`defaults` 依類型驗證）、`delete_custom_sport`、`list_custom_sports`；`api/app/sports/router.py::GET /sports` 帶 `custom[]`；`create_group` 支援 `sport_key='custom'`（快照 `sport_name`、`type_key`、`defaults`）；T103 全綠
-- [ ] T105 [P] [US4] `web/core/api/sports.service.ts` 新增 `createCustomSport()`、`deleteCustomSport()` ＋ spec
-- [ ] T106 [US4] 先寫 spec 再實作 `web/features/group-admin/create-group/custom-sport-dialog.component.{ts,html,scss,spec.ts}`（名稱、類型、每隊人數選項、通用參數、類型欄位透過 `app-create-form-fields-host`、名詞選擇）；`create-group` 活動區塊新增「我的自訂」區（列出、選用、刪除含確認；只有已驗證會員可見）與訪客「其他」的名稱輸入（FR-004；US4 情境 3）
-- [ ] T107 [US4] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `createGroup.customSport*`、`errors.CUSTOM_SPORT_*`；更新 `web/sports/sports-i18n.spec.ts`
-- [ ] T108 [US4] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §5 手動驗證（US4 檢查點）
+- [X] T105 [P] [US4] `web/core/api/sports.service.ts` 新增 `createCustomSport()`、`deleteCustomSport()` ＋ spec
+- [X] T106 [US4] 先寫 spec 再實作 `web/features/group-admin/create-group/custom-sport-dialog.component.{ts,html,scss,spec.ts}`（名稱、類型、每隊人數選項、通用參數、類型欄位透過 `app-create-form-fields-host`、名詞選擇）；`create-group` 活動區塊新增「我的自訂」區（列出、選用、刪除含確認；只有已驗證會員可見）與訪客「其他」的名稱輸入（FR-004；US4 情境 3）
+- [X] T107 [US4] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `createGroup.customSport*`、`errors.CUSTOM_SPORT_*`；更新 `web/sports/sports-i18n.spec.ts`
+- [X] T108 [US4] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §5 手動驗證（US4 檢查點）
 
 **Checkpoint**: 目錄外的活動可由會員自訂並重用。
 
@@ -281,11 +281,11 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 - [X] T109 [P] [US6] 先寫 `api/tests/contract/test_group_list_sport_filter.py`（`sport=billiards`、`sport=custom_or_other`、與 `match_mode` 並用、無效值 422）與 `api/tests/contract/test_my_groups_sport_filter.py`（`sport=custom:<id>` 只列本人自訂活動的團、他人 id 空結果、與既有篩選並用）
 - [X] T110 [US6] `api/app/domains/group/{router,service}.py::list_groups` 與 `api/app/domains/member/{router,service}.py::get_my_groups` 新增 `sport` 篩選；T109 全綠
-- [ ] T111 [P] [US6] `web/features/group-join/group-list/group-list.component.{ts,html}`＋`web/features/group-join/group-join.service.ts::listGroups`：活動篩選下拉（內建各一項＋「自訂／其他」）、篩選 chip、團卡活動名稱與圖示；`GroupListFilters` 加 `sport`；spec 補案例
-- [ ] T112 [P] [US6] `web/features/member/my-groups/my-groups.component.{ts,html}`＋`web/features/friends/friends.service.ts::getMyGroups`：活動篩選（內建＋「自訂／其他」＋本人自訂活動各一項，來源 `getCatalog().custom`）、團卡活動標籤；`MyGroupsFilters` 加 `sport`；spec 補案例
-- [ ] T113 [P] [US6] 分享圖卡活動名稱：`web/core/match-share-card/share-card-model.ts`／`share-card-renderer.ts`（標題下的 meta 行加活動名稱；亮點改為 `registry.peek(type_key)?.shareHighlights?.(detail, protagonist) ?? []`，空陣列則省略區塊；走勢圖只在 `net_rally` 且有 `point` 事件時繪製）、`web/core/group-share-card/{leaderboard,my-stats}-card-renderer.ts`（副標題加活動名稱）；既有 renderer spec 的 `texts()` 斷言不改，新增活動名稱案例與局數制單場卡案例（US6 情境 4）
-- [ ] T114 [US6] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `groupJoin.sportFilter*`、`myGroups.sportFilter*`、`shareCard.activityLabel`；更新 `web/sports/sports-i18n.spec.ts`
-- [ ] T115 [US6] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §6 手動驗證（US6 檢查點）
+- [X] T111 [P] [US6] `web/features/group-join/group-list/group-list.component.{ts,html}`＋`web/features/group-join/group-join.service.ts::listGroups`：活動篩選下拉（內建各一項＋「自訂／其他」）、篩選 chip、團卡活動名稱與圖示；`GroupListFilters` 加 `sport`；spec 補案例
+- [X] T112 [P] [US6] `web/features/member/my-groups/my-groups.component.{ts,html}`＋`web/features/friends/friends.service.ts::getMyGroups`：活動篩選（內建＋「自訂／其他」＋本人自訂活動各一項，來源 `getCatalog().custom`）、團卡活動標籤；`MyGroupsFilters` 加 `sport`；spec 補案例
+- [X] T113 [P] [US6] 分享圖卡活動名稱：`web/core/match-share-card/share-card-model.ts`／`share-card-renderer.ts`（標題下的 meta 行加活動名稱；亮點改為 `registry.peek(type_key)?.shareHighlights?.(detail, protagonist) ?? []`，空陣列則省略區塊；走勢圖只在 `net_rally` 且有 `point` 事件時繪製）、`web/core/group-share-card/{leaderboard,my-stats}-card-renderer.ts`（副標題加活動名稱）；既有 renderer spec 的 `texts()` 斷言不改，新增活動名稱案例與局數制單場卡案例（US6 情境 4）
+- [X] T114 [US6] i18n：在 `i18n/zh-TW.json` 與 `i18n/en.json` 新增 `groupJoin.sportFilter*`、`myGroups.sportFilter*`、`shareCard.activityLabel`；更新 `web/sports/sports-i18n.spec.ts`
+- [X] T115 [US6] 在 `api/` 與 `apps/web/` 執行完整測試與關卡；依 `specs/043-sport-type-plugin-foundation/quickstart.md` §6 手動驗證（US6 檢查點）
 
 **Checkpoint**: 多活動在瀏覽與分享層面可辨識。
 
@@ -298,10 +298,10 @@ description: "Task list for 043-sport-type-plugin-foundation"
 **Independent Test**: quickstart §7。
 
 - [X] T116 [P] [US7] 先寫 `api/tests/unit/sports/test_plugin_contracts.py`：對每個已註冊外掛驗證 `event_schemas()` 的 kind 以 `<type_key>.` 為前綴、`match_detail()`／`dashboard_sections()` 產出的 kind ⊆ `section_kinds ∪ GENERIC_KINDS`、`params_schema()` 可產生 JSON Schema、`tables()` 的每張表都有 `score_event_id` 外鍵 cascade；並把 `section_kinds` 匯出成 `api/app/sports/section-kinds.json`（`pytest --update-section-kinds` 更新、預設模式比對不得漂移）
-- [ ] T117 [P] [US7] 先寫 `web/sports/section-outlet/section-outlet.contract.spec.ts`：讀 `apps/api/app/sports/section-kinds.json`（以相對路徑匯入 JSON），對每個 kind 斷言三個類型模組（測試中同步註冊）有元件或屬於 `GENERIC_KINDS`；`unknown.kind` 走退路（SC-008）
+- [X] T117 [P] [US7] 先寫 `web/sports/section-outlet/section-outlet.contract.spec.ts`：讀 `apps/api/app/sports/section-kinds.json`（以相對路徑匯入 JSON），對每個 kind 斷言三個類型模組（測試中同步註冊）有元件或屬於 `GENERIC_KINDS`；`unknown.kind` 走退路（SC-008）
 - [X] T118 [US7] 建立 `api/scripts/check_plugin_scope.sh`（quickstart §7 的 SC-005 指令：給定 commit 範圍與 `type_key`，列出不在允許路徑內的改動檔，非空即失敗）並在 tasks 提交紀錄上驗證 `frames` 與 `generic` 各自的實作提交範圍為空
-- [ ] T119 [US7] 執行 quickstart §7 的邊界破壞測試（核心加一行匯入外掛 → `lint-imports` 失敗；前端同理 → `npm run lint` 失敗），把結果記錄到 `docs/043-extensibility-check/`（本機文件）
-- [ ] T120 [US7] 在 `apps/web/` 執行 `npx ng build --configuration production`：`apps/web/dist/` 有 `net-rally`、`frames`、`generic` 三個獨立 chunk 且 `main-*.js` 不含 `frames.frame_list`（SC-006）
+- [X] T119 [US7] 執行 quickstart §7 的邊界破壞測試（核心加一行匯入外掛 → `lint-imports` 失敗；前端同理 → `npm run lint` 失敗），把結果記錄到 `docs/043-extensibility-check/`（本機文件）
+- [X] T120 [US7] 在 `apps/web/` 執行 `npx ng build --configuration production`：`apps/web/dist/` 有 `net-rally`、`frames`、`generic` 三個獨立 chunk 且 `main-*.js` 不含 `frames.frame_list`（SC-006）
 
 **Checkpoint**: 邊界與契約皆由工具守住；新增類型的檢查清單（contracts/plugin-boundary.md §5）可照做。
 
@@ -312,10 +312,10 @@ description: "Task list for 043-sport-type-plugin-foundation"
 - [ ] T121 [P] 更新 `docs/features.md`（功能總覽加「活動與比賽類型」、移除「羽球專用」描述、我的團活動頁籤）、`docs/tools.md`（`system_config` 新 key）、`docs/cicd-pipeline.md`（關卡指令加 `lint-imports`）——本機 docs，直接改主 checkout
 - [X] T122 [P] 在 `specs/043-sport-type-plugin-foundation/plan.md` 的 Post-design re-check 段補一句：`EndingType`／`RecordShotPlacementRequest` 留在核心 schema 的妥協（research.md Decision 10 已於 tasks 階段更新）
 - [X] T123 [P] 移除死碼：`api/app/domains/schedule/service.py` 的 `_FALLBACK_MINUTES_PER_TARGET_POINT`、`api/app/domains/group/service.py` 中已搬走的發球／落點查詢；`api/scripts/reset_data.py` TRUNCATE 清單加 `member_sports`、`frames_frame_results`、`frames_frame_points`
-- [ ] T124 [P] i18n 全量 parity：確認所有新增 key 在 `i18n/zh-TW.json` 與 `i18n/en.json` 一致（既有 parity spec 全綠，`grep -c` 對照）（SC-007）
-- [ ] T125 [P] 無障礙檢查：以 `docs/043-a11y-check/shoot.mjs`（沿用 `docs/my-groups-match-count-check/shoot.mjs` 的 360／414／1280 與 WebKit 模式）檢查 `web/features/group-admin/create-group/` 的活動卡片、`web/sports/types/{frames,generic}/control-panel/` 的 `+N`／「標記本局勝方」／「結束並記錄結果」按鈕觸控目標 ≥ 44px、鍵盤可達、`aria-pressed`／`aria-label`；平手與勝敗標籤不只靠顏色；360px 無橫向捲動（憲章 VII）
+- [X] T124 [P] i18n 全量 parity：確認所有新增 key 在 `i18n/zh-TW.json` 與 `i18n/en.json` 一致（既有 parity spec 全綠，`grep -c` 對照）（SC-007）
+- [X] T125 [P] 無障礙檢查：以 `docs/043-a11y-check/shoot.mjs`（沿用 `docs/my-groups-match-count-check/shoot.mjs` 的 360／414／1280 與 WebKit 模式）檢查 `web/features/group-admin/create-group/` 的活動卡片、`web/sports/types/{frames,generic}/control-panel/` 的 `+N`／「標記本局勝方」／「結束並記錄結果」按鈕觸控目標 ≥ 44px、鍵盤可達、`aria-pressed`／`aria-label`；平手與勝敗標籤不只靠顏色；360px 無橫向捲動（憲章 VII）
 - [ ] T126 執行完整 quickstart（§1～§8）並把各節結果記錄到 `docs/043-quickstart-run.md`（本機文件）
-- [ ] T127 最終關卡：後端 `ruff check app tests && mypy app && lint-imports && python -m pytest -q`、前端 `npm run lint && npx ng test --watch=false && npx ng build --configuration production` 全綠；`git diff origin/ut -- apps/api/tests apps/web/src/app/**/*.spec.ts` 複核允許變更清單；推送 `feature/sport-type-plugin-foundation`
+- [X] T127 最終關卡：後端 `ruff check app tests && mypy app && lint-imports && python -m pytest -q`、前端 `npm run lint && npx ng test --watch=false && npx ng build --configuration production` 全綠；`git diff origin/ut -- apps/api/tests apps/web/src/app/**/*.spec.ts` 複核允許變更清單；推送 `feature/sport-type-plugin-foundation`
 
 ---
 

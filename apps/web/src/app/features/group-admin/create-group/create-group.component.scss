@@ -85,6 +85,15 @@
 
 .checkbox-label {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: var(--space-sm);
+
+  input[type='checkbox'] {
+    width: 1.25rem;
+    height: 1.25rem;
+    min-height: 0;
+    flex: none;
+    margin: 0;
+  }
 }
