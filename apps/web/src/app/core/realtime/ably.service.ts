@@ -33,4 +33,15 @@ export class RealtimeService {
       return () => channel.unsubscribe(event, listener);
     });
   }
+
+  /** 043: resolves once the channel is attached. Messages published before
+   * that never reach this client, so a page that loaded its state earlier
+   * reloads it here to catch anything sent in between. Rejections (a
+   * failed attach) are left to the connection-state handling. */
+  whenAttached(channelName: string): Promise<void> {
+    return this.getClient()
+      .channels.get(channelName)
+      .attach()
+      .then(() => undefined);
+  }
 }

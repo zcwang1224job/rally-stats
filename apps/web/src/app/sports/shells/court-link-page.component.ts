@@ -183,5 +183,11 @@ export class CourtLinkPageComponent {
     for (const event of ['match.ended', 'rotation.updated', 'match.nextRound']) {
       on(event).subscribe(() => this.loadState());
     }
+    // The first state load can race the channel attach: anything scored in
+    // between would never arrive, so read the state again once attached.
+    this.realtime.whenAttached(channel).then(
+      () => this.loadState(),
+      () => undefined,
+    );
   }
 }
