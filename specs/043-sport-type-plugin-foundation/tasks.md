@@ -230,17 +230,17 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 ### 後端：測試先行
 
-- [ ] T088 [P] [US5] 先寫 `api/tests/unit/sports/test_generic_plugin.py`（`GenericParams` 為空物件；`dashboard_sections` 的 `metric_grid` 鍵集合；`match_detail` 的 `score_timeline`＋`metric_grid`；`estimate_minutes` 達標 0.6×target、手動 15）
-- [ ] T089 [P] [US5] 先寫 `api/tests/unit/domains/group/test_standings_draws.py`：`winner_team='D'` 的 completed 比賽在 `build_group_standings`／`build_group_final_standings`／`build_group_match_records` 計為 `draws`，不計勝敗；名次依勝場；`abandoned` 仍不計（Decision 4、FR-020）
-- [ ] T090 [P] [US5] 先寫 `api/tests/contract/test_finish_endpoint.py`（三授權面：`end_mode='target'` ⇒ `409 FINISH_NOT_AVAILABLE`；分高者勝；同分＋`allow_draw` ⇒ `winner_team='D'` 與 `match.ended` payload；同分不允許 ⇒ `409 DRAW_NOT_ALLOWED`；`/end` 仍 `abandoned`）與 `api/tests/contract/test_score_steps.py`（`score_steps=[1,2]` 接受 ±2、拒絕 ±3 ⇒ `422 SCORE_STEP_NOT_ALLOWED`；羽球拒絕 ±2）
-- [ ] T091 [P] [US5] 先寫 `api/tests/integration/test_generic_flow.py`：「其他」團（每隊 2、`[1,2]`、manual、allow_draw）一場平手一場勝負→排行榜勝敗平→我的團場數含平手→詳細頁 `score_timeline`；不允許平手的團同分結束被拒
+- [X] T088 [P] [US5] 先寫 `api/tests/unit/sports/test_generic_plugin.py`（`GenericParams` 為空物件；`dashboard_sections` 的 `metric_grid` 鍵集合；`match_detail` 的 `score_timeline`＋`metric_grid`；`estimate_minutes` 達標 0.6×target、手動 15）
+- [X] T089 [P] [US5] 先寫 `api/tests/unit/domains/group/test_standings_draws.py`：`winner_team='D'` 的 completed 比賽在 `build_group_standings`／`build_group_final_standings`／`build_group_match_records` 計為 `draws`，不計勝敗；名次依勝場；`abandoned` 仍不計（Decision 4、FR-020）
+- [X] T090 [P] [US5] 先寫 `api/tests/contract/test_finish_endpoint.py`（三授權面：`end_mode='target'` ⇒ `409 FINISH_NOT_AVAILABLE`；分高者勝；同分＋`allow_draw` ⇒ `winner_team='D'` 與 `match.ended` payload；同分不允許 ⇒ `409 DRAW_NOT_ALLOWED`；`/end` 仍 `abandoned`）與 `api/tests/contract/test_score_steps.py`（`score_steps=[1,2]` 接受 ±2、拒絕 ±3 ⇒ `422 SCORE_STEP_NOT_ALLOWED`；羽球拒絕 ±2）
+- [X] T091 [P] [US5] 先寫 `api/tests/integration/test_generic_flow.py`：「其他」團（每隊 2、`[1,2]`、manual、allow_draw）一場平手一場勝負→排行榜勝敗平→我的團場數含平手→詳細頁 `score_timeline`；不允許平手的團同分結束被拒
 
 ### 後端：實作
 
-- [ ] T092 [US5] 建立 `api/app/sports/types/generic/{__init__,params,presentation,plugin}.py::GenericPlugin`（`dashboard_sections` 的 `metric_grid` 每項指標附 `group_average`／`delta`，以核心 `group_benchmark.build()` 計算；FR-027）並註冊；T088 全綠
+- [X] T092 [US5] 建立 `api/app/sports/types/generic/{__init__,params,presentation,plugin}.py::GenericPlugin`（`dashboard_sections` 的 `metric_grid` 每項指標附 `group_average`／`delta`，以核心 `group_benchmark.build()` 計算；FR-027）並註冊；T088 全綠
 - [X] T093 [US5] `api/app/domains/schedule/schemas.py::ScoreRequest.delta` 放寬為 `int`；`apply_score_delta` 檢查 `abs(delta) ∈ match.score_steps`（`SCORE_STEP_NOT_ALLOWED`）；`end_mode='manual'` 跳過達標判定
 - [X] T094 [US5] 新增 `api/app/domains/schedule/service.py::finish_match(session, court, match_id)` 與三個授權面的 `POST …/finish`（`api/app/domains/schedule/router.py`、`api/app/domains/group/router.py`）；沿用 `_advance_after_terminal`／`_publish_match_ended`；T090 全綠
-- [ ] T095 [US5] 平手彙總：`api/app/domains/group/schemas.py`（`MatchRecordSummary.winner_team` 加 `D`；`RoundRecord`、`MemberStandingRow`、`FinalStandingRow`、`OpponentRecord` 加 `draws=0`）、`api/app/domains/group/service.py`（三個彙總函式與 `player_records`）、`api/app/domains/member/service.py`（`won`／`_sample_from`、`MemberMatchRecordsResponse` 的 `total_losses` 改為 `total − wins − draws` 並加 `total_draws`）、`api/app/domains/member/matchups.py`（平手不計勝負）；T089、T091 全綠
+- [X] T095 [US5] 平手彙總：`api/app/domains/group/schemas.py`（`MatchRecordSummary.winner_team` 加 `D`；`RoundRecord`、`MemberStandingRow`、`FinalStandingRow`、`OpponentRecord` 加 `draws=0`）、`api/app/domains/group/service.py`（三個彙總函式與 `player_records`）、`api/app/domains/member/service.py`（`won`／`_sample_from`、`MemberMatchRecordsResponse` 的 `total_losses` 改為 `total − wins − draws` 並加 `total_draws`）、`api/app/domains/member/matchups.py`（平手不計勝負）；T089、T091 全綠
 
 ### 前端
 

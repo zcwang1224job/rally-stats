@@ -35,6 +35,8 @@ class MatchupInput:
     is_doubles: bool
     partners: tuple[PlayerRef, ...]
     opponents: tuple[PlayerRef, ...]
+    # 043: a draw is neither a win nor a loss.
+    draw: bool = False
 
 
 @dataclass(frozen=True)
@@ -93,7 +95,7 @@ def _records(inputs: Sequence[MatchupInput], role: str) -> list[MatchupRecord]:
             elif (item.ended_at, player.nickname) > (tally.named_at, tally.ref.nickname):
                 tally.ref, tally.named_at = player, item.ended_at
             tally.wins += int(item.won)
-            tally.losses += int(not item.won)
+            tally.losses += int(not item.won and not item.draw)
             tally.margin += item.margin
     records = [
         MatchupRecord(

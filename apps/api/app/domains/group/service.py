@@ -1242,7 +1242,7 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
                 (match.status, participant.team, match.winner_team)
             )
 
-    unranked: list[tuple[RosterEntry, dict[int, RoundRecord], int, int]] = []
+    unranked: list[tuple[RosterEntry, dict[int, RoundRecord], int, int, int]] = []
     for entry in roster_entries:
         row_rounds: dict[int, RoundRecord] = {}
         for round_number in rounds:
@@ -1259,18 +1259,24 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
             else:
                 wins = 0
                 losses = 0
+                draws = 0
                 for match_status, team, winner_team in participation.get(
                     (entry.id, round_number), []
                 ):
                     if match_status == "completed":
-                        if team == winner_team:
+                        if winner_team == "D":
+                            draws += 1
+                        elif team == winner_team:
                             wins += 1
                         else:
                             losses += 1
-                row_rounds[round_number] = RoundRecord(wins=wins, losses=losses, left=False)
+                row_rounds[round_number] = RoundRecord(
+                    wins=wins, losses=losses, left=False, draws=draws
+                )
         total_wins = sum(record.wins for record in row_rounds.values())
         total_losses = sum(record.losses for record in row_rounds.values())
-        unranked.append((entry, row_rounds, total_wins, total_losses))
+        total_draws = sum(record.draws for record in row_rounds.values())
+        unranked.append((entry, row_rounds, total_wins, total_losses, total_draws))
 
     # 018-group-leaderboard research.md #2/#6: sort by total_wins descending;
     # `sorted` is stable, and `unranked` starts in `joined_at` order (the
@@ -1290,8 +1296,11 @@ async def build_group_standings(session: AsyncSession, group: Group) -> GroupSta
             rank=rank,
             total_wins=total_wins,
             total_losses=total_losses,
+            total_draws=total_draws,
         )
-        for (entry, row_rounds, total_wins, total_losses), rank in zip(unranked, ranks, strict=True)
+        for (entry, row_rounds, total_wins, total_losses, total_draws), rank in zip(
+            unranked, ranks, strict=True
+        )
     ]
 
     return GroupStandingsResponse(
@@ -1362,23 +1371,31 @@ async def build_group_final_standings(
             MatchParticipant.roster_entry_id.in_(entry_ids),
         )
     )
-    tallies: dict[uuid.UUID, list[int]] = defaultdict(lambda: [0, 0])
+    # wins, losses, draws
+    tallies: dict[uuid.UUID, list[int]] = defaultdict(lambda: [0, 0, 0])
     for participant, match in participants_result.all():
         bucket = tallies[participant.roster_entry_id]
-        bucket[0 if participant.team == match.winner_team else 1] += 1
+        if match.winner_team == "D":
+            bucket[2] += 1
+        else:
+            bucket[0 if participant.team == match.winner_team else 1] += 1
 
-    unranked: list[tuple[RosterEntry, bool, datetime, int, int]] = []
+    unranked: list[tuple[RosterEntry, bool, datetime, int, int, int]] = []
     for member_id, entries in grouped_entries:
         representative = max(entries, key=lambda e: e.joined_at)
         earliest_joined_at = min(e.joined_at for e in entries)
         total_wins = 0
         total_losses = 0
+        total_draws = 0
         for entry in entries:
-            wins, losses = tallies.get(entry.id, [0, 0])
+            wins, losses, draws = tallies.get(entry.id, [0, 0, 0])
             total_wins += wins
             total_losses += losses
+            total_draws += draws
         is_self = member_id is not None and member_id == viewer_member_id
-        unranked.append((representative, is_self, earliest_joined_at, total_wins, total_losses))
+        unranked.append(
+            (representative, is_self, earliest_joined_at, total_wins, total_losses, total_draws)
+        )
 
     # Stable sort: first by (merged) joined_at ascending so ties keep the
     # earlier joiner first, then by total_wins descending — same technique
@@ -1395,11 +1412,19 @@ async def build_group_final_standings(
             current_status=representative.status,
             is_self=is_self,
             rank=rank,
-            total_matches=total_wins + total_losses,
+            total_matches=total_wins + total_losses + total_draws,
             total_wins=total_wins,
             total_losses=total_losses,
+            total_draws=total_draws,
         )
-        for (representative, is_self, _joined_at, total_wins, total_losses), rank in zip(
+        for (
+            representative,
+            is_self,
+            _joined_at,
+            total_wins,
+            total_losses,
+            total_draws,
+        ), rank in zip(
             unranked, ranks, strict=True
         )
     ]
@@ -1607,8 +1632,13 @@ async def build_group_match_records(
     start = (page - 1) * page_size
     end = start + page_size
 
-    player_tallies: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    # wins, losses, draws
+    player_tallies: dict[str, list[int]] = defaultdict(lambda: [0, 0, 0])
     for summary in filtered:
+        if summary.winner_team == "D":
+            for participant in [*summary.team_a, *summary.team_b]:
+                player_tallies[participant.nickname][2] += 1
+            continue
         winners = summary.team_a if summary.winner_team == "A" else summary.team_b
         losers = summary.team_b if summary.winner_team == "A" else summary.team_a
         for participant in winners:
@@ -1621,10 +1651,13 @@ async def build_group_match_records(
                 nickname=nickname,
                 wins=wins,
                 losses=losses,
-                matches=wins + losses,
-                win_rate=(wins / (wins + losses)) if (wins + losses) else 0.0,
+                draws=draws,
+                matches=wins + losses + draws,
+                win_rate=(
+                    (wins / (wins + losses + draws)) if (wins + losses + draws) else 0.0
+                ),
             )
-            for nickname, (wins, losses) in player_tallies.items()
+            for nickname, (wins, losses, draws) in player_tallies.items()
         ),
         key=lambda record: record.matches,
         reverse=True,

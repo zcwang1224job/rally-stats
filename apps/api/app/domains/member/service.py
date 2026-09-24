@@ -1417,7 +1417,9 @@ async def _filtered_member_matches(
             _player_ref(p).key for p in match_opponents
         }:
             continue
-        if filters.result is not None and won != (filters.result == "win"):
+        if filters.result is not None and (
+            won != (filters.result == "win") or match.winner_team == "D"
+        ):
             continue
         # Instants, not `ended_at.date()`: that is the UTC date, which is the
         # previous day for a match finished before 08:00 Taipei time and so
@@ -1479,6 +1481,7 @@ def _matchup_inputs(filtered: Sequence[FilteredMatch]) -> list[matchups.MatchupI
             matchups.MatchupInput(
                 ended_at=cast(datetime, item.match.ended_at),
                 won=item.won,
+                draw=item.match.winner_team == "D",
                 margin=my_score - their_score,
                 is_doubles=len(mine) + len(theirs) > 2,
                 partners=tuple(
@@ -1565,11 +1568,14 @@ async def build_member_match_records(
 
     total_matches = len(filtered)
     total_wins = sum(1 for item in filtered if item.won)
-    total_losses = total_matches - total_wins
+    total_draws = sum(1 for item in filtered if item.match.winner_team == "D")
+    total_losses = total_matches - total_wins - total_draws
     win_rate = (total_wins / total_matches) if total_matches else 0.0
 
     round_tallies: dict[int, list[int]] = defaultdict(lambda: [0, 0])
     for item in filtered:
+        if item.match.winner_team == "D":
+            continue
         bucket = round_tallies[item.match.round_number]
         bucket[0 if item.won else 1] += 1
 
@@ -1597,6 +1603,7 @@ async def build_member_match_records(
         total_matches=total_matches,
         total_wins=total_wins,
         total_losses=total_losses,
+        total_draws=total_draws,
         win_rate=win_rate,
         round_win_rates=round_win_rates,
         opponent_records=[_matchup_record(r) for r in matchup.opponent_records],

@@ -5,7 +5,14 @@ import uuid
 from datetime import datetime, time
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from app.domains.schedule.schemas import EndingType, ParticipantSummary
 from app.sports.presentation import Section, SportSummary
@@ -534,7 +541,22 @@ class BindResponse(BaseModel):
 # --- 005-member-view: 團內成員視圖（戰績/對戰紀錄/退出組團）---
 
 
-class RoundRecord(BaseModel):
+class _OmitsZeroDraws(BaseModel):
+    """043 Decision 4: draws exist only where an activity allows them. A
+    zero draw count is left out of the JSON, so every existing response is
+    byte-for-byte what it was (clients read a missing count as 0)."""
+
+    @model_serializer(mode="wrap")
+    def _omit_zero_draws(self, handler: SerializerFunctionWrapHandler) -> Any:
+        data = handler(self)
+        if isinstance(data, dict):
+            for key in ("draws", "total_draws"):
+                if data.get(key) == 0:
+                    data.pop(key)
+        return data
+
+
+class RoundRecord(_OmitsZeroDraws):
     """011-round-robin-scheduling made this a per-round *tally*, not a
     single outcome: singles fair_rotation's full round-robin
     (_generate_singles_round_robin_matches) plays every other active
@@ -550,9 +572,10 @@ class RoundRecord(BaseModel):
     wins: int
     losses: int
     left: bool
+    draws: int = 0
 
 
-class MemberStandingRow(BaseModel):
+class MemberStandingRow(_OmitsZeroDraws):
     roster_entry_id: str
     nickname: str
     current_status: Literal["active", "left", "kicked"]
@@ -565,6 +588,7 @@ class MemberStandingRow(BaseModel):
     X)."""
     total_wins: int
     total_losses: int
+    total_draws: int = 0
 
 
 class GroupStandingsResponse(BaseModel):
@@ -573,7 +597,7 @@ class GroupStandingsResponse(BaseModel):
     members: list[MemberStandingRow]
 
 
-class FinalStandingRow(BaseModel):
+class FinalStandingRow(_OmitsZeroDraws):
     """019-group-final-standings: "我的團" 歷史頁面的最終團隊排名列——與
     `MemberStandingRow`（即時戰績頁）的差異：涵蓋該團所有曾參與者（不限
     現役，含訪客），同一位會員的多筆歷史 `RosterEntry`（先退出後又重新
@@ -590,6 +614,7 @@ class FinalStandingRow(BaseModel):
     total_matches: int
     total_wins: int
     total_losses: int
+    total_draws: int = 0
 
 
 class MatchRecordSummary(BaseModel):
@@ -599,7 +624,8 @@ class MatchRecordSummary(BaseModel):
     team_b: list[ParticipantSummary]
     score_a: int
     score_b: int
-    winner_team: Literal["A", "B"]
+    # 043: "D" is a draw (a manual end on a level score, where allowed).
+    winner_team: Literal["A", "B", "D"]
     # Only completed matches ever reach this schema (_completed_matches_query
     # filters on status == "completed"), and a match can't reach "completed"
     # without having been pulled onto a court (started_at set) and finished
@@ -610,7 +636,7 @@ class MatchRecordSummary(BaseModel):
     ended_at: datetime | None
 
 
-class OpponentRecord(BaseModel):
+class OpponentRecord(_OmitsZeroDraws):
     """One row of a "球員戰績排行" table — a distinct player's win/loss
     tally, aggregated over whatever matches/filters are active. Despite
     the name (its original use was the cross-group "對戰對象戰績排行"),
@@ -623,6 +649,7 @@ class OpponentRecord(BaseModel):
     losses: int
     matches: int
     win_rate: float
+    draws: int = 0
 
 
 class GroupMatchRecordsResponse(BaseModel):
@@ -949,11 +976,12 @@ class MatchupHighlights(BaseModel):
     toughest_opponent: str | None = None
 
 
-class MemberMatchRecordsResponse(BaseModel):
+class MemberMatchRecordsResponse(_OmitsZeroDraws):
     matches: list[MemberMatchRecordSummary]
     total_matches: int
     total_wins: int
     total_losses: int
+    total_draws: int = 0
     win_rate: float
     round_win_rates: list[RoundWinRatePoint]
     opponent_records: list[MatchupRecord]
