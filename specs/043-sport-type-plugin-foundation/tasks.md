@@ -309,7 +309,7 @@ description: "Task list for 043-sport-type-plugin-foundation"
 
 ## Phase 10: Polish & Cross-Cutting Concerns
 
-- [ ] T121 [P] 更新 `docs/features.md`（功能總覽加「活動與比賽類型」、移除「羽球專用」描述、我的團活動頁籤）、`docs/tools.md`（`system_config` 新 key）、`docs/cicd-pipeline.md`（關卡指令加 `lint-imports`）——本機 docs，直接改主 checkout
+- [X] T121 [P] 更新 `docs/features.md`（功能總覽加「活動與比賽類型」、移除「羽球專用」描述、我的團活動頁籤）、`docs/tools.md`（`system_config` 新 key）、`docs/cicd-pipeline.md`（關卡指令加 `lint-imports`）——本機 docs，直接改主 checkout
 - [X] T122 [P] 在 `specs/043-sport-type-plugin-foundation/plan.md` 的 Post-design re-check 段補一句：`EndingType`／`RecordShotPlacementRequest` 留在核心 schema 的妥協（research.md Decision 10 已於 tasks 階段更新）
 - [X] T123 [P] 移除死碼：`api/app/domains/schedule/service.py` 的 `_FALLBACK_MINUTES_PER_TARGET_POINT`、`api/app/domains/group/service.py` 中已搬走的發球／落點查詢；`api/scripts/reset_data.py` TRUNCATE 清單加 `member_sports`、`frames_frame_results`、`frames_frame_points`
 - [X] T124 [P] i18n 全量 parity：確認所有新增 key 在 `i18n/zh-TW.json` 與 `i18n/en.json` 一致（既有 parity spec 全綠，`grep -c` 對照）（SC-007）
