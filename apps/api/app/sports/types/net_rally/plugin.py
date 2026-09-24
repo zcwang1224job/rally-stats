@@ -15,6 +15,7 @@ from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.schemas import ServeStationInfo, Team
 from app.sports.plugin import (
     BasePlugin,
+    DashboardContext,
     MatchDetailContext,
     MatchDetailParts,
     PointDetail,
@@ -22,8 +23,21 @@ from app.sports.plugin import (
     SpineEventContext,
     StatExtras,
 )
+from app.sports.presentation import Section
 from app.sports.types.net_rally import detail, placement, serve
 from app.sports.types.net_rally.params import NetRallyParams, parse_params
+
+# Match-dashboard metric keys fed by each module (034/035's catalogue).
+SERVE_METRICS = frozenset({"team_serve", "team_receive", "own_serve", "own_receive"})
+ENDING_METRICS = frozenset(
+    {
+        "winner_share",
+        "winners_per_match",
+        "errors_per_match",
+        "error_share_of_lost",
+        "winner_error_ratio",
+    }
+)
 
 
 class NetRallyPlugin(BasePlugin):
@@ -43,6 +57,15 @@ class NetRallyPlugin(BasePlugin):
     def module_enabled(self, type_params: Mapping[str, Any], module: str) -> bool:
         modules = parse_params(type_params).modules
         return bool(getattr(modules, module, False))
+
+    def hidden_dashboard_metrics(self, type_params: Mapping[str, Any]) -> frozenset[str]:
+        modules = parse_params(type_params).modules
+        hidden: set[str] = set()
+        if not modules.serve_tracking:
+            hidden |= SERVE_METRICS
+        if not modules.shot_placement:
+            hidden |= ENDING_METRICS | {"landing", "error_breakdown"}
+        return frozenset(hidden)
 
     async def on_match_start(
         self, session: AsyncSession, match: Match, participants: Sequence[MatchParticipant]
@@ -115,6 +138,13 @@ class NetRallyPlugin(BasePlugin):
         self, session: AsyncSession, ctx: MatchDetailContext
     ) -> MatchDetailParts:
         return await detail.match_detail(session, ctx)
+
+    async def dashboard_sections(
+        self, session: AsyncSession, ctx: DashboardContext
+    ) -> list[Section]:
+        # A marker: the section fetches /match-dashboard itself, which keeps
+        # badminton's dashboard exactly as it was (research Decision 12).
+        return [Section(kind="net_rally.dashboard")]
 
     def can_undo(self, match: Match) -> bool:
         # Net rally corrects with −1 (a negative point on the timeline);

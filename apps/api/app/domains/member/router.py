@@ -26,6 +26,7 @@ from app.domains.member.schemas import (
     BenchmarkGroupsResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
+    DashboardSectionsResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
     ForgotPasswordRequest,
@@ -35,6 +36,7 @@ from app.domains.member.schemas import (
     LoginRequest,
     LoginResponse,
     MatchComparisonResponse,
+    MemberActivitiesResponse,
     MemberGroupHistoryResponse,
     MemberMatchDashboardResponse,
     MemberPublicResponse,
@@ -55,6 +57,7 @@ from app.domains.member.schemas import (
     SupportedLanguagesResponse,
     VerifyEmailResponse,
 )
+from app.domains.member.sport_filter import parse_sport_filter
 
 router = APIRouter(tags=["member"])
 
@@ -559,6 +562,7 @@ async def get_member_match_records(
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
     partner_key: Annotated[str | None, Query(max_length=40)] = None,
     opponent_key: Annotated[str | None, Query(max_length=40)] = None,
+    sport: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計。
     `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
@@ -600,6 +604,7 @@ async def get_member_match_records(
         match_mode=match_mode,
         partner_key=_checked_player_key(partner_key),
         opponent_key=_checked_player_key(opponent_key),
+        sport=parse_sport_filter(sport),
     )
 
 
@@ -647,6 +652,7 @@ def match_filters_query(
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
     partner_key: Annotated[str | None, Query(max_length=40)] = None,
     opponent_key: Annotated[str | None, Query(max_length=40)] = None,
+    sport: Annotated[str | None, Query(max_length=40)] = None,
 ) -> service.MemberMatchFilters:
     """034-clutch-points-player-dashboard: the 13 filter query parameters of
     `/members/me/match-records` — same names, same validation, no `page` —
@@ -668,6 +674,7 @@ def match_filters_query(
         match_mode=match_mode,
         partner_key=_checked_player_key(partner_key),
         opponent_key=_checked_player_key(opponent_key),
+        sport=parse_sport_filter(sport),
     )
 
 
@@ -684,6 +691,30 @@ async def get_member_match_dashboard(
     原則 IV：對戰紀錄在信箱驗證前 MUST 鎖定）。Errors:
     `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`。"""
     return await service.build_member_match_dashboard(session, member.id, filters)
+
+
+@router.get("/members/me/dashboard-sections", response_model=DashboardSectionsResponse)
+async def get_member_dashboard_sections(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    filters: Annotated[service.MemberMatchFilters, Depends(match_filters_query)],
+) -> DashboardSectionsResponse:
+    """043 contracts/sections-manifest.md §4: one activity's dashboard, laid
+    out by its sport type. `sport` is required. Errors:
+    `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`, `SPORT_REQUIRED`,
+    `INVALID_SPORT_FILTER`."""
+    return await service.build_dashboard_sections(session, member.id, filters)
+
+
+@router.get("/members/me/activities", response_model=MemberActivitiesResponse)
+async def get_member_activities(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MemberActivitiesResponse:
+    """043 contracts/sports-api.md §5: the activities the member has played,
+    most matches first. Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`."""
+    return await service.build_member_activities(session, member.id)
 
 
 @router.get("/members/me/supported-languages", response_model=SupportedLanguagesResponse)
@@ -761,6 +792,30 @@ async def get_viewed_member_match_dashboard(
     return await service.view_member_match_dashboard(session, member.id, member_id, filters)
 
 
+@router.get(
+    "/members/{member_id}/dashboard-sections", response_model=DashboardSectionsResponse
+)
+async def get_viewed_member_dashboard_sections(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    filters: Annotated[service.MemberMatchFilters, Depends(match_filters_query)],
+) -> DashboardSectionsResponse:
+    """043: a friend's per-activity dashboard; same gate as
+    `/members/{member_id}/match-dashboard`."""
+    return await service.view_dashboard_sections(session, member.id, member_id, filters)
+
+
+@router.get("/members/{member_id}/activities", response_model=MemberActivitiesResponse)
+async def get_viewed_member_activities(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MemberActivitiesResponse:
+    """043: a friend's activities; same gate as their match records."""
+    return await service.view_member_activities(session, member.id, member_id)
+
+
 @router.get("/members/{member_id}/match-comparison", response_model=MatchComparisonResponse)
 async def get_viewed_member_match_comparison(
     member_id: uuid.UUID,
@@ -800,6 +855,7 @@ async def get_viewed_member_match_records(
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
     partner_key: Annotated[str | None, Query(max_length=40)] = None,
     opponent_key: Annotated[str | None, Query(max_length=40)] = None,
+    sport: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """022-member-personal-settings FR-018/FR-019 (好友檢視他人戰績):
     query 參數與既有 `/members/me/match-records` 完全相同、直接透傳
@@ -826,6 +882,7 @@ async def get_viewed_member_match_records(
         match_mode=match_mode,
         partner_key=_checked_player_key(partner_key),
         opponent_key=_checked_player_key(opponent_key),
+        sport=parse_sport_filter(sport),
     )
 
 

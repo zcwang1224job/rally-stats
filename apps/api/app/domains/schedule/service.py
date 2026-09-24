@@ -3473,14 +3473,17 @@ async def apply_plugin_event(
     follow_up = result.follow_up_point
     if follow_up is not None:
         column = Match.score_a if follow_up.side == "A" else Match.score_b
-        row = (
-            await session.execute(
-                update(Match)
-                .where(Match.id == match.id, Match.status == "in_progress")
-                .values(**{column.key: column + follow_up.delta})
-                .returning(Match.score_a, Match.score_b)
-            )
-        ).first()
+        # The plugin's rows may already reference the follow-up point's id;
+        # they flush together with it below (table order follows the FKs).
+        with session.no_autoflush:
+            row = (
+                await session.execute(
+                    update(Match)
+                    .where(Match.id == match.id, Match.status == "in_progress")
+                    .values(**{column.key: column + follow_up.delta})
+                    .returning(Match.score_a, Match.score_b)
+                )
+            ).first()
         if row is None:
             await session.rollback()
             raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)

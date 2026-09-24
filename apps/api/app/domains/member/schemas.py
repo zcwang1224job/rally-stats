@@ -14,6 +14,7 @@ from app.domains.group.schemas import (
     OpponentRecord,
     RoundWinRatePoint,
 )
+from app.sports.presentation import Section, SportSummary
 
 VerificationStatus = str  # "unverified" | "verified"
 
@@ -567,3 +568,22 @@ class MatchComparisonResponse(BaseModel):
     metrics: list[ComparisonMetric]  # all 23, dashboard order, unfiltered
     head_to_head: HeadToHeadResponse
 
+
+
+# 043-sport-type-plugin-foundation US3 (contracts/sections-manifest.md §4,
+# sports-api.md §5).
+class DashboardSectionsResponse(BaseModel):
+    sport: SportSummary
+    type_key: str
+    total_matches: int
+    sections: list[Section]
+
+
+class MemberActivity(BaseModel):
+    sport: SportSummary
+    filter_value: str
+    match_count: int
+
+
+class MemberActivitiesResponse(BaseModel):
+    activities: list[MemberActivity]

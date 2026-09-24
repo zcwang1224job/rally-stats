@@ -9,7 +9,7 @@ import secrets
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from urllib.parse import urlencode
@@ -68,6 +68,7 @@ from app.domains.member.schemas import (
     ComparisonMetric,
     DashboardInsights,
     DashboardMetricValue,
+    DashboardSectionsResponse,
     GroupBenchmarkGroup,
     GroupBenchmarkMetric,
     GroupBenchmarkResponse,
@@ -76,6 +77,8 @@ from app.domains.member.schemas import (
     LoginRecordsResponse,
     LoginRecordSummary,
     MatchComparisonResponse,
+    MemberActivitiesResponse,
+    MemberActivity,
     MemberGroupHistoryResponse,
     MemberGroupStatsResponse,
     MemberMatchDashboardResponse,
@@ -92,9 +95,19 @@ from app.domains.member.security import (
     issue_refresh_token,
     verify_password,
 )
+from app.domains.member.sport_filter import (
+    LEGACY_TYPE_KEY,
+    SportFilter,
+    filter_value_for,
+    resolve_activity,
+    sport_condition,
+)
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.schemas import ParticipantSummary
+from app.sports import registry
+from app.sports.catalog import summary_for
+from app.sports.plugin import DashboardContext, DashboardRow
 from app.system_config.service import (
     get_default_page_size,
     get_match_records_page_size,
@@ -737,6 +750,7 @@ async def view_member_match_records(
     match_mode: Literal["singles", "doubles"] | None = None,
     partner_key: str | None = None,
     opponent_key: str | None = None,
+    sport: SportFilter | None = None,
 ) -> MemberMatchRecordsResponse:
     """FR-018/FR-019: once authorized, delegates to the SAME
     `build_member_match_records()` the self-viewing `/members/me/
@@ -762,6 +776,7 @@ async def view_member_match_records(
         match_mode=match_mode,
         partner_key=partner_key,
         opponent_key=opponent_key,
+        sport=sport,
     )
 
 
@@ -1308,6 +1323,9 @@ class MemberMatchFilters:
     # similar name and miss the same member under another group's nickname.
     partner_key: str | None = None
     opponent_key: str | None = None
+    # 043 contracts/sports-api.md §4: one activity. None = net rally only,
+    # except inside one group's history (`group_id`), which is one activity.
+    sport: SportFilter | None = None
 
 
 @dataclass(frozen=True)
@@ -1332,13 +1350,17 @@ async def _filtered_member_matches(
         .where(MatchParticipant.match_id == Match.id, RosterEntry.member_id == member_id)
         .exists()
     )
-    base_query = _completed_matches_query().where(participant_exists)
+    base_query = (
+        _completed_matches_query()
+        .where(participant_exists)
+        .join(Group, Group.id == Match.group_id)
+    )
     if filters.group_id is not None:
         base_query = base_query.where(Match.group_id == filters.group_id)
+    if filters.group_id is None or filters.sport is not None:
+        base_query = base_query.where(sport_condition(filters.sport))
     if filters.match_mode is not None:
-        base_query = base_query.join(Group, Group.id == Match.group_id).where(
-            Group.match_mode == filters.match_mode
-        )
+        base_query = base_query.where(Group.match_mode == filters.match_mode)
 
     all_matches_result = await session.execute(
         base_query.order_by(Match.ended_at.desc(), Match.round_number.desc())
@@ -1492,6 +1514,7 @@ async def build_member_match_records(
     match_mode: Literal["singles", "doubles"] | None = None,
     partner_key: str | None = None,
     opponent_key: str | None = None,
+    sport: SportFilter | None = None,
 ) -> MemberMatchRecordsResponse:
     """005-member-view US5 (FR-017~020), extended with filters/statistics: a
     member's completed matches across every group they've ever joined as a
@@ -1536,6 +1559,7 @@ async def build_member_match_records(
             match_mode=match_mode,
             partner_key=partner_key,
             opponent_key=opponent_key,
+            sport=sport,
         ),
     )
 
@@ -1668,11 +1692,32 @@ async def build_member_match_dashboard(
     page (FR-019). A separate endpoint rather than more fields on that
     response because this one reads every match's point log: it is fetched
     once per filter change, not once per page flip (research.md Decision 5).
-    Query count is constant in the number of matches (Decision 7)."""
+    Query count is constant in the number of matches (Decision 7).
+
+    043: net rally activities only (`SPORT_TYPE_NOT_SUPPORTED` otherwise —
+    the others have `dashboard-sections`); metrics a module the activity
+    leaves off would feed are dropped (FR-025)."""
+    activity = await resolve_activity(session, filters.sport)
+    if activity.type_key != LEGACY_TYPE_KEY:
+        raise ApiError("SPORT_TYPE_NOT_SUPPORTED", status_code=409)
+    hidden = registry.get(LEGACY_TYPE_KEY).hidden_dashboard_metrics(activity.type_params)
     filtered = await _filtered_member_matches(session, member_id, filters)
     inputs = await load_match_stat_inputs(session, [item.match for item in filtered])
     samples = [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
     result = player_dashboard.aggregate(samples)
+    if hidden:
+        result = replace(
+            result,
+            metrics=[metric for metric in result.metrics if metric.key not in hidden],
+            trends=[trend for trend in result.trends if trend.key not in hidden],
+            landing=None if "landing" in hidden else result.landing,
+            error_breakdown_all=(
+                None if "error_breakdown" in hidden else result.error_breakdown_all
+            ),
+            error_breakdown_recent=(
+                None if "error_breakdown" in hidden else result.error_breakdown_recent
+            ),
+        )
     # 036: read off the finished result, same matches, no further query.
     # 036 US2: partner/opponent rows come from the same filtered matches, no query.
     found = insights.derive(samples, result, matchups.build(_matchup_inputs(filtered)))
@@ -2128,3 +2173,172 @@ async def get_my_groups(
     return MyGroupsResponse(
         groups=groups[start : start + page_size], page=page, total_pages=total_pages
     )
+
+
+# --- 043-sport-type-plugin-foundation US3: per-activity dashboards ---------
+
+
+def _row_result(match: Match, team: str) -> Literal["win", "loss", "draw"]:
+    if match.winner_team == "D":
+        return "draw"
+    return "win" if match.winner_team == team else "loss"
+
+
+async def _dashboard_rows(
+    session: AsyncSession, matches: Sequence[Match]
+) -> dict[str, list[DashboardRow]]:
+    """Every player's rows for `matches`, keyed by player key, each newest
+    first (the order of `matches`)."""
+    by_player: dict[str, list[DashboardRow]] = defaultdict(list)
+    if not matches:
+        return by_player
+    participants = await session.execute(
+        select(MatchParticipant.match_id, MatchParticipant.team, RosterEntry)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(MatchParticipant.match_id.in_([match.id for match in matches]))
+    )
+    teams: dict[uuid.UUID, dict[str, list[RosterEntry]]] = defaultdict(
+        lambda: {"A": [], "B": []}
+    )
+    for match_id, team, entry in participants.all():
+        teams[match_id][team].append(entry)
+    for match in matches:
+        sides = teams[match.id]
+        for team, other in (("A", "B"), ("B", "A")):
+            opponents = sides[other]
+            for entry in sides[team]:
+                key = player_key(entry.member_id, entry.id)
+                by_player[key].append(
+                    DashboardRow(
+                        match=match,
+                        player_key=key,
+                        my_team=cast(Literal["A", "B"], team),
+                        result=_row_result(match, team),
+                        opponent_keys=tuple(player_key(o.member_id, o.id) for o in opponents),
+                        opponent_names=tuple(o.nickname for o in opponents),
+                    )
+                )
+    return by_player
+
+
+async def build_dashboard_sections(
+    session: AsyncSession, member_id: uuid.UUID, filters: MemberMatchFilters
+) -> DashboardSectionsResponse:
+    """043 contracts/sections-manifest.md §4: one activity's dashboard, laid
+    out by its sport type. `sport` is required and names one activity.
+    Errors: `SPORT_REQUIRED` (422), `INVALID_SPORT_FILTER` (422)."""
+    if filters.sport is None:
+        raise ApiError("SPORT_REQUIRED", status_code=422)
+    activity = await resolve_activity(session, filters.sport)
+    if filters.sport.custom_or_other:
+        raise ApiError("INVALID_SPORT_FILTER", status_code=422)
+    filtered = await _filtered_member_matches(session, member_id, filters)
+    if activity.type_key is None or activity.summary is None:
+        # A deleted custom activity: its matches keep their own snapshot.
+        if not filtered:
+            raise ApiError("INVALID_SPORT_FILTER", status_code=422)
+        first = filtered[0].match
+        type_key = first.type_key
+        summary = summary_for(
+            sport_key=first.sport_key, type_key=first.type_key, sport_name=first.sport_name
+        )
+    else:
+        type_key, summary = activity.type_key, activity.summary
+    plugin = registry.get(type_key)
+
+    mine_ids = {item.match.id for item in filtered}
+    group_ids = {item.match.group_id for item in filtered}
+    peer_matches: list[Match] = []
+    if group_ids:
+        peer_matches = list(
+            (
+                await session.execute(
+                    _completed_matches_query()
+                    .where(Match.group_id.in_(group_ids))
+                    .order_by(Match.ended_at.desc(), Match.round_number.desc())
+                )
+            ).scalars()
+        )
+    # Mine first, in the filtered order; group peers from every match there.
+    rows = await _dashboard_rows(session, [item.match for item in filtered])
+    me_key = player_key(member_id, filtered[0].my_entry_id) if filtered else f"m:{member_id}"
+    mine = [
+        row
+        for key, player_rows in rows.items()
+        for row in player_rows
+        if row.match.id in mine_ids and row.player_key.startswith(f"m:{member_id}")
+    ]
+    peers = {
+        key: player_rows
+        for key, player_rows in (await _dashboard_rows(session, peer_matches)).items()
+        if not key.startswith(f"m:{member_id}")
+    }
+    ctx = DashboardContext(mine=mine, peers=peers, me_key=me_key)
+    sections = await plugin.dashboard_sections(session, ctx)
+    return DashboardSectionsResponse(
+        sport=summary, type_key=type_key, total_matches=len(mine), sections=sections
+    )
+
+
+async def view_dashboard_sections(
+    session: AsyncSession,
+    viewer_id: uuid.UUID,
+    member_id: uuid.UUID,
+    filters: MemberMatchFilters,
+) -> DashboardSectionsResponse:
+    """A friend's per-activity dashboard, behind the same gate as their match
+    records (see `view_member_match_dashboard()`)."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    return await build_dashboard_sections(session, member_id, filters)
+
+
+async def build_member_activities(
+    session: AsyncSession, member_id: uuid.UUID
+) -> MemberActivitiesResponse:
+    """043 contracts/sports-api.md §5: the activities a member has completed
+    matches in, most played first, each with the `sport` value that selects
+    it."""
+    participant_exists = (
+        select(MatchParticipant.id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(MatchParticipant.match_id == Match.id, RosterEntry.member_id == member_id)
+        .exists()
+    )
+    rows = await session.execute(
+        select(
+            Match.sport_key,
+            Match.type_key,
+            Match.sport_name,
+            Group.custom_sport_id,
+            func.count(Match.id),
+        )
+        .join(Group, Group.id == Match.group_id)
+        .where(Match.status == "completed", participant_exists)
+        .group_by(Match.sport_key, Match.type_key, Match.sport_name, Group.custom_sport_id)
+    )
+    merged: dict[str, MemberActivity] = {}
+    for sport_key, type_key, sport_name, custom_sport_id, count in rows.all():
+        value = filter_value_for(
+            sport_key=sport_key, sport_name=sport_name, custom_sport_id=custom_sport_id
+        )
+        existing = merged.get(value)
+        if existing is not None:
+            existing.match_count += int(count)
+            continue
+        merged[value] = MemberActivity(
+            sport=summary_for(sport_key=sport_key, type_key=type_key, sport_name=sport_name),
+            filter_value=value,
+            match_count=int(count),
+        )
+    activities = sorted(
+        merged.values(),
+        key=lambda item: (-item.match_count, item.sport.name or item.sport.name_key or ""),
+    )
+    return MemberActivitiesResponse(activities=activities)
+
+
+async def view_member_activities(
+    session: AsyncSession, viewer_id: uuid.UUID, member_id: uuid.UUID
+) -> MemberActivitiesResponse:
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    return await build_member_activities(session, member_id)

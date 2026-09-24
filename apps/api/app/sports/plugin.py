@@ -248,6 +248,12 @@ class BasePlugin:
     async def live_state(self, session: AsyncSession, match: Match) -> Any:
         return None
 
+    def hidden_dashboard_metrics(self, type_params: Mapping[str, Any]) -> frozenset[str]:
+        """Net rally's legacy match-dashboard: metric keys (and the
+        `landing` / `error_breakdown` blocks) an activity's modules leave
+        without data (FR-025). Other sport types have no such dashboard."""
+        return frozenset()
+
     def estimate_minutes(
         self, *, end_mode: str, target_score: int, type_params: Mapping[str, Any]
     ) -> float:
