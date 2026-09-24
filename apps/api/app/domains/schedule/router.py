@@ -32,6 +32,7 @@ from app.domains.schedule.schemas import (
     NextRoundRequest,
     PartnershipReassignRequest,
     PartnershipsResponse,
+    PluginEventRequest,
     RecordShotPlacementRequest,
     RegenerateGuestLinkResponse,
     ReorderPlannedMatchesRequest,
@@ -700,3 +701,114 @@ async def end_match_by_admin(
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     return await service.end_match_early(session, court, match_id)
+
+
+# --- 043-sport-type-plugin-foundation: sport-type events, undo, finish ---
+# Same three faces and the same authorization as /score (constitution IV:
+# scorer actions, never admin-only ones).
+
+
+@router.post(
+    "/courts/by-token/{token}/matches/{match_id}/events", response_model=ScoreMutationResult
+)
+async def plugin_event_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: PluginEventRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """An event the match's sport type declares. Errors: `LINK_NOT_FOUND`,
+    `MATCH_NOT_FOUND`, `MATCH_NOT_IN_PROGRESS`, `EVENT_KIND_NOT_ALLOWED`."""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return await service.apply_plugin_event(
+        session, court, match_id, payload.kind, payload.payload, source=link_type
+    )
+
+
+@router.post("/courts/by-token/{token}/matches/{match_id}/undo", response_model=ScoreMutationResult)
+async def undo_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """Take back the last action. Errors: `LINK_NOT_FOUND`, `MATCH_NOT_FOUND`,
+    `MATCH_NOT_IN_PROGRESS`, `NOTHING_TO_UNDO`, `UNDO_NOT_SUPPORTED`."""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return await service.undo_last_event(session, court, match_id)
+
+
+@router.post(
+    "/courts/by-token/{token}/matches/{match_id}/finish", response_model=ScoreMutationResult
+)
+async def finish_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """End a manual-end match and record its result. Errors: `LINK_NOT_FOUND`,
+    `MATCH_NOT_FOUND`, `FINISH_NOT_AVAILABLE`, `DRAW_NOT_ALLOWED`."""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return await service.finish_match(session, court, match_id)
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/events",
+    response_model=ScoreMutationResult,
+)
+async def plugin_event_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: PluginEventRequest,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    return await service.apply_plugin_event(
+        session, court, match_id, payload.kind, payload.payload, source="admin"
+    )
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/undo",
+    response_model=ScoreMutationResult,
+)
+async def undo_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    return await service.undo_last_event(session, court, match_id)
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/finish",
+    response_model=ScoreMutationResult,
+)
+async def finish_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    return await service.finish_match(session, court, match_id)

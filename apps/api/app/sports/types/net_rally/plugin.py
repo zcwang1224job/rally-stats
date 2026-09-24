@@ -32,6 +32,7 @@ class NetRallyPlugin(BasePlugin):
     section_kinds: ClassVar[frozenset[str]] = frozenset(
         {"net_rally.match_detail", "net_rally.dashboard"}
     )
+    negative_points: ClassVar[bool] = True
 
     def params_schema(self) -> type[BaseModel]:
         return NetRallyParams

@@ -336,7 +336,16 @@ class RegenerateGuestLinkResponse(BaseModel):
 
 class ScoreRequest(BaseModel):
     side: Team
-    delta: Literal[1, -1]
+    # 043: any step the group allows (checked in apply_score_delta).
+    delta: int
+
+
+class PluginEventRequest(BaseModel):
+    """043 contracts/match-events-api.md §2: an event the match's sport type
+    declares, e.g. `frames.frame_point` with `{"side": "A", "delta": 1}`."""
+
+    kind: str = Field(min_length=1, max_length=24)
+    payload: dict[str, Any] = {}
 
 
 # 032-cancel-score: `side` MUST be the team `undo_match_completion()`
@@ -398,7 +407,8 @@ class ScoreMutationResult(BaseModel):
     status: str
     score_a: int
     score_b: int
-    winner_team: Team | None
+    # 043: D = a draw (manual-end matches that allow one).
+    winner_team: Literal["A", "B", "D"] | None
     # 032-score-then-record: the ScoreEvent this mutation created — `None`
     # when `applied` is false, or for a mutation that isn't a score change
     # (e.g. end_match_early()). A `+1`'s caller uses this to attach a
@@ -419,12 +429,15 @@ class ScoreMutationResult(BaseModel):
     # body when there is none (every net rally match), so a badminton
     # response is byte-for-byte what it was before 043 (FR-022).
     sport_state: Any = None
+    # 043: the `point` a sport type's event added (a frame won), if any.
+    follow_up_score_event_id: str | None = None
 
     @model_serializer(mode="wrap")
-    def _omit_empty_sport_state(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+    def _omit_empty_sport_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
         data: dict[str, Any] = handler(self)
-        if data.get("sport_state") is None:
-            data.pop("sport_state", None)
+        for key in ("sport_state", "follow_up_score_event_id"):
+            if data.get(key) is None:
+                data.pop(key, None)
         return data
 
 

@@ -79,10 +79,36 @@ class PluginEventContext:
 
 @dataclass(frozen=True)
 class FollowUpPoint:
-    """A `point` core must add in the same transaction (e.g. a frame won)."""
+    """A `point` core must add in the same transaction (e.g. a frame won).
+    `event_id` is chosen by the plugin so its own row can reference the
+    point; both are written in the same flush."""
 
     side: Team
+    event_id: uuid.UUID
     delta: int = 1
+
+
+@dataclass(frozen=True)
+class DashboardRow:
+    """One completed match from one player's point of view."""
+
+    match: Match
+    player_key: str
+    my_team: Team
+    result: Literal["win", "loss", "draw"]
+    opponent_keys: tuple[str, ...]
+    opponent_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class DashboardContext:
+    """What a sport type builds a member's per-activity dashboard from:
+    their own matches (newest first) and, for group averages (FR-027), every
+    player's matches in the same groups."""
+
+    mine: Sequence[DashboardRow]
+    peers: Mapping[str, Sequence[DashboardRow]]
+    me_key: str
 
 
 @dataclass(frozen=True)
@@ -141,6 +167,11 @@ class BasePlugin:
     # Section kinds this type may emit besides the generic ones.
     section_kinds: ClassVar[frozenset[str]] = frozenset()
     team_size_range: ClassVar[tuple[int, int]] = (1, 2)
+    # Whether POST …/score may change the match score directly (frames add
+    # points only by ending a frame), and whether it may take a point back
+    # with a negative step (net rally's −1; other types undo instead).
+    direct_points: ClassVar[bool] = True
+    negative_points: ClassVar[bool] = False
 
     def params_schema(self) -> type[BaseModel]:
         return EmptyParams
@@ -201,6 +232,12 @@ class BasePlugin:
         self, session: AsyncSession, ctx: MatchDetailContext
     ) -> MatchDetailParts:
         return MatchDetailParts()
+
+    async def dashboard_sections(
+        self, session: AsyncSession, ctx: DashboardContext
+    ) -> list[Section]:
+        """A member's dashboard for one activity of this type (FR-021)."""
+        return []
 
     def can_undo(self, match: Match) -> bool:
         return True

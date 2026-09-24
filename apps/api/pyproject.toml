@@ -48,6 +48,7 @@ source_modules = [
     "app.sports.scoring",
     "app.sports.catalog",
     "app.sports.router",
+    "app.sports.dashboard",
 ]
 forbidden_modules = ["app.sports.types"]
 

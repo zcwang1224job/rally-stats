@@ -25,6 +25,9 @@ from app.domains.schedule.models import (  # noqa: F401
 )
 from app.system_config.models import SystemConfig  # noqa: F401
 
+# Composition root (constitution XII): sport type plugins' own tables.
+from app.sports.types.frames.models import FrameResult, FramePoint  # noqa: F401
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

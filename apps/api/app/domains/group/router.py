@@ -61,6 +61,7 @@ from app.domains.member.models import Member
 from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
     AllCourtsLiveState,
+    PluginEventRequest,
     RecordShotPlacementRequest,
     RestStateRequest,
     RestStateResponse,
@@ -73,6 +74,7 @@ from app.domains.schedule.schemas import (
 )
 from app.domains.schedule.service import (
     abandon_group_matches,
+    apply_plugin_event,
     apply_score_delta,
     attach_shot_placement,
     auto_pair_on_enter_fixed_partner,
@@ -81,7 +83,9 @@ from app.domains.schedule.service import (
     clear_partnerships_on_exit,
     court_live_state,
     end_match_early,
+    finish_match,
     group_sport_summary,
+    undo_last_event,
     undo_match_completion,
 )
 
@@ -975,3 +979,51 @@ async def resolve_join_link(
         already_joined=already_joined,
         roster_entry_id=roster_entry_id,
     )
+
+
+# --- 043-sport-type-plugin-foundation: all-courts face of events/undo/finish ---
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/events",
+    response_model=ScoreMutationResult,
+)
+async def plugin_event_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: PluginEventRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    _group, court = await _all_courts_court(token, court_id, session)
+    return await apply_plugin_event(
+        session, court, match_id, payload.kind, payload.payload, source="all_courts"
+    )
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/undo",
+    response_model=ScoreMutationResult,
+)
+async def undo_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    _group, court = await _all_courts_court(token, court_id, session)
+    return await undo_last_event(session, court, match_id)
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/finish",
+    response_model=ScoreMutationResult,
+)
+async def finish_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    _group, court = await _all_courts_court(token, court_id, session)
+    return await finish_match(session, court, match_id)

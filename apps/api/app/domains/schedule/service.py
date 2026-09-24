@@ -10,8 +10,9 @@ import uuid
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
+from pydantic import ValidationError
 from sqlalchemy import ColumnElement, Exists, Select, delete, exists, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
@@ -68,7 +69,7 @@ from app.domains.schedule.schemas import (
     WaitingReason,
 )
 from app.sports import catalog, registry, scoring
-from app.sports.plugin import PointDetail, SpineEventContext
+from app.sports.plugin import PluginEventContext, PointDetail, SpineEventContext
 from app.sports.presentation import SportSummary
 
 _ACTIVE_MATCH_STATUSES = ("queued", "in_progress")
@@ -3010,6 +3011,7 @@ def _score_mutation_result(
     score_event_id: uuid.UUID | None = None,
     serve: ServeStationInfo | None = None,
     sport_state: object = None,
+    follow_up_score_event_id: uuid.UUID | None = None,
 ) -> ScoreMutationResult:
     return ScoreMutationResult(
         applied=applied,
@@ -3017,10 +3019,13 @@ def _score_mutation_result(
         status=match.status,
         score_a=match.score_a,
         score_b=match.score_b,
-        winner_team=cast("Team | None", match.winner_team),
+        winner_team=cast("Literal['A', 'B', 'D'] | None", match.winner_team),
         score_event_id=str(score_event_id) if score_event_id is not None else None,
         serve=serve,
         sport_state=sport_state,
+        follow_up_score_event_id=(
+            str(follow_up_score_event_id) if follow_up_score_event_id is not None else None
+        ),
     )
 
 
@@ -3160,6 +3165,17 @@ async def apply_score_delta(
     stays here."""
     match = await _fetch_match_for_court(session, court, match_id)
     plugin = registry.get(match.type_key)
+    # 043: a sport type may only move the score through its own events
+    # (frames), and a step must be one the group allows; a negative step is
+    # net rally's −1 correction only (other types undo instead).
+    if not plugin.direct_points:
+        raise ApiError("EVENT_KIND_NOT_ALLOWED", status_code=422, detail={"kind": "point"})
+    if (
+        delta == 0
+        or abs(delta) not in match.score_steps
+        or (delta < 0 and not plugin.negative_points)
+    ):
+        raise ApiError("SCORE_STEP_NOT_ALLOWED", status_code=422)
 
     column = Match.score_a if side == "A" else Match.score_b
     conditions = [Match.id == match_id, Match.status == "in_progress"]
@@ -3385,6 +3401,230 @@ async def attach_shot_placement(
             ending_type=ending_type,
         ),
     )
+
+
+async def _complete_match(
+    session: AsyncSession, match: Match, court: Court, winner_team: str
+) -> None:
+    """Mark an in-progress match completed with `winner_team` (A, B or 043's
+    D for a draw) and run the terminal hooks and publishes, like a natural
+    win in apply_score_delta()."""
+    await session.execute(
+        update(Match)
+        .where(Match.id == match.id, Match.status == "in_progress")
+        .values(status="completed", winner_team=winner_team, ended_at=datetime.now(UTC))
+    )
+    await session.commit()
+    await session.refresh(match)
+    pulled = await _advance_after_terminal(session, match)
+    await _publish_match_ended(session, match, court, pulled)
+
+
+async def apply_plugin_event(
+    session: AsyncSession,
+    court: Court,
+    match_id: uuid.UUID,
+    kind: str,
+    payload: dict[str, Any],
+    source: str = "control_panel",
+) -> ScoreMutationResult:
+    """043 contracts/match-events-api.md §2: an event the match's sport type
+    declares (frames: an in-frame point, the end of a frame). Core puts it on
+    the spine (delta 0), the plugin writes its own rows, and a follow-up
+    `point` the plugin asks for (a frame won) moves the match score in the
+    same transaction — ending the match if that reaches the target.
+
+    Every row one call writes shares one `created_at`: that is what makes it
+    one action for undo_last_event()."""
+    match = await _fetch_match_for_court(session, court, match_id)
+    plugin = registry.get(match.type_key)
+    if match.status != "in_progress":
+        raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
+    schema = plugin.event_schemas().get(kind)
+    if schema is None:
+        raise ApiError("EVENT_KIND_NOT_ALLOWED", status_code=422, detail={"kind": kind})
+    try:
+        parsed = schema.model_validate(payload)
+    except ValidationError as error:
+        raise ApiError("VALIDATION_ERROR", status_code=422) from error
+
+    now = datetime.now(UTC)
+    await session.execute(
+        update(Group).where(Group.id == match.group_id).values(last_activity_at=now)
+    )
+    event = ScoreEvent(
+        id=uuid.uuid4(),
+        match_id=match.id,
+        group_id=match.group_id,
+        kind=kind,
+        side=getattr(parsed, "side", None),
+        delta=0,
+        score_a=match.score_a,
+        score_b=match.score_b,
+        source=source,
+        created_at=now,
+    )
+    session.add(event)
+    await session.flush()
+    result = await plugin.apply_event(
+        session, PluginEventContext(match=match, event=event, payload=parsed)
+    )
+
+    follow_up = result.follow_up_point
+    if follow_up is not None:
+        column = Match.score_a if follow_up.side == "A" else Match.score_b
+        row = (
+            await session.execute(
+                update(Match)
+                .where(Match.id == match.id, Match.status == "in_progress")
+                .values(**{column.key: column + follow_up.delta})
+                .returning(Match.score_a, Match.score_b)
+            )
+        ).first()
+        if row is None:
+            await session.rollback()
+            raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
+        point = ScoreEvent(
+            id=follow_up.event_id,
+            match_id=match.id,
+            group_id=match.group_id,
+            kind="point",
+            side=follow_up.side,
+            delta=follow_up.delta,
+            score_a=row.score_a,
+            score_b=row.score_b,
+            source=source,
+            created_at=now,
+        )
+        session.add(point)
+        await plugin.on_spine_event(session, SpineEventContext(match=match, event=point))
+
+    await session.commit()
+    await session.refresh(match)
+
+    if follow_up is not None and match.end_mode == "target":
+        mine, theirs = (
+            (match.score_a, match.score_b)
+            if follow_up.side == "A"
+            else (match.score_b, match.score_a)
+        )
+        if match_wins(mine, theirs, match.target_score, match.cap_score, match.win_by):
+            await _complete_match(session, match, court, follow_up.side)
+            return _score_mutation_result(
+                applied=True,
+                match=match,
+                score_event_id=event.id,
+                follow_up_score_event_id=follow_up.event_id,
+            )
+
+    await publish(
+        court_channel(str(match.group_id), str(court.id)),
+        "match.eventApplied",
+        {
+            "match_id": str(match.id),
+            "score_a": match.score_a,
+            "score_b": match.score_b,
+            "sport_state": result.live_payload,
+            "score_event_id": str(event.id),
+        },
+    )
+    return _score_mutation_result(
+        applied=True,
+        match=match,
+        score_event_id=event.id,
+        sport_state=result.live_payload,
+        follow_up_score_event_id=follow_up.event_id if follow_up is not None else None,
+    )
+
+
+async def undo_last_event(
+    session: AsyncSession, court: Court, match_id: uuid.UUID
+) -> ScoreMutationResult:
+    """043 contracts/match-events-api.md §4: take back the match's last
+    action — every spine row with the latest `created_at` (one call of
+    apply_score_delta() or apply_plugin_event()). The plugin's own rows go
+    with them (ON DELETE CASCADE) and the match score drops by the removed
+    points. Net rally refuses (it corrects with −1 instead)."""
+    match = await _fetch_match_for_court(session, court, match_id)
+    plugin = registry.get(match.type_key)
+    if match.status != "in_progress":
+        raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
+    if not plugin.can_undo(match):
+        raise ApiError("UNDO_NOT_SUPPORTED", status_code=409)
+
+    latest = (
+        await session.execute(
+            select(func.max(ScoreEvent.created_at)).where(ScoreEvent.match_id == match.id)
+        )
+    ).scalar_one_or_none()
+    if latest is None:
+        raise ApiError("NOTHING_TO_UNDO", status_code=409)
+    rows = (
+        (
+            await session.execute(
+                select(ScoreEvent).where(
+                    ScoreEvent.match_id == match.id, ScoreEvent.created_at == latest
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    taken_a = sum(row.delta for row in rows if row.kind == "point" and row.side == "A")
+    taken_b = sum(row.delta for row in rows if row.kind == "point" and row.side == "B")
+    if match.score_a - taken_a < 0 or match.score_b - taken_b < 0:
+        raise ApiError("UNDO_CONFLICT", status_code=409)
+
+    await session.execute(
+        update(Match)
+        .where(Match.id == match.id)
+        .values(score_a=Match.score_a - taken_a, score_b=Match.score_b - taken_b)
+    )
+    await session.execute(delete(ScoreEvent).where(ScoreEvent.id.in_([row.id for row in rows])))
+    await session.execute(
+        update(Group).where(Group.id == match.group_id).values(last_activity_at=datetime.now(UTC))
+    )
+    await plugin.after_undo(session, match)
+    await session.commit()
+    await session.refresh(match)
+
+    sport_state = await plugin.live_state(session, match)
+    await publish(
+        court_channel(str(match.group_id), str(court.id)),
+        "match.eventApplied",
+        {
+            "match_id": str(match.id),
+            "score_a": match.score_a,
+            "score_b": match.score_b,
+            "sport_state": sport_state,
+            "score_event_id": None,
+        },
+    )
+    return _score_mutation_result(applied=True, match=match, sport_state=sport_state)
+
+
+async def finish_match(
+    session: AsyncSession, court: Court, match_id: uuid.UUID
+) -> ScoreMutationResult:
+    """043 FR-017 / contracts/match-events-api.md §3: "end and record the
+    result" of a manual-end match — the higher score wins; a level score is a
+    draw (`D`) where the group allows draws, otherwise refused. Target-mode
+    matches only ever end by reaching the target (or are abandoned)."""
+    match = await _fetch_match_for_court(session, court, match_id)
+    if match.end_mode != "manual":
+        raise ApiError("FINISH_NOT_AVAILABLE", status_code=409)
+    if match.status != "in_progress":
+        raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
+    if match.score_a > match.score_b:
+        winner = "A"
+    elif match.score_b > match.score_a:
+        winner = "B"
+    elif match.allow_draw:
+        winner = "D"
+    else:
+        raise ApiError("DRAW_NOT_ALLOWED", status_code=409)
+    await _complete_match(session, match, court, winner)
+    return _score_mutation_result(applied=True, match=match)
 
 
 async def end_match_early(
