@@ -1,0 +1,28 @@
+@if (isSinglesMatch()) {
+  <!-- 032-out-of-bounds-by-match-mode: for a singles match, the strip
+       between the singles sideline and the full doubles width is out of
+       play — shaded here so it visually matches the narrower singles
+       in-bounds check, same as a real singles court. -->
+  <div class="out-of-play-band out-of-play-band--top"></div>
+  <div class="out-of-play-band out-of-play-band--bottom"></div>
+}
+@if (landingX() !== null && landingY() !== null) {
+  <!-- 0 is a legitimate coordinate (A's baseline) — MUST NOT use a
+       truthy @if here, only an explicit null check. -->
+  <span
+    class="landing-marker"
+    [style.left.%]="landingX()! * 100"
+    [style.top.%]="landingY()! * 100"
+  ></span>
+}
+@for (marker of markers(); track $index) {
+  <!-- 033-match-record-derived-stats: scored = circle, lost = diamond — the
+       two kinds differ by SHAPE, not only by colour (Constitution VII). -->
+  <span
+    class="court-marker"
+    [class.court-marker--scored]="marker.kind === 'scored'"
+    [class.court-marker--lost]="marker.kind === 'lost'"
+    [style.left.%]="marker.x * 100"
+    [style.top.%]="marker.y * 100"
+  ></span>
+}

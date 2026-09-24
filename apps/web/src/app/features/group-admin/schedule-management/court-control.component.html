@@ -3,80 +3,139 @@
     {{ 'common.offlineBanner' | translate }}
   </p>
 }
-@if (court().current_match; as match) {
+@if (cancelScoreErrorKey(); as key) {
+  <p role="alert" class="status-badge status-badge--danger">{{ key | translate }}</p>
+}
+@if (displayCourt().current_match; as match) {
   <div class="score-controls-toolbar">
-    <button type="button" class="btn btn--secondary" (click)="toggleSwap()">
-      ⇄ {{ 'controlPanel.swapTeams' | translate }}
-    </button>
+    <button
+      type="button"
+      class="btn btn--secondary swap-teams-button"
+      [attr.aria-label]="'controlPanel.swapTeams' | translate"
+      (click)="toggleSwap()"
+    ><app-icon name="swap" /></button>
   </div>
   <div class="score-board">
     <div class="team" [class.team--a]="leftTeam() === 'A'" [class.team--b]="leftTeam() === 'B'">
-      <div class="names">
-        @for (participant of match.participants; track participant.roster_entry_id) {
-          @if (participant.team === leftTeam()) {
-            <div>{{ participant.nickname }}</div>
+      @if (station(match, serveRosterId(match, leftTeam(), 'top')); as topStation) {
+        <div class="station station--top" [class.station--server]="topStation.isServer" [attr.aria-label]="topStation.nickname">
+          {{ topStation.displayName }}
+          @if (topStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
           }
-        }
+        </div>
+      }
+      <div class="team-center">
+        <span
+          class="score"
+          [class.score--pulse]="leftTeam() === 'A' ? scorePulseA() : scorePulseB()"
+        >{{ leftTeam() === 'A' ? match.score_a : match.score_b }}</span>
       </div>
-      <span class="score">{{ leftTeam() === 'A' ? match.score_a : match.score_b }}</span>
-      <div class="buttons">
-        <button
-          type="button"
-          class="btn"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(leftTeam(), 1)"
-        >
-          +1
-        </button>
-        <button
-          type="button"
-          class="btn btn--secondary"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(leftTeam(), -1)"
-        >
-          -1
-        </button>
-      </div>
+      @if (station(match, serveRosterId(match, leftTeam(), 'bottom')); as bottomStation) {
+        <div class="station station--bottom" [class.station--server]="bottomStation.isServer" [attr.aria-label]="bottomStation.nickname">
+          {{ bottomStation.displayName }}
+          @if (bottomStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
+          }
+        </div>
+      }
     </div>
     <div class="team" [class.team--a]="rightTeam() === 'A'" [class.team--b]="rightTeam() === 'B'">
-      <div class="names">
-        @for (participant of match.participants; track participant.roster_entry_id) {
-          @if (participant.team === rightTeam()) {
-            <div>{{ participant.nickname }}</div>
+      @if (station(match, serveRosterId(match, rightTeam(), 'top')); as topStation) {
+        <div class="station station--top" [class.station--server]="topStation.isServer" [attr.aria-label]="topStation.nickname">
+          {{ topStation.displayName }}
+          @if (topStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
           }
-        }
+        </div>
+      }
+      <div class="team-center">
+        <span
+          class="score"
+          [class.score--pulse]="rightTeam() === 'A' ? scorePulseA() : scorePulseB()"
+        >{{ rightTeam() === 'A' ? match.score_a : match.score_b }}</span>
       </div>
-      <span class="score">{{ rightTeam() === 'A' ? match.score_a : match.score_b }}</span>
-      <div class="buttons">
-        <button
-          type="button"
-          class="btn"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(rightTeam(), 1)"
-        >
-          +1
-        </button>
-        <button
-          type="button"
-          class="btn btn--secondary"
-          [disabled]="connectionState() !== 'connected'"
-          (click)="score(rightTeam(), -1)"
-        >
-          -1
-        </button>
-      </div>
+      @if (station(match, serveRosterId(match, rightTeam(), 'bottom')); as bottomStation) {
+        <div class="station station--bottom" [class.station--server]="bottomStation.isServer" [attr.aria-label]="bottomStation.nickname">
+          {{ bottomStation.displayName }}
+          @if (bottomStation.isServer) {
+            <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
+          }
+        </div>
+      }
     </div>
   </div>
+  <!-- Below .score-board (the court), never on top of the court markings —
+       see scoreboard.component.scss's .scoring-controls comment. -->
+  <div class="scoring-controls">
+    <div class="buttons">
+      <button
+        type="button"
+        class="btn"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="plusPressed(leftTeam())"
+      >
+        +1
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="score(leftTeam(), -1)"
+      >
+        -1
+      </button>
+    </div>
+    <div class="buttons">
+      <button
+        type="button"
+        class="btn"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="plusPressed(rightTeam())"
+      >
+        +1
+      </button>
+      <button
+        type="button"
+        class="btn btn--secondary"
+        [disabled]="connectionState() !== 'connected'"
+        (click)="score(rightTeam(), -1)"
+      >
+        -1
+      </button>
+    </div>
+  </div>
+  <app-shot-placement-picker
+    #shotPlacementPicker
+    [participants]="match.participants"
+    [scoringTeam]="pendingScoringSide()"
+    [servingTeam]="pendingServingTeam()"
+    [servingScore]="pendingServingScore()"
+    [servingRosterEntryId]="pendingServingRosterEntryId()"
+    [leftTeam]="leftTeam()"
+    (confirmed)="onShotPlacementConfirmed($event)"
+    (scoreCancelled)="onShotPlacementCancelled()"
+    (closed)="onShotPlacementClosed()"
+  />
   <button
     type="button"
-    class="btn btn--danger"
+    class="btn btn--danger end-match-button"
     [disabled]="connectionState() !== 'connected'"
     (click)="openEndMatchDialog()"
   >
     {{ 'controlPanel.endMatch' | translate }}
   </button>
   <app-confirm-dialog
+    #matchPointDialog
+    variant="primary"
+    [title]="'controlPanel.matchPointConfirmTitle' | translate"
+    [body]="'controlPanel.matchPointConfirmBody' | translate"
+    (confirmed)="onMatchPointConfirmed()"
+    (closed)="onMatchPointDialogClosed()"
+  />
+  <app-confirm-dialog
     #endMatchDialog
+    variant="primary"
     [title]="'controlPanel.endMatchConfirmTitle' | translate"
     [body]="'controlPanel.endMatchConfirmBody' | translate"
     (confirmed)="confirmEndMatch()"

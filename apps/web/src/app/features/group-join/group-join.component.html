@@ -1,6 +1,6 @@
 @switch (status()) {
   @case ('loading') {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   }
   @case ('disbanded') {
     <p role="alert">{{ 'errors.GROUP_DISBANDED' | translate }}</p>

@@ -95,7 +95,7 @@ async def test_shuffle_swaps_repeat_lineup_out_of_first_slot(
     result = await db_session.execute(
         select(Match.id)
         .where(Match.group_id == group.id, Match.round_number == 2)
-        .order_by(Match.created_at)
+        .order_by(Match.queue_position)
     )
     ordered_ids = list(result.scalars())
     assert ordered_ids[0] == match_fresh.id, (

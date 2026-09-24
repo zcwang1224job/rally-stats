@@ -5,7 +5,7 @@
 @if (expanded()) {
   <div class="round-matches">
     @if (loading()) {
-      <p>{{ 'common.loading' | translate }}</p>
+      <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
     } @else if (errorKey(); as key) {
       <p role="alert">{{ key | translate }}</p>
     } @else {
@@ -20,6 +20,32 @@
           {{ 'scheduleManagement.refresh' | translate }}
         </button>
       </div>
+
+      @if (matches().length > 0) {
+        <p class="round-progress">
+          {{ 'scheduleManagement.roundRemaining' | translate: { total: matches().length, remaining: remainingCount() } }}
+          @if (estimatedRemainingMinutes(); as minutes) {
+            · {{ 'scheduleManagement.roundEstimate' | translate: { minutes } }}
+          }
+        </p>
+        @if (sittingOutNames(); as names) {
+          <p class="round-progress">{{ 'scheduleManagement.roundSittingOut' | translate: { names } }}</p>
+        }
+        @if (waitingOnRest(); as waiting) {
+          <div class="rest-banner" [class.rest-banner--stalled]="waiting.stalled" role="status">
+            <p>
+              <span aria-hidden="true">{{ waiting.stalled ? '⚠' : '☕' }} </span>
+              {{
+                'scheduleManagement.waitingOnRest'
+                  | translate: { count: waiting.match_count, names: waitingOnRestNames() }
+              }}
+            </p>
+            @if (waiting.stalled && !autoNextRound()) {
+              <p>{{ 'scheduleManagement.waitingOnRestHint' | translate }}</p>
+            }
+          </div>
+        }
+      }
 
       @if (actionErrorKey(); as key) {
         <p role="alert">{{ key | translate }}</p>
@@ -44,7 +70,7 @@
             <li cdkDrag [cdkDragDisabled]="!isReorderable(match) || saving()">
               <div class="match-meta">
                 @if (isReorderable(match)) {
-                  <span class="drag-handle" cdkDragHandle aria-hidden="true">⠿</span>
+                  <span class="drag-handle" cdkDragHandle aria-hidden="true"><app-icon name="grip" /></span>
                 }
                 <span class="status-badge" [attr.data-status]="match.status">
                   {{ 'scheduleManagement.matchStatus.' + match.status | translate }}
@@ -54,6 +80,9 @@
                 }
                 @if (match.status === 'completed' || match.status === 'in_progress') {
                   <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+                }
+                @if (restEffectKey(match); as key) {
+                  <span class="status-badge status-badge--muted">{{ key | translate }}</span>
                 }
               </div>
 
@@ -73,7 +102,7 @@
                           @if (isSelected(match.match_id, p.roster_entry_id)) {
                             <span aria-hidden="true">✓ </span>
                           }
-                          {{ p.nickname }}
+                          {{ p.nickname }}{{ isResting(p.roster_entry_id) ? ('scheduleManagement.restingSuffix' | translate) : '' }}
                         </button>
                         @if (changeCandidates(match).length > 0) {
                           <select
@@ -84,7 +113,7 @@
                           >
                             <option value="">{{ 'scheduleManagement.changeToPlaceholder' | translate }}</option>
                             @for (candidate of changeCandidates(match); track candidate.roster_entry_id) {
-                              <option [value]="candidate.roster_entry_id">{{ candidate.nickname }}</option>
+                              <option [value]="candidate.roster_entry_id">{{ candidate.nickname }}{{ candidate.resting ? ('scheduleManagement.restingSuffix' | translate) : '' }}</option>
                             }
                           </select>
                         }
@@ -106,7 +135,7 @@
                           @if (isSelected(match.match_id, p.roster_entry_id)) {
                             <span aria-hidden="true">✓ </span>
                           }
-                          {{ p.nickname }}
+                          {{ p.nickname }}{{ isResting(p.roster_entry_id) ? ('scheduleManagement.restingSuffix' | translate) : '' }}
                         </button>
                         @if (changeCandidates(match).length > 0) {
                           <select
@@ -117,7 +146,7 @@
                           >
                             <option value="">{{ 'scheduleManagement.changeToPlaceholder' | translate }}</option>
                             @for (candidate of changeCandidates(match); track candidate.roster_entry_id) {
-                              <option [value]="candidate.roster_entry_id">{{ candidate.nickname }}</option>
+                              <option [value]="candidate.roster_entry_id">{{ candidate.nickname }}{{ candidate.resting ? ('scheduleManagement.restingSuffix' | translate) : '' }}</option>
                             }
                           </select>
                         }

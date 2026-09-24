@@ -2,7 +2,7 @@
   <h1>{{ 'groupInvite.detailTitle' | translate }}</h1>
 
   @if (loading()) {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (errorKey(); as key) {
     <p role="alert">{{ key | translate }}</p>
   } @else if (detail(); as d) {
@@ -14,7 +14,7 @@
       <span
         class="status-badge"
         [class.status-badge--success]="d.status === 'accepted'"
-        [class.status-badge--danger]="d.status === 'declined' || d.status === 'invalidated'"
+        [class.status-badge--danger]="d.status === 'declined' || d.status === 'invalidated' || d.status === 'cancelled'"
       >
         {{ ('groupInvite.status.' + d.status) | translate }}
       </span>

@@ -47,6 +47,27 @@
 - `ALREADY_GROUP_MEMBER`（409，FR-004，對方已是本團現有成員）
 - `INVITE_ALREADY_PENDING`（409，FR-003，同一好友已有一筆待回覆邀請）
 
+## POST /groups/{group_id}/invites/{invite_id}/cancel
+
+`require_admin`。團長在受邀人回覆之前收回邀請（bug report：團長邀請好友，
+在好友接受邀請之前，團長可以取消邀請，這樣好友在按下接受邀請之後，就進
+不來了）。邀請轉為終態 `cancelled`，受邀人隨後的 accept 便被既有的
+`pending` 檢查擋下。
+
+不擋未來重邀——partial unique index 只涵蓋 `pending`，之後再 `POST
+/groups/{group_id}/invites` 會開一筆全新的邀請。受邀人原本那則
+`group_invite` 通知刻意保留不動：點進去會看到 `cancelled` 狀態、沒有任何
+按鈕，與 `declined`／`invalidated` 的處理一致。
+
+**Response 200**：`{ "invite_id": "uuid", "status": "cancelled" }`
+
+**錯誤代碼**：
+- `ADMIN_TOKEN_INVALID`（401，含「此 admin token 屬於別團」）
+- `GROUP_NOT_MEMBER_CREATED`（403）
+- `GROUP_INVITE_NOT_FOUND`（404，不存在或不屬於本團）
+- `GROUP_INVITE_NOT_PENDING`（409，已是 accepted/declined/invalidated/
+  cancelled——對方搶先接受時就是這個，取消不會回頭拆掉既成的成員身分）
+
 ## GET /group-invites/{invite_id}
 
 `require_verified_member`。僅邀請的受邀人本人可查看（FR-005/FR-010）。
@@ -76,6 +97,9 @@
 
 **錯誤代碼**：
 - `GROUP_INVITE_NOT_FOUND`（404）
+- `GROUP_INVITE_CANCELLED`（409，團長已收回這筆邀請。之所以從
+  `GROUP_INVITE_NOT_PENDING` 拆出來，只是為了讓受邀人知道剛才那顆按鈕
+  為什麼不能用了）
 - `GROUP_INVITE_NOT_PENDING`（409，已是 accepted/declined/invalidated，
   含「已額滿故仍為 pending 但當下仍額滿」不算此錯誤——那是下面的
   `GROUP_FULL`）

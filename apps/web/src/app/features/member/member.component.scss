@@ -1,13 +1,7 @@
-:host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 480px;
-  margin: 0 auto;
-}
+@use '../../../styles/layout';
 
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+:host {
+  @include layout.page(narrow);
 }
 
 .user-number {
@@ -20,24 +14,6 @@ h1 {
   gap: var(--space-sm);
 }
 
-// Same avatar treatment as friend-list's/admin-page's .friend-row__avatar
-// (component-scoped styles don't leak across components, so it's copied
-// rather than shared) — an initial-letter circle, reused here so the
-// member's own identity reads consistently with every other "person" row
-// in the app.
-.friend-row__avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-primary-contrast);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-body);
-}
 
 // US6 (010-app-wide-ui-redesign): menu-style rows — 對戰紀錄/好友/我的團/
 // 個人設定. Logout is deliberately NOT one of these rows (see
@@ -101,6 +77,4 @@ h1 {
   display: block;
   width: 100%;
   margin-top: var(--space-md);
-  color: var(--color-danger);
-  border-color: var(--color-danger);
 }

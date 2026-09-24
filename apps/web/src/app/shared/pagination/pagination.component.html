@@ -1,0 +1,35 @@
+@if (totalPages() > 1) {
+  <nav class="pagination" [attr.aria-label]="'common.pagination' | translate">
+    <button
+      type="button"
+      class="btn btn--secondary pagination__step"
+      [disabled]="page() <= 1"
+      (click)="goTo(page() - 1)"
+    >
+      {{ 'common.previousPage' | translate }}
+    </button>
+    @for (slot of slots(); track $index) {
+      @if (slot === 'gap') {
+        <span class="pagination__gap" aria-hidden="true">…</span>
+      } @else {
+        <button
+          type="button"
+          class="btn pagination__page"
+          [class.btn--secondary]="slot !== page()"
+          [attr.aria-current]="slot === page() ? 'page' : null"
+          (click)="goTo(slot)"
+        >
+          {{ slot }}
+        </button>
+      }
+    }
+    <button
+      type="button"
+      class="btn btn--secondary pagination__step"
+      [disabled]="page() >= totalPages()"
+      (click)="goTo(page() + 1)"
+    >
+      {{ 'common.nextPage' | translate }}
+    </button>
+  </nav>
+}

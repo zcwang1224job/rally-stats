@@ -2,56 +2,23 @@
   <p role="alert">{{ errorKey()! | translate }}</p>
 } @else if (records(); as r) {
   @if (r.matches.length === 0) {
-    <p>{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
+    <p class="empty-state card">{{ 'groupMemberView.matchRecords.empty' | translate }}</p>
   } @else {
     <ul class="record-list">
       @for (match of r.matches; track match.match_id) {
         <li
-          class="card record-row--clickable"
-          role="button"
-          tabindex="0"
-          (click)="openDetail(match.match_id)"
-          (keydown.enter)="openDetail(match.match_id)"
-          (keydown.space)="openDetail(match.match_id); $event.preventDefault()"
-        >
-          <span class="round-tag status-badge">{{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: match.round_number } }}</span>
-          @if (match.started_at && match.ended_at) {
-            <span class="time-range">🕐 {{ match.started_at | date: 'HH:mm' }} - {{ match.ended_at | date: 'HH:mm' }}</span>
-          }
-          <span class="teams">
-            @for (p of match.team_a; track p.roster_entry_id) {
-              <app-nickname [value]="p.nickname" />
-              @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" />
-              }
-            }
-            vs
-            @for (p of match.team_b; track p.roster_entry_id) {
-              <app-nickname [value]="p.nickname" />
-              @if (p.member_id && inviteCandidateFor(p.member_id); as candidate) {
-                <app-add-friend-button [memberId]="candidate.member_id" [friendshipStatus]="candidate.friendship_status" [inviteEligible]="candidate.invite_eligible" />
-              }
-            }
-          </span>
-          <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
-          <span class="result status-badge status-badge--success">
-            {{ 'groupMemberView.matchRecords.winnerLabel' | translate: { names: winnerNames(match) } }}
-          </span>
-        </li>
+          app-match-card
+          [match]="match"
+          startFormat="HH:mm"
+          [candidateFor]="candidateLookup"
+          (opened)="openDetail(match.match_id)"
+        ></li>
       }
     </ul>
-    @if (r.total_pages > 1) {
-      <nav class="pagination">
-        @for (p of pageNumbers(); track p) {
-          <button type="button" class="btn" [class.btn--secondary]="p !== page()" [disabled]="p === page()" (click)="goToPage(p)">
-            {{ p }}
-          </button>
-        }
-      </nav>
-    }
+    <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />
   }
 } @else {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 }
 
 <app-match-record-detail-dialog
@@ -59,4 +26,5 @@
   [detail]="detail()"
   [loading]="detailLoading()"
   [loadError]="detailLoadError()"
+  [shareContext]="shareContext()"
 />

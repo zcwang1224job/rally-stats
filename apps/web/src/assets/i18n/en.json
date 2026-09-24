@@ -17,7 +17,26 @@
     "menuToggle": "Open navigation menu"
   },
   "home": {
-    "title": "Rally Stats"
+    "title": "Rally Stats",
+    "features": {
+      "scoring": {
+        "title": "Live scoring",
+        "body": "Your phone is the scoreboard, and everyone courtside sees the score as it happens."
+      },
+      "rotation": {
+        "title": "Automatic rotation",
+        "body": "Players rotate on court by headcount and rest, with no handwritten lists."
+      },
+      "stats": {
+        "title": "Your stats and your group's",
+        "body": "Every game is recorded: win rate, trends and opponents at a glance."
+      }
+    },
+    "cta": {
+      "start": "Get started",
+      "login": "Log in",
+      "member": "Go to my page"
+    }
   },
   "breadcrumb": {
     "groupAdmin": "Group Admin",
@@ -101,7 +120,8 @@
     "moreFilters": "More Filters",
     "applyFilters": "Apply Filters",
     "clearFilters": "Clear Filters",
-    "emptyState": "No groups match the current filters"
+    "emptyState": "No groups match the current filters",
+    "capacity": "{{current}} / {{max}} members"
   },
   "guestBinding": {
     "title": "Create an account and save your stats",
@@ -167,6 +187,7 @@
       "pending": "Pending",
       "accepted": "Accepted",
       "declined": "Declined",
+      "cancelled": "Cancelled by Creator",
       "invalidated": "Invalidated"
     },
     "acceptButton": "Accept Invite",
@@ -177,11 +198,13 @@
     "title": "Invite Friends",
     "empty": "No friends available to invite",
     "inviteButton": "Send Invite",
+    "cancelButton": "Cancel Invite",
     "status": {
       "not_invited": "Not Invited",
       "pending": "Pending",
       "accepted": "Accepted",
       "declined": "Declined",
+      "cancelled": "Invite Cancelled",
       "invalidated": "Invalidated",
       "already_member": "Already in Group"
     }
@@ -189,12 +212,26 @@
   "myGroups": {
     "title": "My Groups",
     "empty": "You haven't joined any groups yet",
+    "emptyFiltered": "No groups match these filters",
+    "filters": {
+      "name": "Group name",
+      "groupNumber": "Group number",
+      "role": "My role",
+      "any": "All",
+      "createdFrom": "Created (From)",
+      "createdTo": "Created (To)",
+      "disbandedFrom": "Disbanded (From)",
+      "disbandedTo": "Disbanded (To)",
+      "matchCountMin": "Matches played (min)",
+      "matchCountMax": "Matches played (max)"
+    },
     "forgotPinButton": "Forgot Admin PIN",
     "forgotPinConfirmTitle": "Reset this group's admin PIN?",
     "forgotPinConfirmBody": "The current PIN will be invalidated immediately. This cannot be undone.",
     "viewHistoryAriaLabel": "View match records for \"{{name}}\"",
     "createdAt": "Created",
     "disbandedAt": "Disbanded",
+    "matchCount": "{{count}} matches played",
     "role": {
       "creator": "Creator",
       "member": "Member"
@@ -240,6 +277,10 @@
         "empty": "No match records yet"
       },
       "groupRecordsTitle": "Match Records",
+      "tabs": {
+        "matches": "Matches ({{total}})",
+        "stats": "Stats"
+      },
       "filters": {
         "nickname": "Player Nickname",
         "nicknamePlaceholder": "Search matches this player appears in",
@@ -279,11 +320,38 @@
       },
       "charts": {
         "roundTrendTitle": "Win Rate Trend by Round",
-        "roundTrendEmpty": "No round data available to chart"
+        "roundTrendEmpty": "No round data available to chart",
+        "roundTrendRound": "Round",
+        "roundTrendSummary": "Win rate by round across {{count}} rounds, from {{from}} to {{to}}"
       },
       "opponentRanking": {
         "title": "Opponent Records",
         "empty": "No opponent data yet"
+      },
+      "matchups": {
+        "partnerTitle": "Partners",
+        "opponentTitle": "Opponents",
+        "empty": "Nobody to list yet",
+        "noDoubles": "Singles has no partner. Once you play doubles, your record with each partner shows up here.",
+        "lowSample": "few matches",
+        "record": "{{matches}} played · {{wins}} won, {{losses}} lost",
+        "margin": "Avg. margin",
+        "sort": {
+          "label": "Sort by",
+          "matches": "Matches",
+          "win_rate": "Win rate",
+          "avg_margin": "Avg. margin"
+        },
+        "highlights": {
+          "partnerMost": "Most played with",
+          "partnerStandout": "Best win rate together",
+          "opponentMost": "Most faced",
+          "opponentStandout": "Lowest win rate against",
+          "figure": "{{matches}} matches · {{rate}} won"
+        },
+        "activePartner": "Only matches partnered with {{nickname}}",
+        "activeOpponent": "Only matches against {{nickname}}",
+        "clear": "Clear this filter"
       }
     },
     "nicknameSectionTitle": "Nickname",
@@ -311,8 +379,7 @@
         "empty": "No login records yet",
         "deviceDesktop": "Desktop Browser",
         "deviceMobile": "Mobile Browser",
-        "deviceUnknown": "Unknown Device",
-        "pageIndicator": "Page {{page}} of {{totalPages}}"
+        "deviceUnknown": "Unknown Device"
       },
       "security": {
         "title": "Security",
@@ -362,6 +429,7 @@
     "copy": "Copy",
     "previousPage": "Previous Page",
     "nextPage": "Next Page",
+    "pagination": "Pagination",
     "accept": "Accept",
     "reject": "Reject",
     "copied": "Copied",
@@ -452,6 +520,9 @@
     "scoreboardScoringSectionTitle": "Scoreboard Link Permissions",
     "scoreboardScoringHint": "When enabled, the scoreboard link (usually shared with spectators/players just to view the score) can also be used to score the match, without needing a separate control panel link",
     "scoreboardScoringToggle": "Allow scoreboard link to score",
+    "detailedScoringSectionTitle": "Detailed Scoring Mode",
+    "detailedScoringHint": "When enabled, scoring a new match will tap the court diagram and pick the scoring player instead of a plain +1, recording the landing spot and player together. Matches already in progress are unaffected",
+    "detailedScoringToggle": "Use detailed scoring mode for new matches",
     "regeneratePin": "Regenerate PIN",
     "regeneratePinConfirmTitle": "Regenerate the admin PIN?",
     "regeneratePinConfirmBody": "The old PIN will be invalidated immediately. This cannot be undone.",
@@ -459,12 +530,16 @@
     "disband": "Disband Group",
     "disbandConfirmTitle": "Disband this group?",
     "disbandConfirmBody": "All links will be invalidated immediately. This cannot be undone.",
+    "groupLinksTitle": "Group links",
+    "joinLinkTitle": "Join link",
     "disbandedNotice": "This group has been disbanded"
   },
   "controlPanel": {
     "endMatch": "End Early",
     "endMatchConfirmTitle": "End this match early?",
     "endMatchConfirmBody": "This cannot be undone. This match will be marked as abandoned and won't count toward records.",
+    "matchPointConfirmTitle": "Confirm the point that ends this match?",
+    "matchPointConfirmBody": "This cannot be undone. The match will end and the result will count toward records.",
     "nextUpLabel": "Up next: {{names}}",
     "noQueuedNextUp": "No matches queued for this round",
     "enterFullscreen": "Enter Fullscreen",
@@ -498,6 +573,65 @@
   "scoreboard": {
     "serving": "Serving"
   },
+  "shotPlacement": {
+    "title": "Record point detail",
+    "selectLanding": "Tap where the shuttle landed",
+    "selectScoringPlayer": "Select the scoring player",
+    "selectLosingPlayer": "Select the player at fault",
+    "sideScoring": "Scoring side",
+    "sideLosing": "Side at fault",
+    "addScoringPlayer": "+ Scoring player",
+    "addLosingPlayer": "+ Player at fault",
+    "halfScoring": "Scoring side's half",
+    "halfLosing": "Faulting side's half",
+    "switchHalf": "Show the other half of the court",
+    "switchHalfShort": "Other half",
+    "landingConflict": "This landing conflicts with the side that scored — please re-tap the spot",
+    "outOnLosingSide": "Outs usually land on the scoring side. Tap “Other half” to switch.",
+    "serveFault": "⚠ Service fault",
+    "skip": "Skip",
+    "cancelScore": "Cancel score",
+    "confirm": "Save detail",
+    "ending": {
+      "label": "How the rally ended",
+      "autoHint": "Pre-filled from the landing — tap to change",
+      "autoBadge": "Auto",
+      "winner": "Winner",
+      "out": "Opponent out",
+      "net": "Opponent net",
+      "serve_fault": "Serve fault",
+      "other_error": "Other error",
+      "disabled": {
+        "winner": "The landing is out of bounds, so it can't be a winner",
+        "out": "The landing is in bounds, so it isn't out",
+        "serve_fault": "The scoring side was serving, so it can't be a serve fault",
+        "serveFaultLanding": "It landed on the scoring side's own half, so only the opponent's serve fault or another fault explains it"
+      }
+    }
+  },
+  "restToggle": {
+    "rest": "Take a break",
+    "ready": "I'm ready",
+    "afterThisMatch": "Your break starts after this match",
+    "adminRest": "Rest",
+    "adminReady": "Ready",
+    "adminAriaLabel": "Put {{nickname}} on a break",
+    "adminReadyAriaLabel": "Mark {{nickname}} as ready",
+    "substitutionNote": "{{substitute}} plays for {{resting}} (on a break)",
+    "partnerResting": "Your partner is on a break — your matches are on hold",
+    "effectHeld": "Kept for their return",
+    "effectSubstitute": "A substitute plays when it's up",
+    "heldNote": "You have {{count}} matches on hold; they're cancelled if you're not back before this round ends",
+    "endsRound": {
+      "title": "Take a break and end this round?",
+      "body": "The {{count}} matches not yet played this round will be cancelled, and the next round starts.",
+      "adminBody": "Putting {{nickname}} on a break cancels the {{count}} matches not yet played this round, and the next round starts.",
+      "laterTitle": "Take a break?",
+      "laterBody": "If you're not back before this round ends, your {{count}} matches not yet played will be cancelled and the next round starts.",
+      "laterAdminBody": "If {{nickname}} isn't back before this round ends, their {{count}} matches not yet played will be cancelled and the next round starts.",
+      "confirm": "Take a break"
+    }
+  },
   "scheduleManagement": {
     "sectionTitle": "Court Control",
     "roundLabel": "Round {{round}}",
@@ -508,6 +642,11 @@
     "planRound": "Plan Round",
     "startRound": "Start Match",
     "autoNextRound": "Auto Next Round",
+    "continuousRotation": "Fill courts as soon as they free up",
+    "continuousRotationHint": "Don't wait for every court to finish before the next round: whenever a court frees up with nothing queued, the 4 players who have waited longest go on right away",
+    "roundRemaining": "{{remaining}} of {{total}} matches left this round",
+    "roundEstimate": "About {{minutes}} min until the round is done",
+    "roundSittingOut": "Not scheduled this round: {{names}}",
     "showRoundMatches": "Show This Round's Matches",
     "hideRoundMatches": "Hide This Round's Matches",
     "refresh": "Refresh",
@@ -539,6 +678,12 @@
     "rosterSectionTitle": "Rotation Roster",
     "waitCountLabel": "Waited {{count}} rounds",
     "currentlyPlaying": "Playing",
+    "restingBadge": "☕ Resting",
+    "restingSuffix": " (on a break)",
+    "waitingHeldForRest": "Waiting for players on a break",
+    "waitingNotEnoughReady": "Not enough players ready",
+    "waitingOnRest": "{{count}} matches are waiting for players on a break: {{names}}",
+    "waitingOnRestHint": "You can mark them ready, or end this round",
     "kickMember": "Remove",
     "kickMemberAriaLabel": "Remove {{nickname}}",
     "regenerateGuestLink": "Regenerate Link",
@@ -549,7 +694,9 @@
       "nicknamePlaceholder": "Enter guest nickname",
       "submit": "Add Guest",
       "shareLinkTitle": "Share with {{nickname}}",
-      "shareLinkHint": "Give this link or QR code to them — they can then check the match status from their own phone"
+      "shareLinkHint": "Give this link or QR code to them — they can then check the match status from their own phone",
+      "shareToLine": "Share to LINE",
+      "lineShareMessage": "Hi {{nickname}}, here's your own link for today's session — open it to follow the matches"
     }
   },
   "groupMemberView": {
@@ -591,6 +738,306 @@
       "winnerLabel": "{{names}} won"
     }
   },
+  "playerDashboard": {
+    "title": "Technique dashboard",
+    "intro": "Worked out from the {{total}} matches under the current filters.",
+    "introRecent": "\"Last {{window}}\" means the newest {{window}} of them.",
+    "empty": "No matches to work from yet",
+    "loading": "Loading dashboard…",
+    "failed": "The dashboard couldn't be loaded. Please try again later",
+    "basedOn": "Based on {{used}} of {{total}} matches",
+    "serveExclusionNote": "Serve stats leave out each match's first point (the opening server isn't recorded) and any point whose serve record doesn't line up with the score.",
+    "group": {
+      "serve": "Serve and return",
+      "clutch": "Clutch points",
+      "scoring": "Scoring and margins",
+      "landing": "Landing distribution",
+      "ending": "Winners & errors"
+    },
+    "fraction": {
+      "perMatch": "{{total}} over {{matches}} matches"
+    },
+    "recent": {
+      "label": "Last 10",
+      "basedOn": "{{used}} matches"
+    },
+    "delta": {
+      "points": "{{delta}} pts",
+      "plain": "{{delta}}"
+    },
+    "verdict": {
+      "improved": "Improving",
+      "declined": "Declining",
+      "unchanged": "Steady",
+      "insufficient": "Too few matches"
+    },
+    "trend": {
+      "show": "Show trend",
+      "title": "Trend: {{metric}}",
+      "summary": "Trend of {{metric}}: {{count}} data points, from {{from}} to {{to}}",
+      "windowNote": "Each data point adds up 5 consecutive matches that have this data, so one odd match isn't mistaken for a trend. At most the newest 60 points are shown.",
+      "notEnough": "Not enough matches for a trend yet (this metric needs at least 6 matches with data)",
+      "tableView": "View as a table",
+      "tablePeriod": "Period",
+      "tableValue": "Value"
+    },
+    "landing": {
+      "empty": "No landing records — the scorer has to mark where the shuttle landed, in a match with detailed scoring on",
+      "legendScored": "Points won (circle)",
+      "legendLost": "Points lost (diamond)",
+      "courtLabel": "Landing distribution across matches: {{scored}} points won, {{lost}} points lost",
+      "mySide": "My side",
+      "opponentSide": "Opponents",
+      "coverageScored": "Won: {{plotted}} plotted of {{total}} recorded",
+      "coverageLost": "Lost: {{plotted}} plotted of {{total}} recorded"
+    },
+    "metric": {
+      "team_serve": {
+        "label": "Points won on our serve",
+        "hint": "Of the points our side served, how many we won",
+        "empty": "Needs matches with serve records (older matches have none)"
+      },
+      "team_receive": {
+        "label": "Points won receiving",
+        "hint": "Of the points the opponents served, how many we won",
+        "empty": "Needs matches with serve records (older matches have none)"
+      },
+      "own_serve": {
+        "label": "Points won on my own serve",
+        "hint": "Doubles only: points I served myself",
+        "empty": "Needs doubles matches with serve records"
+      },
+      "own_receive": {
+        "label": "Points won on my own return",
+        "hint": "Doubles only: points I received myself",
+        "empty": "Needs doubles matches with serve records"
+      },
+      "points_scored": {
+        "label": "Points I scored (per match)",
+        "hint": "Points where I was recorded as the scorer",
+        "empty": "Needs detailed-scoring matches where the scorer recorded who won and lost the point"
+      },
+      "points_lost": {
+        "label": "Points I lost (per match)",
+        "hint": "Points where I was recorded at fault — lower is better",
+        "empty": "Needs detailed-scoring matches where the scorer recorded who won and lost the point"
+      },
+      "scored_lost_ratio": {
+        "label": "Scored-to-lost ratio",
+        "hint": "Points I scored ÷ points I lost; above 1 means more scored than lost",
+        "empty": "Needs detailed-scoring matches where the scorer recorded who won and lost the point"
+      },
+      "endgame": {
+        "label": "Endgame points won",
+        "hint": "Once either side is within 3 of the target (from 18 in a game to 21)",
+        "empty": "Needs matches with a complete point-by-point record and a target of at least 11"
+      },
+      "deuce": {
+        "label": "Deuce points won",
+        "hint": "Once both sides are one short of the target (from 20-all in a game to 21)",
+        "empty": "Needs matches that went to deuce, with a complete point-by-point record"
+      },
+      "match_point_conversion": {
+        "label": "Match points closed out",
+        "hint": "Of the matches where we held a match point, how many we won",
+        "empty": "Needs matches where we held a match point, with a complete point-by-point record"
+      },
+      "match_points_saved": {
+        "label": "Match points saved (per match)",
+        "hint": "Opponent match points survived. Saving many also means facing many, so this is never marked as better or worse",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "when_leading": {
+        "label": "Points won when leading",
+        "hint": "Points that started with our side ahead",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "when_tied": {
+        "label": "Points won when tied",
+        "hint": "Points that started level",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "when_trailing": {
+        "label": "Points won when trailing",
+        "hint": "Points that started with our side behind — how well we chase",
+        "empty": "Needs matches with a complete point-by-point record"
+      },
+      "avg_points_for": {
+        "label": "Points for (per match)",
+        "hint": "Our side's final score",
+        "empty": "No matches"
+      },
+      "avg_points_against": {
+        "label": "Points against (per match)",
+        "hint": "The opponents' final score — lower is better",
+        "empty": "No matches"
+      },
+      "avg_win_margin": {
+        "label": "Average winning margin",
+        "hint": "Wins only",
+        "empty": "No wins in this range"
+      },
+      "avg_loss_margin": {
+        "label": "Average losing margin",
+        "hint": "Losses only — lower is better: losing by less is progress too",
+        "empty": "No losses in this range"
+      },
+      "winner_share": {
+        "label": "Winner share",
+        "hint": "Winners ÷ points scored with a recorded ending — higher is better",
+        "empty": "No point-ending data in this range"
+      },
+      "winners_per_match": {
+        "label": "Winners per match",
+        "hint": "Matches with point-ending data only — higher is better",
+        "empty": "No point-ending data in this range"
+      },
+      "errors_per_match": {
+        "label": "Errors per match",
+        "hint": "Points given away — lower is better",
+        "empty": "No point-ending data in this range"
+      },
+      "error_share_of_lost": {
+        "label": "Error share of points lost",
+        "hint": "Own errors ÷ points lost with a recorded ending — lower is better",
+        "empty": "No point-ending data in this range"
+      },
+      "winner_error_ratio": {
+        "label": "Winners to errors",
+        "hint": "Winners ÷ own errors — higher is better; undefined without an error",
+        "empty": "No point-ending data in this range"
+      }
+    },
+    "range": {
+      "label": "Range",
+      "all": "All",
+      "recent": "Last {{window}}",
+      "note": "Applies to the error breakdown and the landing map"
+    },
+    "errorBreakdown": {
+      "title": "Error breakdown",
+      "caption": "Own errors counted by kind, with their share",
+      "total": "{{total}} errors in total ({{matches}} matches)",
+      "empty": "No errors recorded in this range",
+      "kind": {
+        "out": "Out",
+        "net": "Net",
+        "serve_fault": "Serve fault",
+        "other_error": "Other"
+      }
+    }
+  },
+  "playerInsights": {
+    "title": "Strengths and weaknesses",
+    "loading": "Working out your strengths and weaknesses…",
+    "list": {
+      "strength": "Strengths",
+      "weakness": "To work on",
+      "recent": "Recent changes",
+      "matchup": "Partners and opponents"
+    },
+    "listEmpty": {
+      "strength": "Nothing stands out as a strength yet",
+      "weakness": "Nothing is clearly lagging",
+      "recent": "Recent form is about the same as overall",
+      "matchup": "No partner or opponent stands out yet"
+    },
+    "tone": {
+      "strength": "Strength",
+      "weakness": "To work on",
+      "matchup": "Matchup"
+    },
+    "status": {
+      "insufficientData": "Not enough data yet: after a few matches with a point-by-point record, this will point out your strengths and what is most worth working on.",
+      "balanced": "Your game is balanced right now: nothing stands out and nothing lags."
+    },
+    "benchmarkPending": "Adding the in-group comparison…",
+    "benchmarkOmittedByFilters": "Filters are active, so the summary leaves out the in-group comparison (the two cover different matches).",
+    "benchmarkIncluded": "Includes the in-group comparison for “{{group}}”.",
+    "evidence": {
+      "points": "{{numerator}}/{{denominator}} points · based on {{matches}} matches",
+      "recent": "{{matches}} recent matches have this data",
+      "matchup": "{{wins}} won, {{losses}} lost · {{matches}} matches",
+      "benchmark": "Rank {{rank}} of {{pool}}"
+    },
+    "rule": {
+      "rate_vs_overall": {
+        "strength": "{{metric}} is {{value}}, above the {{baseline}} your results in these matches would predict ({{diff}} points higher)",
+        "weakness": "{{metric}} is {{value}}, below the {{baseline}} your results in these matches would predict ({{diff}} points lower)"
+      },
+      "deuce_vs_even": {
+        "strength": "In deuce you win {{value}} of the points, better than even",
+        "weakness": "In deuce you win {{value}} of the points, worse than even"
+      },
+      "error_share_high": {
+        "weakness": "{{value}} of the points you lose come from your own errors",
+        "weaknessDominant": "{{value}} of the points you lose come from your own errors, and {{dominantShare}} of those are {{dominant}}"
+      },
+      "winner_share_high": {
+        "strength": "{{value}} of the points you win are winners of your own"
+      },
+      "recent_change": {
+        "improved": "{{metric}} is {{recentValue}} lately, against {{allValue}} overall",
+        "declined": "{{metric}} is {{recentValue}} lately, against {{allValue}} overall"
+      },
+      "partner_above_overall": {
+        "matchup": "With {{nickname}} you win {{winRate}}, above your overall doubles win rate of {{baseline}}"
+      },
+      "opponent_below_overall": {
+        "matchup": "Against {{nickname}} you win {{winRate}}, below your overall win rate of {{baseline}}"
+      },
+      "benchmark_quartile": {
+        "strength": "{{metric}} is {{mine}}, better than the “{{group}}” average of {{groupAverage}} — rank {{rank}} of {{pool}}",
+        "weakness": "{{metric}} is {{mine}}, behind the “{{group}}” average of {{groupAverage}} — rank {{rank}} of {{pool}}"
+      }
+    }
+  },
+  "groupBenchmark": {
+    "title": "Compare within a group",
+    "intro": "Pick a group you have belonged to and see each metric's group average and where you rank. No other player's name or individual number is ever shown.",
+    "pickGroup": "Group",
+    "myMatches": "{{count}} of my matches",
+    "groupStatus": {
+      "left": "left",
+      "kicked": "removed",
+      "disbanded": "disbanded"
+    },
+    "scopeNote": "Always worked out from all {{total}} matches of “{{group}}” ({{mine}} of them yours) — the filters above do not apply here.",
+    "noGroups": "You have not joined any group as a member yet. Once you do, you can compare with the people you play with here.",
+    "columns": {
+      "mine": "Me",
+      "average": "Group average",
+      "rank": "My rank"
+    },
+    "pool": "{{count}} players",
+    "rank": "Rank {{rank}} of {{pool}}",
+    "status": {
+      "poolTooSmall": "Not enough players: only {{count}} have five matches with this data in this group",
+      "selfBelowMinimum": "You have too few matches in this group to be ranked",
+      "noDirection": "No better or worse for this one, so no rank"
+    },
+    "loading": "Working out the group comparison…",
+    "failed": "The group comparison could not be loaded. Everything else is unaffected."
+  },
+  "friendComparison": {
+    "toggle": "Compare with me",
+    "friend": "{{nickname}}",
+    "friendGeneric": "Friend",
+    "me": "Me",
+    "basedOn": "{{used}} matches",
+    "better": "better",
+    "tie": "level",
+    "loading": "Comparing…",
+    "failed": "The comparison could not be loaded. Everything else is unaffected.",
+    "headToHead": {
+      "title": "Our record against and with each other",
+      "asOpponents": "As opponents",
+      "asPartners": "As partners",
+      "tally": "{{matches}} played · I won {{wins}}, lost {{losses}} · avg. margin {{margin}}",
+      "neverOpponents": "Never played against each other",
+      "neverPartners": "Never partnered"
+    }
+  },
   "matchRecordDetail": {
     "title": "Match Details",
     "close": "Close",
@@ -603,7 +1050,8 @@
     "chart": {
       "title": "Score Trend Chart",
       "legendTeamA": "－ Team A (solid line)",
-      "legendTeamB": "┄ Team B (dashed line)"
+      "legendTeamB": "┄ Team B (dashed line)",
+      "hoverHint": "Drag or tap the chart to see the score at that moment"
     },
     "eventList": {
       "title": "Point-by-Point Record",
@@ -611,8 +1059,142 @@
         "plus": "➕ Point",
         "minus": "➖ Deduction"
       },
-      "elapsed": "{{minutes}}m {{seconds}}s into the match"
+      "elapsed": "{{minutes}}m {{seconds}}s into the match",
+      "scoringPlayerPrefix": "Scored by:",
+      "losingPlayerPrefix": "Lost to:",
+      "viewLanding": "View landing spot",
+      "landingNotRecorded": "No landing spot recorded"
+    },
+    "playerStats": {
+      "title": "Player Scoring Stats",
+      "scoredCount": "Points scored",
+      "faultCount": "Points lost to",
+      "empty": "No player scoring data for this match"
+    },
+    "clutch": {
+      "title": "Clutch points",
+      "empty": "This match has no complete point-by-point record, so clutch stats can't be worked out",
+      "endgame": "Endgame (once either side reaches {{from}})",
+      "endgameTitle": "Endgame",
+      "endgameNotApplicable": "Not applicable to this format (target score too low)",
+      "deuce": "Deuce",
+      "deuceNone": "This match never went to deuce",
+      "matchPoints": "Match points",
+      "matchPointsNeverHeld": "Never held a match point",
+      "matchPointsConverted": "Held {{held}}, won on match point no. {{on}}",
+      "matchPointsNotConverted": "Held {{held}}, converted none",
+      "matchPointsSaved": "Saved {{saved}} opponent match point(s)",
+      "comeback": "Comeback",
+      "comebackByA": "Team A trailed by as many as {{deficit}} (at {{scoreA}}:{{scoreB}}) and came back to win; Team B let a {{deficit}}-point lead slip",
+      "comebackByB": "Team B trailed by as many as {{deficit}} (at {{scoreA}}:{{scoreB}}) and came back to win; Team A let a {{deficit}}-point lead slip",
+      "comebackNone": "The winner never trailed",
+      "byState": "Score before the point",
+      "byStateCaption": "Points won by each team when leading, tied and trailing",
+      "whenLeading": "When leading",
+      "whenTied": "When tied",
+      "whenTrailing": "When trailing",
+      "note": "Each point is grouped by the score before it was played. Clutch points are counted per team."
+    },
+    "ending": {
+      "title": "How points were won",
+      "empty": "No point-ending data was recorded for this match",
+      "coverage": "{{recorded}} of {{total}} points recorded",
+      "teamWinners": "{{count}} winners",
+      "teamErrors": "{{count}} errors",
+      "errorsBreakdown": "Errors: out {{out}} · net {{net}} · serve fault {{serveFault}} · other {{other}}",
+      "playersCaption": "How each player's points scored and lost break down",
+      "player": "Player",
+      "scoredGroup": "Scored",
+      "lostGroup": "Lost",
+      "winners": "Winners",
+      "opponentErrors": "Opp. errors",
+      "unrecorded": "Unrecorded",
+      "beatenByWinners": "By winners",
+      "ownErrors": "Own errors",
+      "playerTotals": "scored {{scored}} / lost {{lost}}",
+      "note": "A winner goes to the scoring player; an error to the player at fault. Unrecorded points count toward no ratio.",
+      "label": {
+        "winner": "Winner",
+        "out": "Opponent out",
+        "net": "Opponent net",
+        "serve_fault": "Serve fault",
+        "other_error": "Other error"
+      }
+    },
+    "derived": {
+      "teamA": "Team A",
+      "teamB": "Team B",
+      "serve": {
+        "title": "Serve / Receive Win Rate",
+        "empty": "No serve record for this match",
+        "teamsCaption": "Points won on serve and on receive, by team",
+        "playersCaption": "Points won on serve and on receive, by player",
+        "teamColumn": "Team",
+        "playerColumn": "Player",
+        "serveColumn": "Won on serve",
+        "receiveColumn": "Won on receive",
+        "excludedNote": "{{count}} point(s) are left out because the server couldn't be determined — including the opening point, since who served first isn't recorded."
+      },
+      "momentum": {
+        "title": "Momentum Summary",
+        "empty": "No complete point-by-point record to derive momentum from",
+        "longestRun": "Longest scoring run",
+        "runValue": "{{length}} in a row ({{startA}}:{{startB}} → {{endA}}:{{endB}})",
+        "runNone": "No points scored",
+        "maxLead": "Biggest lead",
+        "leadValue": "Led by {{margin}} (at {{scoreA}}:{{scoreB}})",
+        "leadNone": "Never led",
+        "leadChanges": "Lead changes",
+        "leadChangesCount": "{{count}}",
+        "leadChangeToA": "Team A took the lead at {{scoreA}}:{{scoreB}}",
+        "leadChangeToB": "Team B took the lead at {{scoreA}}:{{scoreB}}"
+      },
+      "tempo": {
+        "title": "Time per Point",
+        "empty": "No record to estimate time per point from",
+        "average": "Average time per point",
+        "longest": "Longest point",
+        "longestAt": "(score after it: {{scoreA}}:{{scoreB}})",
+        "seconds": "{{seconds}}s",
+        "minutesSeconds": "{{minutes}}m {{seconds}}s",
+        "estimateNote": "An estimate that includes the breaks between rallies. Based on when each point was entered, over {{count}} point(s); gaps containing a score correction are left out."
+      },
+      "landing": {
+        "title": "Landing Spots by Player",
+        "empty": "No landing spots recorded for this match",
+        "playerEmpty": "No landing spots recorded for this player",
+        "selectPlayer": "Select a player",
+        "legendScored": "Circle: point scored",
+        "legendLost": "Diamond: point lost",
+        "courtLabel": "Landing spot chart: {{scored}} scored, {{lost}} lost",
+        "orientation": "Team A's half is on the left, Team B's on the right; spots outside the court lines were out.",
+        "coverageScored": "Scored: {{plotted}} plotted of {{total}} point(s)",
+        "coverageLost": "Lost: {{plotted}} plotted of {{total}} point(s)"
+      }
     }
+  },
+  "matchShareCard": {
+    "openButton": "Share card",
+    "badge": {
+      "win": "WIN",
+      "victory": "Victory",
+      "defeat": "Defeat"
+    },
+    "round": "Round {{round}}",
+    "duration": "Duration {{minutes}}m {{seconds}}s",
+    "durationHours": "Duration {{hours}}h {{minutes}}m",
+    "avgPerPoint": "{{seconds}}s per point",
+    "altText": "Match card: {{first}} {{firstScore}}, {{second}} {{secondScore}}. {{winner}} won",
+    "highlight": {
+      "comeback": "Came back from {{deficit}} down",
+      "matchPointsSaved": "Match points saved: {{count}}",
+      "deuceWin": "Won in extra points {{scoreFor}}:{{scoreAgainst}}",
+      "run": "{{length}} points in a row",
+      "winnerRate": "{{percent}} of points were winners",
+      "leadChanges": "Lead changed {{count}} times",
+      "bigMargin": "Won by {{margin}} points"
+    },
+    "kind": "Match"
   },
   "errors": {
     "VALIDATION_ERROR": "Some fields are invalid — please check them and try again",
@@ -649,7 +1231,11 @@
     "ROUND_NOT_PLANNED": "This round hasn't been planned yet, or matches have already started",
     "ROUND_NOT_IN_PROGRESS": "This round has already ended — please plan the next round directly",
     "MATCH_ALREADY_ENDED": "This match has already ended — participants can no longer be adjusted",
-    "FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT": "Fixed-partner round robin requires an even number of players to pair up — please adjust who's currently present",
+    "MATCH_NOT_COMPLETED": "This match hasn't ended yet, so the winning point can't be cancelled",
+    "SIDE_DID_NOT_WIN_THIS_MATCH": "This side didn't win the match, so the winning point can't be cancelled",
+    "ROUND_ALREADY_ADVANCED": "The schedule has already moved to the next round, so this point can't be cancelled",
+    "NEXT_MATCH_ALREADY_STARTED": "The next match on this court has already been scored, so this point can't be cancelled",
+    "CONTINUOUS_ROTATION_NOT_SUPPORTED": "Filling courts as they free up only applies to fair-rotation doubles",
     "SCHEDULING_MECHANISM_MATCH_MODE_CONFLICT": "Fixed-partner / individual mixed round robin only applies to doubles",
     "SCHEDULING_MECHANISM_MISMATCH": "This action isn't supported by the current scheduling mechanism",
     "PARTNER_SOURCE_MISMATCH": "This action isn't supported by the current partner source setting",
@@ -659,9 +1245,11 @@
     "DUPLICATE_PARTICIPANT": "The same member can't be selected more than once",
     "AUTO_NEXT_ROUND_NOT_SUPPORTED_IN_MANUAL_MODE": "Manual assignment mode doesn't support auto-advancing to the next round",
     "ROSTER_ENTRY_NOT_FOUND": "Rotation roster entry not found",
+    "REST_ENDS_ROUND": "Resting would end this round and cancel the matches not yet played — confirm and try again",
     "PARTNERSHIP_NOT_FOUND": "This member has no formal partnership right now",
     "ROSTER_ENTRY_ALREADY_LEFT": "This member has already left or been removed",
     "ROSTER_ENTRY_ALREADY_BOUND": "This link is already linked to an account — try logging in instead",
+    "MEMBER_ALREADY_IN_GROUP": "You're already on this group's roster, so you can't also claim another player's record",
     "INVALID_REQUEST": "The request was incomplete — please try again",
     "CANNOT_KICK_CREATOR": "The group creator can't be removed",
     "NOT_A_GUEST_ENTRY": "This member is a registered member — there's no guest link to regenerate",
@@ -704,6 +1292,53 @@
     "INVITE_ALREADY_PENDING": "An invite has already been sent to this friend and is awaiting a response",
     "GROUP_INVITE_NOT_FOUND": "Group invite not found",
     "GROUP_INVITE_NOT_PENDING": "This invite has already been handled",
-    "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records"
+    "GROUP_INVITE_CANCELLED": "The group creator cancelled this invite, so you can no longer join",
+    "GROUP_MEMBERSHIP_NEVER_HELD": "You've never been a member of this group, so you can't view its match records",
+    "INVALID_PLAYER_KEY": "That player reference is not valid. Please refresh and try again."
+  },
+  "shareCard": {
+    "brand": "Rally Stats",
+    "tagline": "Score, schedule and track every game.",
+    "scanHint": "Scan to get started",
+    "kindLabel": "Card type",
+    "previewTitle": "Share card",
+    "themeLabel": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "share": "Share",
+    "copy": "Copy image",
+    "copied": "Image copied",
+    "download": "Download image",
+    "close": "Close",
+    "generating": "Creating card…",
+    "generateError": "Couldn't create the card. Please try again.",
+    "shareError": "Sharing failed. You can use “Download image” instead.",
+    "copyError": "Copying failed. You can use “Download image” instead.",
+    "dateFormat": "MMM d, yyyy"
+  },
+  "groupShareCard": {
+    "openButton": "Share card",
+    "kind": {
+      "leaderboard": "Leaderboard",
+      "myStats": "My stats"
+    },
+    "leaderboard": {
+      "title": "Leaderboard",
+      "playerCount": "{{count}} players",
+      "record": "{{wins}}W {{losses}}L",
+      "altText1": "{{group}} leaderboard: #{{rank1}} {{name1}}",
+      "altText2": "{{group}} leaderboard: #{{rank1}} {{name1}}, #{{rank2}} {{name2}}",
+      "altText3": "{{group}} leaderboard: #{{rank1}} {{name1}}, #{{rank2}} {{name2}}, #{{rank3}} {{name3}}"
+    },
+    "selfTag": "YOU",
+    "myStats": {
+      "title": "My stats",
+      "record": "{{wins}}W {{losses}}L · {{matches}} matches",
+      "standing": "#{{rank}} of {{count}}",
+      "trendTitle": "Win rate by round",
+      "opponentsTitle": "Most played against",
+      "opponentRecord": "{{wins}}W {{losses}}L",
+      "altText": "{{group}} my stats: {{winRate}} win rate, {{wins}} wins, {{losses}} losses"
+    }
   }
 }

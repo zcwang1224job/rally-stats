@@ -1,14 +1,82 @@
 <main>
   <h1>{{ 'myGroups.title' | translate }}</h1>
 
+  <section class="filters-panel card">
+    <form class="form filter-form" [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+      <label>
+        {{ 'myGroups.filters.name' | translate }}
+        <input type="text" formControlName="name" maxlength="30" />
+      </label>
+
+      <!-- Same split as the group list: the name search stays in view, the
+           rest folds away so the list isn't pushed off a phone's first
+           screen. Stays open while one of its filters is applied, so an
+           active filter is never hidden. -->
+      <details class="advanced-filters" [open]="hasAdvancedFilters()">
+        <summary>{{ 'groupJoin.moreFilters' | translate }}</summary>
+        <div class="advanced-filters-grid">
+          <label>
+            {{ 'myGroups.filters.groupNumber' | translate }}
+            <input type="text" inputmode="numeric" formControlName="group_number" maxlength="20" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.role' | translate }}
+            <select formControlName="role">
+              <option value="">{{ 'myGroups.filters.any' | translate }}</option>
+              <option value="creator">{{ 'myGroups.role.creator' | translate }}</option>
+              <option value="member">{{ 'myGroups.role.member' | translate }}</option>
+            </select>
+          </label>
+          <label>
+            {{ 'myGroups.filters.createdFrom' | translate }}
+            <input type="date" formControlName="created_from" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.createdTo' | translate }}
+            <input type="date" formControlName="created_to" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.disbandedFrom' | translate }}
+            <input type="date" formControlName="disbanded_from" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.disbandedTo' | translate }}
+            <input type="date" formControlName="disbanded_to" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.matchCountMin' | translate }}
+            <input type="number" inputmode="numeric" min="0" step="1" formControlName="match_count_min" />
+          </label>
+          <label>
+            {{ 'myGroups.filters.matchCountMax' | translate }}
+            <input type="number" inputmode="numeric" min="0" step="1" formControlName="match_count_max" />
+          </label>
+        </div>
+      </details>
+
+      <div class="filters-actions">
+        <button type="submit" class="btn btn--secondary">
+          {{ 'groupJoin.applyFilters' | translate }}
+        </button>
+        @if (hasActiveFilters()) {
+          <button type="button" class="btn btn--secondary" (click)="clearFilters()">
+            {{ 'groupJoin.clearFilters' | translate }}
+          </button>
+        }
+      </div>
+    </form>
+  </section>
+
   @if (errorKey(); as key) {
     <p role="alert">{{ key | translate }}</p>
   }
 
   @if (loading()) {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else if (groups().length === 0) {
-    <p>{{ 'myGroups.empty' | translate }}</p>
+    <p class="empty-state card">
+      {{ (hasActiveFilters() ? 'myGroups.emptyFiltered' : 'myGroups.empty') | translate }}
+    </p>
   } @else {
     <ul class="group-list">
       @for (group of groups(); track group.group_id) {
@@ -19,7 +87,7 @@
             (click)="openGroupHistory(group)"
             [attr.aria-label]="'myGroups.viewHistoryAriaLabel' | translate: { name: group.name }"
           >
-            <span class="friend-row__avatar" aria-hidden="true">{{ group.name.charAt(0) }}</span>
+            <span class="avatar" aria-hidden="true">{{ group.name.charAt(0) }}</span>
             <span class="group-row-main__identity">
               <span class="group-name">{{ group.name }}</span>
               <span class="group-number">{{ group.group_number }}</span>
@@ -37,6 +105,9 @@
                   ・{{ 'myGroups.disbandedAt' | translate }}：{{ group.disbanded_at | date: 'yyyy/M/d HH:mm' }}
                 }
               </span>
+              <span class="group-dates">
+                {{ 'myGroups.matchCount' | translate: { count: group.match_count } }}
+              </span>
             </span>
             <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
@@ -48,11 +119,14 @@
         </li>
       }
     </ul>
+
+    <app-pagination [page]="page()" [totalPages]="totalPages()" (pageChange)="goToPage($event)" />
   }
 </main>
 
 <app-confirm-dialog
   #forgotPinDialog
+  variant="primary"
   [title]="'myGroups.forgotPinConfirmTitle' | translate"
   [body]="'myGroups.forgotPinConfirmBody' | translate"
   (confirmed)="confirmForgotPin()"

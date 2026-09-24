@@ -1,0 +1,192 @@
+<section class="dashboard" [class.card]="!bare()" [attr.aria-busy]="loading()">
+  @if (!bare()) {
+    <h2 class="dashboard__title">{{ 'playerDashboard.title' | translate }}</h2>
+  }
+
+  @if (dashboard(); as d) {
+    @if (d.total_matches === 0) {
+      <p class="dashboard__empty" data-state="empty">{{ 'playerDashboard.empty' | translate }}</p>
+    } @else {
+      <p class="dashboard__intro">
+        {{ 'playerDashboard.intro' | translate: { total: d.total_matches } }}
+        @if (d.has_comparison) {
+          {{ 'playerDashboard.introRecent' | translate: { window: d.recent_window } }}
+        }
+      </p>
+
+      <!-- 035: ONE range switch for every range-dependent picture below
+           (the error breakdown and the landing map) — never one per
+           block. Only offered when there is a recent window to compare. -->
+      @if (d.has_comparison) {
+        <div
+          class="dashboard-range"
+          role="group"
+          [attr.aria-label]="'playerDashboard.range.label' | translate"
+        >
+          <button
+            type="button"
+            class="chip dashboard-range__button"
+            [attr.aria-pressed]="effectiveRange() === 'all'"
+            (click)="setRange('all')"
+          >
+            {{ 'playerDashboard.range.all' | translate }}
+          </button>
+          <button
+            type="button"
+            class="chip dashboard-range__button"
+            [attr.aria-pressed]="effectiveRange() === 'recent'"
+            (click)="setRange('recent')"
+          >
+            {{ 'playerDashboard.range.recent' | translate: { window: d.recent_window } }}
+          </button>
+          <span class="dashboard-range__note">{{ 'playerDashboard.range.note' | translate }}</span>
+        </div>
+      }
+
+      @for (group of groups; track group; let first = $first) {
+        <details class="disclosure dashboard-group" [attr.data-group]="group" [open]="first">
+          <summary>{{ 'playerDashboard.group.' + group | translate }}</summary>
+          @if (group === 'serve') {
+            <p class="dashboard-group__note">{{ 'playerDashboard.serveExclusionNote' | translate }}</p>
+          }
+          <div class="dashboard-group__cards">
+            @for (metric of metricsByGroup()[group]; track metric.key) {
+              <app-dashboard-metric-card
+                [metric]="metric"
+                [totalMatches]="d.total_matches"
+                [trendSelected]="selectedTrendMetric()?.key === metric.key"
+                (trendToggle)="toggleTrend(metric.key)"
+              />
+            }
+          </div>
+          @if (trendGroup() === group && selectedTrendMetric(); as metric) {
+            <app-dashboard-trend-chart
+              class="dashboard-group__trend"
+              [series]="selectedTrend()"
+              [kind]="metric.kind"
+              [labelKey]="labelKey(metric.key)"
+            />
+          }
+          <!-- 035: under the ending cards, my errors by kind for the
+               selected range. One colour: kinds are categories, not a
+               scale. -->
+          @if (group === 'ending') {
+            <h3 class="error-breakdown__title">{{ 'playerDashboard.errorBreakdown.title' | translate }}</h3>
+            @if (errorBreakdownView(); as breakdown) {
+              <table class="error-breakdown" data-error-breakdown>
+                <caption class="visually-hidden">
+                  {{ 'playerDashboard.errorBreakdown.caption' | translate }}
+                </caption>
+                <tbody>
+                  @for (row of breakdown.rows; track row.kind) {
+                    <tr [attr.data-error-kind]="row.kind">
+                      <th scope="row">{{ 'playerDashboard.errorBreakdown.kind.' + row.kind | translate }}</th>
+                      <td class="error-breakdown__count">{{ row.count }}</td>
+                      <td class="error-breakdown__share">
+                        <span class="error-breakdown__percent">{{ row.share | ratioPercent }}</span>
+                        <span class="error-breakdown__bar" aria-hidden="true">
+                          <span class="error-breakdown__fill" [style.width.%]="row.share * 100"></span>
+                        </span>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              <p class="dashboard-group__note" data-error-breakdown-total>
+                {{
+                  'playerDashboard.errorBreakdown.total'
+                    | translate: { total: breakdown.total, matches: rangeMatchTotal() }
+                }}
+              </p>
+            } @else {
+              <p class="dashboard__empty" data-state="error-breakdown-empty">
+                {{ 'playerDashboard.errorBreakdown.empty' | translate }}
+              </p>
+            }
+          }
+        </details>
+      }
+
+      <details class="disclosure dashboard-group" data-group="landing">
+        <summary>{{ 'playerDashboard.group.landing' | translate }}</summary>
+        @if (landingView(); as view) {
+          <!-- 035: the all/recent switch moved up to the dashboard level
+               (`.dashboard-range`), shared with the error breakdown. -->
+          <div class="landing-controls">
+            <div class="landing-toggles">
+              <label>
+                <input
+                  #scoredToggle
+                  type="checkbox"
+                  [checked]="showScored()"
+                  (change)="showScored.set(scoredToggle.checked)"
+                />
+                <span class="landing-legend__shape landing-legend__shape--scored" aria-hidden="true"></span>
+                {{ 'playerDashboard.landing.legendScored' | translate }}
+              </label>
+              <label>
+                <input
+                  #lostToggle
+                  type="checkbox"
+                  [checked]="showLost()"
+                  (change)="showLost.set(lostToggle.checked)"
+                />
+                <span class="landing-legend__shape landing-legend__shape--lost" aria-hidden="true"></span>
+                {{ 'playerDashboard.landing.legendLost' | translate }}
+              </label>
+            </div>
+          </div>
+
+          <div class="landing-court">
+            <app-court-diagram
+              role="img"
+              [attr.aria-label]="
+                'playerDashboard.landing.courtLabel'
+                  | translate: { scored: view.scored.length, lost: view.lost.length }
+              "
+              [isSinglesMatch]="singlesCourt()"
+              [markers]="markers()"
+              [dense]="dense()"
+            />
+            <!-- In words, not just by position: which half is mine (FR-031). -->
+            <p class="landing-sides" data-sides>
+              <span>← {{ 'playerDashboard.landing.mySide' | translate }}</span>
+              <span>{{ 'playerDashboard.landing.opponentSide' | translate }} →</span>
+            </p>
+          </div>
+
+          <ul class="landing-coverage">
+            <li data-coverage="scored">
+              {{
+                'playerDashboard.landing.coverageScored'
+                  | translate: { plotted: view.scored.length, total: view.scoredTotal }
+              }}
+            </li>
+            <li data-coverage="lost">
+              {{
+                'playerDashboard.landing.coverageLost'
+                  | translate: { plotted: view.lost.length, total: view.lostTotal }
+              }}
+            </li>
+            <li data-coverage="matches">
+              {{
+                'playerDashboard.basedOn'
+                  | translate: { used: view.matchesUsed, total: rangeMatchTotal() }
+              }}
+            </li>
+          </ul>
+        } @else {
+          <p class="dashboard__empty" data-state="landing-empty">
+            {{ 'playerDashboard.landing.empty' | translate }}
+          </p>
+        }
+      </details>
+    }
+  } @else if (failed()) {
+    <p class="dashboard__empty" data-state="failed" role="alert">
+      {{ 'playerDashboard.failed' | translate }}
+    </p>
+  } @else {
+    <p class="dashboard__empty" data-state="loading">{{ 'playerDashboard.loading' | translate }}</p>
+  }
+</section>

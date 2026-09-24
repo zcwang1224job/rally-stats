@@ -1,28 +1,12 @@
+@use '../../../../styles/layout';
 @use '../../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 720px;
-  margin: 0 auto;
-
-  // Desktop / tablet-landscape: wide enough that stacking every court's
-  // control block and both link cards in a single column wastes the
-  // available width (research.md #2's second breakpoint).
-  @media (min-width: breakpoints.$breakpoint-desktop) {
-    max-width: 960px;
-  }
-}
-
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+  @include layout.page(wide);
 }
 
 h2 {
   margin-top: 0;
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
 }
 
 .group-number {
@@ -58,56 +42,6 @@ section.card {
   }
 }
 
-.admin-nav {
-  display: flex;
-  overflow-x: auto;
-  gap: var(--space-xs);
-  padding-bottom: var(--space-xs);
-
-  // Below $breakpoint-tablet the nav is a horizontally-scrolling strip with
-  // no scrollbar and a hard-cut last button — nothing hints there's more
-  // to scroll. A pure-CSS edge fade (no JS scroll-position tracking) fixes
-  // that; it's reset at tablet+ below, where the axis flips to a vertical
-  // sidebar and a left/right fade would instead clip each button's text.
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    black var(--space-md),
-    black calc(100% - var(--space-md)),
-    transparent 100%
-  );
-
-  button {
-    flex: 0 0 auto;
-    min-height: var(--touch-target-min);
-    padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface);
-    color: var(--color-text-primary);
-    font-weight: var(--font-weight-bold);
-    white-space: nowrap;
-
-    &.is-active {
-      background: var(--color-brand-primary);
-      border-color: var(--color-brand-primary);
-      color: var(--color-brand-primary-contrast);
-    }
-  }
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    flex-direction: column;
-    overflow-x: visible;
-    flex: 0 0 200px;
-    mask-image: none;
-
-    button {
-      width: 100%;
-      text-align: left;
-    }
-  }
-}
-
 .admin-content {
   flex: 1;
   min-width: 0;
@@ -137,6 +71,13 @@ section.card {
     padding: var(--space-sm);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
+  }
+
+  // 複製連結／分享到 LINE 並排，窄畫面放不下才換行。
+  .link-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
   }
 }
 
@@ -188,20 +129,6 @@ section.card {
   gap: var(--space-sm);
 }
 
-.friend-row__avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-primary-contrast);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-body);
-}
-
 .friend-row__identity {
   flex: 1;
   min-width: 0;
@@ -248,4 +175,11 @@ section.card {
     flex: 1;
     min-width: 8rem;
   }
+}
+
+// 037-rest-ready-toggle: who substitutes for whom in a court's next match.
+.next-up__substitution {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
 }

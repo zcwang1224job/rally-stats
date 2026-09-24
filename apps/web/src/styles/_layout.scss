@@ -1,0 +1,25 @@
+@use 'sass:map';
+
+// Page shell — the one container every routed page sits in, so moving
+// between pages never makes the content column jump width. A mixin (not a
+// global class) because each page applies it to its own `:host`; like
+// _breakpoints.scss this partial emits no CSS by itself, so `@use`-ing it
+// from a component stylesheet costs nothing.
+//
+//   narrow  — single-column forms and menus (auth, create group, member hub)
+//   default — lists and settings (friends, notifications, settings)
+//   wide    — dashboards and multi-column pages (match history, group admin)
+$page-widths: (
+  narrow: 480px,
+  default: 640px,
+  wide: 1100px,
+);
+
+@mixin page($size: default) {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: map.get($page-widths, $size);
+  margin: 0 auto;
+  padding: var(--space-md);
+}

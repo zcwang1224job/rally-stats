@@ -3,12 +3,17 @@ the caller (FR-028/029); 014-member-groups-history extends it to the union
 of self-created ∪ ever-a-roster-member groups (any status), each annotated
 with is_creator/member_status (FR-001~003)."""
 
+import uuid
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.group.schemas import CreateGroupRequest
 from app.domains.group.service import create_group, disband_group, join_group, leave_group
 from app.domains.member.service import get_my_groups, register
+from app.domains.schedule.models import Match, MatchParticipant
 
 pytestmark = pytest.mark.asyncio
 
@@ -228,3 +233,229 @@ async def test_my_groups_excludes_guest_joined_groups(db_session: AsyncSession) 
     result = await get_my_groups(db_session, later_registrant.id)
 
     assert result.groups == []
+
+
+def _group_payload(name: str) -> CreateGroupRequest:
+    return CreateGroupRequest(
+        name=name,
+        max_members=4,
+        match_mode="doubles",
+        scheduling_mechanism="manual",
+        turnstile_token="unused",
+    )
+
+
+async def _my_group_names(session: AsyncSession, member_id: uuid.UUID, **filters: Any) -> set[str]:
+    return {group.name for group in (await get_my_groups(session, member_id, **filters)).groups}
+
+
+async def test_my_groups_filters_by_name_number_role_status_and_group_id(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "mygroups14@example.com", "abc12345")
+    member.nickname = "篩選者"
+    other = await register(db_session, "mygroups15@example.com", "abc12345")
+    other.nickname = "別的團長"
+    await db_session.commit()
+
+    # A member can only be active in one group at a time, so each earlier
+    # group is disbanded/left before the next one starts.
+    disbanded, *_ = await create_group(db_session, _group_payload("Old Weekend"), member=member)
+    await disband_group(db_session, disbanded)
+    joined, *_ = await create_group(db_session, _group_payload("Friday Club"), member=other)
+    roster_entry, _created_new = await join_group(
+        db_session, joined, member=member, password=None, nickname=None
+    )
+    await leave_group(
+        db_session, joined, roster_entry.id, guest_session_token=None, member_id=member.id
+    )
+    created, *_ = await create_group(db_session, _group_payload("Wednesday Night"), member=member)
+
+    assert await _my_group_names(db_session, member.id) == {
+        "Wednesday Night",
+        "Old Weekend",
+        "Friday Club",
+    }
+    # name: case-insensitive substring
+    assert await _my_group_names(db_session, member.id, name="wEEk") == {"Old Weekend"}
+    # group_number: substring of the number's digits
+    assert await _my_group_names(
+        db_session, member.id, group_number=str(joined.group_number)
+    ) == {"Friday Club"}
+    assert await _my_group_names(db_session, member.id, role="creator") == {
+        "Wednesday Night",
+        "Old Weekend",
+    }
+    assert await _my_group_names(db_session, member.id, role="member") == {"Friday Club"}
+    assert await _my_group_names(db_session, member.id, group_id=created.id) == {
+        "Wednesday Night"
+    }
+    # filters combine with AND
+    assert await _my_group_names(db_session, member.id, role="creator", name="night") == {
+        "Wednesday Night"
+    }
+    no_match = await get_my_groups(db_session, member.id, name="nothing like this")
+    assert no_match.groups == []
+    assert no_match.total_pages == 1
+
+
+async def test_my_groups_filters_by_created_and_disbanded_time_ranges(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "mygroups17@example.com", "abc12345")
+    member.nickname = "時間篩選者"
+    await db_session.commit()
+    taipei = timezone(timedelta(hours=8))
+
+    # Opened 9/21 07:30 Taipei time — which is still 9/20 in UTC.
+    early, *_ = await create_group(db_session, _group_payload("Early Bird"), member=member)
+    await disband_group(db_session, early)
+    early.created_at = datetime(2026, 9, 20, 23, 30, tzinfo=UTC)
+    early.disbanded_at = datetime(2026, 9, 25, 10, 0, tzinfo=UTC)
+    late, *_ = await create_group(db_session, _group_payload("Still Going"), member=member)
+    late.created_at = datetime(2026, 9, 23, 12, 0, tzinfo=UTC)
+    await db_session.commit()
+
+    def day(month: int, date_: int) -> datetime:
+        return datetime(2026, month, date_, tzinfo=taipei)
+
+    # The viewer's LOCAL day decides, not the UTC date.
+    assert await _my_group_names(
+        db_session, member.id, created_from=day(9, 21), created_before=day(9, 22)
+    ) == {"Early Bird"}
+    assert (
+        await _my_group_names(
+            db_session, member.id, created_from=day(9, 20), created_before=day(9, 21)
+        )
+        == set()
+    )
+    # open-ended on either side
+    assert await _my_group_names(db_session, member.id, created_from=day(9, 22)) == {
+        "Still Going"
+    }
+    assert await _my_group_names(db_session, member.id, created_before=day(9, 22)) == {
+        "Early Bird"
+    }
+    # `from` is inclusive, `before` is exclusive
+    assert await _my_group_names(db_session, member.id, created_from=early.created_at) == {
+        "Early Bird",
+        "Still Going",
+    }
+    assert await _my_group_names(db_session, member.id, created_before=early.created_at) == set()
+
+    # Any disbanded bound drops a group with no disbanded_at.
+    assert await _my_group_names(db_session, member.id, disbanded_from=day(9, 1)) == {
+        "Early Bird"
+    }
+    assert await _my_group_names(db_session, member.id, disbanded_before=day(12, 31)) == {
+        "Early Bird"
+    }
+    assert (
+        await _my_group_names(
+            db_session, member.id, disbanded_from=day(9, 26), disbanded_before=day(9, 27)
+        )
+        == set()
+    )
+    # both ranges together
+    assert await _my_group_names(
+        db_session,
+        member.id,
+        created_from=day(9, 21),
+        created_before=day(9, 22),
+        disbanded_from=day(9, 25),
+        disbanded_before=day(9, 26),
+    ) == {"Early Bird"}
+
+
+async def _add_match(
+    session: AsyncSession, group_id: uuid.UUID, team_a: list[uuid.UUID], *, status: str
+) -> None:
+    match = Match(
+        group_id=group_id,
+        round_number=1,
+        status=status,
+        target_score=21,
+        deuce_threshold=20,
+        cap_score=30,
+    )
+    session.add(match)
+    await session.flush()
+    for roster_entry_id in team_a:
+        session.add(MatchParticipant(match_id=match.id, roster_entry_id=roster_entry_id, team="A"))
+    await session.commit()
+
+
+async def test_my_groups_counts_and_filters_by_my_completed_matches(
+    db_session: AsyncSession,
+) -> None:
+    member = await register(db_session, "mygroups18@example.com", "abc12345")
+    member.nickname = "場數篩選者"
+    other = await register(db_session, "mygroups19@example.com", "abc12345")
+    other.nickname = "隊友"
+    await db_session.commit()
+
+    busy, my_entry, *_ = await create_group(db_session, _group_payload("Busy"), member=member)
+    other_entry, _created_new = await join_group(
+        db_session, busy, member=other, password=None, nickname=None
+    )
+    await _add_match(db_session, busy.id, [my_entry.id, other_entry.id], status="completed")
+    await _add_match(db_session, busy.id, [my_entry.id], status="completed")
+    # neither a match I sat out nor an unfinished one counts
+    await _add_match(db_session, busy.id, [other_entry.id], status="completed")
+    await _add_match(db_session, busy.id, [my_entry.id], status="in_progress")
+    await disband_group(db_session, busy)
+    single, single_entry, *_ = await create_group(
+        db_session, _group_payload("Single"), member=member
+    )
+    await _add_match(db_session, single.id, [single_entry.id], status="completed")
+    await disband_group(db_session, single)
+    await create_group(db_session, _group_payload("Quiet"), member=member)
+
+    result = await get_my_groups(db_session, member.id)
+    assert {group.name: group.match_count for group in result.groups} == {
+        "Busy": 2,
+        "Single": 1,
+        "Quiet": 0,
+    }
+    # both ends inclusive, either side open-ended
+    assert await _my_group_names(db_session, member.id, match_count_min=1) == {"Busy", "Single"}
+    assert await _my_group_names(db_session, member.id, match_count_max=1) == {"Single", "Quiet"}
+    assert await _my_group_names(
+        db_session, member.id, match_count_min=2, match_count_max=2
+    ) == {"Busy"}
+    assert await _my_group_names(db_session, member.id, match_count_max=0) == {"Quiet"}
+    assert await _my_group_names(db_session, member.id, match_count_min=3) == set()
+    # combines with the other filters
+    assert await _my_group_names(db_session, member.id, match_count_min=1, name="sin") == {
+        "Single"
+    }
+
+
+async def test_my_groups_paginates_newest_first(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _page_size_two(_session: AsyncSession) -> int:
+        return 2
+
+    monkeypatch.setattr("app.domains.member.service.get_default_page_size", _page_size_two)
+    member = await register(db_session, "mygroups16@example.com", "abc12345")
+    member.nickname = "分頁者"
+    await db_session.commit()
+    for index in range(5):
+        # one active group at a time: disband each before creating the next
+        group, *_ = await create_group(db_session, _group_payload(f"Paged {index}"), member=member)
+        await disband_group(db_session, group)
+
+    first = await get_my_groups(db_session, member.id)
+    third = await get_my_groups(db_session, member.id, page=3)
+    beyond = await get_my_groups(db_session, member.id, page=9)
+
+    assert (first.page, first.total_pages) == (1, 3)
+    assert [g.name for g in first.groups] == ["Paged 4", "Paged 3"]
+    assert [g.name for g in third.groups] == ["Paged 0"]
+    assert (beyond.groups, beyond.total_pages) == ([], 3)
+
+    # a filter narrows the set BEFORE paging, so total_pages follows it
+    filtered = await get_my_groups(db_session, member.id, name="Paged 1")
+    assert [g.name for g in filtered.groups] == ["Paged 1"]
+    assert filtered.total_pages == 1

@@ -23,9 +23,10 @@
 
 .team-toggle {
   min-width: var(--touch-target-min);
+}
 
-  &[aria-pressed='true'] {
-    background: var(--color-brand-primary);
-    color: var(--color-brand-primary-contrast);
-  }
+// 037: resting players stay selectable, just marked.
+.resting-suffix {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
 }

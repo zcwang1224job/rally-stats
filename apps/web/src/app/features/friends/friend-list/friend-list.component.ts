@@ -2,6 +2,7 @@ import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { FriendSummary } from '../../../core/api/friend.models';
 import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
@@ -12,7 +13,7 @@ import { FriendsService } from '../friends.service';
  * (one shared dialog + a "target" signal, not one dialog per row). */
 @Component({
   selector: 'app-friend-list',
-  imports: [ReactiveFormsModule, RouterLink, TranslatePipe, ConfirmDialogComponent],
+  imports: [ReactiveFormsModule, RouterLink, TranslatePipe, ConfirmDialogComponent, PaginationComponent],
   templateUrl: './friend-list.component.html',
   styleUrl: './friend-list.component.scss',
 })
@@ -26,9 +27,6 @@ export class FriendListComponent {
   readonly items = signal<FriendSummary[]>([]);
   readonly page = signal(1);
   readonly totalPages = signal(1);
-  readonly pageNumbers = computed(() =>
-    Array.from({ length: this.totalPages() }, (_, i) => i + 1),
-  );
   readonly errorKey = signal<string | null>(null);
   readonly unfriendTarget = signal<FriendSummary | null>(null);
 

@@ -63,7 +63,7 @@ async def test_patch_group_toggles_partner_source(
     assert response2.json()["group"]["partner_source"] == "manual"
 
 
-async def test_next_round_rejects_odd_headcount_for_fixed_partner(
+async def test_next_round_with_odd_headcount_for_fixed_partner_gives_a_bye(
     client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
 ) -> None:
     created = await _create_fixed_partner_group(client, db_session, valid_turnstile_token, 2)
@@ -72,8 +72,10 @@ async def test_next_round_rejects_odd_headcount_for_fixed_partner(
         f"/groups/{created['group_id']}/courts", headers=headers, json={"name": "1號場"}
     )
 
-    # 1 (creator) + 2 seeded = 3 active members -> odd.
+    # 1 (creator) + 2 seeded = 3 active members -> odd. One sits out, which
+    # leaves a single team and so no matches, but the round still starts
+    # (this used to fail with FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT).
     response = await client.post(f"/groups/{created['group_id']}/next-round", headers=headers)
 
-    assert response.status_code == 400
-    assert response.json()["error_code"] == "FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT"
+    assert response.status_code == 200
+    assert all(court["current_match"] is None for court in response.json()["courts"])

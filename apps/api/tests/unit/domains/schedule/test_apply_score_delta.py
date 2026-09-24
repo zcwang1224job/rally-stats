@@ -4,6 +4,8 @@
 030-score-serve-record FR-001/FR-004: also covers that a `+1` creates a
 matching `ScoreServeRecord` and a `-1` MUST NOT (Clarifications 2026-09-15)."""
 
+import uuid
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,8 +14,12 @@ from app.domains.court.models import Court
 from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
 from app.domains.roster.models import RosterEntry
-from app.domains.schedule.models import ScoreEvent, ScoreServeRecord
-from app.domains.schedule.service import apply_score_delta, create_match_with_participants
+from app.domains.schedule.models import ScoreEvent, ScoreServeRecord, ShotPlacementRecord
+from app.domains.schedule.service import (
+    apply_score_delta,
+    attach_shot_placement,
+    create_match_with_participants,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -262,3 +268,217 @@ async def test_minus_one_does_not_create_score_serve_record_or_touch_serve_state
     assert match.serving_team == serving_team_before
     assert match.team_a_reference_server_id == team_a_ref_before
     assert match.team_b_reference_server_id == team_b_ref_before
+
+
+# --- 031-shot-placement-scoring: detailed_scoring_enabled snapshot ---------
+
+
+@pytest.mark.parametrize("group_setting", [True, False])
+async def test_create_match_snapshots_detailed_scoring_enabled(
+    db_session: AsyncSession, group_setting: bool
+) -> None:
+    """research.md Decision 6: Match.detailed_scoring_enabled is a snapshot
+    of group.detailed_scoring_enabled taken at creation, same pattern as
+    target_score/deuce_threshold/cap_score."""
+    group = await _make_group(db_session, detailed_scoring_enabled=group_setting)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    assert match.detailed_scoring_enabled is group_setting
+
+
+async def test_changing_group_setting_does_not_affect_existing_match(
+    db_session: AsyncSession,
+) -> None:
+    """FR-006: a later change to the group's setting MUST NOT retroactively
+    change an already-created match's snapshot."""
+    group = await _make_group(db_session, detailed_scoring_enabled=False)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    group.detailed_scoring_enabled = True
+    await db_session.commit()
+    await db_session.refresh(match)
+
+    assert match.detailed_scoring_enabled is False
+
+
+# --- 032-score-then-record: apply_score_delta() no longer writes any -------
+# --- ShotPlacementRecord itself (that's attach_shot_placement()'s job, ------
+# --- tested in test_shot_placement.py) — it just returns score_event_id ----
+# --- and still collapses an existing record on `-1` (FR-007). --------------
+
+
+async def test_plus_one_returns_the_created_score_event_id(db_session: AsyncSession) -> None:
+    """A caller (the picker's confirm(), via attach_shot_placement()) needs
+    this id to pin its follow-up detail-recording call to the exact point
+    that was just scored."""
+    group = await _make_group(db_session)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    result = await apply_score_delta(db_session, court, match.id, "A", 1)
+
+    assert result.score_event_id is not None
+    event = (
+        await db_session.execute(select(ScoreEvent).where(ScoreEvent.match_id == match.id))
+    ).scalar_one()
+    assert result.score_event_id == str(event.id)
+
+
+async def test_plus_one_never_creates_a_shot_placement_record_on_its_own(
+    db_session: AsyncSession,
+) -> None:
+    """Regression guard: apply_score_delta() itself never writes a
+    ShotPlacementRecord — score-then-record (see attach_shot_placement())
+    means the score always applies on its own, detail or not."""
+    group = await _make_group(db_session, detailed_scoring_enabled=True)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    await apply_score_delta(db_session, court, match.id, "A", 1)
+
+    records = (
+        await db_session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id == match.id)
+        )
+    ).scalars().all()
+    assert records == []
+
+
+async def test_minus_one_removes_last_shot_placement_record_for_that_team(
+    db_session: AsyncSession,
+) -> None:
+    """031-shot-placement-scoring FR-007/research.md Decision 3: `delta<0`
+    removes only the most recent record for the corrected team, leaving
+    earlier records (and the other team's) untouched."""
+    group = await _make_group(db_session, detailed_scoring_enabled=True)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    # Out-of-bounds landings (x outside [0, 1]) so the credited-side/landing
+    # consistency check (attach_shot_placement()) never gets in the way —
+    # this test is only about which record survives a -1, not about landing
+    # rules (already covered in test_shot_placement.py).
+    first = await apply_score_delta(db_session, court, match.id, "A", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(first.score_event_id), p1.id, p2.id, -0.1, 0.5
+    )
+    second = await apply_score_delta(db_session, court, match.id, "A", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(second.score_event_id), p1.id, p2.id, -0.2, 0.5
+    )
+    third = await apply_score_delta(db_session, court, match.id, "B", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(third.score_event_id), p2.id, p1.id, -0.3, 0.5
+    )
+
+    await apply_score_delta(db_session, court, match.id, "A", -1)
+
+    remaining_a = (
+        await db_session.execute(
+            select(ShotPlacementRecord)
+            .where(ShotPlacementRecord.match_id == match.id, ShotPlacementRecord.team == "A")
+            .order_by(ShotPlacementRecord.created_at)
+        )
+    ).scalars().all()
+    assert len(remaining_a) == 1
+    assert remaining_a[0].landing_x == -0.1
+
+    remaining_b = (
+        await db_session.execute(
+            select(ShotPlacementRecord).where(
+                ShotPlacementRecord.match_id == match.id, ShotPlacementRecord.team == "B"
+            )
+        )
+    ).scalars().all()
+    assert len(remaining_b) == 1
+
+
+async def test_minus_one_on_simple_mode_match_is_a_no_op_for_shot_placement(
+    db_session: AsyncSession,
+) -> None:
+    """A simple-mode match never has any ShotPlacementRecord to begin with —
+    the delta<0 removal attempt MUST be harmless (no error, no side effect)."""
+    group = await _make_group(db_session)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    await apply_score_delta(db_session, court, match.id, "A", 1)
+    result = await apply_score_delta(db_session, court, match.id, "A", -1)
+
+    assert result.applied is True
+    assert result.score_a == 0
+
+
+# ---------------------------------------------------------------- 035 ending_type (T008)
+
+
+async def test_minus_one_takes_the_ending_type_away_with_the_rest_of_the_row(
+    db_session: AsyncSession,
+) -> None:
+    """035-point-ending-type FR-012. Expected to pass with NO change to the
+    withdrawal logic: the ending type lives on the same row as the landing
+    and players, so `_remove_last_shot_placement_record()` already takes it.
+    If this ever fails, that premise (035 research.md Decision 1) is wrong —
+    fix the design, don't special-case the withdrawal."""
+    group = await _make_group(db_session, detailed_scoring_enabled=True)
+    court = await _make_court(db_session, group)
+    p1, p2 = [await _make_roster_entry(db_session, group) for _ in range(2)]
+    match = await create_match_with_participants(
+        db_session, group, court_id=court.id, round_number=1, status="in_progress",
+        team_a=[p1.id], team_b=[p2.id],
+    )
+    await db_session.commit()
+
+    kept = await apply_score_delta(db_session, court, match.id, "B", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(kept.score_event_id), None, None, None, None,
+        ending_type="net",
+    )
+    withdrawn = await apply_score_delta(db_session, court, match.id, "A", 1)
+    await attach_shot_placement(
+        db_session, court, match.id, uuid.UUID(withdrawn.score_event_id), None, None, None, None,
+        ending_type="winner",
+    )
+
+    await apply_score_delta(db_session, court, match.id, "A", -1)
+
+    remaining = (
+        await db_session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id == match.id)
+        )
+    ).scalars().all()
+    # Team A's row is gone whole; the other team's is untouched.
+    assert [(row.team, row.ending_type) for row in remaining] == [("B", "net")]

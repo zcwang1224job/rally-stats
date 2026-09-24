@@ -1,6 +1,7 @@
+@use '../../../../styles/layout';
+
 :host {
-  display: block;
-  padding: var(--space-md);
+  @include layout.page(default);
 }
 
 .list-actions {
@@ -62,9 +63,3 @@
   white-space: nowrap;
 }
 
-.pagination {
-  display: flex;
-  gap: var(--space-xs);
-  margin-top: var(--space-md);
-  flex-wrap: wrap;
-}

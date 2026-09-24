@@ -1,0 +1,94 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.insights__title {
+  margin: 0 0 var(--space-sm);
+}
+
+// Side by side where there is room, stacked on a phone — never a horizontal
+// scroll (SC-010).
+.insights__lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-md);
+}
+
+.insights__list {
+  min-width: 0;
+}
+
+.insights__list-title {
+  margin: 0 0 var(--space-xs);
+  font-size: var(--font-size-body);
+}
+
+.insights__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insights__note {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.insight {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--color-text-muted);
+  }
+
+  // A strong insight is set apart by weight, not by a second colour.
+  &[data-level='strong'] .insight__sentence {
+    font-weight: var(--font-weight-bold);
+  }
+}
+
+.insight__tone {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// Colour only reinforces what the icon's shape and the word already say.
+.insight[data-tone='strength'] .insight__icon,
+.insight[data-tone='improved'] .insight__icon {
+  color: var(--color-positive);
+}
+
+.insight[data-tone='weakness'] .insight__icon,
+.insight[data-tone='declined'] .insight__icon {
+  color: var(--color-negative);
+}
+
+.insight__sentence {
+  overflow-wrap: anywhere;
+}
+
+.insight__evidence {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}

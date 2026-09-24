@@ -7,7 +7,10 @@ import { RosterScheduleStatus, Team } from './schedule.models';
 
 /** 手動安排選人介面 (US2, T034). 篩選掉目前已在其他場地進行中的成員（FR-013a，
  * 由父層傳入的 roster 已內含 currently_playing 旗標，跨場地一律有效）；
- * 已離開/被踢除者本就不會出現在 active roster 清單中（FR-013b）。 */
+ * 已離開/被踢除者本就不會出現在 active roster 清單中（FR-013b）。
+ *
+ * 037-rest-ready-toggle FR-029：休息中的人標示「（休息中）」但仍可選——
+ * 管理員有最終決定權，選了也不會改變他的休息狀態。 */
 @Component({
   selector: 'app-manual-assign',
   imports: [TranslatePipe],

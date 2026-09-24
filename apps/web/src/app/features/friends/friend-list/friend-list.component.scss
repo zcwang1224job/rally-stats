@@ -1,25 +1,8 @@
+@use '../../../../styles/layout';
 @use '../../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-
-  h1 {
-    margin: 0;
-    font-size: var(--font-size-heading);
-    font-weight: var(--font-weight-bold);
-  }
+  @include layout.page(default);
 }
 
 .filters-panel {
@@ -46,11 +29,6 @@
   margin-top: var(--space-md);
 }
 
-.empty-state {
-  text-align: center;
-  color: var(--color-text-muted);
-}
-
 .friend-list {
   list-style: none;
   padding: 0;
@@ -66,23 +44,6 @@
   gap: var(--space-sm);
 }
 
-// A simple initial-letter avatar gives each row a visual anchor instead of
-// two lines of plain text — cheap to render (no image upload/storage
-// needed) while still giving the list some identity per person, matching
-// the app's "bold, high-contrast, single vivid accent" language.
-.friend-row__avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-primary-contrast);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-body);
-}
 
 .friend-row__identity {
   flex: 1;
@@ -103,10 +64,3 @@
   color: var(--color-text-muted);
 }
 
-.pagination {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-xs);
-  margin-top: var(--space-lg);
-}

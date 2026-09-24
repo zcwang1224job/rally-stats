@@ -1,11 +1,16 @@
 """Contract tests for 014-member-groups-history, per
 specs/014-member-groups-history/contracts/member-groups-history-api.md."""
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domains.member.models import Member
 from app.domains.member.service import register
+from app.domains.roster.models import RosterEntry
 
 pytestmark = pytest.mark.asyncio
 
@@ -68,6 +73,93 @@ async def test_my_groups_includes_is_creator_and_member_status(
     ).json()["groups"]
     assert b_groups[0]["is_creator"] is False
     assert b_groups[0]["member_status"] == "active"
+
+
+async def test_my_groups_is_paginated_and_filterable(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    await _register_and_verify(db_session, "history-c-a7@example.com", "團長")
+    token = await _login(client, "history-c-a7@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    alpha = await _create_member_group(client, token, valid_turnstile_token, "Alpha Filter Group")
+    # one active group at a time: disband the first before creating the second
+    disbanded = await client.post(
+        f"/groups/{alpha['group_id']}/disband",
+        headers={"Authorization": f"Bearer {alpha['admin_token']}"},
+    )
+    assert disbanded.status_code == 200
+    await _create_member_group(client, token, valid_turnstile_token, "Beta Filter Group")
+
+    everything = (await client.get("/members/me/groups", headers=headers)).json()
+    assert len(everything["groups"]) == 2
+    assert everything["page"] == 1
+    assert everything["total_pages"] == 1
+
+    # Time ranges are instants with a UTC offset; both groups were just made,
+    # and only Alpha has a disbanded_at.
+    created_recently = (
+        await client.get(
+            "/members/me/groups",
+            headers=headers,
+            params={
+                "created_from": "2020-01-01T00:00:00+08:00",
+                "created_before": "2999-01-01T00:00:00.000Z",
+            },
+        )
+    ).json()
+    assert len(created_recently["groups"]) == 2
+    created_long_ago = (
+        await client.get(
+            "/members/me/groups",
+            headers=headers,
+            params={"created_before": "2020-01-01T00:00:00+08:00"},
+        )
+    ).json()
+    assert created_long_ago["groups"] == []
+    disbanded_recently = (
+        await client.get(
+            "/members/me/groups",
+            headers=headers,
+            params={"disbanded_from": "2020-01-01T00:00:00Z"},
+        )
+    ).json()
+    assert [g["name"] for g in disbanded_recently["groups"]] == ["Alpha Filter Group"]
+
+    by_name = (
+        await client.get("/members/me/groups", headers=headers, params={"name": "alpha"})
+    ).json()
+    assert [g["name"] for g in by_name["groups"]] == ["Alpha Filter Group"]
+
+    by_id = (
+        await client.get(
+            "/members/me/groups", headers=headers, params={"group_id": alpha["group_id"]}
+        )
+    ).json()
+    assert [g["group_id"] for g in by_id["groups"]] == [alpha["group_id"]]
+
+    as_member = (
+        await client.get(
+            "/members/me/groups", headers=headers, params={"role": "member"}
+        )
+    ).json()
+    assert as_member["groups"] == []
+
+    second_page = (
+        await client.get("/members/me/groups", headers=headers, params={"page": 2})
+    ).json()
+    assert second_page["groups"] == []
+    assert second_page["page"] == 2
+
+    for bad in (
+        {"page": 0},
+        {"role": "owner"},
+        {"group_id": "not-a-uuid"},
+        {"created_from": "2026-09-21"},
+        # no UTC offset: which day it means would depend on the server's zone
+        {"disbanded_before": "2026-09-21T00:00:00"},
+    ):
+        response = await client.get("/members/me/groups", headers=headers, params=bad)
+        assert response.status_code == 422, bad
 
 
 async def test_group_history_endpoint_success_and_empty_state(
@@ -189,9 +281,67 @@ async def test_group_history_returns_group_not_found_for_unknown_group(
     assert response.json()["error_code"] == "GROUP_NOT_FOUND"
 
 
+async def test_group_history_locked_until_email_verified(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Constitution IV: match records stay locked until the e-mail is
+    verified. Checked before the group is even looked up, so an unverified
+    member can't probe which group ids exist (404 vs 403)."""
+    await register(db_session, "history-c-unverified@example.com", "abc12345")
+    token = await _login(client, "history-c-unverified@example.com")
+
+    response = await client.get(
+        "/members/me/groups/00000000-0000-0000-0000-000000000000/history",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
+
+
 async def test_group_history_requires_login(client: AsyncClient) -> None:
     response = await client.get(
         "/members/me/groups/00000000-0000-0000-0000-000000000000/history"
     )
     assert response.status_code == 401
     assert response.json()["error_code"] == "MEMBER_TOKEN_INVALID"
+
+
+async def test_group_history_works_for_a_member_who_left_and_rejoined(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """036 research.md Decision 7: every join adds a roster row, so a
+    returning member has two rows in the group — this used to be a 500."""
+    await _register_and_verify(db_session, "history-c-a8@example.com", "團長8")
+    await _register_and_verify(db_session, "history-c-b8@example.com", "回鍋")
+    a_token = await _login(client, "history-c-a8@example.com")
+    b_token = await _login(client, "history-c-b8@example.com")
+    group = await _create_member_group(
+        client, a_token, valid_turnstile_token, "History Contract Group 8"
+    )
+    joined = await client.post(
+        f"/groups/{group['group_id']}/join",
+        headers={"Authorization": f"Bearer {b_token}"},
+        json={},
+    )
+    assert joined.status_code == 201
+
+    member_id = (
+        await db_session.execute(
+            select(Member.id).where(Member.email == "history-c-b8@example.com")
+        )
+    ).scalar_one()
+    db_session.add(
+        RosterEntry(
+            group_id=uuid.UUID(group["group_id"]),
+            member_id=member_id,
+            nickname="回鍋（上一次）",
+            status="left",
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/members/me/groups/{group['group_id']}/history",
+        headers={"Authorization": f"Bearer {b_token}"},
+    )
+    assert response.status_code == 200

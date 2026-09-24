@@ -1,0 +1,91 @@
+@if (failed()) {
+  <p class="comparison__note" [class.card]="!bare()" role="alert" data-failed>
+    {{ 'friendComparison.failed' | translate }}
+  </p>
+} @else if (loading() || !comparison()) {
+  <p class="comparison__note" [class.card]="!bare()" aria-busy="true" data-loading>
+    {{ 'friendComparison.loading' | translate }}
+  </p>
+} @else if (comparison(); as c) {
+  <section class="comparison" [class.card]="!bare()">
+    @if (!bare()) {
+      <h2 class="comparison__title">{{ 'friendComparison.toggle' | translate }}</h2>
+    }
+
+    <ul class="comparison__rows">
+      <li class="comparison__row comparison__row--head" aria-hidden="true">
+        <span></span>
+        <span>
+          @if (friendNickname(); as nickname) {
+            <app-nickname [value]="nickname" />
+          } @else {
+            {{ 'friendComparison.friendGeneric' | translate }}
+          }
+        </span>
+        <span>{{ 'friendComparison.me' | translate }}</span>
+      </li>
+      @for (metric of c.metrics; track metric.key) {
+        <li class="comparison__row" [attr.data-metric]="metric.key" [attr.data-better]="metric.better">
+          <span class="comparison__label">{{ labelKey(metric) | translate }}</span>
+          @for (side of ['friend', 'me']; track side) {
+            @let cell = side === 'friend' ? metric.friend : metric.me;
+            <span class="comparison__cell" [attr.data-side]="side">
+              <span class="comparison__cell-label">
+                {{
+                  (side === 'me' ? 'friendComparison.me' : 'friendComparison.friendGeneric')
+                    | translate
+                }}
+              </span>
+              <span class="comparison__value">{{ value(metric, cell) }}</span>
+              @if (cell) {
+                <span class="comparison__basis">
+                  {{ 'friendComparison.basedOn' | translate: { used: cell.matches_used } }}
+                </span>
+              }
+              <!-- A mark AND a word: never colour alone (FR-006). -->
+              @if (metric.better === side) {
+                <span class="comparison__better" data-better-mark>
+                  <span aria-hidden="true">▲</span> {{ 'friendComparison.better' | translate }}
+                </span>
+              } @else if (metric.better === 'tie' && side === 'me') {
+                <span class="comparison__tie" data-tie-mark>
+                  <span aria-hidden="true">＝</span> {{ 'friendComparison.tie' | translate }}
+                </span>
+              }
+            </span>
+          }
+        </li>
+      }
+    </ul>
+
+    <section class="comparison__head-to-head" data-head-to-head>
+      <h3>{{ 'friendComparison.headToHead.title' | translate }}</h3>
+      <dl>
+        <dt>{{ 'friendComparison.headToHead.asOpponents' | translate }}</dt>
+        <dd data-as-opponents>
+          @if (c.head_to_head.as_opponents; as tally) {
+            {{
+              'friendComparison.headToHead.tally'
+                | translate
+                  : { matches: tally.matches, wins: tally.wins, losses: tally.losses, margin: margin(tally) }
+            }}
+          } @else {
+            {{ 'friendComparison.headToHead.neverOpponents' | translate }}
+          }
+        </dd>
+        <dt>{{ 'friendComparison.headToHead.asPartners' | translate }}</dt>
+        <dd data-as-partners>
+          @if (c.head_to_head.as_partners; as tally) {
+            {{
+              'friendComparison.headToHead.tally'
+                | translate
+                  : { matches: tally.matches, wins: tally.wins, losses: tally.losses, margin: margin(tally) }
+            }}
+          } @else {
+            {{ 'friendComparison.headToHead.neverPartners' | translate }}
+          }
+        </dd>
+      </dl>
+    </section>
+  </section>
+}

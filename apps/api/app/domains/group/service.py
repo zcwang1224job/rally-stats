@@ -6,35 +6,60 @@ and (004) the browse/join flow.
 transitioning unfinished matches to `abandoned` on disband (spec FR-033).
 """
 
+import dataclasses
 import secrets
 import uuid
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from datetime import UTC, datetime, time, timedelta
 from itertools import permutations
 from typing import Literal
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.core.realtime import court_channel, group_notifications_channel, publish
 from app.domains.court.models import Court
+from app.domains.group import match_stats
 from app.domains.group.models import Group, RoundHistory
 from app.domains.group.schemas import (
+    ClutchComeback,
+    ClutchMatchPoints,
+    ClutchPhaseCounts,
+    ClutchStateCounts,
+    ClutchStats,
     CreateGroupRequest,
     EditGroupRequest,
     EditScoringSettingsRequest,
+    EndingStats,
+    ErrorsByType,
     FinalStandingRow,
     GroupMatchRecordsResponse,
     GroupStandingsResponse,
+    LandingPoint,
+    LeadChange,
+    LongestPoint,
     MatchRecordDetailResponse,
     MatchRecordSummary,
+    MaxLead,
     MemberStandingRow,
+    MomentumStats,
     OpponentRecord,
+    PlayerEndingStat,
+    PlayerLandingDistribution,
+    PlayerScoringStat,
+    PlayerServeStat,
     RoundRecord,
     ScoreEventSummary,
+    ScoringRun,
+    ServeStats,
+    ShotPlacementSummary,
+    TeamEndingStat,
+    TeamServeStat,
+    TempoStats,
 )
 from app.domains.group.security import (
     decrypt_group_password,
@@ -46,9 +71,20 @@ from app.domains.group.security import (
 )
 from app.domains.member.models import Member
 from app.domains.roster.models import RosterEntry
-from app.domains.schedule.models import Match, MatchParticipant, ScoreEvent
-from app.domains.schedule.schemas import ParticipantSummary
-from app.domains.schedule.service import handle_member_joined, handle_member_left
+from app.domains.schedule.models import (
+    Match,
+    MatchParticipant,
+    ScoreEvent,
+    ScoreServeRecord,
+    ShotPlacementRecord,
+)
+from app.domains.schedule.rest import set_rest_state
+from app.domains.schedule.schemas import ParticipantSummary, RestStateResponse
+from app.domains.schedule.service import (
+    handle_member_joined,
+    handle_member_left,
+    refresh_courts_after_roster_change,
+)
 from app.system_config.service import (
     get_default_court_name,
     get_default_group_name_suffix,
@@ -430,6 +466,31 @@ async def set_scoreboard_scoring(session: AsyncSession, group: Group, enabled: b
     return group
 
 
+async def set_detailed_scoring(session: AsyncSession, group: Group, enabled: bool) -> Group:
+    """031-shot-placement-scoring research.md Decision 5: complete mirror of
+    `set_scoreboard_scoring()` above — a plain immediate toggle (no
+    `base_settings_version` bump), broadcasting the same per-court
+    `match.nextRound` refetch trigger. Only affects `matches.detailed_scoring_enabled`
+    for matches created AFTER this call (that field is a snapshot taken in
+    `create_match_with_participants()`, FR-006) — this function itself has
+    no notion of "existing matches" at all."""
+    group.detailed_scoring_enabled = enabled
+    await session.commit()
+    await session.refresh(group)
+
+    result = await session.execute(
+        select(Court.id).where(Court.group_id == group.id, Court.deleted_at.is_(None))
+    )
+    for (court_id,) in result.all():
+        await publish(
+            court_channel(str(group.id), str(court_id)),
+            "match.nextRound",
+            {"round_number": group.current_round_number},
+        )
+
+    return group
+
+
 async def disband_group(
     session: AsyncSession,
     group: Group,
@@ -640,10 +701,19 @@ async def list_groups(
     group_name: str | None = None,
     creator_nickname: str | None = None,
     match_mode: str | None = None,
+    pinned_group_id: uuid.UUID | None = None,
+    pinned_creator_member_id: uuid.UUID | None = None,
 ) -> tuple[list[Group], int]:
     """Browse query (US1 base, extended by US5's filters); `joined_by_me`
     personalization (US6) is layered on top of this function's result set
     by the router, not here.
+
+    The viewer's own groups sort ahead of the rest (each part newest first):
+    `pinned_group_id` is the group they're currently in, and
+    `pinned_creator_member_id` also pins every group they created. Pinning
+    only reorders — it never lets a group past the filters — and happens in
+    the query rather than per page, so the pinned rows land on page 1 and
+    later pages neither repeat nor skip anything.
 
     research.md #7: the court name filter matches if ANY of the group's
     (non-deleted) courts hits — a group can have multiple courts. Time
@@ -698,10 +768,17 @@ async def list_groups(
     total = count_result.scalar_one()
     total_pages = max(1, (total + _GROUP_LIST_PAGE_SIZE - 1) // _GROUP_LIST_PAGE_SIZE)
 
+    pins = []
+    if pinned_group_id is not None:
+        pins.append(Group.id == pinned_group_id)
+    if pinned_creator_member_id is not None:
+        pins.append(Group.created_by_member_id == pinned_creator_member_id)
+    query = select(Group).where(*conditions)
+    if pins:
+        query = query.order_by(case((or_(*pins), 0), else_=1))
+
     result = await session.execute(
-        select(Group)
-        .where(*conditions)
-        .order_by(Group.created_at.desc())
+        query.order_by(Group.created_at.desc())
         .limit(_GROUP_LIST_PAGE_SIZE)
         .offset((page - 1) * _GROUP_LIST_PAGE_SIZE)
     )
@@ -805,11 +882,13 @@ async def join_group(
     session.add(roster_entry)
     await session.flush()
 
-    await handle_member_joined(session, group, roster_entry)
+    schedule_changed = await handle_member_joined(session, group, roster_entry)
     await _touch_activity(session, group)
     await session.commit()
     await session.refresh(group)
     await session.refresh(roster_entry)
+    if schedule_changed:
+        await refresh_courts_after_roster_change(session, group)
 
     await publish(
         group_notifications_channel(str(group.id)),
@@ -884,17 +963,69 @@ async def bind_roster_entry_to_member(
     check (a "look then leap" race). `RosterEntry.member_id` transitions
     `NULL -> member_id` exactly once and is never reset (data-model.md §1),
     so `WHERE member_id IS NULL` is both the eligibility check and the
-    write, in one round trip. Errors: `ROSTER_ENTRY_ALREADY_BOUND` — either
-    a genuine double-bind race, or the same request retried after already
-    succeeding once."""
+    write, in one round trip.
+
+    The `NOT EXISTS` clause is the second eligibility check, kept inside
+    the same UPDATE for the same reason: this Member MUST NOT already hold
+    an `active` entry in this same group. Without it a 團長 (whose own
+    creator entry is `active` and already carries `member_id`) could open a
+    guest link from their own group — they hold every one of them, the
+    share panel prints them — and one-click bind it to themselves, ending
+    up as two separate players in one rotation roster. That isn't just odd
+    on paper: `active_roster_entry_for_member()` and through it
+    `resolve_active_roster_membership()` are `scalar_one_or_none()`, so the
+    second active entry turns every member-view endpoint (賽程/戰績/對戰
+    紀錄/退出組團) plus `already_joined`/`joined_by_me` into a 500 for that
+    account — the same `MultipleResultsFound` class of bug 036 research.md
+    Decision 7 already hit once.
+
+    A NON-active entry (left/kicked) deliberately still allows binding:
+    that's the same real person coming back as a guest, and Edge Cases in
+    028's spec.md keep those identities separate rather than refusing them.
+
+    `rowcount == 0` conflates both checks, so the reason is looked up only
+    on the failure path (never before the write — that would be the "look
+    then leap" race research.md #4 warns about). Errors:
+    `MEMBER_ALREADY_IN_GROUP` — the binder is already on this roster under
+    their own account; `ROSTER_ENTRY_ALREADY_BOUND` — either a genuine
+    double-bind race, or the same request retried after already succeeding
+    once."""
+    own_entry = aliased(RosterEntry)
+    already_in_group = (
+        select(own_entry.id)
+        .where(
+            own_entry.group_id == RosterEntry.group_id,
+            own_entry.member_id == member_id,
+            own_entry.status == "active",
+        )
+        .exists()
+    )
     result = await session.execute(
         update(RosterEntry)
-        .where(RosterEntry.id == roster_entry_id, RosterEntry.member_id.is_(None))
+        .where(
+            RosterEntry.id == roster_entry_id,
+            RosterEntry.member_id.is_(None),
+            ~already_in_group,
+        )
         .values(member_id=member_id)
     )
     if result.rowcount == 0:
-        raise ApiError("ROSTER_ENTRY_ALREADY_BOUND", status_code=409)
+        await _raise_bind_refusal(session, roster_entry_id, member_id)
     await session.commit()
+
+
+async def _raise_bind_refusal(
+    session: AsyncSession, roster_entry_id: uuid.UUID, member_id: uuid.UUID
+) -> None:
+    """Which of `bind_roster_entry_to_member()`'s two WHERE conditions
+    refused the write — resolved after the fact, purely to pick the error
+    code. Always raises."""
+    entry = (
+        await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    ).scalar_one_or_none()
+    if entry is not None and entry.member_id is None:
+        raise ApiError("MEMBER_ALREADY_IN_GROUP", status_code=409)
+    raise ApiError("ROSTER_ENTRY_ALREADY_BOUND", status_code=409)
 
 
 async def active_roster_entry_for_member(
@@ -960,13 +1091,19 @@ async def verify_ever_group_member(
     member call live operations again, a real authorization-boundary bug,
     not this feature's intent (research.md #3).
 
+    `.limit(1)` + `.first()`, NOT `scalar_one_or_none()`: `join_group()`
+    adds a new roster row on every join, so a member who left and came back
+    has several rows here and `scalar_one_or_none()` raised
+    `MultipleResultsFound` — a 500 for exactly the members 014 promises can
+    still read their history (036 research.md Decision 7).
+
     Errors: `GROUP_MEMBERSHIP_NEVER_HELD` (403)."""
     result = await session.execute(
-        select(RosterEntry.id).where(
-            RosterEntry.group_id == group_id, RosterEntry.member_id == member_id
-        )
+        select(RosterEntry.id)
+        .where(RosterEntry.group_id == group_id, RosterEntry.member_id == member_id)
+        .limit(1)
     )
-    if result.scalar_one_or_none() is None:
+    if result.first() is None:
         raise ApiError("GROUP_MEMBERSHIP_NEVER_HELD", status_code=403)
 
 
@@ -1432,6 +1569,375 @@ async def get_completed_match_or_404(session: AsyncSession, match_id: uuid.UUID)
     return match
 
 
+RecordCompleteness = Literal["complete", "partial", "none"]
+
+
+def _record_completeness(score_events: Sequence[ScoreEvent]) -> RecordCompleteness:
+    """016-match-score-timeline research.md #3, derived purely from the
+    events themselves (no deploy-timestamp dependency): no events ->
+    `"none"`; a first event at `score_a + score_b == 1` really is the
+    match's first point -> `"complete"`; otherwise recording started
+    mid-match -> `"partial"`. `score_events` MUST be in `created_at, id`
+    order."""
+    if not score_events:
+        return "none"
+    if score_events[0].score_a + score_events[0].score_b == 1:
+        return "complete"
+    return "partial"
+
+
+def _to_raw_events(
+    score_events: Sequence[ScoreEvent], started_at: datetime
+) -> list[match_stats.RawEvent]:
+    return [
+        match_stats.RawEvent(
+            event_id=event.id,
+            side=event.side,  # type: ignore[arg-type]
+            delta=event.delta,  # type: ignore[arg-type]
+            score_a=event.score_a,
+            score_b=event.score_b,
+            at_seconds=(event.created_at - started_at).total_seconds(),
+        )
+        for event in score_events
+    ]
+
+
+def _to_serve_snapshots(
+    records: Iterable[ScoreServeRecord],
+) -> dict[uuid.UUID, match_stats.ServeSnapshot]:
+    return {
+        record.score_event_id: match_stats.ServeSnapshot(
+            server_team=record.server_team,  # type: ignore[arg-type]
+            server_id=record.server_roster_entry_id,
+            team_a_right=record.team_a_right_roster_entry_id,
+            team_a_left=record.team_a_left_roster_entry_id,
+            team_b_right=record.team_b_right_roster_entry_id,
+            team_b_left=record.team_b_left_roster_entry_id,
+        )
+        for record in records
+    }
+
+
+def _to_placements(
+    placements: Iterable[ShotPlacementRecord],
+) -> dict[uuid.UUID, match_stats.Placement]:
+    return {
+        placement.score_event_id: match_stats.Placement(
+            scorer_id=placement.roster_entry_id,
+            loser_id=placement.losing_roster_entry_id,
+            landing=(
+                (placement.landing_x, placement.landing_y)
+                if placement.landing_x is not None and placement.landing_y is not None
+                else None
+            ),
+            ending=placement.ending_type,  # type: ignore[arg-type]
+        )
+        for placement in placements
+    }
+
+
+@dataclasses.dataclass(frozen=True)
+class MatchStatInputs:
+    """One match's point-level history, already converted to `match_stats`'
+    pure inputs."""
+
+    completeness: RecordCompleteness
+    raw_events: list[match_stats.RawEvent]
+    snapshots: dict[uuid.UUID, match_stats.ServeSnapshot]
+    placements: dict[uuid.UUID, match_stats.Placement]
+
+
+async def load_group_completed_matches(
+    session: AsyncSession, group_id: uuid.UUID
+) -> list[tuple[Match, MatchRecordSummary]]:
+    """036-match-insights-benchmarks US3: every completed match of a group
+    with its participants — no filters, no pagination, newest first. Abandoned
+    matches never produce a result and are not here (Constitution III).
+
+    Public on purpose: `member.service.build_group_benchmark()` needs exactly
+    what `build_group_match_records()` loads, and should not reach into this
+    module's private helpers to get it. Two queries whatever the match count
+    (matches, then all their participants at once). Authorization is the
+    caller's job — this only loads."""
+    result = await session.execute(
+        _completed_matches_query()
+        .where(Match.group_id == group_id)
+        .order_by(Match.ended_at.desc(), Match.round_number.desc())
+    )
+    matches = list(result.scalars())
+    summaries = await _build_match_record_summaries(session, matches)
+    return list(zip(matches, summaries, strict=True))
+
+
+_STAT_INPUT_BATCH = 500
+
+
+async def load_match_stat_inputs(
+    session: AsyncSession, matches: Sequence[Match]
+) -> dict[uuid.UUID, MatchStatInputs]:
+    """034-clutch-points-player-dashboard research.md Decision 7: the same
+    three tables `build_match_record_detail()` reads for ONE match, loaded
+    for MANY with `match_id IN (...)` — three queries per batch however many
+    matches there are, never one detail build per match. Rows go through the
+    very converters the single-match path uses, so a match contributes the
+    same numbers to the cross-match dashboard as it shows on its own
+    (FR-003). Every requested match gets an entry, event-less ones
+    included."""
+    events_by_match: dict[uuid.UUID, list[ScoreEvent]] = {match.id: [] for match in matches}
+    serve_by_match: dict[uuid.UUID, list[ScoreServeRecord]] = defaultdict(list)
+    placements_by_match: dict[uuid.UUID, list[ShotPlacementRecord]] = defaultdict(list)
+
+    match_ids = list(events_by_match)
+    for offset in range(0, len(match_ids), _STAT_INPUT_BATCH):
+        batch = match_ids[offset : offset + _STAT_INPUT_BATCH]
+        events_result = await session.execute(
+            select(ScoreEvent)
+            .where(ScoreEvent.match_id.in_(batch))
+            .order_by(ScoreEvent.match_id, ScoreEvent.created_at, ScoreEvent.id)
+        )
+        for event in events_result.scalars():
+            events_by_match[event.match_id].append(event)
+        serve_result = await session.execute(
+            select(ScoreServeRecord).where(ScoreServeRecord.match_id.in_(batch))
+        )
+        for record in serve_result.scalars():
+            serve_by_match[record.match_id].append(record)
+        placements_result = await session.execute(
+            select(ShotPlacementRecord).where(ShotPlacementRecord.match_id.in_(batch))
+        )
+        for placement in placements_result.scalars():
+            placements_by_match[placement.match_id].append(placement)
+
+    inputs: dict[uuid.UUID, MatchStatInputs] = {}
+    for match in matches:
+        score_events = events_by_match[match.id]
+        started_at = match.started_at
+        assert started_at is not None  # always set for completed matches
+        inputs[match.id] = MatchStatInputs(
+            completeness=_record_completeness(score_events),
+            raw_events=_to_raw_events(score_events, started_at),
+            snapshots=_to_serve_snapshots(serve_by_match[match.id]),
+            placements=_to_placements(placements_by_match[match.id]),
+        )
+    return inputs
+
+
+_DerivedStats = tuple[
+    ServeStats | None,
+    MomentumStats | None,
+    TempoStats | None,
+    list[PlayerLandingDistribution],
+    ClutchStats | None,
+    EndingStats | None,
+]
+_NO_DERIVED_STATS: _DerivedStats = (None, None, None, [], None, None)
+
+
+def _clutch_stats_schema(
+    clutch: match_stats.ClutchResult,
+    momentum: match_stats.MomentumResult,
+    winner: Literal["A", "B"],
+) -> ClutchStats:
+    """`comeback` is read off 033's `max_leads` rather than recomputed: the
+    winner's deepest deficit IS the loser's biggest lead, so the two blocks
+    cannot disagree (034 research.md Decision 4)."""
+    teams: tuple[match_stats.Team, match_stats.Team] = ("A", "B")
+
+    def _phase(
+        counts: dict[match_stats.Team, match_stats.PhaseCounts] | None,
+    ) -> list[ClutchPhaseCounts] | None:
+        if counts is None:
+            return None
+        return [
+            ClutchPhaseCounts(team=team, **dataclasses.asdict(counts[team])) for team in teams
+        ]
+
+    loser_lead = next(lead for lead in momentum.max_leads if lead.team != winner)
+    comeback = (
+        ClutchComeback(
+            winner=winner,
+            max_deficit=loser_lead.margin,
+            score_a=loser_lead.score_a,
+            score_b=loser_lead.score_b,
+        )
+        if loser_lead.margin > 0
+        and loser_lead.score_a is not None
+        and loser_lead.score_b is not None
+        else None
+    )
+    return ClutchStats(
+        endgame_from=clutch.endgame_from,
+        endgame=_phase(clutch.endgame),
+        deuce=_phase(clutch.deuce),
+        match_points=[
+            ClutchMatchPoints(team=team, **dataclasses.asdict(clutch.match_points[team]))
+            for team in teams
+        ],
+        by_state=[
+            ClutchStateCounts(team=team, **dataclasses.asdict(clutch.by_state[team]))
+            for team in teams
+        ],
+        comeback=comeback,
+    )
+
+
+async def _build_derived_stats(
+    session: AsyncSession,
+    match: Match,
+    summary: MatchRecordSummary,
+    score_events: list[ScoreEvent],
+    placements: list[ShotPlacementRecord],
+) -> _DerivedStats:
+    """033-match-record-derived-stats: the querying/conversion half of the
+    four derived blocks — every actual rule lives in `match_stats` (pure,
+    no session). Only called for a `"complete"` record: a partial history
+    has no trustworthy starting score to re-accumulate from. Reads the one
+    table nothing displayed before (`ScoreServeRecord`, written since 030);
+    `placements` is 032's existing query result, reused rather than
+    re-queried."""
+    no_data = _NO_DERIVED_STATS
+
+    started_at = match.started_at
+    assert started_at is not None  # always set for completed matches
+    points = match_stats.effective_points(
+        _to_raw_events(score_events, started_at), match.score_a, match.score_b
+    )
+    if points is None:
+        return no_data
+
+    participants = summary.team_a + summary.team_b
+    nickname_by_id = {uuid.UUID(p.roster_entry_id): p.nickname for p in participants}
+    stat_participants = [
+        match_stats.Participant(uuid.UUID(p.roster_entry_id), p.team) for p in participants
+    ]
+
+    serve_result = await session.execute(
+        select(ScoreServeRecord).where(ScoreServeRecord.match_id == match.id)
+    )
+    serve = match_stats.serve_stats(
+        points, _to_serve_snapshots(serve_result.scalars()), stat_participants
+    )
+    serve_stats = (
+        ServeStats(
+            teams=[
+                TeamServeStat(team=team, **dataclasses.asdict(counts))
+                for team, counts in serve.teams.items()  # built in A, B order
+            ],
+            players=[
+                PlayerServeStat(
+                    roster_entry_id=p.roster_entry_id,
+                    nickname=p.nickname,
+                    team=p.team,
+                    **dataclasses.asdict(serve.players[uuid.UUID(p.roster_entry_id)]),
+                )
+                for p in participants
+                if uuid.UUID(p.roster_entry_id) in serve.players
+            ],
+            excluded_points=serve.excluded_points,
+        )
+        if serve is not None
+        else None
+    )
+
+    momentum = match_stats.momentum_stats(points)
+    momentum_stats = MomentumStats(
+        longest_runs=[ScoringRun(**dataclasses.asdict(run)) for run in momentum.longest_runs],
+        max_leads=[MaxLead(**dataclasses.asdict(lead)) for lead in momentum.max_leads],
+        lead_changes=[
+            LeadChange(**dataclasses.asdict(change)) for change in momentum.lead_changes
+        ],
+    )
+
+    tempo = match_stats.tempo_stats(points)
+    tempo_stats = (
+        TempoStats(
+            average_seconds=tempo.average_seconds,
+            counted_points=tempo.counted_points,
+            longest=LongestPoint(
+                seconds=tempo.longest_seconds,
+                score_a=tempo.longest_score_a,
+                score_b=tempo.longest_score_b,
+            ),
+        )
+        if tempo is not None
+        else None
+    )
+
+    stat_placements = _to_placements(placements)
+    landing_distribution = [
+        PlayerLandingDistribution(
+            roster_entry_id=str(player.roster_entry_id),
+            nickname=nickname_by_id[player.roster_entry_id],
+            team=player.team,
+            scored=[LandingPoint(x=x, y=y) for x, y in player.scored],
+            scored_total=player.scored_total,
+            lost=[LandingPoint(x=x, y=y) for x, y in player.lost],
+            lost_total=player.lost_total,
+        )
+        for player in match_stats.landing_distribution(
+            points, stat_placements, stat_participants
+        )
+    ]
+
+    assert match.winner_team is not None  # always set for completed matches
+    clutch_stats = _clutch_stats_schema(
+        match_stats.clutch_stats(points, match.target_score, match.cap_score),
+        momentum,
+        match.winner_team,  # type: ignore[arg-type]
+    )
+
+    # 035-point-ending-type: None when not one point recorded an ending
+    # (the pure function's own rule), so a pre-035 match shows the single
+    # "no data" notice rather than a table of zeros.
+    ending = match_stats.ending_stats(points, stat_placements, stat_participants)
+    ending_stats = (
+        EndingStats(
+            recorded_points=ending.recorded_points,
+            total_points=ending.total_points,
+            teams=[
+                TeamEndingStat(
+                    team=team.team,
+                    winners=team.winners,
+                    errors=team.errors,
+                    errors_by_type=ErrorsByType(
+                        out=team.errors_by_type["out"],
+                        net=team.errors_by_type["net"],
+                        serve_fault=team.errors_by_type["serve_fault"],
+                        other_error=team.errors_by_type["other_error"],
+                    ),
+                )
+                for team in ending.teams.values()  # built in A, B order
+            ],
+            players=[
+                PlayerEndingStat(
+                    roster_entry_id=p.roster_entry_id,
+                    nickname=p.nickname,
+                    team=p.team,
+                    winners=split.winners,
+                    opponent_errors=split.opponent_errors,
+                    scored_unrecorded=split.scored_unrecorded,
+                    beaten_by_winners=split.beaten_by_winners,
+                    own_errors=split.own_errors,
+                    lost_unrecorded=split.lost_unrecorded,
+                )
+                for p in participants
+                for split in (ending.players[uuid.UUID(p.roster_entry_id)],)
+            ],
+        )
+        if ending is not None
+        else None
+    )
+
+    return (
+        serve_stats,
+        momentum_stats,
+        tempo_stats,
+        landing_distribution,
+        clutch_stats,
+        ending_stats,
+    )
+
+
 async def build_match_record_detail(
     session: AsyncSession, match: Match
 ) -> MatchRecordDetailResponse:
@@ -1460,16 +1966,73 @@ async def build_match_record_detail(
     )
     score_events = list(events_result.scalars())
 
-    completeness: Literal["complete", "partial", "none"]
-    if not score_events:
-        completeness = "none"
-    elif score_events[0].score_a + score_events[0].score_b == 1:
-        completeness = "complete"
-    else:
-        completeness = "partial"
+    completeness = _record_completeness(score_events)
 
     started_at = match.started_at
     assert started_at is not None  # always set for completed matches (see MatchRecordSummary)
+
+    # 032-match-record-scoring-stats: one query for every ShotPlacementRecord
+    # this match ever wrote (031/032-shot-placement-scoring), reused below
+    # both to attach each event's own `detail` and to aggregate `player_stats`.
+    placements_result = await session.execute(
+        select(ShotPlacementRecord).where(ShotPlacementRecord.match_id == match.id)
+    )
+    placements = list(placements_result.scalars())
+    placement_by_event_id = {placement.score_event_id: placement for placement in placements}
+
+    nickname_ids = {
+        entry_id
+        for placement in placements
+        for entry_id in (placement.roster_entry_id, placement.losing_roster_entry_id)
+        if entry_id is not None
+    }
+    nickname_by_id: dict[uuid.UUID, str] = {}
+    if nickname_ids:
+        nickname_result = await session.execute(
+            select(RosterEntry.id, RosterEntry.nickname).where(RosterEntry.id.in_(nickname_ids))
+        )
+        nickname_by_id = {row.id: row.nickname for row in nickname_result.all()}
+
+    def _detail_for(event: ScoreEvent) -> ShotPlacementSummary | None:
+        placement = placement_by_event_id.get(event.id)
+        if placement is None:
+            return None
+        # research.md Decision 2: a row with all its fields NULL (confirmed
+        # with nothing picked) renders identically to no row at all. 035
+        # made that five fields: a row carrying only an ending type IS a
+        # recorded detail (research.md Decision 4).
+        if (
+            placement.roster_entry_id is None
+            and placement.losing_roster_entry_id is None
+            and placement.landing_x is None
+            and placement.landing_y is None
+            and placement.ending_type is None
+        ):
+            return None
+        return ShotPlacementSummary(
+            scoring_roster_entry_id=(
+                str(placement.roster_entry_id) if placement.roster_entry_id else None
+            ),
+            scoring_nickname=(
+                nickname_by_id.get(placement.roster_entry_id)
+                if placement.roster_entry_id
+                else None
+            ),
+            losing_roster_entry_id=(
+                str(placement.losing_roster_entry_id)
+                if placement.losing_roster_entry_id
+                else None
+            ),
+            losing_nickname=(
+                nickname_by_id.get(placement.losing_roster_entry_id)
+                if placement.losing_roster_entry_id
+                else None
+            ),
+            landing_x=placement.landing_x,
+            landing_y=placement.landing_y,
+            ending_type=placement.ending_type,
+        )
+
     event_summaries = [
         ScoreEventSummary(
             side=event.side,
@@ -1477,12 +2040,114 @@ async def build_match_record_detail(
             score_a=event.score_a,
             score_b=event.score_b,
             elapsed_seconds=int((event.created_at - started_at).total_seconds()),
+            detail=_detail_for(event),
         )
         for event in score_events
     ]
 
+    # research.md Decision 3/4: two independent per-field aggregations —
+    # scored_count from roster_entry_id, fault_count from
+    # losing_roster_entry_id — over the SAME placements queried above; an
+    # empty combined result means "no data at all" (player_stats stays []),
+    # otherwise every one of this match's actual participants is listed,
+    # zero counts included (FR-009).
+    scored_counts: dict[uuid.UUID, int] = defaultdict(int)
+    fault_counts: dict[uuid.UUID, int] = defaultdict(int)
+    for placement in placements:
+        if placement.roster_entry_id is not None:
+            scored_counts[placement.roster_entry_id] += 1
+        if placement.losing_roster_entry_id is not None:
+            fault_counts[placement.losing_roster_entry_id] += 1
+
+    player_stats: list[PlayerScoringStat] = []
+    if scored_counts or fault_counts:
+        for participant in summary.team_a + summary.team_b:
+            entry_id = uuid.UUID(participant.roster_entry_id)
+            player_stats.append(
+                PlayerScoringStat(
+                    roster_entry_id=participant.roster_entry_id,
+                    nickname=participant.nickname,
+                    team=participant.team,
+                    scored_count=scored_counts.get(entry_id, 0),
+                    fault_count=fault_counts.get(entry_id, 0),
+                )
+            )
+
+    # 033-match-record-derived-stats FR-004: a partial/absent history gets
+    # the "no data" defaults for every derived block, never numbers
+    # computed from an incomplete record.
+    serve_stats, momentum_stats, tempo_stats, landing_distribution, clutch_stats, ending_stats = (
+        await _build_derived_stats(session, match, summary, score_events, placements)
+        if completeness == "complete"
+        else _NO_DERIVED_STATS
+    )
+
     return MatchRecordDetailResponse(
-        **summary.model_dump(), record_completeness=completeness, events=event_summaries
+        **summary.model_dump(),
+        target_score=match.target_score,
+        record_completeness=completeness,
+        events=event_summaries,
+        player_stats=player_stats,
+        serve_stats=serve_stats,
+        momentum_stats=momentum_stats,
+        tempo_stats=tempo_stats,
+        landing_distribution=landing_distribution,
+        clutch_stats=clutch_stats,
+        ending_stats=ending_stats,
+    )
+
+
+async def _require_owned_active_entry(
+    session: AsyncSession,
+    group: Group,
+    roster_entry_id: uuid.UUID,
+    *,
+    guest_session_token: str | None,
+    member_id: uuid.UUID | None,
+) -> RosterEntry:
+    """The caller's own active roster entry in `group`, proven by Guest
+    token or Member identity (a token, when given, decides). Missing, in
+    another group, no longer active, or not theirs: all the same
+    `ROSTER_ENTRY_NOT_FOUND`, so nobody learns whether someone else's entry
+    exists. Shared by leaving and resting (037), so the two can't drift."""
+    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    entry = result.scalar_one_or_none()
+    if entry is None or entry.group_id != group.id or entry.status != "active":
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+
+    if guest_session_token is not None:
+        owns_entry = entry.guest_session_token == guest_session_token
+    elif member_id is not None:
+        owns_entry = entry.member_id == member_id
+    else:
+        owns_entry = False
+    if not owns_entry:
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    return entry
+
+
+async def set_own_rest_state(
+    session: AsyncSession,
+    group: Group,
+    roster_entry_id: uuid.UUID,
+    *,
+    resting: bool,
+    confirm_round_end: bool,
+    guest_session_token: str | None,
+    member_id: uuid.UUID | None,
+) -> RestStateResponse:
+    """037-rest-ready-toggle US1: a player resting or coming back, on their
+    own. Same ownership check as leaving; the rest is
+    `schedule.rest.set_rest_state()`, shared with the admin endpoint."""
+    entry = await _require_owned_active_entry(
+        session,
+        group,
+        roster_entry_id,
+        guest_session_token=guest_session_token,
+        member_id=member_id,
+    )
+    return await set_rest_state(
+        session, group, entry, resting=resting, confirm_round_end=confirm_round_end
     )
 
 
@@ -1502,24 +2167,19 @@ async def leave_group(
     active entry, is reported identically as `ROSTER_ENTRY_NOT_FOUND` —
     this MUST NOT reveal whether the entry exists to someone who can't
     prove ownership of it."""
-    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
-    entry = result.scalar_one_or_none()
-    if entry is None or entry.group_id != group.id or entry.status != "active":
-        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
-
-    if guest_session_token is not None:
-        owns_entry = entry.guest_session_token == guest_session_token
-    elif member_id is not None:
-        owns_entry = entry.member_id == member_id
-    else:
-        owns_entry = False
-    if not owns_entry:
-        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    entry = await _require_owned_active_entry(
+        session,
+        group,
+        roster_entry_id,
+        guest_session_token=guest_session_token,
+        member_id=member_id,
+    )
 
     await handle_member_left(session, group, entry, new_status="left")
     await session.commit()
     await session.refresh(entry)
     await session.refresh(group)
+    await refresh_courts_after_roster_change(session, group)
 
     await publish(
         group_notifications_channel(str(group.id)),

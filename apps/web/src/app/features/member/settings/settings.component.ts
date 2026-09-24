@@ -1,8 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { IconComponent } from '../../../shared/icon/icon.component';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { LoginRecordSummary, MemberPublic } from '../../../core/api/member-auth.models';
 
@@ -28,7 +30,7 @@ type SettingsSection = 'basic' | 'accountDetails' | 'security' | 'privacy';
  * a switch away and back (FR-026, no cross-section state loss). */
 @Component({
   selector: 'app-member-settings',
-  imports: [ReactiveFormsModule, TranslatePipe, DatePipe],
+  imports: [ReactiveFormsModule, TranslatePipe, DatePipe, PaginationComponent, IconComponent],
   templateUrl: './settings.component.html',
   styleUrl: './settings.component.scss',
 })

@@ -1,12 +1,14 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { provideTranslateService } from '@ngx-translate/core';
-import { of, throwError } from 'rxjs';
+import { TranslateService, provideTranslateService } from '@ngx-translate/core';
+import type * as Ably from 'ably';
+import { Subject, of, throwError } from 'rxjs';
 import { CourtManagementService } from '../court-management/court-management.service';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
+import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { GroupAdminService } from '../group-admin.service';
 import { AdminGroupResponse } from '../group-admin.models';
 import { ScheduleService } from '../schedule-management/schedule.service';
@@ -38,12 +40,21 @@ const adminGroupResponse: AdminGroupResponse = {
   all_courts_control_panel_token: 'all-courts-tok',
   all_courts_link_version: 1,
   scoreboard_scoring_enabled: false,
+  detailed_scoring_enabled: false,
+  // 刻意不是 21pt —— 表單宣告的預設就是 21pt，用它當 fixture 會讓「有沒有
+  // 真的回填」這件事測不出來。
+  scoring_mode: '15pt',
+  target_score: 15,
+  deuce_threshold: 14,
+  cap_score: 21,
 };
 
 const scheduleResponse: ScheduleResponse = {
   current_round_number: 1,
   scheduling_mechanism: 'fair_rotation',
+  match_mode: 'doubles',
   auto_next_round: false,
+  continuous_rotation: false,
   // 'awaiting_plan' is the only phase that keeps app-round-matches-list's
   // editable auto-load off by default (editable now covers both
   // 'awaiting_start' AND 'in_progress' — see round-matches-list.component.ts)
@@ -63,6 +74,7 @@ describe('AdminPageComponent', () => {
       selfMemberId?: string | null;
       getInviteCandidatesStatus?: FriendsService['getInviteCandidatesStatus'];
     } = {},
+    realtimeSubscribe: RealtimeService['subscribe'] = () => of(),
   ) {
     TestBed.configureTestingModule({
       imports: [AdminPageComponent],
@@ -92,7 +104,7 @@ describe('AdminPageComponent', () => {
         },
         {
           provide: RealtimeService,
-          useValue: { connectionState: signal('connected'), subscribe: () => of() },
+          useValue: { connectionState: signal('connected'), subscribe: realtimeSubscribe },
         },
         {
           provide: CourtManagementService,
@@ -131,7 +143,7 @@ describe('AdminPageComponent', () => {
 
     const buttons = navButtons(fixture);
     expect(buttons.length).toBe(4);
-    expect(buttons[0].classList.contains('is-active')).toBe(true);
+    expect(buttons[0].getAttribute('aria-current')).toBe('page');
     expect(fixture.nativeElement.querySelector('.links-section')).not.toBeNull();
   });
 
@@ -143,6 +155,128 @@ describe('AdminPageComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.links-section')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.sectionTitle');
+  });
+
+  it('refetches the schedule when an idle court or the roster changes elsewhere', async () => {
+    const streams = new Map<string, Subject<Ably.Message>>();
+    const realtimeSubscribe = (channel: string, event: string) => {
+      const key = `${channel}|${event}`;
+      if (!streams.has(key)) {
+        streams.set(key, new Subject<Ably.Message>());
+      }
+      return streams.get(key)!.asObservable();
+    };
+    let scheduleCalls = 0;
+    setup(
+      false,
+      {},
+      {
+        getSchedule: () => {
+          scheduleCalls += 1;
+          return of({
+            ...scheduleResponse,
+            courts: [
+              { court_id: 'c1', name: '1號場', current_match: null, waiting_reason: 'no_queued_match', next_up: null },
+            ],
+          });
+        },
+      },
+      {},
+      realtimeSubscribe as RealtimeService['subscribe'],
+    );
+    const initialCalls = scheduleCalls;
+
+    // A match pulled onto the idle court, then a member joining: each burst
+    // collapses into one refetch.
+    streams.get('court:g1:c1|rotation.updated')!.next({} as Ably.Message);
+    streams.get('court:g1:c1|match.nextRound')!.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(scheduleCalls).toBe(initialCalls + 1);
+
+    streams.get('group:g1:notifications|member.joined')!.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(scheduleCalls).toBe(initialCalls + 2);
+  });
+
+  // 037-rest-ready-toggle T040
+  it('refetches the schedule when someone rests or comes back', async () => {
+    const restChanged = new Subject<Ably.Message>();
+    let scheduleCalls = 0;
+    setup(
+      false,
+      {},
+      {
+        getSchedule: () => {
+          scheduleCalls += 1;
+          return of(scheduleResponse);
+        },
+      },
+      {},
+      ((channel: string, event: string) =>
+        channel === 'group:g1:notifications' && event === 'roster.restChanged'
+          ? restChanged.asObservable()
+          : of()) as RealtimeService['subscribe'],
+    );
+    const initialCalls = scheduleCalls;
+
+    restChanged.next({} as Ably.Message);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    expect(scheduleCalls).toBe(initialCalls + 1);
+  });
+
+  it('marks resting players on the roster tab, with text not just colour', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () =>
+        of({
+          ...scheduleResponse,
+          roster: [
+            { roster_entry_id: 'r1', nickname: '小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+            { roster_entry_id: 'r2', nickname: '小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: false },
+          ],
+        }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+
+    const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+    expect(rows[0].textContent).toContain('scheduleManagement.restingBadge');
+    expect(rows[1].textContent).not.toContain('scheduleManagement.restingBadge');
+  });
+
+  it('offers the continuous-rotation toggle for fair-rotation doubles and saves it', () => {
+    const calls: boolean[] = [];
+    const fixture = setup(false, {}, {
+      setContinuousRotation: (_groupId: string, enabled: boolean) => {
+        calls.push(enabled);
+        return of({ continuous_rotation: enabled });
+      },
+    });
+
+    navButtons(fixture)[1].click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('scheduleManagement.continuousRotation');
+    const toggle = Array.from(
+      fixture.nativeElement.querySelectorAll('label.checkbox-label') as NodeListOf<HTMLLabelElement>,
+    )
+      .find((label) => label.textContent?.includes('scheduleManagement.continuousRotation'))!
+      .querySelector('input') as HTMLInputElement;
+    toggle.click();
+
+    expect(calls).toEqual([true]);
+  });
+
+  it('hides the continuous-rotation toggle outside fair-rotation doubles', () => {
+    const fixture = setup(false, {}, {
+      getSchedule: () => of({ ...scheduleResponse, match_mode: 'singles' }),
+    });
+
+    navButtons(fixture)[1].click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).not.toContain('scheduleManagement.continuousRotation');
   });
 
   it('clicking 輪替名單 shows the roster list, not the schedule/links sections', () => {
@@ -266,6 +400,70 @@ describe('AdminPageComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('adminPage.saveSuccess');
   });
 
+  it('shows the group\'s actual scoring mode, not the form\'s 21pt default', () => {
+    const fixture = setup();
+
+    expect(fixture.componentInstance.scoringForm.controls.scoring_mode.value).toBe('15pt');
+  });
+
+  it('restores the saved custom scoring numbers when the group is on 自訂', () => {
+    const fixture = setup(false, {
+      getAdminView: () =>
+        of({
+          ...adminGroupResponse,
+          scoring_mode: 'custom' as const,
+          target_score: 7,
+          deuce_threshold: 6,
+          cap_score: 9,
+        }),
+    });
+
+    const scoring = fixture.componentInstance.scoringForm.controls;
+    expect(scoring.scoring_mode.value).toBe('custom');
+    expect(scoring.custom_target_score.value).toBe(7);
+    expect(scoring.custom_deuce_threshold.value).toBe(6);
+    expect(scoring.custom_cap_score.value).toBe(9);
+  });
+
+  it('leaves an in-progress settings edit alone when the 30s heartbeat refetches', () => {
+    const fixture = setup();
+    const name = fixture.componentInstance.editForm.controls.name;
+
+    name.setValue('週三晚上團');
+    name.markAsDirty();
+    // 等同 heartbeat 觸發的重新載入（見 HEARTBEAT_INTERVAL_MS）。
+    fixture.componentInstance['load']();
+
+    expect(name.value).toBe('週三晚上團');
+  });
+
+  it('follows the server again once the settings edit has been saved', () => {
+    const fixture = setup(false, {
+      editGroup: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
+    });
+    const name = fixture.componentInstance.editForm.controls.name;
+    name.setValue('週三晚上團');
+    name.markAsDirty();
+
+    fixture.componentInstance.saveGroupSettings();
+
+    // 存完就跟伺服器一致了，後端回來的（可能 trim 過的）值要吃得到。
+    expect(name.value).toBe('週三團');
+    expect(fixture.componentInstance.editForm.pristine).toBe(true);
+  });
+
+  it('leaves an in-progress scoring edit alone when the 30s heartbeat refetches', () => {
+    const fixture = setup();
+    const scoringMode = fixture.componentInstance.scoringForm.controls.scoring_mode;
+
+    scoringMode.setValue('custom');
+    scoringMode.markAsDirty();
+    // 等同 heartbeat 觸發的重新載入（見 HEARTBEAT_INTERVAL_MS）。
+    fixture.componentInstance['load']();
+
+    expect(scoringMode.value).toBe('custom');
+  });
+
   it('saving scoring settings shows a success message', () => {
     const fixture = setup(false, {
       editScoringSettings: () => of({ ...adminGroupResponse, base_settings_version: 2 }),
@@ -294,6 +492,7 @@ describe('AdminPageComponent', () => {
             participants: [],
             score_a: 0,
             score_b: 0,
+            serve: null,
           },
           waiting_reason: null,
           next_up: null,
@@ -388,7 +587,59 @@ describe('AdminPageComponent', () => {
 
     const link = fixture.nativeElement.querySelector('.link-section input[readonly]');
     expect(link.value).toContain('/guest-access/tok-abc');
+    // 貼進 LINE 後要用手機預設瀏覽器開，不要落進 LINE 內建瀏覽器。
+    expect(link.value).toContain('openExternalBrowser=1');
     expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareLinkTitle');
+  });
+
+  it('the share panel offers a LINE share link alongside copy', () => {
+    const fixture = setup(false, {}, {
+      addGuest: () =>
+        of({ roster_entry_id: 'r1', nickname: '小明', guest_session_token: 'tok-abc', created_new: true }),
+    });
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    const share = fixture.nativeElement.querySelector('.link-section a.btn--line');
+    // lineit/share（而不是 line.me/R/… 那組 App scheme）——桌機點下去才不會
+    // 只停在 LINE 官網。
+    expect(share.getAttribute('href')).toContain('https://social-plugins.line.me/lineit/share?url=');
+    // 開新分頁，才不會把 團長 正在用的管理頁面推走。
+    expect(share.getAttribute('target')).toBe('_blank');
+    expect(fixture.nativeElement.textContent).toContain('scheduleManagement.addGuest.shareToLine');
+  });
+
+  it('the LINE share message carries the guest\'s nickname and link', () => {
+    const fixture = setup(false, {}, {
+      addGuest: () =>
+        of({ roster_entry_id: 'r1', nickname: '小明', guest_session_token: 'tok-abc', created_new: true }),
+    });
+    const translate = TestBed.inject(TranslateService);
+    translate.setTranslation(
+      'zh-TW',
+      { scheduleManagement: { addGuest: { lineShareMessage: '{{nickname}} 你好' } } },
+      true,
+    );
+    translate.use('zh-TW');
+
+    navButtons(fixture)[2].click();
+    fixture.detectChanges();
+    fixture.componentInstance.addGuestForm.controls.nickname.setValue('小明');
+    fixture.componentInstance.addGuest();
+    fixture.detectChanges();
+
+    const share = fixture.nativeElement.querySelector('.link-section a.btn--line');
+    const params = new URL(share.getAttribute('href')).searchParams;
+
+    // 訊息帶暱稱，連結走 `url` 參數（LINE 會把它接在訊息後面送出）。
+    expect(params.get('text')).toBe('小明 你好');
+    expect(params.get('url')).toContain('/guest-access/tok-abc');
+    // 分享出去的那條連結一樣要能跳出 LINE 內建瀏覽器。
+    expect(params.get('url')).toContain('openExternalBrowser=1');
   });
 
   // 026-match-record-friend-invite (roster-list redesign)
@@ -444,6 +695,125 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelectorAll('app-add-friend-button').length).toBe(0);
+  });
+
+  // 037-rest-ready-toggle US4 (T033)
+  describe('rest/ready on the roster tab', () => {
+    const roster = [
+      { roster_entry_id: 'r0', nickname: '團長', status: 'active', wait_count: null, currently_playing: false, is_creator: true, is_guest: true },
+      { roster_entry_id: 'r1', nickname: '小美', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true, resting: true },
+      { roster_entry_id: 'r2', nickname: '小華', status: 'active', wait_count: null, currently_playing: false, is_creator: false, is_guest: true },
+    ];
+    const restOk = {
+      roster_entry_id: 'r2',
+      resting: true,
+      resting_since: '2026-09-19T12:00:00Z',
+      currently_playing: false,
+      changed: true,
+    };
+
+    function onRoster(setMemberRestState: ScheduleService['setMemberRestState']) {
+      const fixture = setup(false, {}, {
+        getSchedule: () => of({ ...scheduleResponse, roster }),
+        setMemberRestState,
+      });
+      navButtons(fixture)[2].click();
+      fixture.detectChanges();
+      return fixture;
+    }
+
+    function rowButton(fixture: ReturnType<typeof setup>, index: number): HTMLButtonElement {
+      const rows = fixture.nativeElement.querySelectorAll('.roster-list li');
+      return rows[index].querySelector('app-rest-toggle-button button');
+    }
+
+    it('gives every row a button, the creator included', () => {
+      const fixture = onRoster(() => of(restOk));
+
+      expect(fixture.nativeElement.querySelectorAll('.roster-list app-rest-toggle-button').length).toBe(3);
+      expect(rowButton(fixture, 1).textContent).toContain('restToggle.adminReady');
+      expect(rowButton(fixture, 2).textContent).toContain('restToggle.adminRest');
+    });
+
+    it('sends the target state for that row', () => {
+      const calls: [string, string, boolean, boolean | undefined][] = [];
+      const fixture = onRoster((groupId, id, resting, confirm) => {
+        calls.push([groupId, id, resting, confirm]);
+        return of(restOk);
+      });
+
+      rowButton(fixture, 2).click();
+      rowButton(fixture, 1).click();
+
+      expect(calls).toEqual([
+        ['g1', 'r2', true, false],
+        ['g1', 'r1', false, false],
+      ]);
+    });
+
+    it('keeps each row pending on its own', () => {
+      const pending = new Subject<typeof restOk>();
+      const fixture = onRoster(() => pending.asObservable());
+
+      rowButton(fixture, 2).click();
+      fixture.detectChanges();
+
+      expect(rowButton(fixture, 2).disabled).toBe(true);
+      expect(rowButton(fixture, 1).disabled).toBe(false);
+    });
+
+    it('shows a failure and leaves the row as it was', () => {
+      const fixture = onRoster(() =>
+        throwError(() => ({
+          errorCode: 'ROSTER_ENTRY_NOT_FOUND',
+          i18nKey: 'errors.ROSTER_ENTRY_NOT_FOUND',
+          detail: null,
+          status: 404,
+        })),
+      );
+
+      rowButton(fixture, 2).click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('errors.ROSTER_ENTRY_NOT_FOUND');
+      expect(rowButton(fixture, 2).textContent).toContain('restToggle.adminRest');
+      expect(rowButton(fixture, 2).disabled).toBe(false);
+    });
+
+    it('asks first when the rest would end the round, naming the player, then resends', () => {
+      const calls: [string, boolean | undefined][] = [];
+      const fixture = onRoster((_g, id, _resting, confirm) => {
+        calls.push([id, confirm]);
+        return confirm
+          ? of(restOk)
+          : throwError(() => ({
+              errorCode: 'REST_ENDS_ROUND',
+              i18nKey: 'errors.REST_ENDS_ROUND',
+              detail: { matches_to_cancel: 3 },
+              status: 409,
+            }));
+      });
+
+      rowButton(fixture, 2).click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.restEndsRoundTarget()).toEqual({
+        rosterEntryId: 'r2',
+        nickname: '小華',
+        count: 3,
+        immediate: true,
+        title: 'restToggle.endsRound.title',
+        body: 'restToggle.endsRound.adminBody',
+      });
+      expect(fixture.nativeElement.textContent).not.toContain('errors.REST_ENDS_ROUND');
+
+      fixture.componentInstance.confirmRestEndingRound();
+
+      expect(calls).toEqual([
+        ['r2', false],
+        ['r2', true],
+      ]);
+    });
   });
 
   it('only shows the regenerate-link button on guest rows, not member rows', () => {
@@ -548,5 +918,99 @@ describe('AdminPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('errors.ROSTER_ENTRY_ALREADY_LEFT');
+  });
+
+  // 團長取消邀請：好友還沒回覆之前把邀請收回
+  function setupInvitesTab(
+    friends: InvitableFriendSummary[],
+    groupAdminOverrides: Partial<GroupAdminService> = {},
+  ) {
+    const fixture = setup(false, {
+      getAdminView: () =>
+        of({
+          ...adminGroupResponse,
+          group: { ...adminGroupResponse.group, created_by_member: true },
+        }),
+      listInvitableFriends: () => of({ friends }),
+      ...groupAdminOverrides,
+    });
+    // 場地 / 賽程 / 名單 / 邀請好友 / 設定 —— created_by_member 為真才有第 4 顆
+    navButtons(fixture)[3].click();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const pendingFriend: InvitableFriendSummary = {
+    member_id: 'm-friend',
+    nickname: '小美',
+    user_number: 'aB3dEfGh',
+    invite_status: 'pending',
+    invite_id: 'inv-1',
+  };
+
+  function inviteRowButton(fixture: ReturnType<typeof setup>): HTMLButtonElement {
+    return fixture.nativeElement.querySelector('.invite-friend-list button');
+  }
+
+  it('a pending invite offers 取消邀請 instead of 送出邀請', () => {
+    const fixture = setupInvitesTab([pendingFriend]);
+
+    expect(inviteRowButton(fixture).textContent).toContain('inviteSection.cancelButton');
+  });
+
+  it('取消邀請 calls cancelInvite with the invite id and reloads the list', () => {
+    const cancelInvite = vi.fn(() => of({ invite_id: 'inv-1', status: 'cancelled' as const }));
+    let call = 0;
+    const fixture = setupInvitesTab([pendingFriend], {
+      cancelInvite,
+      listInvitableFriends: () => {
+        call += 1;
+        return of({
+          friends: [
+            call === 1
+              ? pendingFriend
+              : { ...pendingFriend, invite_status: 'cancelled' as const },
+          ],
+        });
+      },
+    });
+
+    inviteRowButton(fixture).click();
+    fixture.detectChanges();
+
+    expect(cancelInvite).toHaveBeenCalledWith('g1', 'inv-1');
+    // 收回之後那顆按鈕換回「送出邀請」，團長可以再邀一次
+    expect(fixture.nativeElement.textContent).toContain('inviteSection.status.cancelled');
+    expect(inviteRowButton(fixture).textContent).toContain('inviteSection.inviteButton');
+  });
+
+  it('a failed cancel shows the error and re-reads the list (對方可能剛好先接受了)', () => {
+    let call = 0;
+    const fixture = setupInvitesTab([pendingFriend], {
+      cancelInvite: () =>
+        throwError(() => ({
+          errorCode: 'GROUP_INVITE_NOT_PENDING',
+          i18nKey: 'errors.GROUP_INVITE_NOT_PENDING',
+          detail: null,
+          status: 409,
+        })),
+      listInvitableFriends: () => {
+        call += 1;
+        return of({
+          friends: [
+            call === 1
+              ? pendingFriend
+              : { ...pendingFriend, invite_status: 'already_member' as const },
+          ],
+        });
+      },
+    });
+
+    inviteRowButton(fixture).click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('errors.GROUP_INVITE_NOT_PENDING');
+    expect(fixture.nativeElement.textContent).toContain('inviteSection.status.already_member');
+    expect(inviteRowButton(fixture)).toBeNull();
   });
 });

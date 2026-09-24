@@ -1,0 +1,25 @@
+@if (series(); as trend) {
+  <app-line-chart
+    [points]="points()"
+    [kind]="kind() === 'rate' ? 'rate' : 'number'"
+    [caption]="'playerDashboard.trend.title' | translate: { metric: labelKey() | translate }"
+    [ariaLabel]="
+      'playerDashboard.trend.summary'
+        | translate
+          : {
+              metric: labelKey() | translate,
+              from: first()?.display ?? '—',
+              to: last()?.display ?? '—',
+              count: trend.points.length,
+            }
+    "
+    [startLabel]="startLabel()"
+    [endLabel]="endLabel()"
+    [note]="'playerDashboard.trend.windowNote' | translate"
+    [tableViewLabel]="'playerDashboard.trend.tableView' | translate"
+    [labelHeader]="'playerDashboard.trend.tablePeriod' | translate"
+    [valueHeader]="'playerDashboard.trend.tableValue' | translate"
+  />
+} @else {
+  <p class="trend-empty">{{ 'playerDashboard.trend.notEnough' | translate }}</p>
+}

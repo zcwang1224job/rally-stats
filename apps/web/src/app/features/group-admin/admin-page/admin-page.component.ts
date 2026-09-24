@@ -4,12 +4,17 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { QRCodeComponent } from 'angularx-qrcode';
-import { interval } from 'rxjs';
+import { Subject, debounceTime, interval } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
 import { copyTextToClipboard } from '../../../core/clipboard';
+import { guestAccessLink } from '../../../core/guest-access-link';
+import { buildLineShareUrl } from '../../../core/line-share';
 import { InvitableFriendSummary } from '../../../core/api/group-invite.models';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
+import { restEndsRound, restEndsRoundKeys } from '../../../core/rest-toggle-button/rest-ends-round';
+import { RestToggleButtonComponent } from '../../../core/rest-toggle-button/rest-toggle-button.component';
+import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
@@ -41,6 +46,7 @@ import { CourtControlComponent } from '../schedule-management/court-control.comp
 import { RoundMatchesListComponent } from '../schedule-management/round-matches-list.component';
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // spec FR-035: 30s heartbeat fallback ceiling
+const SCHEDULE_REFRESH_DEBOUNCE_MS = 300;
 
 /** 010-app-wide-ui-redesign US3 (data-model.md): left-nav tab shell —
  * client-side view state only, never reflected in the URL (research.md
@@ -66,6 +72,7 @@ type AdminSection = 'courts' | 'schedule' | 'roster' | 'invites' | 'settings';
     CourtControlComponent,
     RoundMatchesListComponent,
     AddFriendButtonComponent,
+    RestToggleButtonComponent,
   ],
   templateUrl: './admin-page.component.html',
   styleUrl: './admin-page.component.scss',
@@ -93,6 +100,7 @@ export class AdminPageComponent {
   readonly invitableFriends = signal<InvitableFriendSummary[] | null>(null);
   readonly invitesErrorKey = signal<string | null>(null);
   readonly sendingInviteToMemberId = signal<string | null>(null);
+  readonly cancellingInviteId = signal<string | null>(null);
   readonly adminView = signal<AdminGroupResponse | null>(null);
   readonly loading = signal(true);
   readonly errorKey = signal<string | null>(null);
@@ -103,6 +111,9 @@ export class AdminPageComponent {
   readonly scoreboardScoringPending = signal(false);
   readonly scoreboardScoringErrorKey = signal<string | null>(null);
   readonly scoreboardScoringSaved = signal(false);
+  readonly detailedScoringPending = signal(false);
+  readonly detailedScoringErrorKey = signal<string | null>(null);
+  readonly detailedScoringSaved = signal(false);
   readonly newPin = signal<string | null>(null);
   readonly copiedPin = signal(false);
   readonly copyPinErrorKey = signal<string | null>(null);
@@ -145,6 +156,20 @@ export class AdminPageComponent {
   readonly kickMemberDialog = viewChild.required<ConfirmDialogComponent>('kickMemberDialog');
   readonly kickMemberTarget = signal<{ rosterEntryId: string; nickname: string } | null>(null);
   readonly kickMemberErrorKey = signal<string | null>(null);
+
+  // 037-rest-ready-toggle US4: per-row pending, so one slow request doesn't
+  // lock every row; the round-ending prompt names the player it's about.
+  readonly restPendingIds = signal<ReadonlySet<string>>(new Set());
+  readonly restErrorKey = signal<string | null>(null);
+  readonly restEndsRoundDialog = viewChild.required<ConfirmDialogComponent>('restEndsRoundDialog');
+  readonly restEndsRoundTarget = signal<{
+    rosterEntryId: string;
+    nickname: string;
+    count: number;
+    immediate: boolean;
+    title: string;
+    body: string;
+  } | null>(null);
 
   readonly addGuestNicknameInput =
     viewChild.required<ElementRef<HTMLInputElement>>('addGuestNicknameInput');
@@ -196,6 +221,10 @@ export class AdminPageComponent {
     }
     this.load();
     this.subscribeToDisbandEvent();
+    this.subscribeToRosterEvents();
+    this.scheduleRefresh
+      .pipe(debounceTime(SCHEDULE_REFRESH_DEBOUNCE_MS), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadSchedule());
     interval(HEARTBEAT_INTERVAL_MS)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.load());
@@ -272,9 +301,52 @@ export class AdminPageComponent {
    * 串接（此區塊僅顯示狀態，不提供計分操作）。 */
   loadSchedule(): void {
     this.scheduleService.getSchedule(this.groupId).subscribe({
-      next: (response) => this.schedule.set(response),
+      next: (response) => {
+        this.schedule.set(response);
+        this.subscribeToCourtChannels(response);
+        this.scheduleVersion.update((version) => version + 1);
+      },
       error: () => this.schedule.set(null),
     });
+  }
+
+  /** 每次重新讀取賽程就加一，傳給本輪賽程清單讓它跟著更新。 */
+  readonly scheduleVersion = signal(0);
+  readonly waitingReasonKey = waitingReasonKey;
+
+  // 即時事件觸發的重新讀取：同一件事常同時送出好幾個事件（例如一場打完會有
+  // match.ended、rotation.updated），合併成一次讀取。
+  private readonly scheduleRefresh = new Subject<void>();
+  private readonly subscribedCourtChannels = new Set<string>();
+
+  /** 以前只有「正在比賽的場地」各自的 court-control 會訂閱事件，空場地沒人
+   * 聽：另一台裝置規劃並開始一輪、連續輪轉把人排上空場地、有人加入或離開
+   * 時，管理頁都要等 30 秒的 heartbeat 才看得到。改成跟成員端賽程頁一樣
+   * 訂閱每個場地（不含 match.scoreUpdated，比分由 court-control 自己更新，
+   * 每得一分都重讀整份賽程太頻繁）。 */
+  private subscribeToCourtChannels(schedule: ScheduleResponse): void {
+    for (const court of schedule.courts) {
+      const channel = `court:${this.groupId}:${court.court_id}`;
+      if (this.subscribedCourtChannels.has(channel)) {
+        continue;
+      }
+      this.subscribedCourtChannels.add(channel);
+      for (const event of ['match.ended', 'rotation.updated', 'match.nextRound']) {
+        this.realtime
+          .subscribe(channel, event)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(() => this.scheduleRefresh.next());
+      }
+    }
+  }
+
+  private subscribeToRosterEvents(): void {
+    for (const event of ['member.joined', 'member.left', 'roster.restChanged']) {
+      this.realtime
+        .subscribe(`group:${this.groupId}:notifications`, event)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => this.scheduleRefresh.next());
+    }
   }
 
   /** 013-group-invite-friends US1/US3: the "邀請好友" tab's data — only
@@ -282,6 +354,13 @@ export class AdminPageComponent {
    * above. */
   loadInvitableFriends(): void {
     this.invitesErrorKey.set(null);
+    this.refreshInvitableFriends();
+  }
+
+  /** 只重抓列表，不碰 invitesErrorKey——失敗路徑要同時做兩件事：留著剛
+   * 剛那則錯誤訊息，又讓列表跟上伺服器的真實狀態。清錯誤的責任留給上面
+   * 的 loadInvitableFriends()。 */
+  private refreshInvitableFriends(): void {
     this.groupAdmin.listInvitableFriends(this.groupId).subscribe({
       next: (response) => this.invitableFriends.set(response.friends),
       error: (error: ApiError) => {
@@ -313,17 +392,68 @@ export class AdminPageComponent {
     });
   }
 
-  private patchForms(view: AdminGroupResponse): void {
-    this.editForm.patchValue({
-      name: view.group.name,
-      password: view.password_plaintext ?? '',
-      match_mode: view.group.match_mode,
-      scheduling_mechanism: view.group.scheduling_mechanism,
-      partner_source: view.group.partner_source,
-      max_members: view.group.max_members,
-      activity_time_start: view.group.activity_time_start ?? '',
-      activity_time_end: view.group.activity_time_end ?? '',
+  /** 團長在好友按下「接受邀請」之前把邀請收回。沒有二次確認對話框：邀請
+   * 沒有實際資料可毀，收回後還能再邀一次（同 sendInvite 一樣直接送出）。
+   * 失敗時一律重抓列表——最常見的失敗就是對方剛好先接受了，這時畫面上那
+   * 顆「取消邀請」按鈕本來就該換成「已在團內」。 */
+  cancelInvite(friend: InvitableFriendSummary): void {
+    if (!friend.invite_id) {
+      return;
+    }
+    const inviteId = friend.invite_id;
+    this.invitesErrorKey.set(null);
+    this.cancellingInviteId.set(inviteId);
+    this.groupAdmin.cancelInvite(this.groupId, inviteId).subscribe({
+      next: () => {
+        this.cancellingInviteId.set(null);
+        this.loadInvitableFriends();
+      },
+      error: (error: ApiError) => {
+        this.cancellingInviteId.set(null);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.invitesErrorKey.set(error.i18nKey);
+        this.refreshInvitableFriends();
+      },
     });
+  }
+
+  /** patchForms() 掛在 30 秒的 heartbeat 上（見 HEARTBEAT_INTERVAL_MS），所以
+   * 兩張表單都只在「使用者還沒動過」時才回填——否則團長改到一半、還沒按儲存
+   * 的輸入會被伺服器回來的值無聲蓋掉（改個團名停下來想一下就中，而且沒有任何
+   * 提示）。存檔成功後由 saveGroupSettings()/saveScoringSettings() 把表單標回
+   * pristine，讓它重新跟著伺服器走。 */
+  private patchForms(view: AdminGroupResponse): void {
+    if (this.editForm.pristine) {
+      this.editForm.patchValue({
+        name: view.group.name,
+        password: view.password_plaintext ?? '',
+        match_mode: view.group.match_mode,
+        scheduling_mechanism: view.group.scheduling_mechanism,
+        partner_source: view.group.partner_source,
+        max_members: view.group.max_members,
+        activity_time_start: view.group.activity_time_start ?? '',
+        activity_time_end: view.group.activity_time_end ?? '',
+      });
+    }
+    // 沒有這段的話，分數制度會永遠停在表單宣告的預設（21pt / 11-10-15），
+    // 和開團當下選的制度對不起來；團長若在這區按了儲存，還會把原本的設定
+    // 靜默改成 21pt。自訂欄位只在 custom 模式下回填，其餘模式沿用表單預設
+    // 當作切到 custom 時的起始值（後端預設展開值 21/20/30 不適合當草稿）。
+    if (this.scoringForm.pristine) {
+      this.scoringForm.patchValue({
+        scoring_mode: view.scoring_mode,
+        ...(view.scoring_mode === 'custom'
+          ? {
+              custom_target_score: view.target_score,
+              custom_deuce_threshold: view.deuce_threshold,
+              custom_cap_score: view.cap_score,
+            }
+          : {}),
+      });
+    }
   }
 
   private subscribeToDisbandEvent(): void {
@@ -380,6 +510,9 @@ export class AdminPageComponent {
       .subscribe({
         next: (updated) => {
           this.adminView.set(updated);
+          // 存檔後表單和伺服器一致了，標回 pristine 才會吃到下面這次回填
+          // （後端會 trim 團名等值），也讓後續 heartbeat 重新跟著伺服器走。
+          this.editForm.markAsPristine();
           this.patchForms(updated);
           this.loadSchedule();
           this.saveSuccess.set(true);
@@ -418,6 +551,9 @@ export class AdminPageComponent {
       .subscribe({
         next: (updated) => {
           this.adminView.set(updated);
+          // 同 saveGroupSettings()：存完就跟伺服器一致了，讓 heartbeat 重新
+          // 接手，別人在另一個裝置改了制度這邊才看得到。
+          this.scoringForm.markAsPristine();
           this.scoringSaveSuccess.set(true);
           setTimeout(() => this.scoringSaveSuccess.set(false), 3000);
         },
@@ -570,9 +706,52 @@ export class AdminPageComponent {
     });
   }
 
+  /** 031-shot-placement-scoring: same immediate-toggle pattern as
+   * toggleScoreboardScoring() above. */
+  toggleDetailedScoring(enabled: boolean): void {
+    this.detailedScoringErrorKey.set(null);
+    this.detailedScoringPending.set(true);
+    this.groupAdmin.setDetailedScoring(this.groupId, enabled).subscribe({
+      next: (response) => {
+        this.detailedScoringPending.set(false);
+        const view = this.adminView();
+        if (view) {
+          this.adminView.set({
+            ...view,
+            detailed_scoring_enabled: response.detailed_scoring_enabled,
+          });
+        }
+        this.detailedScoringSaved.set(true);
+        setTimeout(() => this.detailedScoringSaved.set(false), 3000);
+      },
+      error: (error: ApiError) => {
+        this.detailedScoringPending.set(false);
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.detailedScoringErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
   toggleAutoNextRound(enabled: boolean): void {
     this.nextRoundErrorKey.set(null);
     this.scheduleService.setAutoNextRound(this.groupId, enabled).subscribe({
+      next: () => this.loadSchedule(),
+      error: (error: ApiError) => {
+        if (error.status === 401) {
+          this.handleAuthFailure(error);
+          return;
+        }
+        this.nextRoundErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  toggleContinuousRotation(enabled: boolean): void {
+    this.nextRoundErrorKey.set(null);
+    this.scheduleService.setContinuousRotation(this.groupId, enabled).subscribe({
       next: () => this.loadSchedule(),
       error: (error: ApiError) => {
         if (error.status === 401) {
@@ -721,6 +900,62 @@ export class AdminPageComponent {
     });
   }
 
+  /** 037-rest-ready-toggle US4: put a player on rest or back. No
+   * confirmation — except a rest the backend refuses with REST_ENDS_ROUND
+   * (it would end the round on the spot), which asks first, naming them. */
+  setMemberRest(
+    rosterEntryId: string,
+    nickname: string,
+    resting: boolean,
+    confirmRoundEnd = false,
+  ): void {
+    if (this.restPendingIds().has(rosterEntryId)) {
+      return;
+    }
+    this.restErrorKey.set(null);
+    this.restPendingIds.update((ids) => new Set(ids).add(rosterEntryId));
+    const done = () =>
+      this.restPendingIds.update((ids) => {
+        const next = new Set(ids);
+        next.delete(rosterEntryId);
+        return next;
+      });
+    this.scheduleService
+      .setMemberRestState(this.groupId, rosterEntryId, resting, confirmRoundEnd)
+      .subscribe({
+        next: () => {
+          done();
+          this.loadSchedule();
+        },
+        error: (error: ApiError) => {
+          done();
+          if (error.status === 401) {
+            this.handleAuthFailure(error);
+            return;
+          }
+          const refusal = restEndsRound(error);
+          if (refusal !== null && !confirmRoundEnd) {
+            this.restEndsRoundTarget.set({
+              rosterEntryId,
+              nickname,
+              ...refusal,
+              ...restEndsRoundKeys(refusal, true),
+            });
+            this.restEndsRoundDialog().open();
+            return;
+          }
+          this.restErrorKey.set(error.i18nKey);
+        },
+      });
+  }
+
+  confirmRestEndingRound(): void {
+    const target = this.restEndsRoundTarget();
+    if (target) {
+      this.setMemberRest(target.rosterEntryId, target.nickname, true, true);
+    }
+  }
+
   addGuest(): void {
     if (this.addGuestForm.invalid) {
       this.addGuestForm.markAllAsTouched();
@@ -730,10 +965,16 @@ export class AdminPageComponent {
     const nickname = this.addGuestForm.getRawValue().nickname;
     this.scheduleService.addGuest(this.groupId, nickname).subscribe({
       next: (response) => {
-        this.addedGuest.set({
-          nickname: response.nickname,
-          link: `${window.location.origin}/guest-access/${response.guest_session_token}`,
-        });
+        // `JoinGroupResponse` 是跟「會員自己加入」共用的型別，那條路徑不
+        // 會有 guest token，所以這欄可為 null。團長 手動新增訪客一定拿得
+        // 到 token，但真的沒拿到時寧可不開分享面板——舊的字串內插會生出
+        // 一條 `/guest-access/null` 的壞連結給 團長 分享出去。訪客本身已
+        // 經加進名單了，需要連結可以用名單列上的「重新產生訪客連結」。
+        this.addedGuest.set(
+          response.guest_session_token
+            ? { nickname: response.nickname, link: guestAccessLink(response.guest_session_token) }
+            : null,
+        );
         this.copiedGuestLink.set(false);
         this.copyGuestLinkErrorKey.set(null);
         this.addGuestForm.reset({ nickname: '' });
@@ -760,7 +1001,7 @@ export class AdminPageComponent {
         // resulting UI (link + QR + copy) is identical either way.
         this.addedGuest.set({
           nickname: member.nickname,
-          link: `${window.location.origin}/guest-access/${response.guest_session_token}`,
+          link: guestAccessLink(response.guest_session_token),
         });
         this.copiedGuestLink.set(false);
         this.copyGuestLinkErrorKey.set(null);
@@ -773,6 +1014,12 @@ export class AdminPageComponent {
         this.regenerateGuestLinkErrorKey.set(error.i18nKey);
       },
     });
+  }
+
+  /** 訊息文字由 template 用 translate pipe 組好再傳進來（而不是在這裡
+   * `translate.instant`），切語言時 href 才會跟著重算。 */
+  lineShareUrl(link: string, message: string): string {
+    return buildLineShareUrl(link, message);
   }
 
   async copyAddedGuestLink(): Promise<void> {

@@ -5,7 +5,7 @@ both of which use the "ever a member" access boundary (research.md #1)."""
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.member.models import Member
@@ -15,9 +15,8 @@ pytestmark = pytest.mark.asyncio
 
 
 async def _register_unverified(session: AsyncSession, email: str) -> Member:
-    """For test cases that never need to join/act as this member — just
-    authenticate — `require_member` (unlike `require_verified_member`)
-    doesn't care about verification status, per existing convention."""
+    """An e-mail/password registrant who has not clicked the verification
+    link — locked out of match records (constitution IV)."""
     return await register(session, email, "abc12345")
 
 
@@ -51,7 +50,12 @@ async def _register_verified_and_login(
 
 
 async def _create_group_with_member_in_active_match(
-    client: AsyncClient, db_session: AsyncSession, turnstile_token: str, member_email: str
+    client: AsyncClient,
+    db_session: AsyncSession,
+    turnstile_token: str,
+    member_email: str,
+    *,
+    detailed_scoring_enabled: bool = False,
 ) -> tuple[dict, dict, str, str]:
     """Creates a group (guest creator), joins `member_email` as a logged-in
     Member, generates a singles match between the two via fair_rotation,
@@ -92,6 +96,17 @@ async def _create_group_with_member_in_active_match(
         f"/groups/{created['group_id']}/join", headers=member_headers, json={}
     )
     roster_entry_id = join_response.json()["roster_entry_id"]
+
+    if detailed_scoring_enabled:
+        # 032-match-record-scoring-stats: MUST be set BEFORE next-round pulls
+        # a match onto the court — matches.detailed_scoring_enabled is a
+        # snapshot taken at creation time (031-shot-placement-scoring).
+        await db_session.execute(
+            text("UPDATE groups SET detailed_scoring_enabled = true WHERE id = :id"),
+            {"id": created["group_id"]},
+        )
+        await db_session.commit()
+        db_session.expire_all()
 
     await client.post(f"/groups/{created['group_id']}/next-round", headers=admin_headers)
 
@@ -134,6 +149,18 @@ async def test_success_with_bearer_token(
     assert body["match_id"] == match_id
     assert body["record_completeness"] == "complete"
     assert len(body["events"]) == 3
+    # 033-match-record-derived-stats: same shared builder, same new fields.
+    assert body["serve_stats"]["excluded_points"] >= 1
+    assert len(body["momentum_stats"]["longest_runs"]) == 2
+    assert body["tempo_stats"]["counted_points"] == 3
+    assert body["landing_distribution"] == []
+    # 034-clutch-points-player-dashboard: same shared builder again.
+    clutch = body["clutch_stats"]
+    assert [m["team"] for m in clutch["match_points"]] == ["A", "B"]
+    winner = clutch["match_points"][0]
+    assert winner["held"] >= 1 and winner["converted_on"] == winner["held"]
+    assert clutch["match_points"][1]["converted_on"] is None
+    assert clutch["comeback"] is None  # A won 3:0
 
 
 async def test_requires_login(client: AsyncClient) -> None:
@@ -181,8 +208,9 @@ async def test_never_a_member_returns_group_membership_never_held(
     match_id = await _get_match_id(client, court)
     await _complete_match(client, court, match_id)
 
-    await _register_unverified(db_session, "matchdetail-outsider@example.com")
-    outsider_token = await _login(client, "matchdetail-outsider@example.com")
+    outsider_token = await _register_verified_and_login(
+        client, db_session, "matchdetail-outsider@example.com"
+    )
 
     response = await client.get(
         f"/members/me/match-records/{match_id}",
@@ -191,3 +219,173 @@ async def test_never_a_member_returns_group_membership_never_held(
 
     assert response.status_code == 403
     assert response.json()["error_code"] == "GROUP_MEMBERSHIP_NEVER_HELD"
+
+
+async def test_shot_placement_detail_is_included_via_member_endpoint(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """032-match-record-scoring-stats: confirms build_match_record_detail()'s
+    extension applies automatically to this endpoint too — no per-endpoint
+    changes were made (plan.md's whole point)."""
+    created, court, access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token,
+            "matchdetail-shotplacement@example.com", detailed_scoring_enabled=True,
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    state = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+    team_a_id = next(
+        p["roster_entry_id"]
+        for p in state.json()["current_match"]["participants"]
+        if p["team"] == "A"
+    )
+
+    score_1 = await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+        json={"side": "A", "delta": 1},
+    )
+    await client.post(
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement",
+        json={"score_event_id": score_1.json()["score_event_id"], "roster_entry_id": team_a_id},
+    )
+    for _ in range(2):
+        await client.post(
+            f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score",
+            json={"side": "A", "delta": 1},
+        )
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["events"][0]["detail"]["scoring_roster_entry_id"] == team_a_id
+    assert body["events"][1]["detail"] is None
+    stats_by_id = {s["roster_entry_id"]: s for s in body["player_stats"]}
+    assert stats_by_id[team_a_id]["scored_count"] == 1
+
+
+async def test_locked_until_email_verified(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """The verification check comes before the membership check, so an
+    unverified member learns nothing about whether the match exists."""
+    _created, court, _access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token, "matchdetail-verified@example.com"
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    await _complete_match(client, court, match_id)
+
+    await _register_unverified(db_session, "matchdetail-unverified@example.com")
+    unverified_token = await _login(client, "matchdetail-unverified@example.com")
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {unverified_token}"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error_code"] == "EMAIL_NOT_VERIFIED"
+
+
+async def test_ending_stats_are_included_via_member_endpoint(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """035: same builder, so the member endpoint carries `ending_stats` and
+    per-point `ending_type` without any per-endpoint change."""
+    created, court, access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token,
+            "matchdetail-ending@example.com", detailed_scoring_enabled=True,
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    state = await client.get(f"/courts/by-token/{court['scoreboard_token']}/state")
+    participants = state.json()["current_match"]["participants"]
+    team_a_id = next(p["roster_entry_id"] for p in participants if p["team"] == "A")
+    team_b_id = next(p["roster_entry_id"] for p in participants if p["team"] == "B")
+    score_url = f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/score"
+    detail_url = (
+        f"/courts/by-token/{court['control_panel_token']}/matches/{match_id}/shot-placement"
+    )
+
+    for kind in ("winner", "out"):
+        scored = await client.post(score_url, json={"side": "A", "delta": 1})
+        await client.post(
+            detail_url,
+            json={
+                "score_event_id": scored.json()["score_event_id"],
+                "roster_entry_id": team_a_id,
+                "losing_roster_entry_id": team_b_id,
+                "ending_type": kind,
+            },
+        )
+    await client.post(score_url, json={"side": "A", "delta": 1})
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [e["detail"]["ending_type"] if e["detail"] else None for e in body["events"]] == [
+        "winner", "out", None,
+    ]
+    ending = body["ending_stats"]
+    assert (ending["recorded_points"], ending["total_points"]) == (2, 3)
+    assert ending["teams"][0]["winners"] == 1
+    assert ending["teams"][1]["errors_by_type"]["out"] == 1
+    players_by_id = {p["roster_entry_id"]: p for p in ending["players"]}
+    stats_by_id = {s["roster_entry_id"]: s for s in body["player_stats"]}
+    assert (players_by_id[team_a_id]["winners"], players_by_id[team_a_id]["opponent_errors"]) == (
+        1, 1,
+    )
+    team_b_player = players_by_id[team_b_id]
+    assert (team_b_player["beaten_by_winners"], team_b_player["own_errors"]) == (1, 1)
+    for entry_id, player in players_by_id.items():
+        assert (
+            player["winners"] + player["opponent_errors"] + player["scored_unrecorded"]
+            == stats_by_id[entry_id]["scored_count"]
+        )
+        assert (
+            player["beaten_by_winners"] + player["own_errors"] + player["lost_unrecorded"]
+            == stats_by_id[entry_id]["fault_count"]
+        )
+    # Nothing but nicknames identifies anyone (same visibility as before).
+    assert set(ending["players"][0]) & {"member_id", "email"} == set()
+
+
+async def test_target_score_is_the_matchs_own_snapshot(
+    client: AsyncClient, db_session: AsyncSession, valid_turnstile_token: str
+) -> None:
+    """040-match-share-card FR-012a: same field through the member endpoint
+    (my match history and "我的團" group history), still the snapshot after
+    the group's own setting changes."""
+    created, court, access_token, _roster_entry_id = (
+        await _create_group_with_member_in_active_match(
+            client, db_session, valid_turnstile_token, "matchdetail-target@example.com"
+        )
+    )
+    match_id = await _get_match_id(client, court)
+    await _complete_match(client, court, match_id)
+    await db_session.execute(
+        text("UPDATE groups SET target_score = 21 WHERE id = :id"),
+        {"id": created["group_id"]},
+    )
+    await db_session.commit()
+
+    response = await client.get(
+        f"/members/me/match-records/{match_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["target_score"], int)
+    assert body["target_score"] == 3

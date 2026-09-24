@@ -81,6 +81,8 @@ h2 {
 }
 
 .score {
+  font-family: var(--font-family-score);
+  font-variant-numeric: tabular-nums;
   font-size: var(--font-size-display);
   font-weight: var(--font-weight-black);
   line-height: 1;

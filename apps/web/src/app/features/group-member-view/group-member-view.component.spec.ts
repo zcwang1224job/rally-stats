@@ -1,6 +1,8 @@
 import { convertToParamMap, ActivatedRoute, Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { TranslateService, provideTranslateService } from '@ngx-translate/core';
+import { MatchRecordsComponent } from './match-records/match-records.component';
 import { Observable, of, throwError } from 'rxjs';
 import { GroupMemberViewService } from './group-member-view.service';
 import { GroupMemberViewComponent } from './group-member-view.component';
@@ -56,7 +58,11 @@ function setup(
     /** Server-truth response for getGuestBindingStatus() — only consulted
      * when guestSessionToken is non-null. Defaults to "not yet bound" so
      * existing "CTA renders" tests keep their prior meaning. */
-    bindingStatus?: () => Observable<{ already_bound: boolean; group_id: string }>;
+    bindingStatus?: () => Observable<{
+      already_bound: boolean;
+      group_id: string;
+      already_in_group?: boolean;
+    }>;
   } = {},
 ) {
   const clearGuestSessionTokenCalls: unknown[] = [];
@@ -75,6 +81,7 @@ function setup(
         useValue: {
           getMemberSchedule: () => of(scheduleResponse),
           getRoundMatches: () => of({ round_number: 1, matches: [] }),
+          getMatchRecords: () => of({ matches: [], page: 1, total_pages: 1 }),
         },
       },
       {
@@ -108,6 +115,21 @@ function setup(
   fixture.detectChanges();
   return { fixture, clearGuestSessionTokenCalls };
 }
+
+// 040-match-share-card: the match-records tab needs the group's name for
+// the share card; this shell is where the name is already loaded.
+describe('GroupMemberViewComponent match-records tab', () => {
+  it('passes the group name down to the match records list', () => {
+    const { fixture } = setup();
+
+    fixture.componentInstance.activeTab.set('match-records');
+    fixture.detectChanges();
+
+    const records = fixture.debugElement.query(By.directive(MatchRecordsComponent))
+      .componentInstance as MatchRecordsComponent;
+    expect(records.groupName()).toBe('週三夜羽球團');
+  });
+});
 
 /** SC-001: a general member's nav MUST show exactly 賽程/戰績/退出組團/
  * 對戰紀錄 (FR-001), and MUST NOT expose any admin-only entry point (場地
@@ -224,6 +246,30 @@ describe('GroupMemberViewComponent guest binding CTA', () => {
     });
 
     expect(clearGuestSessionTokenCalls).toEqual([['g1']]);
+  });
+
+  // --- 已在名單裡的人（最典型的是 團長）看不到綁定入口 -------------------
+  // 團長 手上有自己團每一條訪客連結，後端會以 MEMBER_ALREADY_IN_GROUP
+  // 擋下綁定，所以入口不該出現——不然按下去只會拿到錯誤訊息。
+
+  it('does NOT render the CTA when the server says this account is already on the roster', () => {
+    const { fixture } = setup({
+      guestSessionToken: 'tok-123',
+      bindingStatus: () => of({ already_bound: false, group_id: 'g1', already_in_group: true }),
+    });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).toBeNull();
+    // 不是「已完成綁定」——這個帳號本來就是這團的一般成員，沒有東西要綁。
+    expect(fixture.nativeElement.textContent).not.toContain('guestBinding.boundBadge');
+  });
+
+  it('still renders the CTA for a genuine guest, who is not on the roster under an account', () => {
+    const { fixture } = setup({
+      guestSessionToken: 'tok-123',
+      bindingStatus: () => of({ already_bound: false, group_id: 'g1', already_in_group: false }),
+    });
+
+    expect(fixture.nativeElement.querySelector('app-guest-binding-cta')).not.toBeNull();
   });
 });
 

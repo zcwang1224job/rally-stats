@@ -1,4 +1,5 @@
 import { Component, effect, inject, input, output, signal } from '@angular/core';
+import { IconComponent } from '../../../shared/icon/icon.component';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { PartnerSource } from '../group-admin.models';
@@ -16,7 +17,7 @@ import { PartnershipsResponse, RosterSummary, TemporaryPairing } from './schedul
  * 配對涵蓋的成員（FR-006）——MUST NOT 讓已有正式搭檔的成員被選入。 */
 @Component({
   selector: 'app-partnership-settings',
-  imports: [TranslatePipe],
+  imports: [TranslatePipe, IconComponent],
   templateUrl: './partnership-settings.component.html',
   styleUrl: './partnership-settings.component.scss',
 })

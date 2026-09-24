@@ -1,31 +1,76 @@
-<dialog #dialog class="match-detail-dialog">
+<dialog #dialog class="dialog dialog--lg match-detail-dialog">
   <button
     type="button"
-    class="dialog-close"
+    class="dialog__close"
     (click)="close()"
     [attr.aria-label]="'matchRecordDetail.close' | translate"
   >
-    ✕
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
   </button>
 
   @if (loading()) {
-    <p>{{ 'matchRecordDetail.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'matchRecordDetail.loading' | translate }}</p>
   } @else if (loadError()) {
     <p role="alert">{{ 'matchRecordDetail.loadError' | translate }}</p>
   } @else if (detail(); as d) {
     <h2>{{ 'matchRecordDetail.title' | translate }}</h2>
-    <p class="basic-info">
-      {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: d.round_number } }}
-      ·
-      @for (p of d.team_a; track p.roster_entry_id; let last = $last) {
-        <app-nickname [value]="p.nickname" />@if (!last) { 、 }
-      }
-      vs
-      @for (p of d.team_b; track p.roster_entry_id; let last = $last) {
-        <app-nickname [value]="p.nickname" />@if (!last) { 、 }
-      }
-      · <strong>{{ d.score_a }} : {{ d.score_b }}</strong>
-    </p>
+
+    <!-- 040-match-share-card FR-001: only once the detail has loaded, and
+         only where the caller supplied a share context. -->
+    @if (shareContext(); as context) {
+      <button
+        type="button"
+        class="btn btn--secondary share-card-button"
+        (click)="shareDialog.open(d, context)"
+      >
+        {{ 'matchShareCard.openButton' | translate }}
+      </button>
+    }
+
+    <!-- feature/match-record-detail-scoreboard-style: a compact echo of the
+         live scoreboard (scoreboard.component.scss) — team-colored dots
+         (--color-team-a-bg/-b-bg, the SAME pair the scoreboard/chart/
+         derived-stats already use for these two teams) and the score in
+         --font-family-score, the tabular numeral stack reserved everywhere
+         else in the app for an actual score display. The winning side reads
+         bolder AND darker (weight + color, never color alone) rather than
+         graying the loser out entirely — both scores stay fully legible. -->
+    <div class="basic-info">
+      <p class="basic-info__round">
+        {{ 'groupMemberView.standings.roundColumnLabel' | translate: { round: d.round_number } }}
+      </p>
+      <div class="basic-info__scoreboard">
+        <div class="basic-info__team basic-info__team--a">
+          <span class="basic-info__dot basic-info__dot--a" aria-hidden="true"></span>
+          <span class="basic-info__names">
+            @for (p of d.team_a; track p.roster_entry_id; let last = $last) {
+              <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+            }
+          </span>
+        </div>
+        <div class="basic-info__score">
+          <span
+            class="basic-info__score-value"
+            [class.basic-info__score-value--winner]="d.winner_team === 'A'"
+            >{{ d.score_a }}</span
+          >
+          <span class="basic-info__score-sep">:</span>
+          <span
+            class="basic-info__score-value"
+            [class.basic-info__score-value--winner]="d.winner_team === 'B'"
+            >{{ d.score_b }}</span
+          >
+        </div>
+        <div class="basic-info__team basic-info__team--b">
+          <span class="basic-info__names">
+            @for (p of d.team_b; track p.roster_entry_id; let last = $last) {
+              <app-nickname [value]="p.nickname" />@if (!last) { 、 }
+            }
+          </span>
+          <span class="basic-info__dot basic-info__dot--b" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
 
     @if (d.record_completeness === 'none') {
       <p class="completeness-note">{{ 'matchRecordDetail.completeness.none' | translate }}</p>
@@ -36,72 +81,223 @@
         </p>
       }
 
-      <section class="chart-card">
-        <h3>{{ 'matchRecordDetail.chart.title' | translate }}</h3>
-        <svg
-          class="trend-chart"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          role="img"
-          [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
-        >
-          <line x1="0" y1="100" x2="100" y2="100" class="trend-chart__midline" />
-          <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
-          <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
-          @for (point of chartPoints(); track $index) {
-            <circle
-              [attr.cx]="point.x"
-              [attr.cy]="point.yA"
-              r="2"
-              class="trend-chart__dot trend-chart__dot--a"
-            />
-            <rect
-              [attr.x]="point.x - 1.6"
-              [attr.y]="point.yB - 1.6"
-              width="3.2"
-              height="3.2"
-              class="trend-chart__dot trend-chart__dot--b"
-            />
-          }
-        </svg>
-        <ul class="trend-legend">
-          <li class="trend-legend__item">
-            <span class="trend-legend__swatch trend-legend__swatch--a"></span>
-            {{ 'matchRecordDetail.chart.legendTeamA' | translate }}：{{ teamANames() }}
-          </li>
-          <li class="trend-legend__item">
-            <span class="trend-legend__swatch trend-legend__swatch--b"></span>
-            {{ 'matchRecordDetail.chart.legendTeamB' | translate }}：{{ teamBNames() }}
-          </li>
-        </ul>
-      </section>
+      <!-- Every block below is a native <details>, collapsed by default —
+           the reader picks what they want to look at rather than being
+           handed everything open at once. -->
+      <div class="match-detail-sections">
+        <details class="disclosure chart-card">
+          <summary>{{ 'matchRecordDetail.chart.title' | translate }}</summary>
 
-      <section class="event-list">
-        <h3>{{ 'matchRecordDetail.eventList.title' | translate }}</h3>
-        <ul class="record-list">
-          @for (event of d.events; track $index) {
-            <li class="card event-row">
-              <span
-                class="status-badge"
-                [class.status-badge--success]="event.delta === 1"
-                [class.status-badge--danger]="event.delta === -1"
+          <!-- dataviz skill, interaction.md: a synced readout above the plot
+               instead of a floating tooltip — sidesteps collision with the
+               lines/markers it would otherwise cover, and reserves its own
+               height so hovering never shifts the layout underneath it. -->
+          <p class="trend-chart__readout" aria-live="polite">
+            @if (hoveredPoint(); as hp) {
+              <span class="trend-chart__readout-time">
+                {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(hp.elapsedSeconds) }}
+              </span>
+              <span class="trend-chart__readout-value trend-chart__readout-value--a">
+                <span class="trend-chart__readout-key trend-chart__readout-key--a" aria-hidden="true"></span>
+                {{ teamANames() }} {{ hp.scoreA }}
+              </span>
+              <span class="trend-chart__readout-value trend-chart__readout-value--b">
+                <span class="trend-chart__readout-key trend-chart__readout-key--b" aria-hidden="true"></span>
+                {{ teamBNames() }} {{ hp.scoreB }}
+              </span>
+            } @else {
+              <span class="trend-chart__readout-hint">{{ 'matchRecordDetail.chart.hoverHint' | translate }}</span>
+            }
+          </p>
+
+          <div class="trend-chart-body">
+            <div class="trend-chart__y-axis" aria-hidden="true">
+              @for (tick of yTicks(); track tick.value) {
+                <span class="trend-chart__y-axis-label" [style.top.%]="tick.percent">{{ tick.value }}</span>
+              }
+            </div>
+            <div
+              #plotArea
+              class="trend-chart__plot"
+              (pointerdown)="onChartPointerMove($event)"
+              (pointermove)="onChartPointerMove($event)"
+              (pointerup)="onChartPointerLeave()"
+              (pointercancel)="onChartPointerLeave()"
+              (pointerleave)="onChartPointerLeave()"
+            >
+              <svg
+                class="trend-chart"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                role="img"
+                [attr.aria-label]="'matchRecordDetail.chart.title' | translate"
               >
-                {{
-                  (event.delta === 1
-                    ? 'matchRecordDetail.eventList.delta.plus'
-                    : 'matchRecordDetail.eventList.delta.minus'
-                  ) | translate
-                }}
-              </span>
-              <span class="event-row__side">{{ event.side === 'A' ? teamANames() : teamBNames() }}</span>
-              <span class="event-row__score">{{ event.score_a }} : {{ event.score_b }}</span>
-              <span class="event-row__time">
-                {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(event.elapsed_seconds) }}
-              </span>
+                @for (tick of yTicks(); track tick.value) {
+                  <line x1="0" x2="100" [attr.y1]="tick.percent" [attr.y2]="tick.percent" class="trend-chart__gridline" />
+                }
+                <polyline [attr.points]="polylineA()" class="trend-chart__line trend-chart__line--a" />
+                <polyline [attr.points]="polylineB()" class="trend-chart__line trend-chart__line--b" />
+                @if (hoveredPoint(); as hp) {
+                  <line [attr.x1]="hp.x" [attr.x2]="hp.x" y1="0" y2="100" class="trend-chart__crosshair" />
+                }
+              </svg>
+
+              <!-- Markers are plain HTML, not SVG shapes: the chart's
+                   `preserveAspectRatio="none"` stretches width and height by
+                   DIFFERENT factors, which would turn an in-SVG circle/square
+                   into a stretched oval/rectangle at any size big enough to
+                   notice (`vector-effect: non-scaling-stroke` only protects
+                   stroke width, not a shape's own geometry). Plain CSS
+                   `left`/`top` percentages don't have that problem — each
+                   axis maps against this box's own actual rendered size. -->
+              @for (point of chartPoints(); track $index) {
+                <span
+                  class="trend-chart__dot trend-chart__dot--a"
+                  [class.trend-chart__dot--hovered]="hoveredIndex() === $index"
+                  [style.left.%]="point.x"
+                  [style.top.%]="point.yA"
+                  [style.width.px]="dotRadius($index) * 2"
+                  [style.height.px]="dotRadius($index) * 2"
+                ></span>
+                <span
+                  class="trend-chart__dot trend-chart__dot--b"
+                  [class.trend-chart__dot--hovered]="hoveredIndex() === $index"
+                  [style.left.%]="point.x"
+                  [style.top.%]="point.yB"
+                  [style.width.px]="dotRadius($index) * 2"
+                  [style.height.px]="dotRadius($index) * 2"
+                ></span>
+              }
+            </div>
+          </div>
+
+          <ul class="trend-legend">
+            <li class="trend-legend__item">
+              <span class="trend-legend__swatch trend-legend__swatch--a"></span>
+              {{ 'matchRecordDetail.chart.legendTeamA' | translate }}：{{ teamANames() }}
             </li>
+            <li class="trend-legend__item">
+              <span class="trend-legend__swatch trend-legend__swatch--b"></span>
+              {{ 'matchRecordDetail.chart.legendTeamB' | translate }}：{{ teamBNames() }}
+            </li>
+          </ul>
+        </details>
+
+        <details class="disclosure event-list">
+          <summary>{{ 'matchRecordDetail.eventList.title' | translate }}</summary>
+          <ul class="record-list">
+            @for (event of d.events; track $index) {
+              <li
+                class="card event-row"
+                [class.event-row--a]="event.side === 'A'"
+                [class.event-row--b]="event.side === 'B'"
+                [class.event-row--clickable]="isExpandable(event.detail)"
+                [attr.role]="isExpandable(event.detail) ? 'button' : null"
+                [attr.tabindex]="isExpandable(event.detail) ? 0 : null"
+                [attr.aria-expanded]="isExpandable(event.detail) ? expandedEventIndex() === $index : null"
+                (click)="isExpandable(event.detail) && toggleExpand($index)"
+                (keydown.enter)="isExpandable(event.detail) && toggleExpand($index)"
+                (keydown.space)="isExpandable(event.detail) && toggleExpand($index)"
+              >
+                <span
+                  class="status-badge"
+                  [class.status-badge--success]="event.delta === 1"
+                  [class.status-badge--danger]="event.delta === -1"
+                >
+                  {{
+                    (event.delta === 1
+                      ? 'matchRecordDetail.eventList.delta.plus'
+                      : 'matchRecordDetail.eventList.delta.minus'
+                    ) | translate
+                  }}
+                </span>
+                <span class="event-row__side">{{ event.side === 'A' ? teamANames() : teamBNames() }}</span>
+                <span class="event-row__score">{{ event.score_a }} : {{ event.score_b }}</span>
+                <span class="event-row__time">
+                  {{ 'matchRecordDetail.eventList.elapsed' | translate: elapsedParts(event.elapsed_seconds) }}
+                </span>
+                @if (event.detail; as eventDetail) {
+                  @if (eventDetail.scoring_nickname) {
+                    <span class="event-row__player event-row__player--scoring">
+                      {{ 'matchRecordDetail.eventList.scoringPlayerPrefix' | translate }}
+                      <app-nickname [value]="eventDetail.scoring_nickname" />
+                    </span>
+                  }
+                  @if (eventDetail.losing_nickname) {
+                    <span class="event-row__player event-row__player--losing">
+                      {{ 'matchRecordDetail.eventList.losingPlayerPrefix' | translate }}
+                      <app-nickname [value]="eventDetail.losing_nickname" />
+                    </span>
+                  }
+                  <!-- 035: how the rally ended. An icon + text tells a winner
+                       from an error (FR-014); a null ending renders nothing, so a
+                       pre-035 row looks exactly as it always did. -->
+                  @if (eventDetail.ending_type; as ending) {
+                    <span
+                      class="event-row__ending"
+                      [class.event-row__ending--winner]="ending === 'winner'"
+                      [class.event-row__ending--error]="ending !== 'winner'"
+                      [attr.data-ending]="ending"
+                    >
+                      <span aria-hidden="true">{{ ending === 'winner' ? '★' : '✕' }}</span>
+                      {{ 'matchRecordDetail.ending.label.' + ending | translate }}
+                    </span>
+                  }
+                  @if (expandedEventIndex() === $index) {
+                    <div class="event-row__landing">
+                      @if (eventDetail.landing_x !== null && eventDetail.landing_y !== null) {
+                        <app-court-diagram
+                          [isSinglesMatch]="isSinglesMatch()"
+                          [landingX]="eventDetail.landing_x"
+                          [landingY]="eventDetail.landing_y"
+                        />
+                      } @else {
+                        <p class="landing-not-recorded">
+                          {{ 'matchRecordDetail.eventList.landingNotRecorded' | translate }}
+                        </p>
+                      }
+                    </div>
+                  }
+                }
+              </li>
+            }
+          </ul>
+        </details>
+
+        <details class="disclosure player-stats-card">
+          <summary>{{ 'matchRecordDetail.playerStats.title' | translate }}</summary>
+          @if (d.player_stats.length === 0) {
+            <p class="player-stats-empty">{{ 'matchRecordDetail.playerStats.empty' | translate }}</p>
+          } @else {
+            <ul class="player-stats-list">
+              @for (stat of d.player_stats; track stat.roster_entry_id) {
+                <li
+                  class="card player-stat-row"
+                  [class.player-stat-row--a]="stat.team === 'A'"
+                  [class.player-stat-row--b]="stat.team === 'B'"
+                >
+                  <span class="player-stat-row__nickname"><app-nickname [value]="stat.nickname" /></span>
+                  <span class="player-stat-row__count">
+                    {{ 'matchRecordDetail.playerStats.scoredCount' | translate }}：{{ stat.scored_count }}
+                  </span>
+                  <span class="player-stat-row__count">
+                    {{ 'matchRecordDetail.playerStats.faultCount' | translate }}：{{ stat.fault_count }}
+                  </span>
+                </li>
+              }
+            </ul>
           }
-        </ul>
-      </section>
+        </details>
+
+        <!-- 033-match-record-derived-stats: after everything that was
+             already here, collapsed by default, so nothing existing moves
+             (FR-009). -->
+        <app-match-derived-stats [detail]="d" />
+      </div>
     }
   }
+
+  <!-- Outside the loading/error branches so it stays mounted while its own
+       preview is open. -->
+  <app-share-card-dialog #shareDialog />
 </dialog>

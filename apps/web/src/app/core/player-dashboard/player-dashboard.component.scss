@@ -1,0 +1,148 @@
+@use '../court-diagram/landing-legend';
+@use '../../../styles/breakpoints';
+
+:host {
+  display: block;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.dashboard__title {
+  margin: 0;
+}
+
+.dashboard__intro,
+.dashboard__empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.dashboard__intro {
+  font-size: var(--font-size-caption);
+}
+
+
+.dashboard-group__note {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// Two tiles across on a phone (eighteen single-column tiles is a very long
+// scroll), as many as fit beyond that.
+.dashboard-group__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 8rem), 1fr));
+  gap: var(--space-sm);
+}
+
+// …which a 360px phone missed by a couple of pixels: the page gutter, the
+// card's padding and the group's own padding left ~262px for two 8rem
+// tiles. The group's side padding gives way on a phone instead.
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
+  .dashboard-group {
+    padding-inline: var(--space-sm);
+  }
+}
+
+.dashboard-group__trend {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.landing-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+// 035: the one range switch, above the groups (shared by the landing map
+// and the error breakdown).
+.dashboard-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.dashboard-range__note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.landing-sides {
+  display: flex;
+  justify-content: space-between;
+  margin: var(--space-xs) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// 035: my errors by kind — four rows, one colour (nominal categories, no
+// gradient), a thin bar for the share.
+.error-breakdown__title {
+  margin: var(--space-md) 0 var(--space-xs);
+  font-size: var(--font-size-body);
+}
+
+.error-breakdown {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+
+  th,
+  td {
+    padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
+    border-bottom: 1px solid var(--color-border);
+    text-align: left;
+    font-weight: normal;
+    vertical-align: middle;
+  }
+}
+
+.error-breakdown__count {
+  text-align: right;
+  width: 3rem;
+}
+
+.error-breakdown__share {
+  width: 50%;
+}
+
+.error-breakdown__percent {
+  display: inline-block;
+  width: 3rem;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.error-breakdown__bar {
+  display: inline-block;
+  vertical-align: middle;
+  width: calc(100% - 3.5rem);
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+  overflow: hidden;
+}
+
+.error-breakdown__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-series-1);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

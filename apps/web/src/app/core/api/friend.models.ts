@@ -78,10 +78,37 @@ export interface MyGroupSummary {
   // can leave and rejoin the same group, producing multiple historical
   // entries; this reflects the newest one.
   member_status: 'active' | 'left' | 'kicked';
+  // How many of the group's completed matches this member played in — the
+  // same count as the group-history page's "場數".
+  match_count: number;
 }
 
 export interface MyGroupsResponse {
   groups: MyGroupSummary[];
+  page: number;
+  total_pages: number;
+}
+
+/** Filters for `GET /members/me/groups`. `name`/`group_number` are
+ * substring matches; `role` is whether this member created the group.
+ * `created_*`/`disbanded_*` are half-open ranges of instants (`from` <= t
+ * < `before`) as ISO strings WITH a UTC offset — the caller turns the
+ * viewer's local day into instants, so the filter agrees with the local
+ * times the list shows; a `disbanded_*` bound also drops every group that
+ * has no `disbanded_at`. `match_count_min`/`match_count_max` bound
+ * `match_count`, both ends inclusive. `group_id` pins one exact group — for a caller
+ * that needs that one row whatever page it would land on. */
+export interface MyGroupsFilters {
+  name?: string;
+  group_number?: string;
+  role?: 'creator' | 'member';
+  created_from?: string;
+  created_before?: string;
+  disbanded_from?: string;
+  disbanded_before?: string;
+  match_count_min?: number;
+  match_count_max?: number;
+  group_id?: string;
 }
 
 export interface ForgotAdminPinResponse {

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../../../core/api/api-client';
+import { EndingType, ShotPlacementAttachResponse } from '../../../core/api/court-live-state.models';
 import { JoinGroupResponse } from '../../../core/api/group-join.models';
 import { GroupAdminService } from '../group-admin.service';
 import {
@@ -8,6 +9,7 @@ import {
   MatchDetailResponse,
   PartnershipsResponse,
   RegenerateGuestLinkResponse,
+  RestStateResponse,
   RoundMatchesResponse,
   ScheduleResponse,
   ScoreMutationResult,
@@ -161,6 +163,17 @@ export class ScheduleService {
     );
   }
 
+  setContinuousRotation(
+    groupId: string,
+    enabled: boolean,
+  ): Observable<{ continuous_rotation: boolean }> {
+    return this.api.patch<{ continuous_rotation: boolean }>(
+      `/groups/${groupId}/continuous-rotation`,
+      { enabled },
+      this.authHeader(groupId),
+    );
+  }
+
   manualAssign(
     groupId: string,
     courtId: string,
@@ -222,9 +235,71 @@ export class ScheduleService {
     );
   }
 
+  /** 038-admin-detailed-scoring: admin counterpart to
+   * CourtControlService.recordShotPlacement() — attaches landing/player
+   * detail to a `+1` that scoreMatch() has already applied, so the match's
+   * pace never waits on the detail dialog. Same business rules as the
+   * public-link path, reached through the admin PIN session instead. */
+  recordShotPlacement(
+    groupId: string,
+    courtId: string,
+    matchId: string,
+    scoreEventId: string,
+    rosterEntryId: string | null,
+    losingRosterEntryId: string | null,
+    landingX: number | null,
+    landingY: number | null,
+    endingType: EndingType | null,
+  ): Observable<ShotPlacementAttachResponse> {
+    return this.api.post<ShotPlacementAttachResponse>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/shot-placement`,
+      {
+        score_event_id: scoreEventId,
+        roster_entry_id: rosterEntryId,
+        losing_roster_entry_id: losingRosterEntryId,
+        landing_x: landingX,
+        landing_y: landingY,
+        ending_type: endingType,
+      },
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 038-admin-detailed-scoring: cancelling a point that ENDED the match
+   * needs this rather than the plain -1 the "-1" button uses — the match
+   * completion itself has to be undone too. */
+  undoMatchCompletion(
+    groupId: string,
+    courtId: string,
+    matchId: string,
+    side: Team,
+  ): Observable<ScoreMutationResult> {
+    return this.api.post<ScoreMutationResult>(
+      `/groups/${groupId}/courts/${courtId}/matches/${matchId}/undo-completion`,
+      { side },
+      this.authHeader(groupId),
+    );
+  }
+
   kickMember(groupId: string, rosterEntryId: string): Observable<KickMemberResponse> {
     return this.api.delete<KickMemberResponse>(
       `/groups/${groupId}/members/${rosterEntryId}`,
+      this.authHeader(groupId),
+    );
+  }
+
+  /** 037-rest-ready-toggle US4: an admin puts any player on rest or back.
+   * `resting` is the target state; `confirmRoundEnd` resends a rest the
+   * backend refused with REST_ENDS_ROUND once the admin has confirmed. */
+  setMemberRestState(
+    groupId: string,
+    rosterEntryId: string,
+    resting: boolean,
+    confirmRoundEnd = false,
+  ): Observable<RestStateResponse> {
+    return this.api.put<RestStateResponse>(
+      `/groups/${groupId}/members/${rosterEntryId}/rest-state`,
+      { resting, confirm_round_end: confirmRoundEnd },
       this.authHeader(groupId),
     );
   }

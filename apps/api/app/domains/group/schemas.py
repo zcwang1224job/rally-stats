@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.domains.schedule.schemas import ParticipantSummary
+from app.domains.schedule.schemas import EndingType, ParticipantSummary
 
 MatchMode = Literal["singles", "doubles"]
 SchedulingMechanism = Literal["fair_rotation", "fixed_partner", "individual_mixed", "manual"]
@@ -221,6 +221,18 @@ class AdminGroupResponse(BaseModel):
     # `GroupPublicResponse` (that schema also backs the public join-flow
     # lookup — this setting has no reason to be visible there).
     scoreboard_scoring_enabled: bool
+    # 031-shot-placement-scoring: same admin-only rationale as
+    # scoreboard_scoring_enabled above.
+    detailed_scoring_enabled: bool
+    # 目前生效的分數制度，讓管理頁的「比賽設定」能顯示團真正的設定，而不是
+    # 表單寫死的預設值（開團選 15pt，管理頁卻顯示 21pt）。與
+    # `EditScoringSettingsRequest` 同名同義；custom 以外的模式，三個數值即
+    # 是該預設的展開值（service._SCORING_PRESETS）。放在 admin 回應而非
+    # `GroupPublicResponse`，理由同 scoreboard_scoring_enabled。
+    scoring_mode: ScoringMode
+    target_score: int
+    deuce_threshold: int
+    cap_score: int
 
 
 class ScoreboardScoringRequest(BaseModel):
@@ -229,6 +241,14 @@ class ScoreboardScoringRequest(BaseModel):
 
 class ScoreboardScoringResponse(BaseModel):
     scoreboard_scoring_enabled: bool
+
+
+class DetailedScoringRequest(BaseModel):
+    enabled: bool
+
+
+class DetailedScoringResponse(BaseModel):
+    detailed_scoring_enabled: bool
 
 
 class RegenerateLinkRequest(BaseModel):
@@ -373,6 +393,14 @@ class BindingStatusResponse(BaseModel):
     nickname: str
     group_status: Literal["active", "disbanded"]
     roster_status: Literal["active", "left", "kicked"]
+    # True when the CALLER (an optional `Authorization` header — always
+    # False for an anonymous request, which is the normal 訪客 case) already
+    # holds an `active` roster entry in this group, and so would be refused
+    # `MEMBER_ALREADY_IN_GROUP` by `POST .../bind`. Lets the frontend leave
+    # the binding entry point out entirely rather than render a button whose
+    # only possible outcome is an error — most visibly for the 團長, who
+    # holds every guest link their own group issues.
+    already_in_group: bool = False
 
 
 class BindRequest(BaseModel):
@@ -509,17 +537,267 @@ class MemberMatchRecordSummary(MatchRecordSummary):
     won: bool
 
 
+# 032-match-record-scoring-stats: a per-point snapshot of "who scored, who
+# was at fault, where it landed" for a single +1 ScoreEvent — read-only
+# projection of an existing ShotPlacementRecord row (031/032-shot-placement-
+# scoring), never written by this feature. Every field independently
+# optional since a ShotPlacementRecord's own fields are each independently
+# optional (the scorer may confirm with only some of them picked).
+class ShotPlacementSummary(BaseModel):
+    scoring_roster_entry_id: str | None = None
+    scoring_nickname: str | None = None
+    losing_roster_entry_id: str | None = None
+    losing_nickname: str | None = None
+    landing_x: float | None = None
+    landing_y: float | None = None
+    # 035-point-ending-type: how the rally ended (the five values of
+    # schedule.schemas.EndingType); None = not recorded, including every
+    # point scored before 035. Returned whatever record_completeness is —
+    # it's a per-point fact, not a derivation.
+    ending_type: EndingType | None = None
+
+
 class ScoreEventSummary(BaseModel):
     side: Literal["A", "B"]
     delta: Literal[1, -1]
     score_a: int
     score_b: int
     elapsed_seconds: int
+    # research.md Decision 2: None for a -1 event, a +1 event with no
+    # ShotPlacementRecord at all, or one whose five fields are all NULL
+    # (confirmed with nothing picked) — those three cases must render
+    # identically (no badge, not expandable), so build_match_record_detail()
+    # collapses them to the same None here rather than letting the frontend
+    # tell them apart.
+    detail: ShotPlacementSummary | None = None
+
+
+# 032-match-record-scoring-stats: one match participant's aggregate across
+# every ShotPlacementRecord row in this match — independently counts
+# `roster_entry_id` occurrences (scored_count) and `losing_roster_entry_id`
+# occurrences (fault_count), per research.md Decision 3 (a row may set only
+# one of the two fields).
+class PlayerScoringStat(BaseModel):
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+    scored_count: int
+    fault_count: int
+
+
+class ServeCounts(BaseModel):
+    """033-match-record-derived-stats: counts only — the frontend derives
+    the percentage and renders "—" for a zero total, so no divide-by-zero
+    representation has to be invented here."""
+
+    serve_points_won: int
+    serve_points_total: int
+    receive_points_won: int
+    receive_points_total: int
+
+
+class TeamServeStat(ServeCounts):
+    team: Literal["A", "B"]
+
+
+class PlayerServeStat(ServeCounts):
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+
+
+class ServeStats(BaseModel):
+    teams: list[TeamServeStat]  # always [A, B]
+    # Doubles: every participant, all-zero ones included. Singles: [] — the
+    # player-level numbers would just repeat the team-level ones.
+    players: list[PlayerServeStat]
+    # Points whose server couldn't be determined — always >= 1, since the
+    # pre-match serve draw is never persisted (research.md Decision 4).
+    excluded_points: int
+
+
+class ScoringRun(BaseModel):
+    team: Literal["A", "B"]
+    length: int
+    # Score right BEFORE the run's first point / right AFTER its last; all
+    # four None when length == 0.
+    start_score_a: int | None = None
+    start_score_b: int | None = None
+    end_score_a: int | None = None
+    end_score_b: int | None = None
+
+
+class MaxLead(BaseModel):
+    team: Literal["A", "B"]
+    margin: int
+    # Score the first time this margin was reached; None when margin == 0.
+    score_a: int | None = None
+    score_b: int | None = None
+
+
+class LeadChange(BaseModel):
+    new_leader: Literal["A", "B"]
+    score_a: int
+    score_b: int
+
+
+class MomentumStats(BaseModel):
+    longest_runs: list[ScoringRun]  # always [A, B]
+    max_leads: list[MaxLead]  # always [A, B]
+    lead_changes: list[LeadChange]
+
+
+class LongestPoint(BaseModel):
+    seconds: float
+    score_a: int
+    score_b: int
+
+
+class TempoStats(BaseModel):
+    average_seconds: float
+    counted_points: int
+    longest: LongestPoint
+
+
+class LandingPoint(BaseModel):
+    x: float
+    y: float
+
+
+class PlayerLandingDistribution(BaseModel):
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+    scored: list[LandingPoint]
+    # Every point credited to this player, plotted or not — the denominator
+    # next to `scored`. Same meaning for lost/lost_total.
+    scored_total: int
+    lost: list[LandingPoint]
+    lost_total: int
+
+
+class ClutchPhaseTotals(BaseModel):
+    won: int
+    total: int
+
+
+class ClutchPhaseCounts(ClutchPhaseTotals):
+    team: Literal["A", "B"]
+
+
+class ClutchMatchPoints(BaseModel):
+    team: Literal["A", "B"]
+    held: int
+    # Which of this team's match points (1-based) ended the match; None for
+    # the loser.
+    converted_on: int | None
+    saved: int
+
+
+class ClutchStateCounts(BaseModel):
+    """Grouped by the score BEFORE each point. A `total` of 0 means "never
+    in that state" — shown as "0/0 —", never as 0% (FR-015)."""
+
+    team: Literal["A", "B"]
+    leading: ClutchPhaseTotals
+    tied: ClutchPhaseTotals
+    trailing: ClutchPhaseTotals
+
+
+class ClutchComeback(BaseModel):
+    """The winner's deepest deficit — by construction the same number as the
+    loser's entry in `momentum_stats.max_leads` (FR-014)."""
+
+    winner: Literal["A", "B"]
+    max_deficit: int
+    score_a: int
+    score_b: int
+
+
+class ClutchStats(BaseModel):
+    endgame_from: int | None  # None: target too low for the phase to apply
+    endgame: list[ClutchPhaseCounts] | None  # [A, B], None iff endgame_from is
+    deuce: list[ClutchPhaseCounts] | None  # [A, B]; None: never reached deuce
+    match_points: list[ClutchMatchPoints]  # always [A, B]
+    by_state: list[ClutchStateCounts]  # always [A, B]
+    comeback: ClutchComeback | None  # None: the winner never trailed
+
+
+class ErrorsByType(BaseModel):
+    """035-point-ending-type: one count per error kind — the four
+    non-winner values of EndingType, always all four keys."""
+
+    out: int
+    net: int
+    serve_fault: int
+    other_error: int
+
+
+class TeamEndingStat(BaseModel):
+    team: Literal["A", "B"]
+    winners: int
+    # Errors THIS team committed (= points the other team got by error).
+    errors: int
+    errors_by_type: ErrorsByType
+
+
+class PlayerEndingStat(BaseModel):
+    """Points scored = winners + opponent_errors + scored_unrecorded; points
+    lost = beaten_by_winners + own_errors + lost_unrecorded — each triple
+    adds up to the same player's `player_stats` scored_count/fault_count
+    (FR-015), so the frontend can show the split under the existing
+    totals without a second source of truth."""
+
+    roster_entry_id: str
+    nickname: str
+    team: Literal["A", "B"]
+    winners: int
+    opponent_errors: int
+    scored_unrecorded: int
+    beaten_by_winners: int
+    own_errors: int
+    lost_unrecorded: int
+
+
+class EndingStats(BaseModel):
+    # How much of the match the numbers cover: effective points with a
+    # recorded ending, out of all effective points (FR-016).
+    recorded_points: int
+    total_points: int
+    teams: list[TeamEndingStat]  # always [A, B]
+    players: list[PlayerEndingStat]  # every participant, team_a + team_b
 
 
 class MatchRecordDetailResponse(MatchRecordSummary):
+    # 040-match-share-card FR-012a: the match's own points-to-win — the
+    # Match.target_score snapshot taken at creation (constitution III),
+    # never the group's current setting. The share card scales its
+    # highlight thresholds by it.
+    target_score: int
     record_completeness: Literal["complete", "partial", "none"]
     events: list[ScoreEventSummary]
+    # research.md Decision 4: `[]` is the single signal for "no player was
+    # ever recorded in this match" (FR-008's empty-state prompt); whenever
+    # non-empty, it always lists EVERY participant in team_a + team_b, zero
+    # counts included (FR-009) — there is no third state, so no separate
+    # boolean flag is needed alongside this list.
+    player_stats: list[PlayerScoringStat] = []
+    # 033-match-record-derived-stats: four independent read-only derivations
+    # (group/match_stats.py). None / [] IS the "no data" signal the frontend
+    # turns into a notice — never an all-zero structure. All four stay at
+    # these defaults unless record_completeness == "complete".
+    serve_stats: ServeStats | None = None
+    momentum_stats: MomentumStats | None = None
+    tempo_stats: TempoStats | None = None
+    landing_distribution: list[PlayerLandingDistribution] = []
+    # 034-clutch-points-player-dashboard: same "complete record only" rule
+    # as the four above.
+    clutch_stats: ClutchStats | None = None
+    # 035-point-ending-type: same "complete record only" rule again, and
+    # None as well when not one point of the match recorded an ending
+    # (every pre-035 match). 032's `player_stats` above is unchanged —
+    # this is the split UNDER those totals, not a replacement.
+    ending_stats: EndingStats | None = None
 
 
 class RoundWinRatePoint(BaseModel):
@@ -533,6 +811,29 @@ class RoundWinRatePoint(BaseModel):
     win_rate: float
 
 
+class MatchupRecord(OpponentRecord):
+    """036-match-insights-benchmarks US2: a partner or an opponent of ONE
+    member, keyed by who the player is (`m:<member_id>` / `r:<roster_entry_id>`)
+    rather than by nickname. A superset of `OpponentRecord`, whose five fields
+    keep their names and meaning; `nickname` is the player's name in their
+    latest match in range. `OpponentRecord` itself — and the group page's
+    `player_records` that uses it — is untouched."""
+
+    player_key: str
+    member_id: str | None
+    avg_margin: float  # my score minus theirs, per match; one decimal
+    low_sample: bool  # fewer than 3 matches: listed, flagged, never singled out
+
+
+class MatchupHighlights(BaseModel):
+    """Player keys; None when nobody has played enough (FR-024)."""
+
+    most_played_partner: str | None = None
+    best_partner: str | None = None
+    most_faced_opponent: str | None = None
+    toughest_opponent: str | None = None
+
+
 class MemberMatchRecordsResponse(BaseModel):
     matches: list[MemberMatchRecordSummary]
     total_matches: int
@@ -540,7 +841,11 @@ class MemberMatchRecordsResponse(BaseModel):
     total_losses: int
     win_rate: float
     round_win_rates: list[RoundWinRatePoint]
-    opponent_records: list[OpponentRecord]
+    opponent_records: list[MatchupRecord]
+    # 036: all three aggregate the whole filtered set, like `opponent_records`.
+    partner_records: list[MatchupRecord] = []
+    matchup_highlights: MatchupHighlights = MatchupHighlights()
+    doubles_matches: int = 0  # 0 → "singles has no partner" instead of an empty table
     page: int
     total_pages: int
 

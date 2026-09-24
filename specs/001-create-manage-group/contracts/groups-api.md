@@ -96,9 +96,16 @@
   "group": { "...同 Group 完整欄位，含 password 明文（解密後）..." },
   "read_only": false,
   "base_settings_version": 3,
-  "admin_token_version": 1
+  "admin_token_version": 1,
+  "scoring_mode": "21pt | 15pt | custom",
+  "target_score": 21,
+  "deuce_threshold": 20,
+  "cap_score": 30
 }
 ```
+
+分數制度四欄為管理專用（不在公開的 Group 欄位裡），管理頁據此還原「比賽設定」
+表單目前生效的值；非 `custom` 模式時三個數值即是該預設的展開值。
 
 **錯誤代碼**：`ADMIN_TOKEN_INVALID`（簽章/效期失敗，或 `admin_token_version` 不符 → 前端導向重新驗證頁）。
 

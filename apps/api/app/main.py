@@ -12,6 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import get_settings
 from app.core.errors import CloudFrontSafeStatusMiddleware, register_exception_handlers
 from app.core.rate_limit import limiter
+from app.core.realtime import PublishAfterResponseMiddleware
 from app.core.realtime_router import router as realtime_router
 from app.domains.court.router import router as court_router
 from app.domains.friend.router import router as friend_router
@@ -78,6 +79,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Added last so it is the outermost layer: the response has fully left
+    # every other middleware before the deferred Ably events are sent.
+    app.add_middleware(PublishAfterResponseMiddleware)
 
     app.include_router(group_router)
     app.include_router(join_router)

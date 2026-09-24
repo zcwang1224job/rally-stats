@@ -1,161 +1,152 @@
-@use '../../../styles/breakpoints';
+@use '../../../styles/court-board';
 
+// feature/control-panel-scoreboard-style: the operator-facing panel shares
+// the scoreboard's dark court (styles/_court-board.scss, `control-panel`
+// size preset — see that partial for the rationale behind each pattern);
+// only the pieces specific to this panel (swap-teams row, language
+// switcher, offline banner) are commented here.
 :host {
-  // Aliases the shared --color-team-* tokens (_tokens.scss) — same values
-  // scoreboard.component.scss uses, so whoever's scoring from courtside
-  // sees the same color here as on the scoreboard the players are looking
-  // at, instead of two different palettes for the same team.
-  --team-a-bg: var(--color-team-a-bg);
-  --team-a-border: var(--color-team-a-border);
-  --team-b-bg: var(--color-team-b-bg);
-  --team-b-border: var(--color-team-b-border);
+  @include court-board.theme;
 
-  display: block;
-  padding: var(--space-md);
-  max-width: 480px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh; // excludes a phone's browser chrome
+  padding: var(--space-lg);
+  text-align: center;
+  background: var(--scoreboard-bg);
+  color: var(--color-ink-text);
+}
+
+.board-header {
+  display: flex;
+  justify-content: center;
 }
 
 h1 {
+  margin: 0;
   font-size: var(--font-size-heading);
   font-weight: var(--font-weight-bold);
 }
 
 .round-label {
-  color: var(--color-text-muted);
+  margin: 0;
+  color: var(--color-ink-text-muted);
   font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-heading);
 }
 
-// FR-005: score centered, each team's +1/-1 flanking it on the outside
-// (team A's buttons to the left of its score, team B's to the right) —
-// both scores end up adjacent in the middle of the row. In landscape,
-// height is the scarce dimension (not width) — widen the host instead of
-// leaving the extra screen width unused, so the score/name/button block can
-// stay large without needing to scroll to reach "提前結束" below the fold.
-.score-board {
+.offline-banner {
+  position: relative;
+  z-index: 1;
+}
+
+// Round number + swap-teams button share one line — the button reads as
+// part of this compact header row now, not a separate full-width button
+// bar, so it's sized to match the court-name heading's own box (same
+// font-size, ~1.6x for a comfortable square) instead of the shared .btn's
+// touch-target minimum. FR-005 (swap teams) predates this restyle and
+// stays camouflaged like the scoring/end-match buttons below rather than
+// the light-theme .btn--secondary pill, so it doesn't read as a stray
+// bright box on the dark board.
+.round-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-md);
-  margin: var(--space-lg) 0;
+  gap: var(--space-sm);
 
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    gap: var(--space-xl);
+  .swap-teams-button {
+    min-width: 0;
+    min-height: 0;
+    width: max(var(--touch-target-min), calc(var(--font-size-heading) * 1.6));
+    height: max(var(--touch-target-min), calc(var(--font-size-heading) * 1.6));
+    padding: 0;
+    font-size: 1.25rem;
+  }
+
+  .btn {
+    @include court-board.camouflage;
   }
 }
 
-// Element order in the template (not flex-direction) determines left/right
-// placement here: the left slot renders buttons-then-score, the right slot
-// renders score-then-buttons — both already yield the correct outside-in
-// layout under a plain row. Which TEAM occupies which slot is controlled by
-// `leftTeam()`/`rightTeam()` (the swap toggle), not hardcoded — the slots'
-// own internal ordering never changes, so FR-005 still holds after a swap.
-.team {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm);
-  border-radius: var(--radius-md);
-  border: 2px solid transparent;
-  min-width: 0;
-}
-
-.team--a {
-  background: var(--team-a-bg);
-  border-color: var(--team-a-border);
-}
-
-.team--b {
-  background: var(--team-b-bg);
-  border-color: var(--team-b-border);
-}
-
-.score-block {
+.board-main {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-xs);
-  min-width: 0;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
 }
 
-// Own team's nickname(s) next to the score being adjusted — the main fix
-// for telling which color block belongs to which player(s) at a glance,
-// instead of only the team-letter text buried in a separate list.
-.names {
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-brand-primary-contrast);
-  max-width: 100%;
+@include court-board.court(control-panel);
 
-  div {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
-  }
+.next-up {
+  color: var(--color-ink-text-muted);
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 auto var(--space-sm);
 }
 
-.score {
-  font-size: var(--font-size-display);
-  font-weight: var(--font-weight-black);
-  line-height: 1;
-  min-width: 2ch;
-  text-align: center;
-  // Always rendered inside .team--a/.team--b, both the same dark, saturated
-  // colors as the scoreboard — white keeps the score readable there too.
-  color: var(--color-brand-primary-contrast);
+.waiting-message {
+  color: var(--color-ink-text-muted);
+  margin-top: var(--space-lg);
 }
 
-// Bigger than the shared .btn touch-target minimum (44px) — this is a
-// rapid-fire, mid-rally control, not a once-in-a-while form button, so it
-// gets a wider margin for a thumb that isn't aiming carefully. Scoped to
-// just these buttons rather than the global .btn class, which is used all
-// over the app for things that don't need this.
+// Sits below .board-main (the court), never on top of the court markings —
+// one .buttons group per team, laid out side by side so each stays roughly
+// under its own team's score column.
+.scoring-controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-xl);
+  margin-top: var(--space-lg);
+}
+
 .buttons {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
+  gap: var(--space-sm);
 
   .btn {
     min-width: 72px;
     min-height: 72px;
     font-size: var(--font-size-heading);
+    @include court-board.camouflage;
   }
 }
 
-// A swap-teams button used to sit as a third flex item between the two
-// team blocks — with .team already fighting for width (buttons/score-block
-// both min-width: 0), that left almost nothing to spare, so long nicknames
-// or the 72px buttons would overflow on a narrow screen. Its own row above
-// .score-board removes the contest for space entirely: .score-board is
-// back to exactly the two team blocks it was before the swap feature
-// existed, so this can't regress regardless of nickname length or width.
-.score-controls-toolbar {
-  display: flex;
-  justify-content: flex-end;
+.end-match-button {
+  margin-top: var(--space-lg);
+  @include court-board.camouflage-danger;
 }
 
-// Landscape phones trade width for height — the extra width goes to a
-// wider host (instead of sitting unused past 480px) so the score/name/
-// button block doesn't have to shrink, and reduced vertical gaps/margins
-// keep "提前結束" reachable without scrolling.
 @media (orientation: landscape) and (max-height: 500px) {
+  // .board-main's container-query below needs a genuinely definite (not
+  // just floored) ancestor height to resolve — confirmed by direct
+  // measurement in a real browser: with only `min-height: 100dvh` (the
+  // base rule, a floor content can grow past), the browser can't rule out
+  // a sizing cycle through this container-query chain and silently
+  // resolves every cqh-based length to 0, collapsing the court instead of
+  // enlarging it. An explicit `height` here (with `overflow: hidden` so
+  // content that still doesn't quite fit is clipped, same trade-off this
+  // whole breakpoint already makes to avoid scrolling) removes that
+  // ambiguity.
   :host {
-    max-width: 720px;
-  }
-
-  .score-board {
-    margin: var(--space-sm) 0;
+    padding: var(--space-sm);
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
   }
 
   h1,
   .round-label {
-    margin: var(--space-xs) 0;
+    font-size: var(--font-size-body);
   }
-}
 
-// 024-add-english-language FR-003a
-.control-panel-language-switcher {
-  display: block;
-  margin: 0 0 var(--space-md);
+  // Matches h1/.round-label's own shrink above, so the button stays
+  // proportioned to the (now smaller) heading text it's sized against.
+  .swap-teams-button {
+    width: max(var(--touch-target-min), calc(var(--font-size-body) * 1.6));
+    height: max(var(--touch-target-min), calc(var(--font-size-body) * 1.6));
+  }
+
+  @include court-board.compact-landscape;
+
 }

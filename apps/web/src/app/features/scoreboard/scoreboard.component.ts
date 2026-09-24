@@ -3,13 +3,26 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { ApiError } from '../../core/api/api-error';
+import { isMatchPoint } from '../../core/match-point';
+import { waitingReasonKey } from '../../core/waiting-reason-label';
 import { CourtControlService } from '../../core/api/court-control.service';
 import { CourtByTokenResponse } from '../../core/api/court-link.models';
-import { CourtStateResponse, MatchLiveDetail, Team } from '../../core/api/court-live-state.models';
+import {
+  CourtStateResponse,
+  MatchLiveDetail,
+  ScoreMutationResult,
+  Team,
+} from '../../core/api/court-live-state.models';
 import { LinkHeartbeatService } from '../../core/api/link-heartbeat.service';
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../core/realtime/reconnect-refetch.service';
 import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.component';
+import { PendingPoint, PendingPointAction } from '../shot-placement/pending-point';
+import { ScoreTapGuard } from '../shot-placement/score-tap-guard';
+import {
+  ShotPlacementConfirmed,
+  ShotPlacementPickerComponent,
+} from '../shot-placement/shot-placement-picker.component';
 
 /** 計分板：連結初始化/心跳（T042）+ link.regenerated 專屬失效提示
  * （T041，FR-035）+ 大字體即時比分/Round/即將登場顯示（007 US3，預設
@@ -25,11 +38,12 @@ import { ConfirmDialogComponent } from '../group-admin/shared/confirm-dialog.com
  * 沒特別設定的團，這個畫面跟以前完全一樣。 */
 @Component({
   selector: 'app-scoreboard',
-  imports: [TranslatePipe, ConfirmDialogComponent],
+  imports: [TranslatePipe, ConfirmDialogComponent, ShotPlacementPickerComponent],
   templateUrl: './scoreboard.component.html',
   styleUrl: './scoreboard.component.scss',
 })
 export class ScoreboardComponent {
+  readonly waitingReasonKey = waitingReasonKey;
   private readonly route = inject(ActivatedRoute);
   private readonly heartbeat = inject(LinkHeartbeatService);
   private readonly realtime = inject(RealtimeService);
@@ -47,10 +61,25 @@ export class ScoreboardComponent {
   readonly loading = signal(true);
   readonly errorKey = signal<string | null>(null);
 
+  /** 032-freeze-while-picker-open: a match-ending point triggers a
+   * `match.ended` (and often `match.nextRound`) realtime push almost
+   * immediately, which would otherwise call loadState() and swap
+   * `liveState().current_match` out from under the still-open shot-
+   * placement picker — destroying its `@if`-hosted DOM before the scorer
+   * can respond. While non-null, the template renders THIS frozen snapshot
+   * instead of the live one; scoreThenOpenPicker() sets it (with the just-
+   * scored point's score already patched in) right before opening the
+   * picker, and onShotPlacementClosed() clears it once the dialog is
+   * actually closed (confirm/skip/cancelScore all end there), at which
+   * point the template reverts to whatever liveState() has become by then. */
+  private readonly frozenState = signal<CourtStateResponse | null>(null);
+  readonly displayState = computed(() => this.frozenState() ?? this.liveState());
+
   readonly connectionState = this.realtime.connectionState;
 
   readonly canScore = computed(() => this.liveState()?.scoreboard_scoring_enabled === true);
   readonly endMatchDialog = viewChild<ConfirmDialogComponent>('endMatchDialog');
+  readonly shotPlacementPicker = viewChild<ShotPlacementPickerComponent>('shotPlacementPicker');
 
   // Brief "pop" animation on a team's score number so a change is visible
   // at a glance (a spectator watching the board, not just the person
@@ -212,7 +241,16 @@ export class ScoreboardComponent {
    * `serve` itself hasn't been computed yet (legacy match, research.md
    * Decision 4). `isServer` drives the non-purely-color marker (FR-005,
    * Constitution VII) — never the station's own presence/absence. */
-  station(match: MatchLiveDetail, rosterEntryId: string | null): { nickname: string; isServer: boolean } | null {
+  /** A station pill is a fixed-size chip in a court corner, not a name
+   * list — displayName truncates to the first 2 characters so a long
+   * nickname never forces the pill (or the court markings around it) to
+   * grow or wrap; `nickname` (the untruncated original) is kept alongside
+   * it for the pill's aria-label, so screen readers still get the full
+   * name even though the visible text doesn't. */
+  station(
+    match: MatchLiveDetail,
+    rosterEntryId: string | null,
+  ): { nickname: string; displayName: string; isServer: boolean } | null {
     if (!rosterEntryId) {
       return null;
     }
@@ -220,13 +258,69 @@ export class ScoreboardComponent {
     if (!participant) {
       return null;
     }
-    return { nickname: participant.nickname, isServer: match.serve?.server_roster_entry_id === rosterEntryId };
+    return {
+      nickname: participant.nickname,
+      displayName: participant.nickname.slice(0, 2),
+      isServer: match.serve?.server_roster_entry_id === rosterEntryId,
+    };
   }
 
   /** 同 ControlPanelComponent.score()——`canScore()` 已經在模板端決定按鈕
    * 要不要畫出來，這裡的 connectionState 判斷單純是離線時避免送出注定失敗
    * 的請求（FR-023），不是這個功能唯一的守門邏輯。 */
-  score(side: Team, delta: 1 | -1): void {
+  /** One score request at a time, plus a short cooldown after each one —
+   * see ScoreTapGuard. Shared by the plain +1/−1 buttons, the detailed-mode
+   * "+" and the picker's "cancel score". */
+  private readonly scoreGuard = new ScoreTapGuard();
+
+  /** 039-match-point-confirm: which side the open match-point dialog is
+   * confirming for; doubles as the re-entrancy flag. Cleared by the
+   * dialog's `closed` output, which covers Esc too. */
+  readonly pendingMatchPointSide = signal<Team | null>(null);
+  readonly matchPointDialog = viewChild<ConfirmDialogComponent>('matchPointDialog');
+
+  /** Every "+" goes through here (039) — see CourtControlComponent's
+   * identical method for why the ScoreTapGuard is deliberately not taken
+   * here and why the re-entrancy check doesn't rely on the dialog's
+   * modality. This board never swaps sides, so callers pass 'A' / 'B'. */
+  plusPressed(side: Team): void {
+    if (this.pendingMatchPointSide() !== null) {
+      return;
+    }
+    const match = this.displayState()?.current_match;
+    if (!match) {
+      return;
+    }
+    if (match.detailed_scoring_enabled) {
+      this.scoreThenOpenPicker(side);
+      return;
+    }
+    const own = side === 'A' ? match.score_a : match.score_b;
+    const other = side === 'A' ? match.score_b : match.score_a;
+    if (!isMatchPoint(own, other, match.target_score, match.cap_score)) {
+      this.score(side, 1);
+      return;
+    }
+    this.pendingMatchPointSide.set(side);
+    this.matchPointDialog()?.open();
+  }
+
+  onMatchPointConfirmed(): void {
+    const side = this.pendingMatchPointSide();
+    if (side === null) {
+      return;
+    }
+    this.score(side, 1, true);
+  }
+
+  onMatchPointDialogClosed(): void {
+    this.pendingMatchPointSide.set(null);
+  }
+
+  /** `force` (039): the confirmed match-point dialog is a deliberate second
+   * decision, not a possible double-tap, so it must not be dropped by a
+   * leftover cooldown. See CourtControlComponent.score(). */
+  score(side: Team, delta: 1 | -1, force = false): void {
     if (this.connectionState() !== 'connected') {
       return;
     }
@@ -234,19 +328,264 @@ export class ScoreboardComponent {
     if (!matchId) {
       return;
     }
+    if (force) {
+      this.scoreGuard.hold();
+    } else if (!this.scoreGuard.tryAcquire()) {
+      return;
+    }
     this.courtControl
       .score(this.token, matchId, side, delta)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((result) => {
-        const state = this.liveState();
-        if (state?.current_match?.match_id === result.match_id && result.status === 'in_progress') {
-          this.triggerScorePulse(side);
-          this.liveState.set({
-            ...state,
-            current_match: { ...state.current_match, score_a: result.score_a, score_b: result.score_b },
-          });
-        }
+      .subscribe({
+        next: (result) => {
+          this.scoreGuard.release();
+          this.patchLiveScore(side, result);
+        },
+        error: () => this.scoreGuard.release(),
       });
+  }
+
+  private patchLiveScore(side: Team, result: ScoreMutationResult): void {
+    const state = this.liveState();
+    if (state?.current_match?.match_id === result.match_id && result.status === 'in_progress') {
+      this.triggerScorePulse(side);
+      this.liveState.set({
+        ...state,
+        current_match: {
+          ...state.current_match,
+          score_a: result.score_a,
+          score_b: result.score_b,
+          serve: result.serve,
+        },
+      });
+    }
+  }
+
+  /** 032-score-then-record: which side the currently-open picker is
+   * recording detail for — set right before open() below, bound to the
+   * picker's `scoringTeam` input in the template. */
+  readonly pendingScoringSide = signal<Team>('A');
+  /** Who was serving THIS rally — captured from `currentMatch.serve` right
+   * BEFORE the point below is applied (not the response's post-point
+   * value, which always equals `side`: the winner always serves next in
+   * badminton, so it could never distinguish a side-out from a server who
+   * just won their own rally). Bound to the picker's `servingTeam` input,
+   * which uses it to stop treating an own-serve win as a possible "serve
+   * fault". */
+  readonly pendingServingTeam = signal<Team | null>(null);
+  /** The serving team's own score before this point, captured with
+   * `pendingServingTeam` — the picker's `servingScore` input, whose
+   * parity says which service court was the serve's legal target. */
+  readonly pendingServingScore = signal<number | null>(null);
+  /** The player who served this rally, captured with
+   * `pendingServingTeam` — the picker pre-selects them as the player
+   * at fault on a serve fault. */
+  readonly pendingServingRosterEntryId = signal<string | null>(null);
+  // The point the picker is recording detail for — captured once, right
+  // when "+" is tapped: onShotPlacementConfirmed()/onShotPlacementCancelled()
+  // below target it rather than re-deriving "the current match" from
+  // liveState()/frozenState() when the scorer eventually acts, since a
+  // match-ending point can mean the court has already moved on to a
+  // different match by then.
+  private pendingPoint: PendingPoint | null = null;
+  private pickerOpen = false;
+  // Surfaced inline (not the full-page errorKey() above, which is reserved
+  // for link/bootstrap failures) when undoMatchCompletion() refuses —
+  // e.g. the round already moved on, or the next match on this court has
+  // already been scored — so the scorer isn't left silently wondering why
+  // "取消得分" appeared to do nothing.
+  readonly cancelScoreErrorKey = signal<string | null>(null);
+
+  /** Applies the point (a plain +1, same as simple mode — match pace never
+   * waits on the detail dialog below) and opens the shared picker in the
+   * SAME tap, before the request returns: the scorer starts on the detail
+   * straight away instead of waiting out the round trip. What they do in
+   * the picker before the point's score_event_id is known waits in
+   * PendingPoint; if the point isn't applied after all, the picker closes.
+   *
+   * 032-freeze-while-picker-open: a match-ending point's realtime
+   * match.ended push triggers a loadState() that blanks
+   * liveState().current_match, which would make the @if hosting the picker
+   * false and tear it down under the scorer. Freezing on the state captured
+   * HERE, before the request is even sent, means nothing that arrives
+   * afterward matters until this component lifts the freeze. */
+  scoreThenOpenPicker(side: Team): void {
+    if (this.connectionState() !== 'connected') {
+      return;
+    }
+    const state = this.liveState();
+    const currentMatch = state?.current_match;
+    if (!state || !currentMatch || !this.scoreGuard.tryAcquire()) {
+      return;
+    }
+    const point = new PendingPoint(currentMatch.match_id, side);
+    this.pendingPoint = point;
+    this.pendingScoringSide.set(side);
+    this.pendingServingTeam.set(currentMatch.serve?.server_team ?? null);
+    this.pendingServingRosterEntryId.set(currentMatch.serve?.server_roster_entry_id ?? null);
+    this.pendingServingScore.set(
+      !currentMatch.serve
+        ? null
+        : currentMatch.serve.server_team === 'A'
+          ? currentMatch.score_a
+          : currentMatch.score_b,
+    );
+    this.cancelScoreErrorKey.set(null);
+    this.frozenState.set(state);
+    this.pickerOpen = true;
+    this.shotPlacementPicker()?.open();
+
+    this.courtControl
+      .score(this.token, point.matchId, side, 1)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          this.scoreGuard.release();
+          if (!result.applied || !result.score_event_id) {
+            this.abandonPoint(point);
+            return;
+          }
+          this.triggerScorePulse(side);
+          const patched: CourtStateResponse = {
+            ...state,
+            current_match: {
+              ...currentMatch,
+              score_a: result.score_a,
+              score_b: result.score_b,
+              serve: result.serve,
+            },
+          };
+          // Keep the backdrop on the new score while the picker is still
+          // up. For a plain continuing point also commit the patch to the
+          // real liveState() so the score is still correct once the freeze
+          // lifts; for the match-ending point, leave liveState() alone —
+          // whatever match.ended/next-round pushes arrive replace it
+          // wholesale.
+          if (this.pickerOpen && this.pendingPoint === point) {
+            this.frozenState.set(patched);
+          }
+          if (result.status === 'in_progress') {
+            this.liveState.set(patched);
+          }
+          const queued = point.resolve(result.score_event_id, result.status !== 'in_progress');
+          if (queued) {
+            this.runPickerAction(point, queued);
+          }
+        },
+        error: () => {
+          this.scoreGuard.release();
+          this.abandonPoint(point);
+        },
+      });
+  }
+
+  /** The point never got applied: drop it, and close its picker if the
+   * scorer is still in it. */
+  private abandonPoint(point: PendingPoint): void {
+    if (this.pendingPoint !== point) {
+      return;
+    }
+    this.pendingPoint = null;
+    if (this.pickerOpen) {
+      this.shotPlacementPicker()?.skip();
+    }
+    this.pickerOpen = false;
+    this.frozenState.set(null);
+  }
+
+  /** Bound to the picker's `(closed)` output — fires once the dialog is
+   * actually closed, whichever of confirm/skip/cancelScore triggered it —
+   * lifting the freeze so the template reverts to whatever liveState() has
+   * become by then (already updated in the background if a match.ended /
+   * next-round push arrived while the picker was up). */
+  onShotPlacementClosed(): void {
+    this.pickerOpen = false;
+    this.frozenState.set(null);
+  }
+
+  onShotPlacementConfirmed(detail: ShotPlacementConfirmed): void {
+    this.requestPickerAction({ kind: 'confirm', detail });
+  }
+
+  /** 032-cancel-score: the scorer decided the point itself shouldn't have
+   * been awarded (e.g. the wrong team's "+" was pressed) — undoes it. */
+  onShotPlacementCancelled(): void {
+    this.requestPickerAction({ kind: 'cancel' });
+  }
+
+  private requestPickerAction(action: PendingPointAction): void {
+    const point = this.pendingPoint;
+    if (point && point.request(action)) {
+      this.runPickerAction(point, action);
+    }
+  }
+
+  private runPickerAction(point: PendingPoint, action: PendingPointAction): void {
+    const scoreEventId = point.scoreEventId;
+    if (this.connectionState() !== 'connected' || scoreEventId === null) {
+      return;
+    }
+    if (action.kind === 'confirm') {
+      this.courtControl
+        .recordShotPlacement(
+          this.token,
+          point.matchId,
+          scoreEventId,
+          action.detail.rosterEntryId,
+          action.detail.losingRosterEntryId,
+          action.detail.landingX,
+          action.detail.landingY,
+          action.detail.endingType,
+        )
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe(() => this.clearPendingPoint(point));
+      return;
+    }
+
+    this.cancelScoreErrorKey.set(null);
+    // A point that just completed the match needs undoMatchCompletion()
+    // instead of the plain -1 the scoreboard's own "-" button uses:
+    // apply_score_delta's -1 correction requires status='in_progress',
+    // which this match no longer is the instant it wins.
+    // undoMatchCompletion() can refuse (round already moved on, or a
+    // replacement match pulled onto this court already got scored) — that
+    // failure is surfaced via cancelScoreErrorKey rather than silently
+    // leaving the match in its completed state.
+    if (point.matchCompleted) {
+      this.courtControl
+        .undoMatchCompletion(this.token, point.matchId, point.side)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: () => {
+            this.clearPendingPoint(point);
+            this.loadState();
+          },
+          error: (error: ApiError) => {
+            this.clearPendingPoint(point);
+            this.cancelScoreErrorKey.set(error.i18nKey);
+          },
+        });
+      return;
+    }
+
+    this.scoreGuard.hold();
+    this.courtControl
+      .score(this.token, point.matchId, point.side, -1)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (result) => {
+          this.scoreGuard.release();
+          this.clearPendingPoint(point);
+          this.patchLiveScore(point.side, result);
+        },
+        error: () => this.scoreGuard.release(),
+      });
+  }
+
+  private clearPendingPoint(point: PendingPoint): void {
+    if (this.pendingPoint === point) {
+      this.pendingPoint = null;
+    }
   }
 
   openEndMatchDialog(): void {

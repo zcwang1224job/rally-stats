@@ -16,7 +16,7 @@
   }
 
   @if (loading()) {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   } @else {
     @for (court of courts(); track court.court_id) {
       <div class="court-entry">

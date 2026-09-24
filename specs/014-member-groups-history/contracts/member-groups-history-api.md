@@ -36,12 +36,46 @@
 
 **Errors**：`MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`（皆既有，不變）。
 
+### Revision 2026-09-21：篩選與分頁
+
+原規格「暫不特別設計分頁機制」（spec.md）就此取代：列表改為分頁，並可篩選。
+回應多了 `page`／`total_pages`，形狀與 `GET /friends` 一致；每頁筆數取系統設定
+`default_page_size`（預設 20）。排序不變（`created_at` 由新到舊）。篩選在分頁**之前**
+套用，多個條件為 AND。超出範圍的頁碼回傳空的 `groups`，不是錯誤。
+
+| Query 參數 | 型別 | 說明 |
+|---|---|---|
+| `page` | int ≥ 1，預設 1 | 頁碼 |
+| `name` | string ≤ 30 | 團名，不分大小寫的部分比對 |
+| `group_number` | string ≤ 20 | 團編號，部分比對（比對數字字串） |
+| `role` | `creator` \| `member` | 我是不是這個團的建立者 |
+| `created_from`／`created_before` | 含 UTC offset 的 datetime | 開團時間的半開區間：`created_from` ≤ `created_at` < `created_before`，兩端皆可單獨給 |
+| `disbanded_from`／`disbanded_before` | 含 UTC offset 的 datetime | 解散時間的半開區間，同上。只要給了任一端，沒有 `disbanded_at` 的團（尚未解散，或在該欄位存在前就解散）一律排除 |
+| `group_id` | uuid | 精確指定一個團。團戰績頁用它取得該團的 `created_at`，不受該團落在第幾頁影響 |
+
+```json
+{ "groups": [ ... ], "page": 1, "total_pages": 3 }
+```
+
+**時間區間是「時間點」，不是日期**：畫面上的開團／解散時間是以瀏覽者當地時區顯示的，
+所以由前端把當地的「某一天」換成時間點再送出（起日 → 當地該日 00:00；迄日含當天 →
+當地隔日 00:00 作為 `*_before`）。若後端直接拿 `date` 去比 UTC 日期，台北早上 8 點前
+開的團會被算到前一天，與畫面不一致。（`/members/me/match-records` 原本的
+`date_from`／`date_to` 就是比 UTC 日期、有這個落差；Revision 2026-09-22 已改為同一套
+慣例的 `ended_from`／`ended_before`，見 034 合約。）
+
+原本 Revision 2026-09-21 初版的 `status`（團的狀態）篩選已移除，改由解散時間篩選涵蓋
+「已解散」的查找。
+
+**Errors**：參數不合法（`page=0`、未知的 `role`、非 uuid 的 `group_id`、不是 datetime
+或沒有 UTC offset 的時間）→ 422。
+
 ## `GET /members/me/groups/{group_id}/history?page=N`（新增，Revision
 2026-09-07b：`matches` 是該團全部比賽、`nickname` 搜尋全部參與者——修正
 Revision 2026-09-07a 誤將整個端點窄化為「僅自己的比賽」的方向）
 
-**Auth**：`require_member`（比照既有 `/members/me/match-records`，不要求
-信箱已驗證——見 research.md #5）。
+**Auth**：`require_verified_member`，與 `/members/me/match-records` 相同。
+（Revision 2026-09-18：原為 `require_member`。憲章原則 IV 明文將「對戰紀錄」列為信箱驗證前 MUST 鎖定的功能，原先的寬鬆設定與之不符，已更正。Google／LINE 登入的帳號建立時即為 verified，即使沒有信箱也不受影響；受影響的只有以信箱註冊、尚未點擊驗證連結的會員，他們會得到 `EMAIL_NOT_VERIFIED`（403）。）
 
 **Path params**：`group_id` (UUID)。
 

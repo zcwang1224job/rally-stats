@@ -1,13 +1,31 @@
-import { Component, DestroyRef, effect, inject, input, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { InviteCandidateStatus } from '../../../core/api/friend.models';
 import { RealtimeService } from '../../../core/realtime/ably.service';
 import { ReconnectRefetchService } from '../../../core/realtime/reconnect-refetch.service';
+import {
+  RestEndsRound,
+  restEndsRound,
+  restEndsRoundKeys,
+} from '../../../core/rest-toggle-button/rest-ends-round';
+import { RestToggleButtonComponent } from '../../../core/rest-toggle-button/rest-toggle-button.component';
+import { waitingReasonKey } from '../../../core/waiting-reason-label';
 import { AddFriendButtonComponent } from '../../../shared/add-friend-button/add-friend-button.component';
 import { AuthService } from '../../auth/auth.service';
 import { FriendsService } from '../../friends/friends.service';
+import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
 import {
   RosterScheduleStatus,
   RoundMatchesResponse,
@@ -17,14 +35,14 @@ import {
 import { GroupMemberViewService } from '../group-member-view.service';
 
 const COURT_EVENTS = ['match.scoreUpdated', 'match.ended', 'rotation.updated', 'match.nextRound'];
-const GROUP_EVENTS = ['member.joined', 'member.left'];
+const GROUP_EVENTS = ['member.joined', 'member.left', 'roster.restChanged'];
 
 /** US1 (FR-003/004): one-way唯讀 read model reusing the admin schedule
  * snapshot shape — no score/round/roster-management controls of any kind.
  * Real-time sync reuses 007's existing Ably channels/events verbatim. */
 @Component({
   selector: 'app-member-schedule',
-  imports: [TranslatePipe, AddFriendButtonComponent],
+  imports: [TranslatePipe, AddFriendButtonComponent, ConfirmDialogComponent, RestToggleButtonComponent],
   templateUrl: './member-schedule.component.html',
   styleUrl: './member-schedule.component.scss',
 })
@@ -49,6 +67,44 @@ export class MemberScheduleComponent {
    * so this naturally updates as members join/leave). */
   readonly inviteCandidates = signal<Map<string, InviteCandidateStatus>>(new Map());
 
+  /** 037-rest-ready-toggle: the viewer's own roster entry, resolved once
+   * after the first load — the rest button acts on it. */
+  readonly selfRosterEntryId = signal<string | null>(null);
+  readonly self = computed(() => {
+    const id = this.selfRosterEntryId();
+    return this.schedule()?.roster.find((row) => row.roster_entry_id === id) ?? null;
+  });
+  readonly restPending = signal(false);
+  readonly restErrorKey = signal<string | null>(null);
+  private resolvingSelf = false;
+
+  /** 037 FR-022: fixed partners — this round's partner is resting, so the
+   * viewer's own matches are on hold. */
+  readonly partnerResting = computed(() => {
+    const partnerId = this.self()?.partner_roster_entry_id;
+    const roster = this.schedule()?.roster ?? [];
+    return !!partnerId && !!roster.find((row) => row.roster_entry_id === partnerId)?.resting;
+  });
+
+  /** 037 FR-033: the viewer's queued matches kept for their return — they're
+   * cancelled if this round ends first. */
+  readonly heldCount = computed(() => {
+    const selfId = this.selfRosterEntryId();
+    return (this.roundMatches()?.matches ?? []).filter(
+      (match) =>
+        match.rest_effect === 'held' &&
+        match.participants.some((p) => p.roster_entry_id === selfId),
+    ).length;
+  });
+
+  readonly waitingReasonKey = waitingReasonKey;
+
+  /** 037 FR-032: what resting would cost, for the prompt — the round
+   * ending now, or their kept matches if they're not back in time. */
+  readonly endsRound = signal<RestEndsRound>({ count: 0, immediate: true });
+  readonly endsRoundText = computed(() => restEndsRoundKeys(this.endsRound()));
+  private readonly endsRoundDialog = viewChild.required<ConfirmDialogComponent>('endsRoundDialog');
+
   private readonly subscribedCourtChannels = new Set<string>();
   private groupChannelSubscribed = false;
 
@@ -57,7 +113,9 @@ export class MemberScheduleComponent {
       // groupId is a route param, stable for the component's lifetime —
       // this effect really just defers `load()` until the input is bound.
       if (this.groupId()) {
-        this.load();
+        // untracked: load() reads other signals (e.g. selfRosterEntryId),
+        // and setting them must not re-run this effect and load again.
+        untracked(() => this.load());
       }
     });
     effect(() => {
@@ -80,6 +138,7 @@ export class MemberScheduleComponent {
         this.schedule.set(response);
         this.subscribeToGroupChannel();
         this.loadInviteCandidates(response.roster);
+        this.resolveSelf();
       },
       error: (error: ApiError) => this.errorKey.set(error.i18nKey),
     });
@@ -113,6 +172,51 @@ export class MemberScheduleComponent {
         this.inviteCandidates.set(new Map(result.candidates.map((c) => [c.member_id, c])));
       },
       error: () => this.inviteCandidates.set(new Map()),
+    });
+  }
+
+  /** 037: rest, or come back. `resting` is the target state. The screen
+   * follows the server: reload on success, keep the old state on failure.
+   * A rest that would end the round on the spot comes back as
+   * REST_ENDS_ROUND — ask first (FR-032), and resend only if confirmed. */
+  setRest(resting: boolean, confirmRoundEnd = false): void {
+    const selfId = this.selfRosterEntryId();
+    if (!selfId || this.restPending()) {
+      return;
+    }
+    this.restPending.set(true);
+    this.restErrorKey.set(null);
+    this.memberView.setOwnRestState(this.groupId(), selfId, resting, confirmRoundEnd).subscribe({
+      next: () => {
+        this.restPending.set(false);
+        this.load();
+      },
+      error: (error: ApiError) => {
+        this.restPending.set(false);
+        const refusal = restEndsRound(error);
+        if (refusal !== null && !confirmRoundEnd) {
+          this.endsRound.set(refusal);
+          this.endsRoundDialog().open();
+          return;
+        }
+        this.restErrorKey.set(error.i18nKey);
+      },
+    });
+  }
+
+  confirmRestEndingRound(): void {
+    this.setRest(true, true);
+  }
+
+  private resolveSelf(): void {
+    if (this.selfRosterEntryId() !== null || this.resolvingSelf) {
+      return;
+    }
+    this.resolvingSelf = true;
+    this.memberView.resolveRosterEntryId(this.groupId()).subscribe({
+      next: (id) => this.selfRosterEntryId.set(id),
+      // Without it there's just no rest button; the schedule still shows.
+      error: () => undefined,
     });
   }
 

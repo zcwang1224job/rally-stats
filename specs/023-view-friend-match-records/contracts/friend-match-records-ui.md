@@ -34,7 +34,7 @@ member-settings-api.md`）的方式，以及本 feature 唯一新增的前端路
 
 呼叫既有 `GET /members/{memberId}/match-records?page={page}`（帶
 `Authorization` header，比照既有 `getMatchRecords()` 寫法）。**不透傳**
-既有端點支援的進階篩選查詢參數（`opponent1`/`date_from`/...等）——
+既有端點支援的進階篩選查詢參數（`opponent1`/`ended_from`/...等）——
 research.md #1 已定案本 feature 不提供進階篩選 UI，故這些參數維持後端
 預設（不篩選），前端不需要組出對應的 query string。
 

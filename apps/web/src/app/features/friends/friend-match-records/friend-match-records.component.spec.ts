@@ -1,5 +1,7 @@
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { MatchRecordDetailDialogComponent } from '../../../core/match-record-detail/match-record-detail-dialog.component';
 import { provideTranslateService } from '@ngx-translate/core';
 import { of, throwError } from 'rxjs';
 import { ApiError } from '../../../core/api/api-error';
@@ -7,6 +9,12 @@ import {
   MatchRecordDetailResponse,
   MemberMatchRecordsResponse,
 } from '../../../core/api/group-member-view.models';
+import {
+  dashboardFixture,
+  insightFixture,
+  insightsFixture,
+} from '../../../core/player-dashboard/dashboard-fixtures';
+import { MatchComparisonResponse } from '../../../core/api/match-comparison.models';
 import { AuthService } from '../../auth/auth.service';
 import { FriendMatchRecordsComponent } from './friend-match-records.component';
 
@@ -33,6 +41,14 @@ const oneMatch: MemberMatchRecordsResponse = {
   win_rate: 1,
   round_win_rates: [],
   opponent_records: [],
+  partner_records: [],
+  matchup_highlights: {
+    most_played_partner: null,
+    best_partner: null,
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 0,
   page: 1,
   total_pages: 1,
 };
@@ -45,20 +61,56 @@ const emptyRecords: MemberMatchRecordsResponse = {
   win_rate: 0,
   round_win_rates: [],
   opponent_records: [],
+  partner_records: [],
+  matchup_highlights: {
+    most_played_partner: null,
+    best_partner: null,
+    most_faced_opponent: null,
+    toughest_opponent: null,
+  },
+  doubles_matches: 0,
   page: 1,
   total_pages: 1,
+};
+
+const COMPARISON: MatchComparisonResponse = {
+  friend_total_matches: 12,
+  my_total_matches: 9,
+  metrics: [
+    {
+      key: 'team_serve',
+      kind: 'rate',
+      better_when: 'higher',
+      friend: { value: 0.5, numerator: 50, denominator: 100, matches_used: 8 },
+      me: { value: 0.6, numerator: 60, denominator: 100, matches_used: 6 },
+      better: 'me',
+    },
+  ],
+  head_to_head: { as_opponents: null, as_partners: null },
 };
 
 function setup(options: {
   nickname?: string | null;
   getFriendMatchRecords?: () => unknown;
   getFriendMatchRecordDetail?: () => unknown;
+  getFriendMatchDashboard?: () => unknown;
+  getFriendMatchComparison?: () => unknown;
 }) {
   const getFriendMatchRecordsCalls: unknown[][] = [];
+  const getFriendMatchDashboardCalls: unknown[][] = [];
+  const getFriendMatchComparisonCalls: unknown[][] = [];
   const authServiceStub = {
     getFriendMatchRecords: (...args: unknown[]) => {
       getFriendMatchRecordsCalls.push(args);
       return (options.getFriendMatchRecords ?? (() => of(oneMatch)))();
+    },
+    getFriendMatchDashboard: (...args: unknown[]) => {
+      getFriendMatchDashboardCalls.push(args);
+      return (options.getFriendMatchDashboard ?? (() => of(dashboardFixture())))();
+    },
+    getFriendMatchComparison: (...args: unknown[]) => {
+      getFriendMatchComparisonCalls.push(args);
+      return (options.getFriendMatchComparison ?? (() => of(COMPARISON)))();
     },
     getFriendMatchRecordDetail:
       options.getFriendMatchRecordDetail ??
@@ -73,8 +125,16 @@ function setup(options: {
           winner_team: 'A',
           started_at: '2026-09-14T10:00:00Z',
           ended_at: '2026-09-14T10:20:00Z',
+          target_score: 21,
           record_completeness: 'complete',
           events: [],
+          player_stats: [],
+          serve_stats: null,
+          momentum_stats: null,
+          tempo_stats: null,
+          landing_distribution: [],
+          clutch_stats: null,
+          ending_stats: null,
         } satisfies MatchRecordDetailResponse)),
   };
 
@@ -102,7 +162,12 @@ function setup(options: {
   });
   const fixture = TestBed.createComponent(FriendMatchRecordsComponent);
   fixture.detectChanges();
-  return { fixture, getFriendMatchRecordsCalls };
+  return {
+    fixture,
+    getFriendMatchRecordsCalls,
+    getFriendMatchDashboardCalls,
+    getFriendMatchComparisonCalls,
+  };
 }
 
 describe('FriendMatchRecordsComponent', () => {
@@ -215,6 +280,21 @@ describe('FriendMatchRecordsComponent', () => {
     expect(fixture.componentInstance.detail()?.match_id).toBe('match-1');
   });
 
+  // 040-match-share-card FR-017: a friend's record is shared neutrally.
+  it('hands the detail dialog a neutral share context with the row’s group name', () => {
+    const { fixture } = setup({});
+
+    (fixture.nativeElement.querySelector('.match-card') as HTMLElement).click();
+    fixture.detectChanges();
+
+    const dialog = fixture.debugElement.query(By.directive(MatchRecordDetailDialogComponent))
+      .componentInstance as MatchRecordDetailDialogComponent;
+    expect(dialog.shareContext()).toEqual({
+      groupName: '週末羽球團',
+      perspective: { kind: 'neutral' },
+    });
+  });
+
   // Polish: FR-011 — no notification side effects. The component is only
   // ever given `AuthService` (which has no notify-style method) and
   // `ActivatedRoute` as dependencies — TestBed's strict DI would fail this
@@ -231,5 +311,329 @@ describe('FriendMatchRecordsComponent', () => {
       fixture.detectChanges();
     }).not.toThrow();
     expect(fixture.componentInstance.detail()?.match_id).toBe('match-1');
+  });
+
+  // 034-clutch-points-player-dashboard US5 (T037)
+  describe('technique dashboard', () => {
+    const refused = (errorCode: string) => () =>
+      throwError(
+        () =>
+          ({ errorCode, i18nKey: `errors.${errorCode}`, detail: null, status: 403 }) satisfies ApiError,
+      );
+
+    it('loads the friend\'s dashboard once, unfiltered, and not again on a page flip', () => {
+      const { fixture, getFriendMatchDashboardCalls } = setup({
+        getFriendMatchRecords: () => of({ ...oneMatch, total_pages: 3 } satisfies MemberMatchRecordsResponse),
+      });
+
+      expect(getFriendMatchDashboardCalls).toEqual([['friend-1']]);
+      expect(fixture.nativeElement.querySelectorAll('app-player-dashboard [data-metric]').length).toBe(23);
+
+      fixture.componentInstance.goToPage(2);
+      expect(getFriendMatchDashboardCalls.length).toBe(1);
+    });
+
+    it('shows exactly one message when sharing is off — the page\'s own (US5 scenario 2)', () => {
+      const { fixture } = setup({
+        getFriendMatchRecords: refused('MATCH_RECORDS_PRIVATE'),
+        getFriendMatchDashboard: refused('MATCH_RECORDS_PRIVATE'),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('[role="alert"]').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard')).toBeNull();
+    });
+
+    it('stays silent when only the dashboard fails; the records still show', () => {
+      const { fixture } = setup({ getFriendMatchDashboard: refused('FRIENDSHIP_REQUIRED') });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard')).toBeNull();
+      expect(root.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('drops an already-shown dashboard once the records are refused (023 FR-007)', () => {
+      let allowed = true;
+      const { fixture } = setup({
+        getFriendMatchRecords: () =>
+          allowed
+            ? of({ ...oneMatch, total_pages: 2 } satisfies MemberMatchRecordsResponse)
+            : refused('MATCH_RECORDS_PRIVATE')(),
+      });
+      expect(fixture.nativeElement.querySelector('app-player-dashboard')).not.toBeNull();
+
+      allowed = false; // the friend turns sharing off while the page is open
+      fixture.componentInstance.goToPage(2);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.dashboard()).toBeNull();
+      expect(fixture.nativeElement.querySelector('app-player-dashboard')).toBeNull();
+      // 036: the summary lives and dies with the dashboard it rides on.
+      expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US4 (T050)
+  describe('compare with me', () => {
+    const panel = (root: HTMLElement) =>
+      root.querySelector<HTMLDetailsElement>('details[data-section="comparison"]')!;
+    /** What a tap on the panel's title does: flip `open`, then `toggle`. */
+    const tap = (fixture: ReturnType<typeof setup>['fixture']) => {
+      const details = panel(fixture.nativeElement);
+      details.open = !details.open;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    };
+
+    it('asks for nothing until its panel is opened, and then only once', () => {
+      const { fixture, getFriendMatchComparisonCalls } = setup({});
+      const root: HTMLElement = fixture.nativeElement;
+      expect(getFriendMatchComparisonCalls.length).toBe(0);
+      expect(panel(root).open).toBe(false);
+      expect(root.querySelector('app-friend-comparison')).toBeNull();
+
+      tap(fixture);
+      expect(getFriendMatchComparisonCalls).toEqual([['friend-1']]);
+      expect(root.querySelector('app-friend-comparison [data-metric="team_serve"]')).not.toBeNull();
+
+      tap(fixture); // fold…
+      tap(fixture); // …and open again: no second request
+      expect(getFriendMatchComparisonCalls.length).toBe(1);
+      expect(root.querySelector('app-friend-comparison [data-better-mark]')).not.toBeNull();
+    });
+
+    it('a failure says so inside the comparison and leaves the rest alone', () => {
+      const { fixture } = setup({
+        getFriendMatchComparison: () => throwError(() => new Error('boom')),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      tap(fixture);
+
+      expect(root.querySelector('app-friend-comparison [data-failed]')).not.toBeNull();
+      expect(root.querySelectorAll('.match-card').length).toBe(1);
+      expect(root.querySelector('app-player-dashboard')).not.toBeNull();
+    });
+
+    it('drops a comparison already on screen once the records are refused (023 FR-007)', () => {
+      let allowed = true;
+      const { fixture } = setup({
+        getFriendMatchRecords: () =>
+          allowed
+            ? of({ ...oneMatch, total_pages: 2 } satisfies MemberMatchRecordsResponse)
+            : throwError(
+                () =>
+                  ({
+                    errorCode: 'MATCH_RECORDS_PRIVATE',
+                    i18nKey: 'errors.MATCH_RECORDS_PRIVATE',
+                    detail: null,
+                    status: 403,
+                  }) satisfies ApiError,
+              ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      tap(fixture);
+      expect(root.querySelector('app-friend-comparison')).not.toBeNull();
+
+      allowed = false;
+      fixture.componentInstance.goToPage(2);
+      fixture.detectChanges();
+
+      expect(root.querySelector('app-friend-comparison')).toBeNull();
+      expect(fixture.componentInstance.comparison()).toBeNull();
+      expect(fixture.componentInstance.sections.openSection()).toBeNull();
+    });
+
+    it('never shows an in-group comparison on a friend\'s page (FR-037)', () => {
+      const { fixture } = setup({});
+      expect(fixture.nativeElement.querySelector('app-group-benchmark')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US2 (T028, FR-037)
+  describe('partners and opponents', () => {
+    const withRows = (): MemberMatchRecordsResponse => ({
+      ...oneMatch,
+      doubles_matches: 6,
+      partner_records: [
+        {
+          player_key: 'm:p1',
+          member_id: 'p1',
+          nickname: '阿哲',
+          wins: 4,
+          losses: 2,
+          matches: 6,
+          win_rate: 0.6667,
+          avg_margin: 2.5,
+          low_sample: false,
+        },
+      ],
+    });
+
+    it("shows the friend's tables, with rows that cannot be clicked", () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      expect(root.querySelectorAll('app-matchup-records').length).toBe(2);
+      expect(root.querySelector('[data-role="partner"] [data-player="m:p1"]')).not.toBeNull();
+      expect(root.querySelector('app-matchup-records button.matchup--button')).toBeNull();
+    });
+
+    it('still has no filter form of its own', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      expect(fixture.nativeElement.querySelector('form')).toBeNull();
+      expect(fixture.nativeElement.querySelector('[data-picked-player]')).toBeNull();
+    });
+
+    it("a matchup sentence leads to that player's row", () => {
+      const { fixture } = setup({
+        getFriendMatchRecords: () => of(withRows()),
+        getFriendMatchDashboard: () =>
+          of(
+            dashboardFixture({
+              insights: insightsFixture({
+                matchups: [
+                  insightFixture({
+                    list: 'matchup',
+                    rule: 'partner_above_overall',
+                    metric_key: null,
+                    player: { key: 'm:p1', nickname: '阿哲', member_id: 'p1' },
+                    params: { win_rate: 0.67, matches: 6, wins: 4, losses: 2, baseline: 0.4, diff: 0.27 },
+                  }),
+                ],
+              }),
+            }),
+          ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights [data-list="matchup"] .insight')!.click();
+
+      expect(document.activeElement).toBe(root.querySelector('#matchup-partner-m\\:p1'));
+      root.remove();
+    });
+
+    it('shows no tables for a friend without any match', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(emptyRecords) });
+      expect(fixture.nativeElement.querySelector('app-matchup-records')).toBeNull();
+    });
+  });
+
+  // 036-match-insights-benchmarks US1 (T015, FR-037)
+  describe('strengths and weaknesses summary', () => {
+    const withSummary = () =>
+      of(
+        dashboardFixture({
+          insights: insightsFixture({
+            weaknesses: [insightFixture({ list: 'weakness', metric_key: 'winner_share' })],
+          }),
+        }),
+      );
+
+    it("shows the friend's whole summary, things to work on included, above their dashboard", () => {
+      const { fixture } = setup({ getFriendMatchDashboard: withSummary });
+      const root: HTMLElement = fixture.nativeElement;
+
+      const summary = root.querySelector('app-player-insights')!;
+      const dashboard = root.querySelector('app-player-dashboard')!;
+      expect(summary.compareDocumentPosition(dashboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(summary.querySelector('[data-list="weakness"] [data-sentence]')).not.toBeNull();
+    });
+
+    it("jumps to the friend's metric card", () => {
+      const { fixture } = setup({ getFriendMatchDashboard: withSummary });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(root.querySelector<HTMLDetailsElement>('[data-group="ending"]')!.open).toBe(true);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
+    });
+
+    it('shows nothing of the summary when the dashboard is refused', () => {
+      const { fixture } = setup({
+        getFriendMatchDashboard: () =>
+          throwError(
+            () =>
+              ({
+                errorCode: 'MATCH_RECORDS_PRIVATE',
+                i18nKey: 'errors.MATCH_RECORDS_PRIVATE',
+                detail: null,
+                status: 403,
+              }) satisfies ApiError,
+          ),
+      });
+      expect(fixture.nativeElement.querySelector('app-player-insights')).toBeNull();
+    });
+  });
+
+  // The big sections run as an accordion, as on the member's own 對戰紀錄.
+  describe('sections as an accordion', () => {
+    const SECTIONS = ['comparison', 'insights', 'dashboard', 'partners', 'opponents'];
+    const withRows = (): MemberMatchRecordsResponse => ({ ...oneMatch, doubles_matches: 1 });
+
+    function panel(root: HTMLElement, section: string): HTMLDetailsElement {
+      const el = root.querySelector<HTMLElement>(`[data-section="${section}"]`)!;
+      return (el instanceof HTMLDetailsElement ? el : el.querySelector('details'))!;
+    }
+
+    function tap(fixture: ReturnType<typeof setup>['fixture'], section: string): void {
+      const details = panel(fixture.nativeElement, section);
+      details.open = !details.open;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+    }
+
+    const openSections = (root: HTMLElement) => SECTIONS.filter((section) => panel(root, section).open);
+
+    it('shows every section, all folded, on arrival', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      for (const section of SECTIONS) {
+        expect(panel(root, section), section).toBeTruthy();
+      }
+      expect(openSections(root)).toEqual([]);
+    });
+
+    it('opening one section folds the one that was open', () => {
+      const { fixture } = setup({ getFriendMatchRecords: () => of(withRows()) });
+      const root: HTMLElement = fixture.nativeElement;
+
+      tap(fixture, 'dashboard');
+      expect(openSections(root)).toEqual(['dashboard']);
+
+      tap(fixture, 'comparison');
+      expect(openSections(root)).toEqual(['comparison']);
+
+      tap(fixture, 'opponents');
+      expect(openSections(root)).toEqual(['opponents']);
+
+      tap(fixture, 'opponents');
+      expect(openSections(root)).toEqual([]);
+    });
+
+    it('an insight about a metric opens the dashboard and folds the summary', () => {
+      const { fixture } = setup({
+        getFriendMatchDashboard: () =>
+          of(
+            dashboardFixture({
+              insights: insightsFixture({ strengths: [insightFixture({ metric_key: 'winner_share' })] }),
+            }),
+          ),
+      });
+      const root: HTMLElement = fixture.nativeElement;
+      document.body.appendChild(root);
+      tap(fixture, 'insights');
+
+      root.querySelector<HTMLButtonElement>('app-player-insights .insight')!.click();
+
+      expect(openSections(root)).toEqual(['dashboard']);
+      expect(document.activeElement).toBe(root.querySelector('#metric-winner_share'));
+      root.remove();
+    });
   });
 });

@@ -44,3 +44,11 @@ async def get_default_court_name(session: AsyncSession) -> str:
 async def get_default_page_size(session: AsyncSession) -> int:
     value = await _get_value(session, "default_page_size")
     return int(value) if value is not None else 20
+
+
+async def get_match_records_page_size(session: AsyncSession) -> int:
+    """A member's match records (their own 對戰紀錄, a friend's, one of 我的團's
+    history) page shorter than other lists: each row is a tall scorecard, so
+    twenty of them is a long scroll on a phone."""
+    value = await _get_value(session, "match_records_page_size")
+    return int(value) if value is not None else 10

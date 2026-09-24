@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
 import {
+  CancelGroupInviteResponse,
   InvitableFriendsResponse,
   SendGroupInviteResponse,
 } from '../../core/api/group-invite.models';
@@ -9,6 +10,7 @@ import {
   AdminGroupResponse,
   CreateGroupRequest,
   CreateGroupResponse,
+  DetailedScoringResponse,
   EditGroupRequest,
   EditScoringSettingsRequest,
   GroupPublic,
@@ -77,6 +79,16 @@ export class GroupAdminService {
     );
   }
 
+  /** 031-shot-placement-scoring: same immediate-toggle shape as
+   * setScoreboardScoring() above. */
+  setDetailedScoring(groupId: string, enabled: boolean): Observable<DetailedScoringResponse> {
+    return this.api.patch<DetailedScoringResponse>(
+      `/groups/${groupId}/detailed-scoring`,
+      { enabled },
+      this.authHeader(groupId),
+    );
+  }
+
   disband(groupId: string): Observable<GroupPublic> {
     return this.api.post<GroupPublic>(`/groups/${groupId}/disband`, {}, this.authHeader(groupId));
   }
@@ -139,6 +151,17 @@ export class GroupAdminService {
     return this.api.post<SendGroupInviteResponse>(
       `/groups/${groupId}/invites`,
       { invitee_member_id: inviteeMemberId },
+      this.authHeader(groupId),
+    );
+  }
+
+  /** Withdraws an invite the friend hasn't answered yet, so their 接受邀請
+   * button no longer lets them in. Only a `pending` invite can be
+   * cancelled — an accept that landed first wins. */
+  cancelInvite(groupId: string, inviteId: string): Observable<CancelGroupInviteResponse> {
+    return this.api.post<CancelGroupInviteResponse>(
+      `/groups/${groupId}/invites/${inviteId}/cancel`,
+      {},
       this.authHeader(groupId),
     );
   }

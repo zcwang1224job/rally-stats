@@ -1,0 +1,445 @@
+@use 'sass:map';
+@use 'breakpoints';
+
+// The live-score "court" — one definition shared by the three screens that
+// draw it: the public scoreboard, the courtside control panel, and the
+// admin page's inline per-court control. They used to carry three copies of
+// these rules, which is how they drift apart; now they differ only in the
+// size preset they pick below. Emits no CSS until a mixin is included.
+//
+// Dark theme (010-app-wide-ui-redesign research.md Decision 1): the surface
+// reuses --color-ink (the nav-shell's navy) and --color-ink-text/-muted
+// rather than ad-hoc grays, so it's a shade of the app's one dark surface,
+// not a second palette. Team colors alias the shared --color-team-* tokens.
+
+// Size presets. `null` omits the declaration (Sass drops null values), so
+// a preset only emits what that screen actually sets.
+$sizes: (
+  // Full-viewport public scoreboard — read from across a court.
+  scoreboard: (
+    board-gap: var(--space-md),
+    board-min-height: 60vh,
+    net-width: var(--space-md),
+    net-tape: 6px,
+    team-gap: var(--space-md),
+    team-padding: var(--space-lg),
+    team-min-height: null,
+    radius: var(--radius-md),
+    team-border: 4px,
+    line: 5px,
+    station-padding: var(--space-sm) var(--space-lg),
+    station-font: 1.75rem,
+    station-font-tablet: 2.25rem,
+    station-padding-tablet: var(--space-md) var(--space-xl),
+    server-border: 3px,
+    badge-font: 2rem,
+    badge-font-tablet: 2.5rem,
+    score-font: 7rem,
+    score-font-tablet: 12rem,
+  ),
+  // Full-viewport courtside control panel — the scorer's own screen, so a
+  // step smaller than the public board to leave room for the controls.
+  control-panel: (
+    board-gap: var(--space-md),
+    board-min-height: 58vh,
+    net-width: var(--space-md),
+    net-tape: 6px,
+    team-gap: var(--space-md),
+    team-padding: var(--space-lg),
+    team-min-height: null,
+    radius: var(--radius-md),
+    team-border: 4px,
+    line: 5px,
+    station-padding: var(--space-sm) var(--space-lg),
+    station-font: 1.5rem,
+    station-font-tablet: 1.75rem,
+    station-padding-tablet: var(--space-md) var(--space-xl),
+    server-border: 3px,
+    badge-font: 1.75rem,
+    badge-font-tablet: 2rem,
+    score-font: 6rem,
+    score-font-tablet: 9rem,
+  ),
+  // Inline in the admin page's per-court card — deliberately scaled down
+  // (thinner lines, smaller radius and type) to fit a bounded card rather
+  // than owning the screen.
+  inline: (
+    board-gap: var(--space-sm),
+    board-min-height: null,
+    net-width: var(--space-sm),
+    net-tape: 4px,
+    team-gap: var(--space-sm),
+    team-padding: var(--space-md),
+    team-min-height: 9rem,
+    radius: var(--radius-sm),
+    team-border: 3px,
+    line: 4px,
+    station-padding: var(--space-xs) var(--space-sm),
+    station-font: var(--font-size-body),
+    station-font-tablet: null,
+    station-padding-tablet: null,
+    server-border: 2px,
+    badge-font: var(--font-size-heading),
+    badge-font-tablet: null,
+    score-font: var(--font-size-display),
+    score-font-tablet: null,
+  ),
+);
+
+// Theme custom properties — include inside the screen's `:host`.
+@mixin theme {
+  --scoreboard-bg: var(--color-ink);
+  --color-focus-ring: var(--color-ink-text); // dark board: light focus ring
+  --scoreboard-team-a-bg: var(--color-team-a-bg);
+  --scoreboard-team-a-border: var(--color-team-a-border);
+  --scoreboard-team-b-bg: var(--color-team-b-bg);
+  --scoreboard-team-b-border: var(--color-team-b-border);
+}
+
+// Camouflage for a control on the dark board: the default .btn (solid
+// brand orange) and .btn--secondary (light-theme white pill) both read as
+// bright, attention-grabbing shapes, but these controls are for whoever is
+// scoring, not something players and audience watching the board should be
+// drawn to. Blends into the background at rest; hover (or a closer look)
+// reveals it — while the resting label still clears AA contrast (4.5:1).
+// `$shadow: false` for elements that never had a shadow.
+@mixin camouflage($shadow: true) {
+  background: var(--scoreboard-bg);
+  border-color: color-mix(in srgb, var(--color-ink) 75%, white);
+  color: color-mix(in srgb, var(--color-ink) 52%, white);
+  @if $shadow {
+    box-shadow: none;
+  }
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+      border-color: var(--color-ink-text);
+      color: var(--color-ink-text);
+      @if $shadow {
+        box-shadow: none;
+      }
+    }
+  }
+}
+
+// Same camouflage for "end match": .btn--danger's solid red would be the
+// most attention-grabbing element on the board — the opposite of what a
+// rarely-used "end early" control should be. A faint red-tinted border keeps
+// a trace of "this one is destructive" for whoever looks closely.
+@mixin camouflage-danger {
+  background: var(--scoreboard-bg);
+  border-color: color-mix(in srgb, var(--color-danger) 30%, var(--color-ink) 70%);
+  color: color-mix(in srgb, var(--color-ink) 52%, white);
+  box-shadow: none;
+
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--scoreboard-bg) 80%, white);
+      border-color: var(--color-danger);
+      color: var(--color-ink-text);
+      box-shadow: none;
+    }
+  }
+}
+
+// The court itself: board, net, the two team halves with their court
+// markings, the four player stations, the server marker and the score.
+@mixin court($size) {
+  $s: map.get($sizes, $size);
+  $line: map.get($s, line);
+  $radius: map.get($s, radius);
+
+  // The scoreboard itself is the court viewed from above: team A's block is
+  // the left half, team B's the right, and each team's two players sit at
+  // the top/bottom edge of their half — the four stations land in the four
+  // corners, matching real court positions.
+  .score-board {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    gap: map.get($s, board-gap);
+    min-height: map.get($s, board-min-height);
+    // Anchors the net (::before below).
+    position: relative;
+  }
+
+  // The net over the gap between the two halves (absolutely positioned, so
+  // it never takes part in the flex layout). A solid top tape plus a
+  // crosshatched mesh reads as netting without an image asset.
+  .score-board::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: map.get($s, net-width);
+    transform: translateX(-50%);
+    pointer-events: none;
+    background-repeat: no-repeat, repeat, repeat;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 70%), rgba(255, 255, 255, 70%)),
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 35%) 0 1px,
+        transparent 1px 8px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 35%) 0 1px,
+        transparent 1px 8px
+      );
+    background-size:
+      100% map.get($s, net-tape),
+      auto,
+      auto;
+    background-position:
+      top,
+      0 0,
+      0 0;
+  }
+
+  .team {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    // .team-center is absolutely centered against this box; the remaining
+    // flex children are the 0-2 station pills. .station--bottom's own
+    // margin-top: auto pins it to the bottom edge, so each station keeps
+    // its edge whether or not the other renders (singles, FR-006).
+    position: relative;
+    gap: map.get($s, team-gap);
+    padding: map.get($s, team-padding);
+    min-height: map.get($s, team-min-height);
+    border-radius: $radius;
+    border: map.get($s, team-border) solid transparent;
+
+    // Faint white court markings layered over the team color (set via
+    // background-color below): a center line between the two station slots,
+    // a short/long service line pair and two singles sidelines — lines-only
+    // gradients, no image asset.
+    background-repeat: no-repeat;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+      linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+      linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+      linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%)),
+      linear-gradient(rgba(255, 255, 255, 25%), rgba(255, 255, 255, 25%));
+    background-size:
+      70% $line,
+      100% $line,
+      100% $line,
+      $line 100%,
+      $line 100%;
+    background-position:
+      center 50%,
+      center 20%,
+      center 80%,
+      15% center,
+      85% center;
+  }
+
+  // Each team's stations hug the board's outer edge (away from the net),
+  // so the four pills land in its outermost corners.
+  .team--a {
+    align-items: flex-start;
+  }
+
+  .team--b {
+    align-items: flex-end;
+  }
+
+  // Centered against .team's own box rather than as a flex sibling of the
+  // stations, so singles or two differently sized stations never pull the
+  // score off true center. It spans the whole block, so it must not steal
+  // taps meant for the stations.
+  .team-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  // The pill's own tint separates it from either team color, so its text
+  // stays plain ink-text for maximum contrast.
+  .team--a,
+  .team--b {
+    .station {
+      color: var(--color-ink-text);
+    }
+  }
+
+  // background-color (not the shorthand) so it layers under the court
+  // lines. The net-facing corners are square — a real court is one
+  // rectangle split by the net — while the outer corners stay rounded.
+  .team--a {
+    background-color: var(--scoreboard-team-a-bg);
+    border-color: var(--scoreboard-team-a-border);
+    border-radius: $radius 0 0 $radius;
+  }
+
+  .team--b {
+    background-color: var(--scoreboard-team-b-bg);
+    border-color: var(--scoreboard-team-b-border);
+    border-radius: 0 $radius $radius 0;
+  }
+
+  // 029-serve-rotation-display: one pill per player slot (right/left
+  // service court), each independently addressable (FR-004). Dark ink tint
+  // so it sits on either team color without a third off-palette hue.
+  // Nicknames are mixed CJK/Latin, so they keep the UI font rather than the
+  // score's monospace stack (which has no matching Chinese glyphs).
+  .station {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: map.get($s, station-padding);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--color-ink) 45%, transparent);
+    font-family: var(--font-family-base);
+    font-size: map.get($s, station-font);
+    font-weight: var(--font-weight-bold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+
+    @if map.get($s, station-font-tablet) {
+      @media (min-width: breakpoints.$breakpoint-tablet) {
+        font-size: map.get($s, station-font-tablet);
+        padding: map.get($s, station-padding-tablet);
+      }
+    }
+  }
+
+  .station--bottom {
+    margin-top: auto;
+  }
+
+  // FR-005 / constitution VII: the server-badge icon is the actual "who's
+  // serving" signal; this only adds a subtle outline and weight.
+  .station--server {
+    border: map.get($s, server-border) solid var(--color-brand-primary);
+    font-weight: var(--font-weight-black);
+  }
+
+  // Icon-only, sized above the nickname so it reads from across the court.
+  .server-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: map.get($s, badge-font);
+    line-height: 1;
+
+    @if map.get($s, badge-font-tablet) {
+      @media (min-width: breakpoints.$breakpoint-tablet) {
+        font-size: map.get($s, badge-font-tablet);
+      }
+    }
+  }
+
+  // FR-001: the largest, boldest element on screen. Tabular monospace
+  // digits so the score never changes width as it changes.
+  .score {
+    display: inline-block;
+    font-family: var(--font-family-score);
+    font-variant-numeric: tabular-nums;
+    font-size: map.get($s, score-font);
+    font-weight: var(--font-weight-black);
+    line-height: 1;
+    color: var(--color-ink-text);
+
+    @if map.get($s, score-font-tablet) {
+      @media (min-width: breakpoints.$breakpoint-tablet) {
+        font-size: map.get($s, score-font-tablet);
+      }
+    }
+  }
+
+  // A brief pop + color flash when a point lands, so everyone watching sees
+  // the change. Retriggered from TS, since a CSS animation only plays once
+  // per class application.
+  @keyframes score-pulse {
+    0% {
+      transform: scale(1.2);
+      color: var(--color-brand-primary);
+    }
+
+    100% {
+      transform: scale(1);
+      color: var(--color-ink-text);
+    }
+  }
+
+  .score--pulse {
+    animation: score-pulse 1.2s ease-out;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
+// The shared part of the full-screen boards' short-landscape layout —
+// include inside `@media (orientation: landscape) and (max-height: 500px)`.
+//
+// A wide-but-short phone let .score-board stretch into a much flatter
+// rectangle than a real court. Container query units fix it: .board-main
+// becomes a size container (its height is already fixed by the flex column,
+// independent of its children, so no sizing loop), and .score-board takes
+// min(100%, 100cqh × the real court's 13.4m / 6.1m ratio) — the largest size
+// that keeps the ratio and fits.
+@mixin compact-landscape {
+  .board-main {
+    container-type: size;
+  }
+
+  .score-board {
+    min-height: 0;
+    aspect-ratio: 13.4 / 6.1;
+    width: min(100%, 100cqh * (13.4 / 6.1));
+    height: auto;
+    margin: 0 auto;
+  }
+
+  .team {
+    padding: var(--space-sm);
+    gap: var(--space-sm);
+  }
+
+  .station {
+    padding: var(--space-xs) var(--space-sm);
+    font-size: var(--font-size-body);
+  }
+
+  .server-badge {
+    font-size: var(--font-size-heading);
+  }
+
+  .score {
+    font-size: 3rem;
+  }
+
+  .scoring-controls {
+    margin-top: var(--space-xs);
+    gap: var(--space-lg);
+  }
+
+  .buttons {
+    .btn {
+      min-width: var(--touch-target-min);
+      min-height: var(--touch-target-min);
+      font-size: var(--font-size-body);
+    }
+  }
+
+  .end-match-button {
+    margin-top: var(--space-sm);
+  }
+
+  .waiting-message {
+    margin-top: var(--space-sm);
+  }
+}

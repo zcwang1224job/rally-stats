@@ -55,7 +55,9 @@ async def test_member_round_matches_lists_full_pregenerated_schedule(
     assert response.status_code == 200
     body = response.json()
     assert body["round_number"] == 1
-    assert len(body["matches"]) == 10  # C(5,2)
+    # The member who joined after the round started gets a match against
+    # each of the other 5 added to it: C(5,2) + 5 = C(6,2).
+    assert len(body["matches"]) == 15
     for match in body["matches"]:
         assert len(match["participants"]) == 2
 

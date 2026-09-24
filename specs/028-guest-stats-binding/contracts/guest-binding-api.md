@@ -12,13 +12,16 @@
 （research.md #1）。
 
 **權限**：公開端點（訪客本人透過連結本身持有的 `token` 即為授權依據，
-與既有訪客連結信任模型一致）。
+與既有訪客連結信任模型一致）。另掛 `Depends(optional_member)`：
+`Authorization` header 永遠是選填、也永遠不影響能否讀取，只用來填
+`already_in_group`。
 
 **Response 200**：
 
 ```json
 {
   "already_bound": false,
+  "already_in_group": false,
   "roster_entry_id": "uuid",
   "group_id": "uuid",
   "group_name": "string",
@@ -27,6 +30,12 @@
   "roster_status": "active" | "left" | "kicked"
 }
 ```
+
+`already_in_group`——呼叫者（若有帶 token）在這一團已經有一筆 `active`
+名冊身份，也就是 `POST .../bind` 會以 `MEMBER_ALREADY_IN_GROUP` 拒絕他。
+前端據此讓綁定入口整個不出現，而不是先給一顆按鈕、按下去只會拿到錯誤
+（最常見的是 團長 開自己團的訪客連結）。匿名請求——也就是一般訪客的情
+境——恆為 `false`。
 
 **Errors**：`LINK_NOT_FOUND`（404）——`token` 從未存在，或對應的
 `guest_session_token` 已被管理員重新產生而失效。
@@ -82,6 +91,12 @@ session，不需要替換 token）：
 - `ROSTER_ENTRY_ALREADY_BOUND`（409）——`token` 對應的名冊身份已被
   （任何帳號）綁定過，`UPDATE ... WHERE member_id IS NULL` 影響 0 rows
   （research.md #4）。
+- `MEMBER_ALREADY_IN_GROUP`（409）——綁定者在這一團已經有一筆 `active`
+  的名冊身份（最典型的是 團長 自己：他手上本來就有自己團每一條訪客連
+  結）。同一個帳號在一團的輪替名單裡只能是一個人；允許之後
+  `active_roster_entry_for_member()` 的 `scalar_one_or_none()` 會讓該帳
+  號的所有 member-view 端點 500。名冊身份為 `left`/`kicked` 時不受此限
+  （同一個人以訪客身份回鍋，spec.md Edge Cases）。
 - `EMAIL_ALREADY_REGISTERED`（409，`mode: "register"` 專屬）——沿用既有
   `register()` 的既有錯誤碼；前端依 spec FR-009 引導改用
   `mode: "login"`。

@@ -7,9 +7,23 @@
   margin-bottom: var(--space-md);
 }
 
-h3 {
+h2 {
   margin-top: 0;
-  font-size: var(--font-size-heading);
+}
+
+// 037: the viewer's own rest/ready button, above the roster it affects.
+.self-rest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.self-rest__note,
+.next-up__substitution {
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
 }
 
 .score-board {
@@ -21,6 +35,16 @@ h3 {
 .score {
   font-size: var(--font-size-display);
   font-weight: var(--font-weight-black);
+  font-variant-numeric: tabular-nums;
+}
+
+// A row in the round's match list — sized like a match card's score, not
+// like the live courts' mini scoreboard above.
+.round-matches-list__score {
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .participants {
@@ -98,20 +122,6 @@ h3 {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
-}
-
-.friend-row__avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-primary-contrast);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-body);
 }
 
 .friend-row__identity {

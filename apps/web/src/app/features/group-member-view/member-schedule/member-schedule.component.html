@@ -11,7 +11,7 @@
   </p>
   @for (court of s.courts; track court.court_id) {
     <section class="court card">
-      <h3>{{ court.name }}</h3>
+      <h2>{{ court.name }}</h2>
       @if (court.current_match; as match) {
         <div class="score-board">
           <span class="score">{{ match.score_a }}</span>
@@ -22,10 +22,8 @@
             <li>{{ participant.nickname }}（{{ participant.team }}）</li>
           }
         </ul>
-      } @else if (court.waiting_reason === 'manual_assignment') {
-        <p class="status-badge">{{ 'groupMemberView.schedule.waitingManualAssignment' | translate }}</p>
       } @else {
-        <p class="status-badge">{{ 'groupMemberView.schedule.waitingNoQueuedMatch' | translate }}</p>
+        <p class="status-badge">{{ waitingReasonKey(court.waiting_reason, 'member') | translate }}</p>
       }
       @if (court.next_up; as nextUp) {
         <p class="next-up">
@@ -34,13 +32,21 @@
             {{ participant.nickname }}（{{ participant.team }}）
           }
         </p>
+        @for (swap of nextUp.substitutions ?? []; track swap.resting.roster_entry_id) {
+          <p class="next-up__substitution">
+            {{
+              'restToggle.substitutionNote'
+                | translate: { substitute: swap.substitute.nickname, resting: swap.resting.nickname }
+            }}
+          </p>
+        }
       }
     </section>
   }
 
   @if (roundMatches(); as rm) {
     <section class="round-matches">
-      <h3>{{ 'groupMemberView.schedule.allMatchesTitle' | translate }}</h3>
+      <h2>{{ 'groupMemberView.schedule.allMatchesTitle' | translate }}</h2>
       @if (rm.matches.length === 0) {
         <p>{{ 'scheduleManagement.noRoundMatchesYet' | translate }}</p>
       } @else {
@@ -55,7 +61,12 @@
                 <span class="court-name">{{ match.court_name }}</span>
               }
               @if (match.status === 'completed' || match.status === 'in_progress') {
-                <span class="score">{{ match.score_a }} : {{ match.score_b }}</span>
+                <span class="round-matches-list__score">{{ match.score_a }} : {{ match.score_b }}</span>
+              }
+              @if (match.rest_effect; as effect) {
+                <span class="status-badge status-badge--muted">
+                  {{ (effect === 'held' ? 'restToggle.effectHeld' : 'restToggle.effectSubstitute') | translate }}
+                </span>
               }
             </li>
           }
@@ -65,17 +76,41 @@
   }
 
   <section class="card">
-    <h3>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h3>
+    <h2>{{ 'scheduleManagement.rosterSectionTitle' | translate }}</h2>
+    @if (self(); as me) {
+      <div class="self-rest">
+        <app-rest-toggle-button
+          [resting]="!!me.resting"
+          [currentlyPlaying]="me.currently_playing"
+          [pending]="restPending()"
+          (toggled)="setRest($event)"
+        />
+        @if (restErrorKey(); as key) {
+          <p role="alert">{{ key | translate }}</p>
+        }
+        @if (partnerResting()) {
+          <p class="self-rest__note" role="status">{{ 'restToggle.partnerResting' | translate }}</p>
+        }
+        @if (me.resting && heldCount() > 0) {
+          <p class="self-rest__note" role="status">
+            {{ 'restToggle.heldNote' | translate: { count: heldCount() } }}
+          </p>
+        }
+      </div>
+    }
     <ul class="roster-list">
       @for (member of s.roster; track member.roster_entry_id) {
         <li class="card friend-row">
-          <span class="friend-row__avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
+          <span class="avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
           <span class="friend-row__identity">
             <span class="nickname">{{ member.nickname }}</span>
             @if (member.currently_playing) {
               <span class="status-badge status-badge--success">{{ 'scheduleManagement.currentlyPlaying' | translate }}</span>
             } @else if (s.scheduling_mechanism === 'manual' && member.wait_count !== null) {
               <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
+            }
+            @if (member.resting) {
+              <span class="status-badge status-badge--muted">{{ 'scheduleManagement.restingBadge' | translate }}</span>
             }
           </span>
           @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {
@@ -92,5 +127,12 @@
     </ul>
   </section>
 } @else {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 }
+<app-confirm-dialog
+  #endsRoundDialog
+  [title]="endsRoundText().title | translate"
+  [body]="endsRoundText().body | translate: { count: endsRound().count }"
+  [confirmLabel]="'restToggle.endsRound.confirm' | translate"
+  (confirmed)="confirmRestEndingRound()"
+/>

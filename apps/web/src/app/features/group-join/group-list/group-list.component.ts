@@ -1,7 +1,9 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { IconComponent } from '../../../shared/icon/icon.component';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../core/api/api-error';
 import { GroupListItem } from '../../../core/api/group-join.models';
 import { AuthService } from '../../auth/auth.service';
@@ -25,7 +27,7 @@ interface FilterChip {
 
 @Component({
   selector: 'app-group-list',
-  imports: [TranslatePipe, ReactiveFormsModule, RouterLink],
+  imports: [TranslatePipe, ReactiveFormsModule, RouterLink, PaginationComponent, IconComponent],
   templateUrl: './group-list.component.html',
   styleUrl: './group-list.component.scss',
 })
@@ -41,9 +43,6 @@ export class GroupListComponent {
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
   readonly totalPages = signal(1);
-  readonly pageNumbers = computed(() =>
-    Array.from({ length: this.totalPages() }, (_, i) => i + 1),
-  );
   /** A handful of placeholder rows shown in place of the group list while
    * the first page loads — purely cosmetic (skeleton screens read as
    * "loading" faster than a bare loading line), no data behind them. */
@@ -115,12 +114,17 @@ export class GroupListComponent {
   private readonly verifiedActiveGuestGroupId = signal<string | null>(null);
 
   constructor() {
-    this.load();
-    if (!this.auth.isLoggedIn()) {
-      this.joinService
-        .verifyActiveGuestGroupId()
-        .subscribe((groupId) => this.verifiedActiveGuestGroupId.set(groupId));
+    if (this.auth.isLoggedIn()) {
+      this.load();
+      return;
     }
+    // A Guest's own group is pinned to the top via pinned_group_id, so the
+    // first load waits for the verified id (immediate when nothing is
+    // tracked) instead of listing first and reshuffling afterwards.
+    this.joinService.verifyActiveGuestGroupId().subscribe((groupId) => {
+      this.verifiedActiveGuestGroupId.set(groupId);
+      this.load();
+    });
   }
 
   applyFilters(): void {
@@ -146,6 +150,7 @@ export class GroupListComponent {
         group_name: raw.group_name || undefined,
         creator_nickname: raw.creator_nickname || undefined,
         match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
+        pinned_group_id: this.verifiedActiveGuestGroupId() ?? undefined,
       })
       .subscribe({
         next: (response) => {

@@ -1,33 +1,28 @@
-import { DatePipe } from '@angular/common';
+import { RatioPercentPipe } from '../../../../shared/percent/ratio-percent.pipe';
 import { Component, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
+import { RecordHeroComponent } from '../../../../shared/record-hero/record-hero.component';
+import { MatchCardComponent } from '../../../../shared/match-card/match-card.component';
+import { RoundTrendChartComponent } from '../../../../shared/round-trend-chart/round-trend-chart.component';
+import { PaginationComponent } from '../../../../shared/pagination/pagination.component';
 import { ApiError } from '../../../../core/api/api-error';
 import { MemberGroupHistoryFilters, MemberGroupHistoryResponse } from '../../../../core/api/friend.models';
 import {
   FinalStandingRow,
   MatchRecordDetailResponse,
   MatchRecordScoreComparison,
-  MatchRecordSummary,
   OpponentRecord,
 } from '../../../../core/api/group-member-view.models';
 import { MatchRecordDetailDialogComponent } from '../../../../core/match-record-detail/match-record-detail-dialog.component';
+import { ShareCardContext } from '../../../../core/match-share-card/share-card.models';
+import { availableGroupCards } from '../../../../core/group-share-card/group-share-cards';
+import { ShareCardOption } from '../../../../core/share-card/share-card-option';
+import { ShareCardPreviewComponent } from '../../../../core/share-card/share-card-preview/share-card-preview.component';
 import { NicknameComponent } from '../../../../core/nickname/nickname.component';
 import { AuthService } from '../../../auth/auth.service';
 import { FriendsService } from '../../../friends/friends.service';
-
-interface RoundTrendPoint {
-  round: number;
-  x: number;
-  y: number;
-  winRate: number;
-}
-
-interface PerformanceTier {
-  icon: string;
-  labelKey: string;
-}
 
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -74,12 +69,17 @@ interface PlayerPieSlice {
 @Component({
   selector: 'app-group-history',
   imports: [
+    RatioPercentPipe,
+    RecordHeroComponent,
+    MatchCardComponent,
+    RoundTrendChartComponent,
+    PaginationComponent,
     TranslatePipe,
     ReactiveFormsModule,
-    DatePipe,
     RouterLink,
     MatchRecordDetailDialogComponent,
     NicknameComponent,
+    ShareCardPreviewComponent,
   ],
   templateUrl: './group-history.component.html',
   styleUrl: './group-history.component.scss',
@@ -99,11 +99,27 @@ export class GroupHistoryComponent {
   readonly detailLoadError = signal(false);
 
   readonly history = signal<MemberGroupHistoryResponse | null>(null);
+
+  /** 040-match-share-card FR-017: a whole group's history is never "my
+   * report", even for matches the viewer played in — always neutral. */
+  readonly shareContext = computed<ShareCardContext | null>(() => {
+    const history = this.history();
+    return history ? { groupName: history.group_name, perspective: { kind: 'neutral' } } : null;
+  });
   readonly errorKey = signal<string | null>(null);
   readonly page = signal(1);
-  readonly pageNumbers = computed(() => {
-    const totalPages = this.history()?.total_pages ?? 1;
-    return Array.from({ length: totalPages }, (_, i) => i + 1);
+
+  /** 041-group-share-cards: the group's creation time, the card's date. The
+   * history response has no date, so it comes from the group list; if that
+   * fails the card simply has no date — the page itself is unaffected
+   * (research.md Decision 7). */
+  private readonly createdAt = signal<string | null>(null);
+  readonly sharePreview = viewChild.required(ShareCardPreviewComponent);
+  /** The group cards this history can make. The standings and my stats
+   * ignore the match-list filters, so neither do the cards. */
+  readonly shareOptions = computed<ShareCardOption[]>(() => {
+    const history = this.history();
+    return history ? availableGroupCards(history, { createdAt: this.createdAt() }) : [];
   });
 
   readonly filterForm = this.fb.nonNullable.group({
@@ -128,65 +144,6 @@ export class GroupHistoryComponent {
   /** Win/loss donut's CSS conic-gradient stops — same convention as the
    * cross-group match-history page. Always reflects `my_stats` (personal,
    * unfiltered). */
-  readonly winLossGradient = computed(() => {
-    const stats = this.history()?.my_stats;
-    if (!stats || stats.total_matches === 0) {
-      return 'conic-gradient(var(--color-border) 0 100%)';
-    }
-    const winPercent = stats.win_rate * 100;
-    return (
-      `conic-gradient(var(--color-brand-accent) 0 ${winPercent}%, ` +
-      `var(--color-danger) ${winPercent}% 100%)`
-    );
-  });
-
-  readonly roundTrendPoints = computed<RoundTrendPoint[]>(() => {
-    const buckets = this.history()?.my_stats.round_win_rates ?? [];
-    if (buckets.length === 0) {
-      return [];
-    }
-    const step = buckets.length > 1 ? 100 / (buckets.length - 1) : 0;
-    return buckets.map((bucket, index) => ({
-      round: bucket.round_number,
-      x: buckets.length > 1 ? index * step : 50,
-      y: 100 - bucket.win_rate * 100,
-      winRate: bucket.win_rate,
-    }));
-  });
-
-  readonly roundTrendPolyline = computed(() =>
-    this.roundTrendPoints()
-      .map((point) => `${point.x},${point.y}`)
-      .join(' '),
-  );
-
-  readonly roundTrendAreaPoints = computed(() => {
-    const points = this.roundTrendPoints();
-    if (points.length === 0) {
-      return '';
-    }
-    const line = points.map((point) => `${point.x},${point.y}`).join(' ');
-    const lastX = points[points.length - 1].x;
-    return `0,100 ${line} ${lastX},100`;
-  });
-
-  readonly performanceTier = computed<PerformanceTier | null>(() => {
-    const stats = this.history()?.my_stats;
-    if (!stats || stats.total_matches === 0) {
-      return null;
-    }
-    const rate = stats.win_rate;
-    if (rate >= 0.7) {
-      return { icon: '🏆', labelKey: 'member.matchHistory.tier.elite' };
-    }
-    if (rate >= 0.5) {
-      return { icon: '🔥', labelKey: 'member.matchHistory.tier.strong' };
-    }
-    if (rate >= 0.3) {
-      return { icon: '📈', labelKey: 'member.matchHistory.tier.rising' };
-    }
-    return { icon: '💪', labelKey: 'member.matchHistory.tier.building' };
-  });
 
   /** FR-008: the whole "最終團隊排名" block shows one overall empty-state
    * message instead of a table full of redundant per-row "尚無比賽紀錄"
@@ -228,6 +185,19 @@ export class GroupHistoryComponent {
 
   constructor() {
     this.load(this.page());
+    // The list is paginated; `group_id` pins this group's row whatever
+    // page it would otherwise land on.
+    this.friends.getMyGroups(1, { group_id: this.groupId }).subscribe({
+      next: (response) =>
+        this.createdAt.set(
+          response.groups.find((group) => group.group_id === this.groupId)?.created_at ?? null,
+        ),
+      error: () => this.createdAt.set(null),
+    });
+  }
+
+  openShareCards(): void {
+    this.sharePreview().open(this.shareOptions());
   }
 
   applyFilters(): void {
@@ -303,10 +273,6 @@ export class GroupHistoryComponent {
   }
 
   /** The winning side's player names, joined. */
-  winnerNames(match: MatchRecordSummary): string {
-    const winners = match.winner_team === 'A' ? match.team_a : match.team_b;
-    return winners.map((p) => p.nickname).join('、');
-  }
 
   /** 016-match-score-timeline: opens the match detail dialog via
    * `AuthService.getMatchRecordDetail()` — the SAME "ever a member"

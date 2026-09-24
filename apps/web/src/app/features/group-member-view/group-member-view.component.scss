@@ -1,19 +1,8 @@
+@use '../../../styles/layout';
 @use '../../../styles/breakpoints';
 
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 720px;
-  margin: 0 auto;
-
-  @media (min-width: breakpoints.$breakpoint-desktop) {
-    max-width: 960px;
-  }
-}
-
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+  @include layout.page(wide);
 }
 
 .group-number {
@@ -34,42 +23,6 @@ h1 {
   @media (min-width: breakpoints.$breakpoint-tablet) {
     flex-direction: row;
     align-items: flex-start;
-  }
-}
-
-.member-nav {
-  display: flex;
-  overflow-x: auto;
-  gap: var(--space-xs);
-  padding-bottom: var(--space-xs);
-
-  button {
-    flex: 0 0 auto;
-    min-height: var(--touch-target-min);
-    padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-surface);
-    color: var(--color-text-primary);
-    font-weight: var(--font-weight-bold);
-    white-space: nowrap;
-
-    &.is-active {
-      background: var(--color-brand-primary);
-      border-color: var(--color-brand-primary);
-      color: var(--color-brand-primary-contrast);
-    }
-  }
-
-  @media (min-width: breakpoints.$breakpoint-tablet) {
-    flex-direction: column;
-    overflow-x: visible;
-    flex: 0 0 200px;
-
-    button {
-      width: 100%;
-      text-align: left;
-    }
   }
 }
 

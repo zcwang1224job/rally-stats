@@ -17,10 +17,13 @@ from app.domains.group.models import Group
 from app.domains.group.security import require_admin
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule import service
+from app.domains.schedule.rest import set_rest_state
 from app.domains.schedule.schemas import (
     AutoNextRoundRequest,
     AutoNextRoundResponse,
     ChangeMatchPlayerRequest,
+    ContinuousRotationRequest,
+    ContinuousRotationResponse,
     CourtLiveState,
     CourtStateResponse,
     KickMemberResponse,
@@ -29,14 +32,19 @@ from app.domains.schedule.schemas import (
     NextRoundRequest,
     PartnershipReassignRequest,
     PartnershipsResponse,
+    RecordShotPlacementRequest,
     RegenerateGuestLinkResponse,
     ReorderPlannedMatchesRequest,
+    RestStateRequest,
+    RestStateResponse,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
+    ShotPlacementAttachResponse,
     SwapPlannedMatchPlayersRequest,
     TemporaryPairingsResponse,
+    UndoMatchCompletionRequest,
 )
 
 router = APIRouter(tags=["schedule"])
@@ -77,9 +85,10 @@ async def get_round_matches(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> RoundMatchesResponse:
     """011-round-robin-scheduling: 本輪完整賽程清單（管理頁「本輪賽程清單」
-    區塊），涵蓋 queued/in_progress/completed/abandoned 全部狀態，依產生
-    順序排列，讓管理員能看到整份預先排好的循環賽賽程，而不只是每個場地
-    目前這一場。Errors: `ADMIN_TOKEN_INVALID`."""
+    區塊），涵蓋 queued/in_progress/completed/abandoned 全部狀態（已上場的
+    依上場先後，其餘依叫號順序），讓管理員能看到整份預先排好的循環賽賽程，
+    而不只是每個場地目前這一場；另附剩餘場數、預估剩餘時間與本輪輪空名單。
+    Errors: `ADMIN_TOKEN_INVALID`."""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     return await service.build_round_matches_list(session, group)
@@ -97,9 +106,8 @@ async def next_round(
     (omitted/null/empty = unchanged existing behavior, US3) — only consumed
     when `scheduling_mechanism == "fixed_partner"` and `partner_source ==
     "manual"`; ignored otherwise. Errors: `ADMIN_TOKEN_INVALID`,
-    `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`,
-    `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT` (011-round-robin-scheduling
-    FR-003)."""
+    `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`. (An odd
+    fixed_partner headcount no longer fails: one member gets a bye.)"""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     temporary_pairings = (
@@ -142,8 +150,7 @@ async def plan_round(
     `GET .../schedule/matches` and `POST .../schedule/matches/swap`) before
     `POST .../schedule/start`. Errors: `ADMIN_TOKEN_INVALID`,
     `SCHEDULING_MECHANISM_MISMATCH` (manual mode — use `/next-round`
-    instead), `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`,
-    `FIXED_PARTNER_REQUIRES_EVEN_HEADCOUNT`."""
+    instead), `NO_COURTS_AVAILABLE`, `ROUND_GENERATION_IN_PROGRESS`."""
     if group.id != group_id:
         raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
     temporary_pairings = (
@@ -257,6 +264,25 @@ async def set_auto_next_round(
     return AutoNextRoundResponse(auto_next_round=updated.auto_next_round)
 
 
+@router.patch(
+    "/groups/{group_id}/continuous-rotation", response_model=ContinuousRotationResponse
+)
+async def set_continuous_rotation(
+    group_id: uuid.UUID,
+    payload: ContinuousRotationRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ContinuousRotationResponse:
+    """fair_rotation doubles only: a court that frees up with nothing queued
+    immediately takes the four longest-waiting idle players. Errors:
+    `ADMIN_TOKEN_INVALID`, `CONTINUOUS_ROTATION_NOT_SUPPORTED` (enabling it
+    for any other mechanism or for singles)."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.set_continuous_rotation(session, group, payload.enabled)
+    return ContinuousRotationResponse(continuous_rotation=updated.continuous_rotation)
+
+
 @router.get("/groups/{group_id}/partnerships", response_model=PartnershipsResponse)
 async def get_partnerships(
     group_id: uuid.UUID,
@@ -364,6 +390,37 @@ async def kick_member(
     return KickMemberResponse(roster_entry_id=str(updated.id), status=updated.status)
 
 
+@router.put(
+    "/groups/{group_id}/members/{roster_entry_id}/rest-state", response_model=RestStateResponse
+)
+async def set_member_rest_state(
+    group_id: uuid.UUID,
+    roster_entry_id: uuid.UUID,
+    payload: RestStateRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> RestStateResponse:
+    """037-rest-ready-toggle US4 (FR-003): an admin puts any player in the
+    group on rest or back — including the creator, unlike kicking (resting
+    removes nobody). Same rules as the player doing it themself;
+    `guest_session_token` is ignored. Errors: `ADMIN_TOKEN_INVALID`,
+    `ROSTER_ENTRY_NOT_FOUND` (missing, in another group, or no longer
+    active), `GROUP_DISBANDED`, `REST_ENDS_ROUND`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    result = await session.execute(select(RosterEntry).where(RosterEntry.id == roster_entry_id))
+    entry = result.scalar_one_or_none()
+    if entry is None or entry.group_id != group.id or entry.status != "active":
+        raise ApiError("ROSTER_ENTRY_NOT_FOUND", status_code=404)
+    return await set_rest_state(
+        session,
+        group,
+        entry,
+        resting=payload.resting,
+        confirm_round_end=payload.confirm_round_end,
+    )
+
+
 @router.post(
     "/groups/{group_id}/members/{roster_entry_id}/regenerate-guest-link",
     response_model=RegenerateGuestLinkResponse,
@@ -465,6 +522,71 @@ async def score_by_token(
     )
 
 
+@router.post(
+    "/courts/by-token/{token}/matches/{match_id}/shot-placement",
+    response_model=ShotPlacementAttachResponse,
+)
+async def record_shot_placement_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: RecordShotPlacementRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShotPlacementAttachResponse:
+    """032-score-then-record: attaches landing/player detail to a `+1`
+    that's already been applied via `score_by_token` above — same
+    permission boundary. Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`、
+    `DETAILED_SCORING_NOT_ENABLED`、`INVALID_LANDING_COORDINATES`、
+    `SCORE_EVENT_NOT_FOUND`、`SCORE_EVENT_NOT_A_POINT`、
+    `SHOT_PLACEMENT_ALREADY_RECORDED`、`PARTICIPANT_NOT_IN_MATCH`、
+    `SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、`SCORING_AND_LOSING_PLAYER_SAME_TEAM`、
+    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`、
+    `ENDING_TYPE_CONTRADICTS_LANDING`、`ENDING_TYPE_CONTRADICTS_SERVE`（035）。"""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    await service.attach_shot_placement(
+        session,
+        court,
+        match_id,
+        uuid.UUID(payload.score_event_id),
+        uuid.UUID(payload.roster_entry_id) if payload.roster_entry_id is not None else None,
+        uuid.UUID(payload.losing_roster_entry_id)
+        if payload.losing_roster_entry_id is not None
+        else None,
+        payload.landing_x,
+        payload.landing_y,
+        ending_type=payload.ending_type,
+    )
+    return ShotPlacementAttachResponse()
+
+
+@router.post(
+    "/courts/by-token/{token}/matches/{match_id}/undo-completion",
+    response_model=ScoreMutationResult,
+)
+async def undo_match_completion_by_token(
+    token: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: UndoMatchCompletionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """032-cancel-score: reverts the match-deciding point via
+    `score_by_token`'s same permission boundary — see
+    `service.undo_match_completion()`'s docstring for exactly which
+    cascade shapes this can and can't safely reverse. Errors:
+    `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`、`MATCH_NOT_COMPLETED`、
+    `SIDE_DID_NOT_WIN_THIS_MATCH`、`ROUND_ALREADY_ADVANCED`、
+    `NEXT_MATCH_ALREADY_STARTED`。"""
+    court, group, link_type, _owner_language = await court_service.get_court_by_token(
+        session, token
+    )
+    if not _can_score_by_token(link_type, group):
+        raise ApiError("LINK_NOT_FOUND", status_code=404)
+    return await service.undo_match_completion(session, court, match_id, payload.side)
+
+
 @router.post("/courts/by-token/{token}/matches/{match_id}/end", response_model=ScoreMutationResult)
 async def end_match_by_token(
     token: uuid.UUID,
@@ -501,6 +623,65 @@ async def score_by_admin(
     return await service.apply_score_delta(
         session, court, match_id, payload.side, payload.delta, source="admin"
     )
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/shot-placement",
+    response_model=ShotPlacementAttachResponse,
+)
+async def record_shot_placement_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: RecordShotPlacementRequest,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShotPlacementAttachResponse:
+    """032-score-then-record: attaches landing/player detail to a `+1`
+    that's already been applied via `score_by_admin` above. Errors:
+    `ADMIN_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`DETAILED_SCORING_NOT_ENABLED`、
+    `INVALID_LANDING_COORDINATES`、`SCORE_EVENT_NOT_FOUND`、
+    `SCORE_EVENT_NOT_A_POINT`、`SHOT_PLACEMENT_ALREADY_RECORDED`、
+    `PARTICIPANT_NOT_IN_MATCH`、`SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、
+    `SCORING_AND_LOSING_PLAYER_SAME_TEAM`、`SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`、
+    `ENDING_TYPE_CONTRADICTS_LANDING`、`ENDING_TYPE_CONTRADICTS_SERVE`（035）。"""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    await service.attach_shot_placement(
+        session,
+        court,
+        match_id,
+        uuid.UUID(payload.score_event_id),
+        uuid.UUID(payload.roster_entry_id) if payload.roster_entry_id is not None else None,
+        uuid.UUID(payload.losing_roster_entry_id)
+        if payload.losing_roster_entry_id is not None
+        else None,
+        payload.landing_x,
+        payload.landing_y,
+        ending_type=payload.ending_type,
+    )
+    return ShotPlacementAttachResponse()
+
+
+@router.post(
+    "/groups/{group_id}/courts/{court_id}/matches/{match_id}/undo-completion",
+    response_model=ScoreMutationResult,
+)
+async def undo_match_completion_by_admin(
+    group_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: UndoMatchCompletionRequest,
+    court: Annotated[Court, Depends(_admin_court)],
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """032-cancel-score: admin-panel counterpart to
+    `undo_match_completion_by_token` above. Errors: `ADMIN_TOKEN_INVALID`、
+    `MATCH_NOT_FOUND`、`MATCH_NOT_COMPLETED`、`SIDE_DID_NOT_WIN_THIS_MATCH`、
+    `ROUND_ALREADY_ADVANCED`、`NEXT_MATCH_ALREADY_STARTED`。"""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    return await service.undo_match_completion(session, court, match_id, payload.side)
 
 
 @router.post(

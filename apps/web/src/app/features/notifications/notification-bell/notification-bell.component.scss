@@ -45,7 +45,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   // A ring in the chrome's own background color visually "cuts out" the
   // badge from the icon underneath it, the same trick most notification
   // dots use — without it the badge just overlaps the bell's strokes.

@@ -82,17 +82,17 @@ header）。
 ## `GET /members/me/match-records`
 
 **用途**：會員頁面跨團對戰紀錄（US5，FR-017~020）。需 006 既有
-`require_member`（MUST 已登入；不要求 `verification_status ==
-'verified'`——查看自己歷史紀錄不屬於 006 FR-009 鎖定範圍內的「功能」，
-比照 `GET /members/me` 之既有寬鬆基準）。
+`require_verified_member`（MUST 已登入且 `verification_status ==
+'verified'`）。
+（Revision 2026-09-18：原為 `require_member`。憲章原則 IV 明文將「對戰紀錄」列為信箱驗證前 MUST 鎖定的功能，原先的寬鬆設定與之不符，已更正。Google／LINE 登入的帳號建立時即為 verified，即使沒有信箱也不受影響；受影響的只有以信箱註冊、尚未點擊驗證連結的會員，他們會得到 `EMAIL_NOT_VERIFIED`（403）。）原先的理由是「查看自己歷史紀錄不屬於 006 FR-009 鎖定範圍內的功能」，但憲章的鎖定清單明確包含對戰紀錄。`GET /members/me`、重寄驗證信與刪除帳號仍維持 `require_member`——未驗證的會員必須能用到它們。
 
 **Query 參數**：`page: int = 1`。
 
 **回應** `200`：`MemberMatchRecordsResponse`（見 data-model.md，含
 `total_matches`/`total_wins`/`total_losses`/`win_rate` 彙總統計）。
 
-**錯誤**：`MEMBER_TOKEN_INVALID`（006 既有代碼，`require_member`
-本身之錯誤）。
+**錯誤**：`MEMBER_TOKEN_INVALID`（006 既有代碼）、`EMAIL_NOT_VERIFIED`
+（403，`require_verified_member` 本身之錯誤）。
 
 **保證**（research.md #9，資料模型層面天然滿足，非本端點額外邏輯）：
 回應 MUST NOT 包含任何該會員之前以 Guest 身分（`roster_entries

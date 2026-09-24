@@ -13,7 +13,7 @@
     }
 
     @if (r.notifications.length === 0) {
-      <p>{{ 'notifications.list.empty' | translate }}</p>
+      <p class="empty-state card">{{ 'notifications.list.empty' | translate }}</p>
     } @else {
       <ul class="notification-list">
         @for (notification of r.notifications; track notification.notification_id) {
@@ -24,7 +24,11 @@
               [class.notification-item--unread]="!notification.read"
               (click)="open(notification)"
             >
-              <span class="status-badge" [class.status-badge--success]="notification.read">
+              <span
+                class="status-badge"
+                [class.status-badge--brand]="!notification.read"
+                [class.status-badge--muted]="notification.read"
+              >
                 {{
                   (notification.read
                     ? 'notifications.list.readBadge'
@@ -54,6 +58,19 @@
                     }}
                   }
                 </span>
+                <!-- 邀請的結局直接標在列表上：一則 group_invite 通知會活得
+                     比 pending 久，不標的話「團長已取消」「對方已拒絕」都
+                     要點進去才看得到。pending 不標，那是通知文字本身就已經
+                     在說的事。 -->
+                @if (gi.status !== 'pending') {
+                  <span
+                    class="status-badge"
+                    [class.status-badge--success]="gi.status === 'accepted'"
+                    [class.status-badge--danger]="gi.status === 'declined' || gi.status === 'cancelled' || gi.status === 'invalidated'"
+                  >
+                    {{ ('groupInvite.status.' + gi.status) | translate }}
+                  </span>
+                }
               }
               <span class="notification-item__time">
                 {{ notification.created_at | date: 'M/d HH:mm' }}
@@ -63,23 +80,9 @@
         }
       </ul>
 
-      @if (r.total_pages > 1) {
-        <nav class="pagination">
-          @for (p of pageNumbers(); track p) {
-            <button
-              type="button"
-              class="btn"
-              [class.btn--secondary]="p !== page()"
-              [disabled]="p === page()"
-              (click)="goToPage(p)"
-            >
-              {{ p }}
-            </button>
-          }
-        </nav>
-      }
+      <app-pagination [page]="page()" [totalPages]="r.total_pages" (pageChange)="goToPage($event)" />
     }
   } @else {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   }
 </main>

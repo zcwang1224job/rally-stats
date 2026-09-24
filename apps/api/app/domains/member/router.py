@@ -2,12 +2,12 @@
 auth-api.md and member-api.md."""
 
 import uuid
-from datetime import date
 from typing import Annotated, Literal, cast
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import RedirectResponse
+from pydantic import AwareDatetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -19,19 +19,24 @@ from app.domains.group.schemas import MatchRecordDetailResponse, MemberMatchReco
 from app.domains.member import security, service
 from app.domains.member.models import Member
 from app.domains.member.oauth_providers import Provider
+from app.domains.member.player_identity import parse_player_key
 from app.domains.member.schemas import (
     AddEmailRequest,
     AddEmailResponse,
+    BenchmarkGroupsResponse,
     ChangePasswordRequest,
     ChangePasswordResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
+    GroupBenchmarkResponse,
     LoginRecordsResponse,
     LoginRequest,
     LoginResponse,
+    MatchComparisonResponse,
     MemberGroupHistoryResponse,
+    MemberMatchDashboardResponse,
     MemberPublicResponse,
     MyGroupsResponse,
     OAuthStartResponse,
@@ -309,7 +314,7 @@ async def start_oauth(
 @router.get("/auth/oauth/{provider}/callback")
 @limiter.limit("20/minute")
 async def oauth_callback(
-    request: Request,  # noqa: ARG001 - required by slowapi
+    request: Request,
     provider: str,
     session: Annotated[AsyncSession, Depends(get_session)],
     code: str | None = None,
@@ -319,10 +324,18 @@ async def oauth_callback(
     """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/callback`.
     Public — the browser lands here fresh from Google/LINE's own redirect,
     with no `Authorization` header. Always a 302, never a JSON body (the
-    browser is mid-navigation, not an API caller)."""
+    browser is mid-navigation, not an API caller). bugfix/oauth-login-record:
+    `request`'s User-Agent header backs the new login record's device
+    category, same as `/auth/login` — no longer unused, so its
+    `noqa: ARG001` is dropped."""
     valid_provider = _require_valid_provider(provider)
     result = await service.complete_oauth_callback(
-        session, valid_provider, code=code, state=state, error=error
+        session,
+        valid_provider,
+        code=code,
+        state=state,
+        error=error,
+        user_agent=request.headers.get("user-agent"),
     )
     return RedirectResponse(_oauth_callback_redirect_url(result), status_code=302)
 
@@ -366,16 +379,89 @@ async def search_member(
     return await service.search_member(session, user_number, member.id)
 
 
+@router.get("/members/me/benchmark-groups", response_model=BenchmarkGroupsResponse)
+async def get_benchmark_groups(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BenchmarkGroupsResponse:
+    """036-match-insights-benchmarks US3 (FR-027): the groups this member
+    can compare within — every group they ever held a roster row in, whatever
+    its or their status — with their completed-match count in each, most
+    first. Errors: `MEMBER_TOKEN_INVALID`, `EMAIL_NOT_VERIFIED`."""
+    return await service.list_benchmark_groups(session, member.id)
+
+
+@router.get("/members/me/group-benchmark", response_model=GroupBenchmarkResponse)
+async def get_group_benchmark(
+    group_id: Annotated[uuid.UUID, Query()],
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> GroupBenchmarkResponse:
+    """036-match-insights-benchmarks US3: per dashboard metric, the group's
+    average, the number of players behind it, and this member's rank — always
+    over ALL of the group's completed matches; this endpoint takes no filter
+    (FR-028, FR-032), and any other query parameter is ignored.
+
+    The response carries nothing about any other player (FR-032): see
+    `GroupBenchmarkMetric`. Authorization is 014's "ever a formal member",
+    checked on every request (FR-038). Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `GROUP_MEMBERSHIP_NEVER_HELD` (403 — also for a
+    group that does not exist)."""
+    return await service.build_group_benchmark(session, member.id, group_id)
+
+
 @router.get("/members/me/groups", response_model=MyGroupsResponse)
 async def get_my_groups(
     member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    name: Annotated[str | None, Query(max_length=30)] = None,
+    group_number: Annotated[str | None, Query(max_length=20)] = None,
+    role: Annotated[Literal["creator", "member"] | None, Query()] = None,
+    created_from: Annotated[AwareDatetime | None, Query()] = None,
+    created_before: Annotated[AwareDatetime | None, Query()] = None,
+    disbanded_from: Annotated[AwareDatetime | None, Query()] = None,
+    disbanded_before: Annotated[AwareDatetime | None, Query()] = None,
+    match_count_min: Annotated[int | None, Query(ge=0)] = None,
+    match_count_max: Annotated[int | None, Query(ge=0)] = None,
+    group_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has ever had a roster entry in (any
     status). Still backs the "忘記管理 PIN 碼" recovery list for the
-    `is_creator=true` rows."""
-    return await service.get_my_groups(session, member.id)
+    `is_creator=true` rows.
+
+    Paginated (`page`, system default page size) and filterable: `name`/
+    `group_number` are case-insensitive substring matches, `role` is
+    whether this member created the group, `group_id` pins one exact group
+    (used by the group-history page, which needs that one row whatever
+    page it would land on).
+
+    `created_from`/`created_before` and `disbanded_from`/`disbanded_before`
+    are half-open ranges of INSTANTS (`from` <= t < `before`), and must
+    carry a UTC offset (a naive value is a 422): the client converts the
+    viewer's local calendar day into instants, so the filter agrees with
+    the local times the list displays — unlike a bare `date`, which would
+    be compared against the UTC date. A `disbanded_*` bound also drops
+    every group that has no `disbanded_at`.
+
+    `match_count_min`/`match_count_max` filter (both ends inclusive) on each
+    row's `match_count`: the completed matches this member played there."""
+    return await service.get_my_groups(
+        session,
+        member.id,
+        page=page,
+        name=name,
+        group_number=group_number,
+        role=role,
+        created_from=created_from,
+        created_before=created_before,
+        disbanded_from=disbanded_from,
+        disbanded_before=disbanded_before,
+        match_count_min=match_count_min,
+        match_count_max=match_count_max,
+        group_id=group_id,
+    )
 
 
 @router.get(
@@ -383,7 +469,7 @@ async def get_my_groups(
 )
 async def get_member_group_history(
     group_id: uuid.UUID,
-    member: Annotated[Member, Depends(security.require_member)],
+    member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
     nickname: Annotated[str | None, Query(max_length=20)] = None,
@@ -421,10 +507,10 @@ async def get_member_group_history(
     "opponent" concept for a plain numeric score comparison.
 
     `my_stats` is this member's own performance in the group, always
-    unfiltered by any of the above. `require_member` (not
-    `require_verified_member`) matches the sibling
-    `/members/me/match-records` endpoint's existing looser tier, since
-    email-verification status is unrelated to viewing match history.
+    unfiltered by any of the above. `require_verified_member`, like the
+    sibling `/members/me/match-records` endpoint: constitution IV locks
+    match records until the e-mail is verified. (Both used the looser
+    `require_member` until this was corrected — see that endpoint.)
 
     019-group-final-standings (FR-001~FR-012) adds `final_standings`: the
     group's whole final team ranking, covering every ever-participant
@@ -455,15 +541,15 @@ async def get_member_group_history(
 
 @router.get("/members/me/match-records", response_model=MemberMatchRecordsResponse)
 async def get_member_match_records(
-    member: Annotated[Member, Depends(security.require_member)],
+    member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
     page: Annotated[int, Query(ge=1)] = 1,
     opponent1: Annotated[str | None, Query(max_length=20)] = None,
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
     partner: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
-    date_from: Annotated[date | None, Query()] = None,
-    date_to: Annotated[date | None, Query()] = None,
+    ended_from: Annotated[AwareDatetime | None, Query()] = None,
+    ended_before: Annotated[AwareDatetime | None, Query()] = None,
     round_from: Annotated[int | None, Query(ge=1)] = None,
     round_to: Annotated[int | None, Query(ge=1)] = None,
     self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
@@ -471,18 +557,30 @@ async def get_member_match_records(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
-    """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計；未鎖定
-    於信箱驗證（比照 `GET /members/me` 之既有寬鬆基準）。`opponent1`/
+    """005-member-view US5 (FR-017~020): 會員跨團對戰紀錄與彙總統計。
+    `require_verified_member`：憲章原則 IV 明定對戰紀錄在信箱驗證前 MUST
+    鎖定。（005 原本比照 `GET /members/me` 用了較寬鬆的 `require_member`，
+    那是與憲章不符的偏離，已更正；`GET /members/me`、重寄驗證信與刪除帳號
+    仍維持寬鬆——未驗證的會員必須能用到它們。Google／LINE 登入的帳號建立時
+    即為 verified，即使沒有信箱也不受影響。）`opponent1`/
     `opponent2` 分開篩選兩位對手暱稱（子字串、不分大小寫）——雙打時兩個
     欄位須各自對應到不同的對手，不能同一人滿足兩欄。`partner` 篩選隊友
     暱稱，僅一個欄位——雙打隊伍除自己外只有一位隊友，不像對手一次面對兩
     人。`self_score_cmp`+`self_score`、`opponent_score_cmp`+
     `opponent_score` 各自篩選自己/對手的比分（與指定數值比較，而非兩者互
-    比）。`result`/`date_from`/`date_to`/`round_from`/`round_to` 篩選勝負、
-    日期、輪次區間；`match_mode` 篩選單打/雙打（比賽所屬團的賽制）——
+    比）。`result`/`round_from`/`round_to` 篩選勝負、輪次區間；
+    `ended_from`/`ended_before` 篩選比賽結束時間，是「時間點」的半開區間
+    （`ended_from` ≤ `ended_at` < `ended_before`）且必須帶 UTC offset（否則
+    422）——由前端把瀏覽者當地的某一天換成時間點送來，篩選才會與畫面上以
+    當地時區顯示的時間一致（原本的 `date_from`/`date_to` 比的是 UTC 日期，
+    台北早上 8 點前結束的比賽會被算到前一天）；
+    `match_mode` 篩選單打/雙打（比賽所屬團的賽制）——
     所有彙總統計（場次/勝敗/勝率/各輪趨勢/對戰對象排行）
-    皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`。
+    皆以篩選後的完整結果集計算，而非僅本頁。Errors: `MEMBER_TOKEN_INVALID`、
+    `EMAIL_NOT_VERIFIED`。
     """
     return await service.build_member_match_records(
         session,
@@ -491,8 +589,8 @@ async def get_member_match_records(
         opponents=[name for name in (opponent1, opponent2) if name],
         partners=[partner] if partner else [],
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -500,21 +598,92 @@ async def get_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 
 @router.get("/members/me/match-records/{match_id}", response_model=MatchRecordDetailResponse)
 async def get_member_match_record_detail(
     match_id: uuid.UUID,
-    member: Annotated[Member, Depends(security.require_member)],
+    member: Annotated[Member, Depends(security.require_verified_member)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> MatchRecordDetailResponse:
     """016-match-score-timeline US1/US2/US3 (FR-001~008): 會員跨團對戰紀錄、
     以及「我的團→歷史」這兩個清單點進單場比賽的詳情——兩者皆已登入會員
-    視角，共用同一支端點（research.md #1）。`require_member`（不要求信箱
-    已驗證，比照既有 `/members/me/match-records`）。Errors:
-    `MEMBER_TOKEN_INVALID`、`MATCH_NOT_FOUND`、`GROUP_MEMBERSHIP_NEVER_HELD`。"""
+    視角，共用同一支端點（research.md #1）。`require_verified_member`，
+    與 `/members/me/match-records` 相同（憲章原則 IV）。Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、`MATCH_NOT_FOUND`、
+    `GROUP_MEMBERSHIP_NEVER_HELD`。"""
     return await service.get_member_match_record_detail(session, member.id, match_id)
+
+
+def _checked_player_key(value: str | None) -> str | None:
+    """036 US2: `partner_key` / `opponent_key` are `m:<uuid>` / `r:<uuid>`.
+    Anything else is a client bug, not an empty result. Errors:
+    `INVALID_PLAYER_KEY` (422)."""
+    if value is None:
+        return None
+    try:
+        parse_player_key(value)
+    except ValueError as error:
+        raise ApiError("INVALID_PLAYER_KEY", status_code=422) from error
+    return value
+
+
+def match_filters_query(
+    opponent1: Annotated[str | None, Query(max_length=20)] = None,
+    opponent2: Annotated[str | None, Query(max_length=20)] = None,
+    partner: Annotated[str | None, Query(max_length=20)] = None,
+    result: Annotated[Literal["win", "loss"] | None, Query()] = None,
+    ended_from: Annotated[AwareDatetime | None, Query()] = None,
+    ended_before: Annotated[AwareDatetime | None, Query()] = None,
+    round_from: Annotated[int | None, Query(ge=1)] = None,
+    round_to: Annotated[int | None, Query(ge=1)] = None,
+    self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    self_score: Annotated[int | None, Query(ge=0)] = None,
+    opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
+    opponent_score: Annotated[int | None, Query(ge=0)] = None,
+    match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
+) -> service.MemberMatchFilters:
+    """034-clutch-points-player-dashboard: the 13 filter query parameters of
+    `/members/me/match-records` — same names, same validation, no `page` —
+    as one dependency. (`opponent1`/`opponent2` fold into `opponents`, hence
+    12 fields on `MemberMatchFilters`.) The two dashboard endpoints take
+    this instead of spelling the list out a fifth and sixth time."""
+    return service.MemberMatchFilters(
+        opponents=tuple(name for name in (opponent1, opponent2) if name),
+        partners=(partner,) if partner else (),
+        result=result,
+        ended_from=ended_from,
+        ended_before=ended_before,
+        round_from=round_from,
+        round_to=round_to,
+        self_score_cmp=self_score_cmp,
+        self_score=self_score,
+        opponent_score_cmp=opponent_score_cmp,
+        opponent_score=opponent_score,
+        match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
+    )
+
+
+@router.get("/members/me/match-dashboard", response_model=MemberMatchDashboardResponse)
+async def get_member_match_dashboard(
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    filters: Annotated[service.MemberMatchFilters, Depends(match_filters_query)],
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US2-US4: 會員跨場個人技術儀表板，
+    對「整個篩選結果」計算（沒有 `page`）——與同一組篩選條件下
+    `/members/me/match-records` 的 `total_matches` 恆相同。
+    `require_verified_member`，與 `/members/me/match-records` 相同（憲章
+    原則 IV：對戰紀錄在信箱驗證前 MUST 鎖定）。Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`。"""
+    return await service.build_member_match_dashboard(session, member.id, filters)
 
 
 @router.get("/members/me/supported-languages", response_model=SupportedLanguagesResponse)
@@ -573,6 +742,41 @@ async def get_login_records(
     return await service.list_login_records(session, member.id, page)
 
 
+# MUST stay below `/members/me/match-dashboard`: routes match in declaration
+# order, and "me" is not a UUID — declared first, this one would answer that
+# request with a 422.
+@router.get("/members/{member_id}/match-dashboard", response_model=MemberMatchDashboardResponse)
+async def get_viewed_member_match_dashboard(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    filters: Annotated[service.MemberMatchFilters, Depends(match_filters_query)],
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US5 (好友檢視技術儀表板): 授權與
+    `GET /members/{member_id}/match-records` 完全相同——同一個
+    `_resolve_viewable_member()`、同樣的檢查順序
+    `SELF_VIEW_NOT_SUPPORTED` → `MEMBER_NOT_FOUND` → `FRIENDSHIP_REQUIRED`
+    → `MATCH_RECORDS_PRIVATE`，每次請求重新檢查、不通知被檢視方。Errors:
+    `MEMBER_TOKEN_INVALID`、`EMAIL_NOT_VERIFIED`、上述四者。"""
+    return await service.view_member_match_dashboard(session, member.id, member_id, filters)
+
+
+@router.get("/members/{member_id}/match-comparison", response_model=MatchComparisonResponse)
+async def get_viewed_member_match_comparison(
+    member_id: uuid.UUID,
+    member: Annotated[Member, Depends(security.require_verified_member)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> MatchComparisonResponse:
+    """036-match-insights-benchmarks US4: the friend's 23 unfiltered metrics
+    next to the viewer's own, which side is better where that can be said, and
+    the two players' head-to-head record. Read-only; nobody is notified
+    (FR-039). Declared after every `/members/me/...` route, like the other
+    `/{member_id}/...` ones. Errors: `MEMBER_TOKEN_INVALID`,
+    `EMAIL_NOT_VERIFIED`, `SELF_VIEW_NOT_SUPPORTED`, `MEMBER_NOT_FOUND`,
+    `FRIENDSHIP_REQUIRED`, `MATCH_RECORDS_PRIVATE`."""
+    return await service.view_member_match_comparison(session, member.id, member_id)
+
+
 @router.get(
     "/members/{member_id}/match-records", response_model=MemberMatchRecordsResponse
 )
@@ -585,8 +789,8 @@ async def get_viewed_member_match_records(
     opponent2: Annotated[str | None, Query(max_length=20)] = None,
     partner: Annotated[str | None, Query(max_length=20)] = None,
     result: Annotated[Literal["win", "loss"] | None, Query()] = None,
-    date_from: Annotated[date | None, Query()] = None,
-    date_to: Annotated[date | None, Query()] = None,
+    ended_from: Annotated[AwareDatetime | None, Query()] = None,
+    ended_before: Annotated[AwareDatetime | None, Query()] = None,
     round_from: Annotated[int | None, Query(ge=1)] = None,
     round_to: Annotated[int | None, Query(ge=1)] = None,
     self_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
@@ -594,6 +798,8 @@ async def get_viewed_member_match_records(
     opponent_score_cmp: Annotated[Literal["gt", "eq", "lt"] | None, Query()] = None,
     opponent_score: Annotated[int | None, Query(ge=0)] = None,
     match_mode: Annotated[Literal["singles", "doubles"] | None, Query()] = None,
+    partner_key: Annotated[str | None, Query(max_length=40)] = None,
+    opponent_key: Annotated[str | None, Query(max_length=40)] = None,
 ) -> MemberMatchRecordsResponse:
     """022-member-personal-settings FR-018/FR-019 (好友檢視他人戰績):
     query 參數與既有 `/members/me/match-records` 完全相同、直接透傳
@@ -609,8 +815,8 @@ async def get_viewed_member_match_records(
         opponents=[name for name in (opponent1, opponent2) if name],
         partners=[partner] if partner else [],
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -618,6 +824,8 @@ async def get_viewed_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=_checked_player_key(partner_key),
+        opponent_key=_checked_player_key(opponent_key),
     )
 
 

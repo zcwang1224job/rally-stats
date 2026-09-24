@@ -5,7 +5,7 @@
 }
 
 @if (loading()) {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 } @else if (errorKey(); as key) {
   <p role="alert">{{ key | translate }}</p>
 } @else if (adminView(); as view) {
@@ -17,22 +17,22 @@
   }
 
   <div class="admin-shell">
-    <nav class="admin-nav">
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'courts'" (click)="activeSection.set('courts')">
+    <nav class="admin-nav tabs tabs--sidebar">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'courts' ? 'page' : null" (click)="activeSection.set('courts')">
         {{ 'adminPage.section.courts' | translate }}
       </button>
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'schedule'" (click)="activeSection.set('schedule')">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'schedule' ? 'page' : null" (click)="activeSection.set('schedule')">
         {{ 'adminPage.section.schedule' | translate }}
       </button>
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'roster'" (click)="activeSection.set('roster')">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'roster' ? 'page' : null" (click)="activeSection.set('roster')">
         {{ 'adminPage.section.roster' | translate }}
       </button>
       @if (view.group.created_by_member) {
-        <button type="button" class="tap-target" [class.is-active]="activeSection() === 'invites'" (click)="activeSection.set('invites')">
+        <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'invites' ? 'page' : null" (click)="activeSection.set('invites')">
           {{ 'adminPage.section.invites' | translate }}
         </button>
       }
-      <button type="button" class="tap-target" [class.is-active]="activeSection() === 'settings'" (click)="activeSection.set('settings')">
+      <button type="button" class="tabs__tab" [attr.aria-current]="activeSection() === 'settings' ? 'page' : null" (click)="activeSection.set('settings')">
         {{ 'adminPage.section.settings' | translate }}
       </button>
     </nav>
@@ -51,12 +51,12 @@
         @switch (activeSection()) {
           @case ('courts') {
             <section class="card links-section">
-              <h2>{{ 'reauth.groupNumber' | translate }} / 團層級連結</h2>
+              <h2>{{ 'adminPage.groupLinksTitle' | translate }}</h2>
               @if (copyLinkErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
               <div class="link-section">
-                <p>加入連結</p>
+                <h3>{{ 'adminPage.joinLinkTitle' | translate }}</h3>
                 <qrcode [qrdata]="joinLinkUrl()" [width]="128" errorCorrectionLevel="M" />
                 <input type="text" readonly [value]="joinLinkUrl()" />
                 <button type="button" class="btn btn--secondary" (click)="copyJoinLink()">
@@ -67,7 +67,7 @@
                 </button>
               </div>
               <div class="link-section">
-                <p>{{ 'courtManagement.allCourtsTitle' | translate }}</p>
+                <h3>{{ 'courtManagement.allCourtsTitle' | translate }}</h3>
                 <qrcode [qrdata]="allCourtsLinkUrl()" [width]="128" errorCorrectionLevel="M" />
                 <input type="text" readonly [value]="allCourtsLinkUrl()" />
                 <button type="button" class="btn btn--secondary" (click)="copyAllCourtsLink()">
@@ -95,6 +95,8 @@
                     [groupId]="groupId"
                     [roundPhase]="sched.round_phase"
                     [roster]="sched.roster"
+                    [refreshKey]="scheduleVersion()"
+                    [autoNextRound]="sched.auto_next_round"
                   />
                 }
 
@@ -127,8 +129,16 @@
                                   }
                           }}
                         </p>
+                        @for (swap of next.substitutions ?? []; track swap.resting.roster_entry_id) {
+                          <p class="next-up__substitution">
+                            {{
+                              'restToggle.substitutionNote'
+                                | translate: { substitute: swap.substitute.nickname, resting: swap.resting.nickname }
+                            }}
+                          </p>
+                        }
                       } @else {
-                        <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+                        <p>{{ waitingReasonKey(court.waiting_reason) | translate }}</p>
                       }
                     </div>
                   }
@@ -147,6 +157,18 @@
                     />
                     {{ 'scheduleManagement.autoNextRound' | translate }}
                   </label>
+                }
+
+                @if (sched.scheduling_mechanism === 'fair_rotation' && sched.match_mode === 'doubles') {
+                  <label class="checkbox-label">
+                    <input
+                      type="checkbox"
+                      [checked]="sched.continuous_rotation"
+                      (change)="toggleContinuousRotation($any($event.target).checked)"
+                    />
+                    {{ 'scheduleManagement.continuousRotation' | translate }}
+                  </label>
+                  <p class="section-hint">{{ 'scheduleManagement.continuousRotationHint' | translate }}</p>
                 }
 
                 @if (sched.scheduling_mechanism === 'manual') {
@@ -224,9 +246,25 @@
                   <p>{{ 'scheduleManagement.addGuest.shareLinkHint' | translate }}</p>
                   <qrcode [qrdata]="guest.link" [width]="128" errorCorrectionLevel="M" />
                   <input type="text" readonly [value]="guest.link" />
-                  <button type="button" class="btn btn--secondary" (click)="copyAddedGuestLink()">
-                    {{ (copiedGuestLink() ? 'common.copied' : 'common.copy') | translate }}
-                  </button>
+                  <div class="link-actions">
+                    <button type="button" class="btn btn--secondary" (click)="copyAddedGuestLink()">
+                      {{ (copiedGuestLink() ? 'common.copied' : 'common.copy') | translate }}
+                    </button>
+                    <a
+                      class="btn btn--line"
+                      target="_blank"
+                      rel="noopener"
+                      [href]="
+                        lineShareUrl(
+                          guest.link,
+                          'scheduleManagement.addGuest.lineShareMessage'
+                            | translate: { nickname: guest.nickname }
+                        )
+                      "
+                    >
+                      {{ 'scheduleManagement.addGuest.shareToLine' | translate }}
+                    </a>
+                  </div>
                   @if (copyGuestLinkErrorKey(); as key) {
                     <p role="alert">{{ key | translate }}</p>
                   }
@@ -238,11 +276,14 @@
               @if (regenerateGuestLinkErrorKey(); as key) {
                 <p role="alert">{{ key | translate }}</p>
               }
+              @if (restErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
               @if (schedule(); as sched) {
                 <ul class="roster-list">
                   @for (member of sched.roster; track member.roster_entry_id) {
                     <li class="card friend-row">
-                      <span class="friend-row__avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
+                      <span class="avatar" aria-hidden="true">{{ member.nickname.charAt(0) }}</span>
                       <span class="friend-row__identity">
                         <span class="nickname">{{ member.nickname }}</span>
                         @if (member.currently_playing) {
@@ -252,6 +293,9 @@
                                (no longer meaningful) once the group is on an algorithmic
                                scheduling mechanism — only manual mode still updates it. -->
                           <span class="status-badge">{{ 'scheduleManagement.waitCountLabel' | translate: { count: member.wait_count } }}</span>
+                        }
+                        @if (member.resting) {
+                          <span class="status-badge status-badge--muted">{{ 'scheduleManagement.restingBadge' | translate }}</span>
                         }
                       </span>
                       @if (member.member_id && inviteCandidateFor(member.member_id); as candidate) {
@@ -263,6 +307,15 @@
                           [nickname]="member.nickname"
                         />
                       }
+                      <!-- 037: every row, the creator's too — resting removes nobody. -->
+                      <app-rest-toggle-button
+                        [resting]="!!member.resting"
+                        [currentlyPlaying]="member.currently_playing"
+                        [pending]="restPendingIds().has(member.roster_entry_id)"
+                        [compact]="true"
+                        [nickname]="member.nickname"
+                        (toggled)="setMemberRest(member.roster_entry_id, member.nickname, $event)"
+                      />
                       @if (member.is_guest) {
                         <button
                           type="button"
@@ -313,18 +366,27 @@
                   <ul class="invite-friend-list">
                     @for (friend of friends; track friend.member_id) {
                       <li class="card friend-row">
-                        <span class="friend-row__avatar" aria-hidden="true">{{ (friend.nickname || friend.user_number).charAt(0) }}</span>
+                        <span class="avatar" aria-hidden="true">{{ (friend.nickname || friend.user_number).charAt(0) }}</span>
                         <span class="friend-row__identity">
                           <span class="nickname">{{ friend.nickname }}</span>
                           <span
                             class="status-badge"
                             [class.status-badge--success]="friend.invite_status === 'accepted' || friend.invite_status === 'already_member'"
-                            [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated'"
+                            [class.status-badge--danger]="friend.invite_status === 'declined' || friend.invite_status === 'invalidated' || friend.invite_status === 'cancelled'"
                           >
                             {{ ('inviteSection.status.' + friend.invite_status) | translate }}
                           </span>
                         </span>
-                        @if (friend.invite_status === 'not_invited' || friend.invite_status === 'declined' || friend.invite_status === 'invalidated') {
+                        @if (friend.invite_status === 'pending') {
+                          <button
+                            type="button"
+                            class="btn btn--secondary"
+                            [disabled]="cancellingInviteId() === friend.invite_id"
+                            (click)="cancelInvite(friend)"
+                          >
+                            {{ 'inviteSection.cancelButton' | translate }}
+                          </button>
+                        } @else if (friend.invite_status !== 'accepted' && friend.invite_status !== 'already_member') {
                           <button
                             type="button"
                             class="btn btn--secondary"
@@ -339,7 +401,7 @@
                   </ul>
                 }
               } @else {
-                <p>{{ 'common.loading' | translate }}</p>
+                <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
               }
             </section>
           }
@@ -508,6 +570,26 @@
               }
             </section>
 
+            <section class="card">
+              <h2>{{ 'adminPage.detailedScoringSectionTitle' | translate }}</h2>
+              <p class="section-hint">{{ 'adminPage.detailedScoringHint' | translate }}</p>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  [checked]="view.detailed_scoring_enabled"
+                  [disabled]="detailedScoringPending()"
+                  (change)="toggleDetailedScoring($any($event.target).checked)"
+                />
+                {{ 'adminPage.detailedScoringToggle' | translate }}
+              </label>
+              @if (detailedScoringSaved()) {
+                <span class="status-badge status-badge--success">{{ 'adminPage.saveSuccess' | translate }}</span>
+              }
+              @if (detailedScoringErrorKey(); as key) {
+                <p role="alert">{{ key | translate }}</p>
+              }
+            </section>
+
             <section class="card card--danger-zone">
               <h2>{{ 'adminPage.dangerZoneSectionTitle' | translate }}</h2>
               <button type="button" class="btn btn--danger" (click)="openDisbandDialog()">{{ 'adminPage.disband' | translate }}</button>
@@ -549,6 +631,7 @@
 
 <app-confirm-dialog
   #nextRoundDialog
+  variant="primary"
   [title]="
     (hasUnfinishedMatches()
       ? 'scheduleManagement.nextRoundConfirmTitle'
@@ -566,6 +649,7 @@
 
 <app-confirm-dialog
   #endRoundDialog
+  variant="primary"
   [title]="'scheduleManagement.endRoundConfirmTitle' | translate"
   [body]="'scheduleManagement.endRoundConfirmBody' | translate"
   (confirmed)="confirmEndRound()"
@@ -579,4 +663,15 @@
   "
   [body]="'scheduleManagement.kickMemberConfirmBody' | translate"
   (confirmed)="confirmKickMember()"
+/>
+
+<app-confirm-dialog
+  #restEndsRoundDialog
+  [title]="(restEndsRoundTarget()?.title ?? 'restToggle.endsRound.title') | translate"
+  [body]="
+    (restEndsRoundTarget()?.body ?? 'restToggle.endsRound.adminBody')
+      | translate: { nickname: restEndsRoundTarget()?.nickname, count: restEndsRoundTarget()?.count }
+  "
+  [confirmLabel]="'restToggle.endsRound.confirm' | translate"
+  (confirmed)="confirmRestEndingRound()"
 />

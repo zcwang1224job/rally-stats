@@ -1,0 +1,80 @@
+@let found = insights();
+
+@if (loading() && !found) {
+  <section class="insights" [class.card]="!bare()" aria-busy="true">
+    @if (!bare()) {
+      <h2 class="insights__title">{{ 'playerInsights.title' | translate }}</h2>
+    }
+    <p class="insights__note" data-loading>{{ 'playerInsights.loading' | translate }}</p>
+  </section>
+} @else if (found) {
+  <section class="insights" [class.card]="!bare()" [attr.data-status]="found.status">
+    @if (!bare()) {
+      <h2 class="insights__title">{{ 'playerInsights.title' | translate }}</h2>
+    }
+
+    @if (found.status === 'ok') {
+      <div class="insights__lists">
+        @for (section of sections(); track section.list) {
+          <section class="insights__list" [attr.data-list]="section.list">
+            <h3 class="insights__list-title">{{ section.titleKey | translate }}</h3>
+            @if (section.items.length === 0) {
+              <p class="insights__note" data-list-empty>{{ section.emptyKey | translate }}</p>
+            } @else {
+              <ul class="insights__items">
+                @for (insight of section.items; track $index) {
+                  <li>
+                    <button
+                      type="button"
+                      class="insight"
+                      [attr.data-rule]="insight.rule"
+                      [attr.data-tone]="tone(insight)"
+                      [attr.data-level]="insight.level"
+                      (click)="pick(insight)"
+                    >
+                      <span class="insight__tone">
+                        <span class="insight__icon" aria-hidden="true">{{ icon(insight) }}</span>
+                        {{ toneKey(insight) | translate }}
+                      </span>
+                      <span class="insight__sentence" data-sentence>
+                        {{ sentenceKey(insight) | translate: sentenceParams(insight) }}
+                      </span>
+                      <span class="insight__evidence" data-evidence>
+                        {{ evidenceKey(insight) | translate: evidenceParams(insight) }}
+                      </span>
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+        }
+      </div>
+    } @else {
+      <p class="insights__note" data-status-note>
+        {{
+          (found.status === 'balanced'
+            ? 'playerInsights.status.balanced'
+            : 'playerInsights.status.insufficientData'
+          ) | translate
+        }}
+      </p>
+    }
+
+    @if (pendingBenchmark()) {
+      <p class="insights__note" data-benchmark-pending aria-live="polite">
+        {{ 'playerInsights.benchmarkPending' | translate }}
+      </p>
+    }
+    @if (benchmarkOmittedByFilters()) {
+      <p class="insights__note" data-benchmark-omitted>
+        {{ 'playerInsights.benchmarkOmittedByFilters' | translate }}
+      </p>
+    }
+    @if (found.benchmark_group_name; as group) {
+      <p class="insights__note" data-benchmark-group>
+        {{ 'playerInsights.benchmarkIncluded' | translate: { group: group } }}
+      </p>
+    }
+  </section>
+}

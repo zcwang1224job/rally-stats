@@ -1,0 +1,82 @@
+@use '../derived-blocks';
+
+// `min-width: 0`: the host sits in a flex column (match-derived-stats) whose
+// items default to `min-width: auto` — without this the wide player table
+// would stretch the section past the viewport instead of scrolling inside
+// `.ending-table-scroll`.
+:host {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ending-coverage {
+  margin-top: 0;
+  margin-bottom: var(--space-sm);
+}
+
+// A team's line: "★ 7 winners   ✕ 5 errors   (out 2 · net 1 · …)". The
+// icon is what separates the two kinds from each other (FR-014) — the
+// colour below is only a reinforcement.
+.ending-kind {
+  display: inline-block;
+  margin-right: var(--space-md);
+  white-space: nowrap;
+}
+
+.ending-kind__icon {
+  display: inline-block;
+  width: 1.1em;
+  text-align: center;
+  font-size: 0.85em;
+}
+
+.ending-kind--winner .ending-kind__icon {
+  color: var(--color-positive);
+}
+
+.ending-kind--error .ending-kind__icon {
+  color: var(--color-negative);
+}
+
+.ending-breakdown {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+// Six numeric columns don't fit a phone: the table scrolls sideways inside
+// the block instead of squeezing the headers into unreadable stacks.
+.ending-table-scroll {
+  margin-top: var(--space-sm);
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ending-table {
+  min-width: 440px;
+
+  thead th,
+  tbody th {
+    white-space: nowrap;
+  }
+
+  // "得 11／失 0" is one short phrase; never one word per line.
+  .derived-table__names {
+    white-space: nowrap;
+  }
+
+  td {
+    text-align: right;
+    padding-right: var(--space-md);
+  }
+}
+
+.ending-table__group {
+  text-align: center;
+  border-bottom-style: dashed;
+}
+
+.ending-table__muted {
+  color: var(--color-text-muted);
+}

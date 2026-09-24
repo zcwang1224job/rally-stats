@@ -1,12 +1,17 @@
 """Pydantic request/response schemas for the schedule domain, per
 specs/003-schedule-rotation/contracts/schedule-api.md."""
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 Team = Literal["A", "B"]
-WaitingReason = Literal["manual_assignment", "no_queued_match"]
+# 037-rest-ready-toggle adds: held_for_rest (every queued match is waiting on
+# a resting player) and not_enough_ready (continuous rotation can't make a
+# four with the ready players while someone rests).
+WaitingReason = Literal["manual_assignment", "no_queued_match", "held_for_rest", "not_enough_ready"]
+RestEffect = Literal["held", "substitute"]
 # 018-plan-then-start: derived (not stored) round state for the algorithmic
 # mechanisms' "規劃賽程安排" -> "Next Round" two-step admin flow — always
 # None for scheduling_mechanism == "manual", which has no plan/start split.
@@ -28,9 +33,37 @@ class ParticipantSummary(BaseModel):
     member_id: str | None = None
 
 
+class RosterSummary(BaseModel):
+    roster_entry_id: str
+    nickname: str
+
+
+class SubstitutionPreview(BaseModel):
+    """037: who plays in place of whom when the previewed match is called."""
+
+    resting: RosterSummary
+    substitute: RosterSummary
+
+
 class NextUpPreview(BaseModel):
     match_id: str
+    # 037: the lineup that will actually play — substitutes included.
     participants: list[ParticipantSummary]
+    substitutions: list[SubstitutionPreview] = []
+
+
+class ServeStationInfo(BaseModel):
+    """029-serve-rotation-display: who's serving and where everyone stands
+    right now — mirrors 030-score-serve-record's `ScoreServeRecord` column
+    shape 1:1 (this is the live/current equivalent of that per-point
+    snapshot), computed by the shared `_compute_station()` (service.py)."""
+
+    server_roster_entry_id: str
+    server_team: Team
+    team_a_right_roster_entry_id: str | None
+    team_a_left_roster_entry_id: str | None
+    team_b_right_roster_entry_id: str | None
+    team_b_left_roster_entry_id: str | None
 
 
 class MatchSummary(BaseModel):
@@ -39,6 +72,31 @@ class MatchSummary(BaseModel):
     participants: list[ParticipantSummary]
     score_a: int
     score_b: int
+    # feature/control-panel-scoreboard-style: lets the admin page's court-
+    # control block show the same serve-rotation stations as the scoreboard/
+    # public control panel — None when the match has no serve state yet
+    # (research.md Decision 4, 029-serve-rotation-display — a match created
+    # before 030-score-serve-record's migration).
+    serve: ServeStationInfo | None = None
+    # 038-admin-detailed-scoring: the match's OWN snapshot
+    # (matches.detailed_scoring_enabled), not a live read of the group's
+    # current setting — same rule as MatchLiveDetail's identical field below.
+    # Lets the admin page's court-control block pick the scoring UI (plain
+    # +1/-1 vs. score-then-record) for this specific match, so a mid-match
+    # toggle of the group setting can't change how a match already underway
+    # behaves (constitution III).
+    detailed_scoring_enabled: bool = False
+    # 039-match-point-confirm: this match's OWN scoring rules, so the scoring
+    # screens can tell whether the next point would END the match and warn
+    # first (simple mode has no way back — see the feature spec). Snapshots,
+    # like detailed_scoring_enabled above, so changing the group setting
+    # mid-match can't move the warning's trigger point (constitution III).
+    # Required, no default: 0 would make every point look like match point.
+    # `deuce_threshold` is deliberately NOT sent — it takes no part in the
+    # win test (see match_wins() in service.py), and exposing it would only
+    # invite someone to use it.
+    target_score: int
+    cap_score: int
 
 
 class CourtScheduleStatus(BaseModel):
@@ -64,12 +122,19 @@ class RosterScheduleStatus(BaseModel):
     # and admin-facing schedule pages, same builder) is the "加好友" entry
     # point's canonical home — None for Guests (mirrors is_guest).
     member_id: str | None = None
+    # 037-rest-ready-toggle: resting players stay on the roster, marked.
+    resting: bool = False
+    resting_since: datetime | None = None
+    # 037: fixed_partner only — who they team with in this round's matches.
+    partner_roster_entry_id: str | None = None
 
 
 class ScheduleResponse(BaseModel):
     current_round_number: int
     scheduling_mechanism: str
+    match_mode: str
     auto_next_round: bool
+    continuous_rotation: bool
     round_phase: RoundPhase | None
     courts: list[CourtScheduleStatus]
     roster: list[RosterScheduleStatus]
@@ -89,11 +154,34 @@ class RoundMatchSummary(BaseModel):
     score_a: int
     score_b: int
     winner_team: Team | None
+    # 037-rest-ready-toggle: only for a queued match with a resting player —
+    # "held" (kept for their return) or "substitute" (a substitute plays).
+    rest_effect: RestEffect | None = None
+
+
+class WaitingOnRest(BaseModel):
+    """037 FR-021: queued matches of this round waiting on resting players."""
+
+    match_count: int
+    players: list[RosterSummary]
+    # The round can't go on without them (nothing on court, nothing callable).
+    stalled: bool
 
 
 class RoundMatchesResponse(BaseModel):
     round_number: int
     matches: list[RoundMatchSummary]
+    # queued + in_progress matches still to finish this round
+    remaining_count: int = 0
+    # Rough time until the round's last match ends — see
+    # service.py `_estimate_remaining_minutes()`. None when nothing remains.
+    estimated_remaining_minutes: int | None = None
+    # Active members with no match at all in this round (a bye, or a
+    # fair_rotation doubles player who didn't make the cut). Not resting
+    # players: that's their choice, not a bye (037).
+    sitting_out: list[RosterSummary] = []
+    # 037: None when no queued match is waiting on a resting player.
+    waiting_on_rest: WaitingOnRest | None = None
 
 
 class AutoNextRoundRequest(BaseModel):
@@ -104,9 +192,12 @@ class AutoNextRoundResponse(BaseModel):
     auto_next_round: bool
 
 
-class RosterSummary(BaseModel):
-    roster_entry_id: str
-    nickname: str
+class ContinuousRotationRequest(BaseModel):
+    enabled: bool
+
+
+class ContinuousRotationResponse(BaseModel):
+    continuous_rotation: bool
 
 
 class PartnershipSummary(BaseModel):
@@ -199,6 +290,28 @@ class KickMemberResponse(BaseModel):
     status: str
 
 
+class RestStateRequest(BaseModel):
+    """037-rest-ready-toggle contracts/rest-state-api.md. The target state,
+    not a toggle, so a double tap or the player and an admin pressing at
+    once can't cancel each other out."""
+
+    resting: bool
+    # Confirms a rest that ends the round on the spot (REST_ENDS_ROUND).
+    confirm_round_end: bool = False
+    # Self-service endpoint only, for a Guest; ignored on the admin one.
+    guest_session_token: str | None = None
+
+
+class RestStateResponse(BaseModel):
+    roster_entry_id: str
+    resting: bool
+    resting_since: datetime | None
+    # With resting: the player is on court now and rests after this match.
+    currently_playing: bool
+    # False when the entry was already in the requested state (no-op).
+    changed: bool
+
+
 class RegenerateGuestLinkResponse(BaseModel):
     roster_entry_id: str
     guest_session_token: str
@@ -212,6 +325,59 @@ class ScoreRequest(BaseModel):
     delta: Literal[1, -1]
 
 
+# 032-cancel-score: `side` MUST be the team `undo_match_completion()`
+# (service.py) finds as `match.winner_team` — a plain `-1` (ScoreRequest
+# above) can't target an already-`completed` match at all.
+class UndoMatchCompletionRequest(BaseModel):
+    side: Team
+
+
+# 035-point-ending-type: how a rally ended. 'winner' is the scorer's doing;
+# the other four are the loser's errors. `group/match_stats.py` keeps its own
+# copy of this Literal (a pure module can't import from here) — a test in
+# test_match_stats.py pins the two together.
+EndingType = Literal["winner", "out", "net", "serve_fault", "other_error"]
+
+
+# 032-score-then-record: attaches shot-placement detail to a `+1` point
+# that's already been applied via a plain ScoreRequest above — the score
+# itself is never blocked on the scorer filling this in (see
+# attach_shot_placement() in service.py). `score_event_id` pins this to the
+# exact point being annotated; `roster_entry_id`'s team is server-validated
+# against that ScoreEvent's own `side` (it's no longer inferred from the
+# player, since which side scored was already decided).
+class RecordShotPlacementRequest(BaseModel):
+    score_event_id: str
+    # 032-optional-shot-placement-detail: every field below is independently
+    # optional — the scorer can confirm with only whatever they actually
+    # picked (see attach_shot_placement()) rather than being forced to fill
+    # in all of them before submitting anything.
+    roster_entry_id: str | None = None
+    # The opposing-team player at fault for the rally ending —
+    # attach_shot_placement() enforces it's on the other team from
+    # roster_entry_id (and, for an in-bounds landing, that the credited side
+    # matches which half of the court it landed in).
+    losing_roster_entry_id: str | None = None
+    # data-model.md: [-0.3, 1.3] is wider than the [0, 1] court itself (FR-010
+    # allows a genuinely out-of-bounds landing) but still rejects nonsense
+    # input. Pydantic enforces this at the request boundary;
+    # attach_shot_placement() re-checks it too so the same
+    # INVALID_LANDING_COORDINATES error_code is reachable when that function
+    # is called directly (unit tests, defense in depth per Constitution X).
+    # Both null or both set — attach_shot_placement() rejects one without
+    # the other.
+    landing_x: float | None = Field(default=None, ge=-0.3, le=1.3)
+    landing_y: float | None = Field(default=None, ge=-0.3, le=1.3)
+    # 035-point-ending-type: how the rally ended; omitted/null = not recorded.
+    # Valid on its own, with none of the fields above. The picker pre-selects
+    # it from the landing, but the server stores exactly what arrives here.
+    ending_type: EndingType | None = None
+
+
+class ShotPlacementAttachResponse(BaseModel):
+    recorded: bool = True
+
+
 class ScoreMutationResult(BaseModel):
     applied: bool
     match_id: str
@@ -219,20 +385,22 @@ class ScoreMutationResult(BaseModel):
     score_a: int
     score_b: int
     winner_team: Team | None
-
-
-class ServeStationInfo(BaseModel):
-    """029-serve-rotation-display: who's serving and where everyone stands
-    right now — mirrors 030-score-serve-record's `ScoreServeRecord` column
-    shape 1:1 (this is the live/current equivalent of that per-point
-    snapshot), computed by the shared `_compute_station()` (service.py)."""
-
-    server_roster_entry_id: str
-    server_team: Team
-    team_a_right_roster_entry_id: str | None
-    team_a_left_roster_entry_id: str | None
-    team_b_right_roster_entry_id: str | None
-    team_b_left_roster_entry_id: str | None
+    # 032-score-then-record: the ScoreEvent this mutation created — `None`
+    # when `applied` is false, or for a mutation that isn't a score change
+    # (e.g. end_match_early()). A `+1`'s caller uses this to attach a
+    # ShotPlacementRecord afterward (POST .../shot-placement) without
+    # blocking the score itself on that follow-up UI.
+    score_event_id: str | None = None
+    # feature/control-panel-scoreboard-style: the acting client's own +1/-1
+    # request previously only got score_a/score_b back — it had to wait for
+    # its own match.scoreUpdated realtime echo to learn the new serve
+    # rotation, which meant the station display went stale (or never
+    # updated at all, if that echo didn't reach it) right after the very
+    # button press that changed it. Riding the same already-computed
+    # station on this direct response removes that dependency. `None` when
+    # `applied` is false, when the match just ended (no more serve state to
+    # show), or for a mutation with no serve concept (end_match_early()).
+    serve: ServeStationInfo | None = None
 
 
 class MatchLiveDetail(BaseModel):
@@ -244,6 +412,16 @@ class MatchLiveDetail(BaseModel):
     # None when the match has no serve state yet (research.md Decision 4 —
     # a match created before 030-score-serve-record's migration).
     serve: ServeStationInfo | None = None
+    # 031-shot-placement-scoring: the match's OWN snapshot (matches.detailed_
+    # scoring_enabled), not a live read of the group's current setting — see
+    # contracts/score-detailed-api.md. Tells the frontend which scoring UI
+    # (plain +1/-1 vs. tap-the-court) to render for this specific match.
+    detailed_scoring_enabled: bool = False
+    # 039-match-point-confirm: this match's own scoring rules — see the
+    # identical pair on MatchSummary above for why they're snapshots, why
+    # they have no default, and why deuce_threshold is deliberately absent.
+    target_score: int
+    cap_score: int
 
 
 class CourtLiveState(BaseModel):

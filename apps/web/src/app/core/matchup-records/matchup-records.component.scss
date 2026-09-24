@@ -1,0 +1,183 @@
+@use '../../../styles/breakpoints';
+
+:host {
+  display: block;
+  min-width: 0;
+  // Spacing comes from the page's .section-stack.
+}
+
+.matchups__title {
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-bold);
+  // The whole summary row is the tap target (one line, full touch height).
+  line-height: var(--touch-target-min);
+  cursor: pointer;
+}
+
+.matchups__empty {
+  margin: var(--space-sm) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.matchups__highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-md);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-caption);
+
+  li {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-xs);
+  }
+}
+
+.matchups__highlight-label,
+.matchups__highlight-figure {
+  color: var(--color-text-muted);
+}
+
+.matchups__sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: var(--space-sm) 0;
+  font-size: var(--font-size-caption);
+}
+
+.matchups__sort-label {
+  color: var(--color-text-muted);
+}
+
+.matchups__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Same leaderboard look as the opponent ranking this replaces: a win-rate bar
+// per row rather than a bare number. On a phone the bar drops out first and
+// the figures wrap under the name — never a horizontal scroll (SC-010).
+.matchup {
+  display: grid;
+  grid-template-columns: minmax(4rem, auto) 1fr auto auto auto;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-xs) 0;
+  font-size: var(--font-size-caption);
+  text-align: start;
+}
+
+.matchup--button {
+  min-height: var(--touch-target-min);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--color-text-muted);
+    background: var(--color-surface);
+  }
+}
+
+.matchup__who {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.matchup__name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--font-weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.matchup__flag {
+  padding: 0 var(--space-xs);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.matchup__bar-track {
+  height: 6px;
+  min-width: 40px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+}
+
+.matchup__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-series-1);
+}
+
+.matchup__record,
+.matchup__margin-label {
+  color: var(--color-text-muted);
+}
+
+.matchup__record,
+.matchup__rate,
+.matchup__margin {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.matchup__rate {
+  min-width: 2.5em;
+  font-weight: var(--font-weight-bold);
+  text-align: end;
+}
+
+.matchup__margin {
+  min-width: 4.5em;
+  text-align: end;
+}
+
+@media (max-width: #{breakpoints.$breakpoint-tablet - 1px}) {
+  .matchup {
+    grid-template-columns: 1fr auto auto;
+    row-gap: 2px;
+  }
+
+  .matchup__bar-track {
+    display: none;
+  }
+
+  .matchup__record {
+    grid-column: 1 / -1;
+    order: 9;
+  }
+}
+
+// 036 FR-010: a matchup sentence in the summary scrolls to its row.
+.matchups__item:target,
+.matchups__item[data-focused] {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}

@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from app.domains.friend.schemas import FriendRequestStatus, FriendSummary
+from app.domains.group_invite.schemas import GroupInviteStatus
 
 NotificationType = Literal["friend_request", "group_invite", "group_invite_capacity_full"]
 
@@ -26,7 +27,14 @@ class GroupInviteNotificationDetail(BaseModel):
     invite_id: str
     group_id: str
     group_name: str
-    status: Literal["pending", "accepted", "declined", "invalidated"]
+    # Reuses the group_invite domain's own Literal rather than
+    # restating it (same as `status: FriendRequestStatus` above): a
+    # hand-copied list silently rots the moment that state machine
+    # grows, and it rots into a 500 — response validation rejects the
+    # new value, so the whole notification list dies rather than just
+    # that one row (bug report: 團長取消邀請後，受邀者點通知鈴鐺會顯示
+    # 發生未預期的錯誤).
+    status: GroupInviteStatus
     inviter: FriendSummary
     invitee: FriendSummary
 

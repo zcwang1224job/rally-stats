@@ -1,0 +1,515 @@
+// ---------------------------------------------------------------------------
+// Dialog shell: one screen, no tabs. A flex column in which only the court
+// stage shrinks — header, ending chips, players and actions keep their
+// natural height, so confirm is always in view without scrolling (035
+// FR-013). `[open]` only: a closed <dialog> must stay display:none.
+// ---------------------------------------------------------------------------
+.shot-placement-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+// Phones: every pixel of width goes to the court.
+.shot-placement-dialog--compact {
+  padding: var(--space-md);
+}
+
+.picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+
+  h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--font-size-heading);
+  }
+}
+
+// Undoes the point itself — deliberately small and away from the thumb.
+.cancel-score-button {
+  flex: none;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: var(--font-size-caption);
+}
+
+.picker-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  // Last resort only (a very short desktop window): the court already
+  // shrinks first, see .court-stage.
+  overflow-y: auto;
+  // Lets .court-stage size itself from this box's width (cqw).
+  container-type: inline-size;
+}
+
+.landing-section {
+  flex: 0 1 auto;
+  // Never below the court stage's own minimum: shrinking past it would
+  // let the court spill over the ending chips below.
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-column {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+// ---------------------------------------------------------------------------
+// Court. .court-stage asks for the height the court needs at full width
+// but may shrink below it; .court-viewport is then the largest box of the
+// right aspect ratio that fits the stage (container units of the stage).
+//
+// Without container queries (iOS 15 and older) the court simply takes the
+// full width at its own aspect ratio and doesn't shrink. The cq rules sit
+// behind @supports because they use var(): a browser that can't resolve
+// the units would not fall back to an earlier declaration, it would drop
+// to `width: auto` — a zero-width court, since everything inside it is
+// absolutely positioned.
+// ---------------------------------------------------------------------------
+.court-stage {
+  flex: 0 1 auto;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.court-viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--court-aspect);
+  overflow: hidden;
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  // The dashed, faintly filled margin reads as "out of bounds".
+  background-color: color-mix(in srgb, var(--color-surface-alt) 40%, transparent);
+
+  // Team-coloured bar on each visible baseline's outer edge: whose half
+  // this is (the same red/blue as the board and the player headers).
+  &::before,
+  &::after {
+    content: none;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  &.court-viewport--edge-left::before {
+    content: '';
+    left: 0;
+    background: var(--edge-left);
+  }
+
+  &.court-viewport--edge-right::after {
+    content: '';
+    right: 0;
+    background: var(--edge-right);
+  }
+}
+
+@supports (width: 1cqw) {
+  .court-stage {
+    height: calc(100cqw / var(--court-aspect));
+    container-type: size;
+  }
+
+  .court-viewport {
+    width: min(100cqw, 100cqh * var(--court-aspect));
+  }
+}
+
+// FR-010: the whole window is the pointer/keyboard target, out-of-bounds
+// margin included (see the component's doc comment).
+.court-area {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+}
+
+// The <app-court-diagram> host: the reference rectangle for the pointer
+// math. Its box comes from courtGeometry() (template style bindings); the
+// drawing itself is CourtDiagramComponent's own. This rule outranks that
+// component's `:host { position: relative; aspect-ratio: 2 / 1 }`.
+.court {
+  position: absolute;
+  aspect-ratio: auto;
+}
+
+.court-notice,
+.half-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  pointer-events: none;
+  z-index: 1;
+}
+
+// Fixed to the top out-of-bounds margin (height from courtGeometry()), so
+// a warning appearing or going away never moves the court or anything
+// below it. Two short lines at most.
+.court-notice {
+  top: 0;
+  justify-content: center;
+  padding: 0 var(--space-sm);
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  text-align: center;
+  text-wrap: balance;
+
+  &.hint--warning {
+    color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  }
+}
+
+.court-notice--attention {
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.half-label {
+  bottom: 0;
+  padding: 0 var(--space-sm);
+  font-weight: var(--font-weight-bold);
+}
+
+.half-label--left {
+  left: 0;
+}
+
+.half-label--right {
+  right: 0;
+}
+
+// The peek of the other half, past the net: one tap shows that half.
+.half-switch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-width: var(--touch-target-min);
+  padding: 0;
+  border: none;
+  // Dims the peeked lines rather than hiding them.
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  color: var(--color-text-muted);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-caption);
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+
+  app-icon {
+    font-size: 1.25rem;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+}
+
+// Points the scorer at the strip while the out-on-the-wrong-side notice
+// is up.
+.half-switch--attention {
+  background: color-mix(in srgb, var(--color-brand-primary) 18%, var(--color-surface));
+  color: var(--color-brand-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.half-switch--left {
+  left: 0;
+  border-right: 1px solid var(--color-border);
+}
+
+.half-switch--right {
+  right: 0;
+  border-left: 1px solid var(--color-border);
+}
+
+// The picked point is on the half that's out of view.
+.half-switch__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-positive);
+  border: 2px solid var(--color-surface);
+}
+
+// ---------------------------------------------------------------------------
+// Magnifier: a held-and-dragged tap raises this fixed circular lens above
+// the finger (component.ts MAGNIFIER_VERTICAL_OFFSET_PX) so the fingertip
+// never covers the spot it's magnifying. .magnifier-content is a second
+// CourtDiagramComponent at the court's own pixel size, scaled up around
+// the point (magnifierContentStyle()).
+// ---------------------------------------------------------------------------
+.magnifier {
+  position: fixed;
+  width: 110px;
+  height: 110px;
+  margin-left: -55px;
+  margin-top: -55px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--color-surface);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.magnifier-content {
+  transform-origin: 0 0;
+}
+
+// ---------------------------------------------------------------------------
+// Ending type, players, actions.
+// ---------------------------------------------------------------------------
+.hint {
+  color: var(--color-text-muted);
+  margin: var(--space-sm) 0 0;
+}
+
+.hint--warning {
+  color: var(--color-danger);
+}
+
+.caption {
+  margin: var(--space-sm) 0 var(--space-xs);
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+}
+
+.ending-hint {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+// "Auto" badge in the top-right corner of an auto-filled chip — out of
+// the flow, so the chip keeps its size.
+.ending-auto-hint {
+  position: absolute;
+  top: -6px;
+  right: -2px;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-ink);
+  color: var(--color-ink-text);
+  font-size: 0.625rem;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+// 035: all five chips in one fixed row — nothing scrolls out of sight and
+// the row never grows the dialog. A long label wraps inside its own chip.
+.ending-chips {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-xs);
+}
+
+.ending-chip {
+  position: relative;
+  min-width: 0;
+  // Tight sides: a four-character label fits one line on a 360px phone.
+  padding: var(--space-xs) 2px;
+  text-wrap: balance;
+  font-size: var(--font-size-caption);
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+
+  &[aria-disabled='true'] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+// `.btn.…--selected` (+ the hover form): outranks the global
+// `.btn--secondary:hover:not(:disabled)` and `.btn--secondary[aria-pressed]`
+// rules, which would otherwise repaint a selected chip/player.
+.btn.ending-chip--selected,
+.btn.ending-chip--selected:hover:not(:disabled),
+.btn.player--selected,
+.btn.player--selected:hover:not(:disabled) {
+  background: var(--color-brand-primary);
+  color: var(--color-brand-primary-contrast);
+  border-color: var(--color-brand-primary);
+  box-shadow: none;
+}
+
+// A fixed height: the serve-fault badge appearing in the losing side's
+// header must not push the rows below (and so resize the court).
+.team-block__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: 1.5rem;
+  font-weight: var(--font-weight-bold);
+
+  .status-badge {
+    padding: 0 var(--space-xs);
+    line-height: 1.4;
+  }
+}
+
+.team-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+// One team's players side by side in equal columns (two in doubles, one
+// full-width button in singles).
+.players {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-sm);
+  // An empty pool (landing conflict) keeps one row's height, so the court
+  // above doesn't grow and shrink while the scorer fixes the landing.
+  min-height: var(--touch-target-min);
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+.player {
+  min-width: 0;
+}
+
+.player__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The folded player group: one full-width button, exactly one button row
+// tall — the same height as the players it stands in for.
+.secondary-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: 0 var(--space-md);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-brand-primary);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-caption);
+  cursor: pointer;
+}
+
+.secondary-toggle__value {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.players-section {
+  display: flex;
+  flex-direction: column;
+}
+
+// Confirm: the wide primary button at the bottom. Skip: a quiet text
+// button beside it (it keeps the score, only drops the detail).
+.actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: auto;
+  padding-top: var(--space-md);
+}
+
+.confirm-button {
+  flex: 1 1 auto;
+}
+
+.btn.skip-button {
+  flex: none;
+  border-color: transparent;
+  background: none;
+  color: var(--color-text-muted);
+}
+
+// ---------------------------------------------------------------------------
+// Short landscape phone: full screen, court on the left, everything else in
+// a column on the right (the same query as the control panel's own compact
+// landscape layout).
+// ---------------------------------------------------------------------------
+@media (orientation: landscape) and (max-height: 500px) {
+  dialog.shot-placement-dialog {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .picker-header {
+    margin-bottom: var(--space-xs);
+
+    h2 {
+      font-size: var(--font-size-body);
+    }
+  }
+
+  .picker-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: var(--space-md);
+    overflow: hidden;
+  }
+
+  .court-stage {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+  }
+
+  .detail-column {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .actions {
+    padding-top: var(--space-sm);
+  }
+}

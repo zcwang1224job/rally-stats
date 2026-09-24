@@ -1,13 +1,61 @@
+@use '../../../../styles/layout';
+@use '../../../../styles/breakpoints';
+
 :host {
-  display: block;
-  padding: var(--space-md);
-  max-width: 480px;
-  margin: 0 auto;
+  @include layout.page(narrow);
 }
 
-h1 {
-  font-size: var(--font-size-heading);
-  font-weight: var(--font-weight-bold);
+.filters-panel {
+  margin-bottom: var(--space-md);
+}
+
+.filter-form {
+  max-width: none;
+}
+
+.advanced-filters {
+  summary {
+    cursor: pointer;
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-muted);
+    padding: var(--space-xs) 0;
+  }
+
+  &[open] summary {
+    margin-bottom: var(--space-sm);
+  }
+}
+
+.advanced-filters-grid {
+  display: grid;
+  // `minmax(0, …)`, not a bare `1fr` (whose minimum is the content's own
+  // width): Safari gives date/number inputs a ~215px intrinsic width, so
+  // two such columns overflowed the card at tablet/desktop widths.
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-md);
+
+  // Two columns, so each from/to pair shares a row.
+  @media (min-width: breakpoints.$breakpoint-tablet) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  input,
+  select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  // Safari ignores `min-height` on a native <select>, which left 我的身分
+  // shorter than the 團編號 input sharing its row.
+  select {
+    height: var(--touch-target-min);
+  }
+}
+
+.filters-actions {
+  display: flex;
+  gap: var(--space-sm);
 }
 
 .group-list {
@@ -43,23 +91,6 @@ h1 {
   min-height: var(--touch-target-min);
 }
 
-// Same avatar treatment as friend-list's/admin-page's .friend-row__avatar
-// (component-scoped styles don't leak across components, so it's copied
-// rather than shared) — an initial-letter circle, reused here so every
-// "list of things you can tap into" on this page reads consistently.
-.friend-row__avatar {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  background: var(--color-brand-primary);
-  color: var(--color-brand-primary-contrast);
-  font-weight: var(--font-weight-bold);
-  font-size: var(--font-size-body);
-}
 
 .group-row-main__identity {
   flex: 1;
@@ -105,7 +136,7 @@ h1 {
     color: var(--color-text-muted);
   }
 
-  .friend-row__avatar {
+  .avatar {
     background: var(--color-text-muted);
   }
 }

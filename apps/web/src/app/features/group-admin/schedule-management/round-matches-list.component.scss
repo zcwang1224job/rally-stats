@@ -79,9 +79,30 @@
   transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
 }
 
-.swap-hint {
+.swap-hint,
+.round-progress {
   color: var(--color-text-muted);
   font-size: var(--font-size-caption);
+}
+
+// 037-rest-ready-toggle FR-021: matches waiting on resting players. The
+// stalled variant is the one needing the admin — icon and wording carry it,
+// the tint only reinforces (constitution VII).
+.rest-banner {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-caption);
+
+  p {
+    margin: 0;
+  }
+
+  &--stalled {
+    border-color: color-mix(in srgb, var(--color-danger) 28%, white);
+    background: color-mix(in srgb, var(--color-danger) 8%, white);
+    font-weight: var(--font-weight-bold);
+  }
 }
 
 // 賽程規劃/開打後可調整選手——刻意直向排列（隊伍 A 一行、隊伍 B 一行，
@@ -129,15 +150,6 @@
   max-width: 7em;
 }
 
-// 同 partnership-settings 的「點兩人互換」慣例：勾選符號 + aria-pressed
-// 才是實際的選取依據，顏色變化只是輔助（constitution VII）。
-.match-teams .btn.is-selected {
-  background: color-mix(in srgb, var(--color-brand-primary) 15%, white);
-  border-color: var(--color-brand-primary);
-  color: var(--color-brand-primary);
-  font-weight: var(--font-weight-bold);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand-primary) 20%, transparent);
-}
 
 .vs {
   margin: 0;

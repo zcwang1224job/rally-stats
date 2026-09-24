@@ -14,6 +14,7 @@ from app.domains.member.models import Member
 from app.domains.member.service import build_member_match_records
 from app.domains.roster.models import RosterEntry
 from app.domains.schedule.models import Match, MatchParticipant
+from app.system_config.models import SystemConfig
 
 pytestmark = pytest.mark.asyncio
 
@@ -462,3 +463,54 @@ async def test_participant_member_id_populated_for_members_none_for_guests(
     assert team_a_by_nickname["小明"].member_id == str(member.id)
     assert team_a_by_nickname["對手"].member_id == str(opponent.id)
     assert summary.team_b[0].member_id is None
+
+
+async def _member_with_matches(session: AsyncSession, email: str, count: int) -> Member:
+    member = await _make_member(session, email)
+    group = await _make_group(session, f"G-{email[:20]}")
+    me = await _make_entry(session, group, "小明", member.id)
+    opponent = await _make_entry(session, group, "對手", None)
+    for round_number in range(1, count + 1):
+        await _make_completed_match(
+            session, group, round_number=round_number, winner_team="A",
+            team_a=[me.id], team_b=[opponent.id],
+        )
+    return member
+
+
+async def test_pages_by_match_records_page_size_not_the_list_default(
+    db_session: AsyncSession,
+) -> None:
+    """Match records page shorter than other lists (tall scorecard rows):
+    `match_records_page_size`, seeded at 10, not `default_page_size` (20)."""
+    member = await _member_with_matches(db_session, "paging@example.com", 12)
+
+    first = await build_member_match_records(db_session, member.id, page=1)
+    second = await build_member_match_records(db_session, member.id, page=2)
+
+    assert first.total_matches == 12
+    assert first.total_pages == 2
+    assert len(first.matches) == 10
+    assert len(second.matches) == 2
+    # The aggregates still cover every match, not just the page.
+    assert first.total_wins == 12
+
+
+async def test_match_records_page_size_is_read_from_system_config(
+    db_session: AsyncSession,
+) -> None:
+    member = await _member_with_matches(db_session, "paging-config@example.com", 5)
+    row = await db_session.get(SystemConfig, "match_records_page_size")
+    assert row is not None  # seeded by the migration
+    seeded = row.value
+    row.value = "2"
+    await db_session.commit()
+    try:
+        response = await build_member_match_records(db_session, member.id, page=3)
+
+        assert response.total_pages == 3
+        assert len(response.matches) == 1
+    finally:
+        # system_config is seed data, not truncated between tests: put it back.
+        row.value = seeded
+        await db_session.commit()

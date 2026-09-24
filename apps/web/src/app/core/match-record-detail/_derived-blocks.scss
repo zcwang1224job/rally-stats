@@ -1,0 +1,100 @@
+// Table / fact-list / team-label rules shared by the derived blocks of the
+// match detail dialog. Angular scopes styles per component, so
+// `MatchDerivedStatsComponent` (033) and `MatchClutchStatsComponent` (034)
+// each `@use` this partial rather than keeping their own copy.
+
+.derived-empty,
+.derived-note {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.derived-note {
+  font-size: var(--font-size-caption);
+  margin-top: var(--space-sm);
+}
+
+.derived-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-caption);
+  font-variant-numeric: tabular-nums;
+
+  & + & {
+    margin-top: var(--space-md);
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: var(--space-xs) var(--space-sm) var(--space-xs) 0;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: top;
+  }
+
+  thead th {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-caption);
+    font-weight: normal;
+  }
+}
+
+.derived-table__names {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+  font-weight: normal;
+}
+
+.derived-table__rate {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
+}
+
+.derived-facts {
+  margin: 0;
+
+  dt {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-caption);
+    margin-top: var(--space-sm);
+
+    &:first-child {
+      margin-top: 0;
+    }
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+.derived-facts__team {
+  font-weight: var(--font-weight-bold);
+  margin-right: var(--space-xs);
+}
+
+// feature/match-record-detail-scoreboard-style: the SAME team-a/-b color
+// pair the chart, header dot, and event-list rows already key these two
+// teams to (see match-record-detail-dialog.component.scss's fuller
+// comment) — the `-border` shade, dark enough to read as text on this
+// component's plain white surface.
+.team-label {
+  &--a {
+    color: var(--color-team-a-border);
+  }
+
+  &--b {
+    color: var(--color-team-b-border);
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

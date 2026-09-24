@@ -1,14 +1,16 @@
 """Member domain service layer: auth, verification, profile, and search.
 Per specs/006-member-friends/plan.md."""
 
+import asyncio
 import base64
 import hashlib
 import re
 import secrets
 import uuid
 from collections import defaultdict
-from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 from urllib.parse import urlencode
 
@@ -21,15 +23,19 @@ from app.core.email import send_email
 from app.core.errors import ApiError
 from app.core.turnstile import verify_turnstile_token
 from app.domains.friend.service import get_friendship_status
+from app.domains.group import match_stats
 from app.domains.group.models import Group
 from app.domains.group.schemas import (
     MatchRecordDetailResponse,
+    MatchRecordSummary,
+    MatchupHighlights,
+    MatchupRecord,
     MemberMatchRecordsResponse,
     MemberMatchRecordSummary,
-    OpponentRecord,
     RoundWinRatePoint,
 )
 from app.domains.group.service import (
+    MatchStatInputs,
     _compare,
     _completed_matches_query,
     _matches_distinct_terms,
@@ -39,9 +45,12 @@ from app.domains.group.service import (
     build_match_record_detail,
     get_completed_match_or_404,
     get_group_by_id,
+    load_group_completed_matches,
+    load_match_stat_inputs,
     resolve_guest_binding_target,
     verify_ever_group_member,
 )
+from app.domains.member import group_benchmark, insights, matchups, player_dashboard
 from app.domains.member.models import (
     EmailVerificationToken,
     Member,
@@ -51,12 +60,25 @@ from app.domains.member.models import (
 )
 from app.domains.member.oauth_client import OAuthProfile, exchange_code_for_profile
 from app.domains.member.oauth_providers import Provider, get_provider_config
+from app.domains.member.player_identity import PlayerRef, player_key
 from app.domains.member.schemas import (
     SUPPORTED_LANGUAGES,
+    BenchmarkGroupOption,
+    BenchmarkGroupsResponse,
+    ComparisonMetric,
+    DashboardInsights,
+    DashboardMetricValue,
+    GroupBenchmarkGroup,
+    GroupBenchmarkMetric,
+    GroupBenchmarkResponse,
+    HeadToHeadResponse,
+    HeadToHeadTally,
     LoginRecordsResponse,
     LoginRecordSummary,
+    MatchComparisonResponse,
     MemberGroupHistoryResponse,
     MemberGroupStatsResponse,
+    MemberMatchDashboardResponse,
     MyGroupsResponse,
     MyGroupSummary,
     SearchMemberResponse,
@@ -75,6 +97,7 @@ from app.domains.schedule.models import Match, MatchParticipant
 from app.domains.schedule.schemas import ParticipantSummary
 from app.system_config.service import (
     get_default_page_size,
+    get_match_records_page_size,
     get_password_reset_token_ttl_hours,
     get_resend_verification_cooldown_minutes,
     get_verification_token_ttl_hours,
@@ -198,10 +221,20 @@ async def _complete_oauth_login(
     provider: Provider,
     profile: OAuthProfile,
     bind_guest_token: str | None = None,
+    *,
+    user_agent: str | None = None,
 ) -> OAuthCallbackResult:
     """028-guest-stats-binding research.md #3: `bind_guest_token`, when
     given, is attempted after a successful login/registration below — same
-    optional-extra-step pattern in both success branches."""
+    optional-extra-step pattern in both success branches.
+
+    bugfix/oauth-login-record: every successful branch below is a genuine
+    login (returning member, or a brand-new member's first-ever session —
+    OAuth has no separate register-then-verify-then-login sequence the way
+    Email/password does) and MUST record one login record, same as
+    Email/password's `login()` — this was missing entirely before, so an
+    OAuth-only member's "最近登入" list stayed empty no matter how many times
+    they signed in."""
     existing = await _find_oauth_identity(session, provider, profile.sub)
     if existing is not None:
         member = await session.get(Member, existing.member_id)
@@ -217,6 +250,7 @@ async def _complete_oauth_login(
             if bind_guest_token
             else None
         )
+        await record_login(session, member.id, classify_device(user_agent))
         return OAuthCallbackResult(
             intent="login",
             status="success",
@@ -280,6 +314,7 @@ async def _complete_oauth_login(
         if bind_guest_token
         else None
     )
+    await record_login(session, member.id, classify_device(user_agent))
     return OAuthCallbackResult(
         intent="login",
         status="success",
@@ -357,6 +392,7 @@ async def complete_oauth_callback(
     code: str | None,
     state: str | None,
     error: str | None,
+    user_agent: str | None = None,
 ) -> OAuthCallbackResult:
     """contracts/oauth-login-api.md `GET /auth/oauth/{provider}/callback`.
     Every branch below matches one row of that contract's table."""
@@ -397,7 +433,9 @@ async def complete_oauth_callback(
 
     if intent == "link":
         return await _complete_oauth_link(session, provider, profile, oauth_state.member_id)
-    return await _complete_oauth_login(session, provider, profile, oauth_state.bind_guest_token)
+    return await _complete_oauth_login(
+        session, provider, profile, oauth_state.bind_guest_token, user_agent=user_agent
+    )
 
 
 async def _attempt_guest_bind(
@@ -446,7 +484,7 @@ async def complete_guest_bind(
     body ignored), `mode="register"` (US1), `mode="login"` (US2). The
     fourth (OAuth) is `complete_oauth_callback()`'s `bind_guest_token`
     extension above. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
-    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `MEMBER_ALREADY_IN_GROUP`, `INVALID_REQUEST`, `CAPTCHA_INVALID`,
     `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
     roster_entry = await resolve_guest_binding_target(session, guest_session_token)
 
@@ -688,8 +726,8 @@ async def view_member_match_records(
     opponents: list[str] | None = None,
     partners: list[str] | None = None,
     result: Literal["win", "loss"] | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    ended_from: datetime | None = None,
+    ended_before: datetime | None = None,
     round_from: int | None = None,
     round_to: int | None = None,
     self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
@@ -697,6 +735,8 @@ async def view_member_match_records(
     opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
     opponent_score: int | None = None,
     match_mode: Literal["singles", "doubles"] | None = None,
+    partner_key: str | None = None,
+    opponent_key: str | None = None,
 ) -> MemberMatchRecordsResponse:
     """FR-018/FR-019: once authorized, delegates to the SAME
     `build_member_match_records()` the self-viewing `/members/me/
@@ -711,8 +751,8 @@ async def view_member_match_records(
         opponents=opponents,
         partners=partners,
         result=result,
-        date_from=date_from,
-        date_to=date_to,
+        ended_from=ended_from,
+        ended_before=ended_before,
         round_from=round_from,
         round_to=round_to,
         self_score_cmp=self_score_cmp,
@@ -720,6 +760,108 @@ async def view_member_match_records(
         opponent_score_cmp=opponent_score_cmp,
         opponent_score=opponent_score,
         match_mode=match_mode,
+        partner_key=partner_key,
+        opponent_key=opponent_key,
+    )
+
+
+async def view_member_match_dashboard(
+    session: AsyncSession,
+    viewer_id: uuid.UUID,
+    member_id: uuid.UUID,
+    filters: "MemberMatchFilters",
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US5: a friend's dashboard, behind
+    the SAME gate as their match records — 023 settled that the record list
+    and the aggregate stats share one privacy switch, and the dashboard is
+    aggregate stats. Eligibility is re-checked on every call, never cached,
+    and the viewed member is not notified (023 FR-008/FR-011). See
+    `view_member_match_records()`."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    return await build_member_match_dashboard(session, member_id, filters)
+
+
+# 036 US4: a verdict needs this many matches behind BOTH numbers — the same
+# minimum 034 asks of a "recent" value before calling it progress.
+COMPARISON_MIN_MATCHES = 3
+
+
+async def _overall_values(
+    session: AsyncSession, member_id: uuid.UUID
+) -> "tuple[dict[str, player_dashboard.MetricValue], list[FilteredMatch]]":
+    """A member's unfiltered "all" values — what their dashboard shows before
+    any filter — without the trends and landings a comparison has no use for."""
+    filtered = await _filtered_member_matches(session, member_id, MemberMatchFilters())
+    inputs = await load_match_stat_inputs(session, [item.match for item in filtered])
+    samples = [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
+    return player_dashboard.overall_values(samples), filtered
+
+
+def _better(
+    better_when: player_dashboard.BetterWhen | None,
+    friend: player_dashboard.MetricValue | None,
+    me: player_dashboard.MetricValue | None,
+) -> Literal["me", "friend", "tie"] | None:
+    if better_when is None or friend is None or me is None:
+        return None
+    if friend.value is None or me.value is None:
+        return None
+    if min(friend.matches_used, me.matches_used) < COMPARISON_MIN_MATCHES:
+        return None
+    if friend.value == me.value:
+        return "tie"
+    mine_is_higher = me.value > friend.value
+    return "me" if mine_is_higher == (better_when == "higher") else "friend"
+
+
+async def view_member_match_comparison(
+    session: AsyncSession, viewer_id: uuid.UUID, member_id: uuid.UUID
+) -> MatchComparisonResponse:
+    """036-match-insights-benchmarks US4: a friend's dashboard numbers next
+    to the viewer's own, and the two players' record against and alongside
+    each other.
+
+    Same gate as every other look at a friend's records (023,
+    `_resolve_viewable_member()`), evaluated on this request. The viewer needs
+    no sharing setting of their own: what they see is what the friend already
+    shares, plus their own numbers — which reach nobody else, because this
+    function writes nothing and notifies nobody (FR-039).
+
+    Which side is "better" is a rule (direction, minimum sample), so it is
+    decided here rather than in the page.
+
+    Errors: `SELF_VIEW_NOT_SUPPORTED`, `MEMBER_NOT_FOUND`,
+    `FRIENDSHIP_REQUIRED`, `MATCH_RECORDS_PRIVATE`."""
+    await _resolve_viewable_member(session, viewer_id, member_id)
+    friend_values, friend_matches = await _overall_values(session, member_id)
+    my_values, my_matches = await _overall_values(session, viewer_id)
+    meetings = matchups.head_to_head(_matchup_inputs(my_matches), f"m:{member_id}")
+
+    def value(found: player_dashboard.MetricValue | None) -> DashboardMetricValue | None:
+        return DashboardMetricValue(**asdict(found)) if found is not None else None
+
+    def tally(found: matchups.MatchupTally | None) -> HeadToHeadTally | None:
+        return HeadToHeadTally(**asdict(found)) if found is not None else None
+
+    return MatchComparisonResponse(
+        friend_total_matches=len(friend_matches),
+        my_total_matches=len(my_matches),
+        metrics=[
+            ComparisonMetric(
+                key=spec.key,
+                kind=spec.kind,
+                better_when=spec.better_when,
+                friend=value(friend_values.get(spec.key)),
+                me=value(my_values.get(spec.key)),
+                better=_better(
+                    spec.better_when, friend_values.get(spec.key), my_values.get(spec.key)
+                ),
+            )
+            for spec in player_dashboard.metric_specs()
+        ],
+        head_to_head=HeadToHeadResponse(
+            as_opponents=tally(meetings.as_opponents), as_partners=tally(meetings.as_partners)
+        ),
     )
 
 
@@ -1123,49 +1265,67 @@ async def _build_member_match_record_summaries(
     return summaries
 
 
-async def build_member_match_records(
-    session: AsyncSession,
-    member_id: uuid.UUID,
-    page: int = 1,
-    *,
-    opponents: list[str] | None = None,
-    partners: list[str] | None = None,
-    result: Literal["win", "loss"] | None = None,
-    date_from: date | None = None,
-    date_to: date | None = None,
-    round_from: int | None = None,
-    round_to: int | None = None,
-    self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
-    self_score: int | None = None,
-    opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
-    opponent_score: int | None = None,
-    group_id: uuid.UUID | None = None,
-    match_mode: Literal["singles", "doubles"] | None = None,
-) -> MemberMatchRecordsResponse:
-    """005-member-view US5 (FR-017~020), extended with filters/statistics: a
-    member's completed matches across every group they've ever joined as a
-    Member (never as a Guest — research.md #9, `roster_entries.member_id IS
-    NULL` for Guest entries naturally excludes them, no extra guard needed).
+def _within(value: datetime | None, start: datetime | None, before: datetime | None) -> bool:
+    """`start` <= `value` < `before`, each bound optional. With no bound at
+    all anything passes (a missing `value` too); with a bound, a missing
+    `value` never does."""
+    if start is None and before is None:
+        return True
+    if value is None:
+        return False
+    return (start is None or value >= start) and (before is None or value < before)
 
-    Filters and every aggregate below (win/loss counts, the round-by-round
-    win-rate trend, the opponent leaderboard) are all computed over the
-    *entire* filtered result set, not just the current page — same
-    plan.md Scale/Scope reasoning as before: a single member's total match
-    count is small enough that loading it all into Python is cheap, and
-    doing it this way avoids duplicating the nickname/score logic in SQL.
 
-    `group_id` (014-member-groups-history, research.md #2): keyword-only,
-    defaults to `None` — every pre-existing caller (the cross-group
-    `/members/me/match-records` endpoint) omits it and keeps its existing
-    behavior unchanged. Only `get_member_group_history()` passes it, to
-    narrow this same aggregate logic down to one group's worth of matches
-    rather than duplicating the win/loss-counting logic a third time.
+@dataclass(frozen=True)
+class MemberMatchFilters:
+    """Every filter `build_member_match_records()` accepts, as one value —
+    034's dashboard applies exactly the same set, and a seventh copy of
+    twelve keyword arguments was one too many. `group_id` is only ever set
+    internally by `get_member_group_history()`.
 
-    `match_mode`: keyword-only, defaults to `None`. `Match` itself has no
-    match_mode column (a match's singles/doubles-ness is a property of the
-    group it happened in), so this filters via a join to `Group` rather
-    than the Python post-filter loop below — unlike the nickname/score
-    filters, it can be pushed down to SQL directly."""
+    `ended_from`/`ended_before` are a half-open range of INSTANTS
+    (`ended_from` <= `ended_at` < `ended_before`), timezone-aware: the
+    client turns the viewer's local calendar day into instants, so "matches
+    on 9/21" means 9/21 where the viewer is — the same convention as
+    `get_my_groups()`'s `created_*`/`disbanded_*`."""
+
+    opponents: tuple[str, ...] = ()
+    partners: tuple[str, ...] = ()
+    result: Literal["win", "loss"] | None = None
+    ended_from: datetime | None = None
+    ended_before: datetime | None = None
+    round_from: int | None = None
+    round_to: int | None = None
+    self_score_cmp: Literal["gt", "eq", "lt"] | None = None
+    self_score: int | None = None
+    opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None
+    opponent_score: int | None = None
+    group_id: uuid.UUID | None = None
+    match_mode: Literal["singles", "doubles"] | None = None
+    # 036 US2: a click on a partner/opponent row. EXACT identity
+    # (`player_identity.player_key`), unlike `opponents`/`partners` above
+    # which are nickname substrings — those would also pull in anyone with a
+    # similar name and miss the same member under another group's nickname.
+    partner_key: str | None = None
+    opponent_key: str | None = None
+
+
+@dataclass(frozen=True)
+class FilteredMatch:
+    match: Match
+    summary: MemberMatchRecordSummary
+    won: bool
+    my_team: Literal["A", "B"]
+    my_entry_id: uuid.UUID
+
+
+async def _filtered_member_matches(
+    session: AsyncSession, member_id: uuid.UUID, filters: MemberMatchFilters
+) -> list[FilteredMatch]:
+    """The member's completed matches that pass `filters`, newest first —
+    the ONE definition of "the filtered result set" that both the match
+    list's aggregates and 034's dashboard are computed over (FR-019). See
+    `build_member_match_records()` for what each filter means."""
     participant_exists = (
         select(MatchParticipant.id)
         .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
@@ -1173,11 +1333,11 @@ async def build_member_match_records(
         .exists()
     )
     base_query = _completed_matches_query().where(participant_exists)
-    if group_id is not None:
-        base_query = base_query.where(Match.group_id == group_id)
-    if match_mode is not None:
+    if filters.group_id is not None:
+        base_query = base_query.where(Match.group_id == filters.group_id)
+    if filters.match_mode is not None:
         base_query = base_query.join(Group, Group.id == Match.group_id).where(
-            Group.match_mode == match_mode
+            Group.match_mode == filters.match_mode
         )
 
     all_matches_result = await session.execute(
@@ -1204,64 +1364,190 @@ async def build_member_match_records(
 
     summaries = await _build_member_match_record_summaries(session, all_matches, my_team_by_match)
 
-    filtered: list[tuple[Match, MemberMatchRecordSummary, bool]] = []
+    filtered: list[FilteredMatch] = []
     for match, summary in zip(all_matches, summaries, strict=True):
         my_team = my_team_by_match.get(match.id)
         if my_team is None:
             continue
-        my_entry_id = str(my_entry_by_match[match.id])
+        my_entry_id = my_entry_by_match[match.id]
         match_opponents = summary.team_b if my_team == "A" else summary.team_a
         match_partners = [
             p for p in (summary.team_a if my_team == "A" else summary.team_b)
-            if p.roster_entry_id != my_entry_id
+            if p.roster_entry_id != str(my_entry_id)
         ]
         my_score = match.score_a if my_team == "A" else match.score_b
         their_score = match.score_b if my_team == "A" else match.score_a
         won = summary.won
 
-        if not _matches_distinct_terms(opponents, [p.nickname for p in match_opponents]):
-            continue
-        if not _matches_distinct_terms(partners, [p.nickname for p in match_partners]):
-            continue
-        if result is not None and won != (result == "win"):
-            continue
-        if match.ended_at is not None:
-            match_date = match.ended_at.date()
-            if date_from is not None and match_date < date_from:
-                continue
-            if date_to is not None and match_date > date_to:
-                continue
-        if round_from is not None and match.round_number < round_from:
-            continue
-        if round_to is not None and match.round_number > round_to:
-            continue
-        if self_score_cmp is not None and self_score is not None and not _compare(
-            my_score, self_score_cmp, self_score
+        if not _matches_distinct_terms(
+            list(filters.opponents), [p.nickname for p in match_opponents]
         ):
             continue
-        if opponent_score_cmp is not None and opponent_score is not None and not _compare(
-            their_score, opponent_score_cmp, opponent_score
+        if not _matches_distinct_terms(
+            list(filters.partners), [p.nickname for p in match_partners]
+        ):
+            continue
+        if filters.partner_key is not None and filters.partner_key not in {
+            _player_ref(p).key for p in match_partners
+        }:
+            continue
+        if filters.opponent_key is not None and filters.opponent_key not in {
+            _player_ref(p).key for p in match_opponents
+        }:
+            continue
+        if filters.result is not None and won != (filters.result == "win"):
+            continue
+        # Instants, not `ended_at.date()`: that is the UTC date, which is the
+        # previous day for a match finished before 08:00 Taipei time and so
+        # disagreed with the local time the list shows. (A match with no
+        # `ended_at` is left in, as it always was.)
+        if match.ended_at is not None and not _within(
+            match.ended_at, filters.ended_from, filters.ended_before
+        ):
+            continue
+        if filters.round_from is not None and match.round_number < filters.round_from:
+            continue
+        if filters.round_to is not None and match.round_number > filters.round_to:
+            continue
+        if (
+            filters.self_score_cmp is not None
+            and filters.self_score is not None
+            and not _compare(my_score, filters.self_score_cmp, filters.self_score)
+        ):
+            continue
+        if (
+            filters.opponent_score_cmp is not None
+            and filters.opponent_score is not None
+            and not _compare(their_score, filters.opponent_score_cmp, filters.opponent_score)
         ):
             continue
 
-        filtered.append((match, summary, won))
+        filtered.append(
+            FilteredMatch(
+                match=match,
+                summary=summary,
+                won=won,
+                my_team=my_team,  # type: ignore[arg-type]
+                my_entry_id=my_entry_id,
+            )
+        )
+    return filtered
+
+
+def _player_ref(participant: ParticipantSummary) -> PlayerRef:
+    member_id = uuid.UUID(participant.member_id) if participant.member_id else None
+    return PlayerRef(
+        key=player_key(member_id, uuid.UUID(participant.roster_entry_id)),
+        nickname=participant.nickname,
+        member_id=participant.member_id,
+    )
+
+
+def _matchup_inputs(filtered: Sequence[FilteredMatch]) -> list[matchups.MatchupInput]:
+    """036 US2: each filtered match from my side, for `matchups.build()`.
+    Everything is already on `FilteredMatch` — no query."""
+    inputs: list[matchups.MatchupInput] = []
+    for item in filtered:
+        mine_is_a = item.my_team == "A"
+        mine = item.summary.team_a if mine_is_a else item.summary.team_b
+        theirs = item.summary.team_b if mine_is_a else item.summary.team_a
+        my_score = item.match.score_a if mine_is_a else item.match.score_b
+        their_score = item.match.score_b if mine_is_a else item.match.score_a
+        inputs.append(
+            matchups.MatchupInput(
+                ended_at=cast(datetime, item.match.ended_at),
+                won=item.won,
+                margin=my_score - their_score,
+                is_doubles=len(mine) + len(theirs) > 2,
+                partners=tuple(
+                    _player_ref(p) for p in mine if p.roster_entry_id != str(item.my_entry_id)
+                ),
+                opponents=tuple(_player_ref(p) for p in theirs),
+            )
+        )
+    return inputs
+
+
+def _matchup_record(record: matchups.MatchupRecord) -> MatchupRecord:
+    return MatchupRecord(**asdict(record))
+
+
+async def build_member_match_records(
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    page: int = 1,
+    *,
+    opponents: list[str] | None = None,
+    partners: list[str] | None = None,
+    result: Literal["win", "loss"] | None = None,
+    ended_from: datetime | None = None,
+    ended_before: datetime | None = None,
+    round_from: int | None = None,
+    round_to: int | None = None,
+    self_score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    self_score: int | None = None,
+    opponent_score_cmp: Literal["gt", "eq", "lt"] | None = None,
+    opponent_score: int | None = None,
+    group_id: uuid.UUID | None = None,
+    match_mode: Literal["singles", "doubles"] | None = None,
+    partner_key: str | None = None,
+    opponent_key: str | None = None,
+) -> MemberMatchRecordsResponse:
+    """005-member-view US5 (FR-017~020), extended with filters/statistics: a
+    member's completed matches across every group they've ever joined as a
+    Member (never as a Guest — research.md #9, `roster_entries.member_id IS
+    NULL` for Guest entries naturally excludes them, no extra guard needed).
+
+    Filters and every aggregate below (win/loss counts, the round-by-round
+    win-rate trend, the opponent leaderboard) are all computed over the
+    *entire* filtered result set, not just the current page — same
+    plan.md Scale/Scope reasoning as before: a single member's total match
+    count is small enough that loading it all into Python is cheap, and
+    doing it this way avoids duplicating the nickname/score logic in SQL.
+
+    `group_id` (014-member-groups-history, research.md #2): keyword-only,
+    defaults to `None` — every pre-existing caller (the cross-group
+    `/members/me/match-records` endpoint) omits it and keeps its existing
+    behavior unchanged. Only `get_member_group_history()` passes it, to
+    narrow this same aggregate logic down to one group's worth of matches
+    rather than duplicating the win/loss-counting logic a third time.
+
+    `match_mode`: keyword-only, defaults to `None`. `Match` itself has no
+    match_mode column (a match's singles/doubles-ness is a property of the
+    group it happened in), so this filters via a join to `Group` rather
+    than the Python post-filter loop below — unlike the nickname/score
+    filters, it can be pushed down to SQL directly."""
+    filtered = await _filtered_member_matches(
+        session,
+        member_id,
+        MemberMatchFilters(
+            opponents=tuple(opponents or ()),
+            partners=tuple(partners or ()),
+            result=result,
+            ended_from=ended_from,
+            ended_before=ended_before,
+            round_from=round_from,
+            round_to=round_to,
+            self_score_cmp=self_score_cmp,
+            self_score=self_score,
+            opponent_score_cmp=opponent_score_cmp,
+            opponent_score=opponent_score,
+            group_id=group_id,
+            match_mode=match_mode,
+            partner_key=partner_key,
+            opponent_key=opponent_key,
+        ),
+    )
 
     total_matches = len(filtered)
-    total_wins = sum(1 for _, _, won in filtered if won)
+    total_wins = sum(1 for item in filtered if item.won)
     total_losses = total_matches - total_wins
     win_rate = (total_wins / total_matches) if total_matches else 0.0
 
     round_tallies: dict[int, list[int]] = defaultdict(lambda: [0, 0])
-    opponent_tallies: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    for match, summary, won in filtered:
-        bucket = round_tallies[match.round_number]
-        bucket[0 if won else 1] += 1
-
-        my_team = my_team_by_match[match.id]
-        match_opponents = summary.team_b if my_team == "A" else summary.team_a
-        for opponent in match_opponents:
-            tally = opponent_tallies[opponent.nickname]
-            tally[0 if won else 1] += 1
+    for item in filtered:
+        bucket = round_tallies[item.match.round_number]
+        bucket[0 if item.won else 1] += 1
 
     round_win_rates = [
         RoundWinRatePoint(
@@ -1272,26 +1558,15 @@ async def build_member_match_records(
         )
         for round_number, (wins, losses) in sorted(round_tallies.items())
     ]
-    opponent_records = sorted(
-        (
-            OpponentRecord(
-                nickname=nickname,
-                wins=wins,
-                losses=losses,
-                matches=wins + losses,
-                win_rate=(wins / (wins + losses)) if (wins + losses) else 0.0,
-            )
-            for nickname, (wins, losses) in opponent_tallies.items()
-        ),
-        key=lambda record: record.matches,
-        reverse=True,
-    )
+    # 036 US2: partners and opponents by WHO they are, not by nickname —
+    # see `matchups` for what the nickname tally this replaces got wrong.
+    matchup = matchups.build(_matchup_inputs(filtered))
 
-    page_size = await get_default_page_size(session)
+    page_size = await get_match_records_page_size(session)
     total_pages = max(1, (total_matches + page_size - 1) // page_size)
     start = (page - 1) * page_size
     end = start + page_size
-    page_matches = [summary for _, summary, _ in filtered[start:end]]
+    page_matches = [item.summary for item in filtered[start:end]]
 
     return MemberMatchRecordsResponse(
         matches=page_matches,
@@ -1300,9 +1575,305 @@ async def build_member_match_records(
         total_losses=total_losses,
         win_rate=win_rate,
         round_win_rates=round_win_rates,
-        opponent_records=opponent_records,
+        opponent_records=[_matchup_record(r) for r in matchup.opponent_records],
+        partner_records=[_matchup_record(r) for r in matchup.partner_records],
+        matchup_highlights=MatchupHighlights(**asdict(matchup.highlights)),
+        doubles_matches=matchup.doubles_matches,
         page=page,
         total_pages=total_pages,
+    )
+
+
+@dataclass(frozen=True)
+class _MatchDerivations:
+    """036 US3: everything `match_stats` derives from ONE match, for both
+    teams and every participant — computed once however many players' samples
+    are then read off it. None of it depends on whose point of view it is."""
+
+    participants: list[match_stats.Participant]
+    clutch: match_stats.ClutchResult | None
+    serve: match_stats.ServeStatsResult | None
+    landings: dict[uuid.UUID, match_stats.PlayerLandingResult] | None
+    ending: match_stats.EndingStatsResult | None
+
+
+def _match_derivations(
+    match: Match, summary: MatchRecordSummary, inputs: MatchStatInputs
+) -> _MatchDerivations:
+    """The SAME pure functions — under the same "complete record, consistent
+    with the final score" rule — that `build_match_record_detail()` uses, so
+    no number can disagree with the match's own detail dialog (034 FR-003). A
+    match that fails the rule still counts for the final-score metrics."""
+    participants = [
+        match_stats.Participant(uuid.UUID(p.roster_entry_id), p.team)
+        for p in summary.team_a + summary.team_b
+    ]
+    points = (
+        match_stats.effective_points(inputs.raw_events, match.score_a, match.score_b)
+        if inputs.completeness == "complete"
+        else None
+    )
+    if points is None:
+        return _MatchDerivations(participants, None, None, None, None)
+    return _MatchDerivations(
+        participants=participants,
+        clutch=match_stats.clutch_stats(points, match.target_score, match.cap_score),
+        serve=match_stats.serve_stats(points, inputs.snapshots, participants),
+        landings=match_stats.player_landings(points, inputs.placements, participants),
+        # 035: the same placements again, read for their ending this time.
+        ending=match_stats.ending_stats(points, inputs.placements, participants),
+    )
+
+
+def _sample_from(
+    derived: _MatchDerivations, match: Match, my_team: Literal["A", "B"], my_entry_id: uuid.UUID
+) -> player_dashboard.MatchSample:
+    """One player's view of a match: which side is "mine", which roster entry
+    is "me". The only place a point of view enters (036 FR-029 — the group
+    benchmark gives every player of a group exactly this treatment)."""
+    mine_is_a = my_team == "A"
+    return player_dashboard.build_sample(
+        ended_at=cast(datetime, match.ended_at),  # always set for completed matches
+        won=match.winner_team == my_team,
+        points_for=match.score_a if mine_is_a else match.score_b,
+        points_against=match.score_b if mine_is_a else match.score_a,
+        my_team=my_team,
+        my_entry_id=my_entry_id,
+        is_doubles=len(derived.participants) > 2,
+        clutch=derived.clutch,
+        serve=derived.serve,
+        landings=derived.landings,
+        ending=derived.ending,
+    )
+
+
+def _dashboard_sample(item: FilteredMatch, inputs: MatchStatInputs) -> player_dashboard.MatchSample:
+    """One match's contribution to MY dashboard."""
+    return _sample_from(
+        _match_derivations(item.match, item.summary, inputs),
+        item.match,
+        item.my_team,
+        item.my_entry_id,
+    )
+
+
+async def build_member_match_dashboard(
+    session: AsyncSession, member_id: uuid.UUID, filters: MemberMatchFilters
+) -> MemberMatchDashboardResponse:
+    """034-clutch-points-player-dashboard US2-US4: the member's cross-match
+    technique dashboard over exactly the matches `build_member_match_records()`
+    would list under the same `filters` — the whole filtered set, never a
+    page (FR-019). A separate endpoint rather than more fields on that
+    response because this one reads every match's point log: it is fetched
+    once per filter change, not once per page flip (research.md Decision 5).
+    Query count is constant in the number of matches (Decision 7)."""
+    filtered = await _filtered_member_matches(session, member_id, filters)
+    inputs = await load_match_stat_inputs(session, [item.match for item in filtered])
+    samples = [_dashboard_sample(item, inputs[item.match.id]) for item in filtered]
+    result = player_dashboard.aggregate(samples)
+    # 036: read off the finished result, same matches, no further query.
+    # 036 US2: partner/opponent rows come from the same filtered matches, no query.
+    found = insights.derive(samples, result, matchups.build(_matchup_inputs(filtered)))
+    # 035: the two breakdown halves live as separate fields on the pure
+    # result (each independently None) but travel as one nested object.
+    payload = asdict(result)
+    breakdown_all = payload.pop("error_breakdown_all")
+    breakdown_recent = payload.pop("error_breakdown_recent")
+    payload["error_breakdown"] = (
+        {"all": breakdown_all, "recent": breakdown_recent}
+        if breakdown_all is not None
+        else None
+    )
+    payload["insights"] = _insights_payload(found)
+    return MemberMatchDashboardResponse.model_validate(payload)
+
+
+def _insights_payload(found: insights.InsightsResult) -> dict[str, object]:
+    """The pure result calls the field `bucket` (a dataclass field named
+    `list` would shadow the builtin); the contract calls it `list`."""
+
+    def one(item: insights.Insight) -> dict[str, object]:
+        return {
+            "list": item.bucket,
+            "rule": item.rule,
+            "level": item.level,
+            "source": item.source,
+            "metric_key": item.metric_key,
+            "player": asdict(item.player) if item.player is not None else None,
+            "params": item.params,
+        }
+
+    return {
+        "status": found.status,
+        "benchmark_group_name": found.benchmark_group_name,
+        "strengths": [one(item) for item in found.strengths],
+        "weaknesses": [one(item) for item in found.weaknesses],
+        "recent": [one(item) for item in found.recent],
+        "matchups": [one(item) for item in found.matchups],
+    }
+
+
+async def list_benchmark_groups(
+    session: AsyncSession, member_id: uuid.UUID
+) -> BenchmarkGroupsResponse:
+    """036-match-insights-benchmarks US3 (FR-027): the groups this member can
+    compare within, busiest first — the first one is the page's default.
+
+    The predicate is `verify_ever_group_member()`'s own (a roster row of mine,
+    any status), so every group listed here is one `build_group_benchmark()`
+    will open. That is the same set as 014's 我的團: a group's creator always
+    gets a roster row when the group is created. Guest-era participation is
+    excluded naturally (`member_id IS NULL`). Three queries."""
+    roster_result = await session.execute(
+        select(RosterEntry.group_id, RosterEntry.status)
+        .where(RosterEntry.member_id == member_id)
+        .order_by(RosterEntry.joined_at.desc())
+    )
+    member_status: dict[uuid.UUID, str] = {}
+    for group_id, status in roster_result.all():
+        member_status.setdefault(group_id, status)  # newest stint wins
+    if not member_status:
+        return BenchmarkGroupsResponse(groups=[])
+
+    played_result = await session.execute(
+        select(Match.group_id, func.count(func.distinct(Match.id)))
+        .join(MatchParticipant, MatchParticipant.match_id == Match.id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(
+            Match.status == "completed",
+            RosterEntry.member_id == member_id,
+            Match.group_id.in_(list(member_status)),
+        )
+        .group_by(Match.group_id)
+    )
+    played = {group_id: count for group_id, count in played_result.all()}
+
+    groups_result = await session.execute(
+        select(Group.id, Group.group_number, Group.name, Group.status, Group.created_at).where(
+            Group.id.in_(list(member_status))
+        )
+    )
+    rows = sorted(
+        groups_result.all(),
+        key=lambda row: (-played.get(row.id, 0), -row.created_at.timestamp(), str(row.id)),
+    )
+    return BenchmarkGroupsResponse(
+        groups=[
+            BenchmarkGroupOption(
+                group_id=str(row.id),
+                group_number=row.group_number,
+                name=row.name,
+                status=row.status,
+                member_status=member_status[row.id],
+                my_completed_matches=played.get(row.id, 0),
+            )
+            for row in rows
+        ]
+    )
+
+
+def _group_benchmark_in_thread(
+    me_key: str,
+    group_name: str,
+    loaded: Sequence[tuple[Match, MatchRecordSummary]],
+    inputs: dict[uuid.UUID, MatchStatInputs],
+    my_matches: Sequence[FilteredMatch],
+    my_inputs: dict[uuid.UUID, MatchStatInputs],
+) -> tuple[group_benchmark.BenchmarkResult, insights.InsightsResult, int]:
+    """Everything after the queries: pure, CPU-bound, and for a big group
+    seconds long — so it runs off the event loop (`asyncio.to_thread`). It
+    only reads attributes the queries already loaded; nothing here can trigger
+    a lazy load."""
+    samples_by_player: dict[str, list[player_dashboard.MatchSample]] = defaultdict(list)
+    for match, summary in loaded:
+        # Once per match, however many players' samples are read off it.
+        derived = _match_derivations(match, summary, inputs[match.id])
+        for participant in summary.team_a + summary.team_b:
+            samples_by_player[_player_ref(participant).key].append(
+                # The same function, the same way, for every player (FR-029).
+                _sample_from(
+                    derived, match, participant.team, uuid.UUID(participant.roster_entry_id)
+                )
+            )
+    # Other players' values exist only here, between these two lines and
+    # `group_benchmark.build()`, which keeps none of them (FR-032).
+    players = [
+        group_benchmark.PlayerValues(key, player_dashboard.overall_values(samples))
+        for key, samples in samples_by_player.items()
+    ]
+    benchmark = group_benchmark.build(me_key, players)
+
+    # The summary the page swaps in: my UNFILTERED cross-group dashboard with
+    # this group's standing merged in by the one `derive()` (FR-033).
+    my_samples = [_dashboard_sample(item, my_inputs[item.match.id]) for item in my_matches]
+    found = insights.derive(
+        my_samples,
+        player_dashboard.aggregate(my_samples),
+        matchups.build(_matchup_inputs(my_matches)),
+        insights.BenchmarkContext(group_name, benchmark),
+    )
+    return benchmark, found, len(samples_by_player.get(me_key, []))
+
+
+async def build_group_benchmark(
+    session: AsyncSession, member_id: uuid.UUID, group_id: uuid.UUID
+) -> GroupBenchmarkResponse:
+    """036-match-insights-benchmarks US3: for each dashboard metric, this
+    group's average, how many players it is an average of, and my rank — over
+    ALL of the group's completed matches, never a filtered subset (FR-028).
+
+    Who is compared: everyone who played a completed match here, member or
+    guest, whatever their status today — a member's several stints merged,
+    each guest roster row on its own (`player_identity`). Deliberately wider
+    than 018's standings (active members only): that is a live leaderboard,
+    this is a statistical baseline, and a disbanded group has no active
+    members at all.
+
+    Anonymous by shape: see `GroupBenchmarkMetric`.
+
+    Query count is constant in the number of matches: the group's matches and
+    their participants (2), their point logs (3 per 500 matches), and my own
+    unfiltered dashboard's fixed set.
+
+    Errors: `GROUP_MEMBERSHIP_NEVER_HELD` (403) — also for a group that does
+    not exist, which is indistinguishable from one I never joined."""
+    await verify_ever_group_member(session, group_id, member_id)
+    group = await session.get(Group, group_id)
+    if group is None:  # unreachable: a roster row of mine references it
+        raise ApiError("GROUP_MEMBERSHIP_NEVER_HELD", status_code=403)
+
+    loaded = await load_group_completed_matches(session, group_id)
+    inputs = await load_match_stat_inputs(session, [match for match, _ in loaded])
+    my_matches = await _filtered_member_matches(session, member_id, MemberMatchFilters())
+    my_inputs = await load_match_stat_inputs(session, [item.match for item in my_matches])
+
+    benchmark, found, my_match_count = await asyncio.to_thread(
+        _group_benchmark_in_thread,
+        f"m:{member_id}",  # my key: I am always a member here (player_identity)
+        group.name,
+        loaded,
+        inputs,
+        my_matches,
+        my_inputs,
+    )
+    return GroupBenchmarkResponse(
+        group=GroupBenchmarkGroup(group_id=str(group.id), name=group.name),
+        total_matches=len(loaded),
+        my_matches=my_match_count,
+        metrics=[
+            GroupBenchmarkMetric(
+                key=metric.key,
+                kind=metric.kind,
+                better_when=metric.better_when,
+                mine=DashboardMetricValue(**asdict(metric.mine)) if metric.mine else None,
+                status=metric.status,
+                group_average=metric.group_average,
+                pool_size=metric.pool_size,
+                rank=metric.rank,
+            )
+            for metric in benchmark.metrics
+        ],
+        insights=DashboardInsights.model_validate(_insights_payload(found)),
     )
 
 
@@ -1434,7 +2005,22 @@ async def search_member(
     )
 
 
-async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroupsResponse:
+async def get_my_groups(
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    *,
+    page: int = 1,
+    name: str | None = None,
+    group_number: str | None = None,
+    role: Literal["creator", "member"] | None = None,
+    created_from: datetime | None = None,
+    created_before: datetime | None = None,
+    disbanded_from: datetime | None = None,
+    disbanded_before: datetime | None = None,
+    match_count_min: int | None = None,
+    match_count_max: int | None = None,
+    group_id: uuid.UUID | None = None,
+) -> MyGroupsResponse:
     """014-member-groups-history FR-001~003: every group this member
     created ∪ every group this member has EVER had a `RosterEntry` in
     (any status — active/left/kicked), deduplicated by group. Guest-joined
@@ -1443,15 +2029,35 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
 
     `member_status` reflects each group's MOST RECENT `RosterEntry` for
     this member (by `joined_at` DESC) — a member can leave and rejoin the
-    same group, producing multiple historical rows (research.md #4)."""
+    same group, producing multiple historical rows (research.md #4).
+
+    Filters (substring on `name`/`group_number`, exact on `role`/
+    `group_id`, half-open time ranges on `created_at`/`disbanded_at`) are
+    applied in Python after loading every group of this member, then
+    paginated — same precedent as `friend.service.list_friends` (one
+    member's group count is small enough that this is cheap).
+    `group_id` lets the group-history page fetch one specific row without
+    depending on which page it falls on.
+
+    The time ranges are instants (`*_from` <= t < `*_before`), not calendar
+    dates: the caller turns the viewer's LOCAL day into instants, so a
+    group opened at 07:00 Taipei time is found under that local date, not
+    under the previous day's UTC date. Either `disbanded_*` bound drops
+    every group without a `disbanded_at` (still active, or disbanded before
+    that column existed).
+
+    `match_count` is how many of the group's completed matches this member
+    played in (the group-history page's "場數"); `match_count_min`/
+    `match_count_max` filter on it, both ends inclusive."""
     roster_result = await session.execute(
         select(RosterEntry.group_id, RosterEntry.status)
         .where(RosterEntry.member_id == member_id)
         .order_by(RosterEntry.joined_at.desc())
     )
     member_status_by_group: dict[uuid.UUID, str] = {}
-    for group_id, status in roster_result.all():
-        member_status_by_group.setdefault(group_id, status)  # first seen (newest) wins
+    for roster_group_id, roster_status in roster_result.all():
+        # first seen (newest) wins
+        member_status_by_group.setdefault(roster_group_id, roster_status)
 
     created_result = await session.execute(
         select(Group.id).where(Group.created_by_member_id == member_id)
@@ -1460,7 +2066,7 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
 
     all_group_ids = set(member_status_by_group) | created_group_ids
     if not all_group_ids:
-        return MyGroupsResponse(groups=[])
+        return MyGroupsResponse(groups=[], page=page, total_pages=1)
 
     result = await session.execute(
         select(
@@ -1474,6 +2080,24 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
         .where(Group.id.in_(all_group_ids))
         .order_by(Group.created_at.desc())
     )
+    group_rows = result.all()
+
+    # Same definition as `_filtered_member_matches()`: completed matches
+    # with one of this member's roster entries among the participants.
+    participant_exists = (
+        select(MatchParticipant.id)
+        .join(RosterEntry, RosterEntry.id == MatchParticipant.roster_entry_id)
+        .where(MatchParticipant.match_id == Match.id, RosterEntry.member_id == member_id)
+        .exists()
+    )
+    match_count_result = await session.execute(
+        _completed_matches_query()
+        .with_only_columns(Match.group_id, func.count(Match.id))
+        .where(Match.group_id.in_(all_group_ids), participant_exists)
+        .group_by(Match.group_id)
+    )
+    match_count_by_group: dict[uuid.UUID, int] = dict(match_count_result.tuples().all())
+
     groups = [
         MyGroupSummary(
             group_id=str(row.id),
@@ -1484,7 +2108,21 @@ async def get_my_groups(session: AsyncSession, member_id: uuid.UUID) -> MyGroups
             disbanded_at=row.disbanded_at,
             is_creator=row.id in created_group_ids,
             member_status=member_status_by_group[row.id],
+            match_count=match_count_by_group.get(row.id, 0),
         )
-        for row in result.all()
+        for row in group_rows
+        if (group_id is None or row.id == group_id)
+        and (not name or name.lower() in row.name.lower())
+        and (not group_number or group_number in str(row.group_number))
+        and (role is None or (row.id in created_group_ids) == (role == "creator"))
+        and _within(row.created_at, created_from, created_before)
+        and _within(row.disbanded_at, disbanded_from, disbanded_before)
+        and (match_count_min is None or match_count_by_group.get(row.id, 0) >= match_count_min)
+        and (match_count_max is None or match_count_by_group.get(row.id, 0) <= match_count_max)
     ]
-    return MyGroupsResponse(groups=groups)
+    page_size = await get_default_page_size(session)
+    total_pages = max(1, (len(groups) + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    return MyGroupsResponse(
+        groups=groups[start : start + page_size], page=page, total_pages=total_pages
+    )

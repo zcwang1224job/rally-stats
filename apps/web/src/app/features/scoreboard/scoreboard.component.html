@@ -20,7 +20,7 @@
         {{ (isFullscreen() ? 'controlPanel.exitFullscreen' : 'controlPanel.enterFullscreen') | translate }}
       </button>
     }
-    @let state = liveState();
+    @let state = displayState();
     <div class="board-header">
       <h1>{{ info.name }}</h1>
       @if (state) {
@@ -30,6 +30,9 @@
       }
     </div>
     @if (state) {
+      @if (cancelScoreErrorKey(); as key) {
+        <p role="alert">{{ key | translate }}</p>
+      }
       <div class="board-main">
         @if (state.next_up; as next) {
           <p class="next-up status-badge">
@@ -51,8 +54,8 @@
           <div class="team team--a">
             @if (state.current_match; as match) {
               @if (station(match, match.serve?.team_a_left_roster_entry_id ?? null); as topStation) {
-                <div class="station station--top" [class.station--server]="topStation.isServer">
-                  {{ topStation.nickname }}
+                <div class="station station--top" [class.station--server]="topStation.isServer" [attr.aria-label]="topStation.nickname">
+                  {{ topStation.displayName }}
                   @if (topStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -64,8 +67,8 @@
             </div>
             @if (state.current_match; as match) {
               @if (station(match, match.serve?.team_a_right_roster_entry_id ?? null); as bottomStation) {
-                <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
-                  {{ bottomStation.nickname }}
+                <div class="station station--bottom" [class.station--server]="bottomStation.isServer" [attr.aria-label]="bottomStation.nickname">
+                  {{ bottomStation.displayName }}
                   @if (bottomStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -76,8 +79,8 @@
           <div class="team team--b">
             @if (state.current_match; as match) {
               @if (station(match, match.serve?.team_b_right_roster_entry_id ?? null); as topStation) {
-                <div class="station station--top" [class.station--server]="topStation.isServer">
-                  {{ topStation.nickname }}
+                <div class="station station--top" [class.station--server]="topStation.isServer" [attr.aria-label]="topStation.nickname">
+                  {{ topStation.displayName }}
                   @if (topStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -89,8 +92,8 @@
             </div>
             @if (state.current_match; as match) {
               @if (station(match, match.serve?.team_b_left_roster_entry_id ?? null); as bottomStation) {
-                <div class="station station--bottom" [class.station--server]="bottomStation.isServer">
-                  {{ bottomStation.nickname }}
+                <div class="station station--bottom" [class.station--server]="bottomStation.isServer" [attr.aria-label]="bottomStation.nickname">
+                  {{ bottomStation.displayName }}
                   @if (bottomStation.isServer) {
                     <span class="server-badge" [attr.aria-label]="'scoreboard.serving' | translate">🏸</span>
                   }
@@ -101,20 +104,41 @@
         </div>
       </div>
 
-      @if (canScore() && state.current_match) {
+      @if (canScore() && state.current_match; as match) {
         <!-- Deliberately below .board-main (not inside the court itself,
              see .score-board's comment) so the +/- controls never sit on
              top of the court markings. -->
         <div class="scoring-controls">
           <div class="buttons buttons--a">
-            <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('A', 1)">+</button>
+            <button
+              type="button"
+              class="btn"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="plusPressed('A')"
+            >+</button>
             <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('A', -1)">-</button>
           </div>
           <div class="buttons buttons--b">
-            <button type="button" class="btn" [disabled]="connectionState() !== 'connected'" (click)="score('B', 1)">+</button>
+            <button
+              type="button"
+              class="btn"
+              [disabled]="connectionState() !== 'connected'"
+              (click)="plusPressed('B')"
+            >+</button>
             <button type="button" class="btn btn--secondary" [disabled]="connectionState() !== 'connected'" (click)="score('B', -1)">-</button>
           </div>
         </div>
+        <app-shot-placement-picker
+          #shotPlacementPicker
+          [participants]="match.participants"
+          [scoringTeam]="pendingScoringSide()"
+          [servingTeam]="pendingServingTeam()"
+          [servingScore]="pendingServingScore()"
+          [servingRosterEntryId]="pendingServingRosterEntryId()"
+          (confirmed)="onShotPlacementConfirmed($event)"
+          (scoreCancelled)="onShotPlacementCancelled()"
+          (closed)="onShotPlacementClosed()"
+        />
       }
 
       @if (canScore() && state.current_match) {
@@ -127,7 +151,16 @@
           {{ 'controlPanel.endMatch' | translate }}
         </button>
         <app-confirm-dialog
+          #matchPointDialog
+          variant="primary"
+          [title]="'controlPanel.matchPointConfirmTitle' | translate"
+          [body]="'controlPanel.matchPointConfirmBody' | translate"
+          (confirmed)="onMatchPointConfirmed()"
+          (closed)="onMatchPointDialogClosed()"
+        />
+        <app-confirm-dialog
           #endMatchDialog
+          variant="primary"
           [title]="'controlPanel.endMatchConfirmTitle' | translate"
           [body]="'controlPanel.endMatchConfirmBody' | translate"
           (confirmed)="confirmEndMatch()"
@@ -138,7 +171,7 @@
         @if (state.waiting_reason === 'manual_assignment') {
           <p class="waiting-message">{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
         } @else if (!state.next_up) {
-          <p class="waiting-message">{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+          <p class="waiting-message">{{ waitingReasonKey(state.waiting_reason) | translate }}</p>
         }
       }
     }

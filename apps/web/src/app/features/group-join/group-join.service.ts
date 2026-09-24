@@ -25,6 +25,9 @@ export interface GroupListFilters {
   group_name?: string;
   creator_nickname?: string;
   match_mode?: MatchMode;
+  /** A Guest's own group, listed first — the backend can't tell which
+   * group an anonymous request is in; ignored for a logged-in Member. */
+  pinned_group_id?: string;
 }
 
 /** Centralized API layer for the join-group feature (004). Also owns
@@ -52,6 +55,9 @@ export class GroupJoinService {
     }
     if (filters.match_mode) {
       params.set('match_mode', filters.match_mode);
+    }
+    if (filters.pinned_group_id) {
+      params.set('pinned_group_id', filters.pinned_group_id);
     }
     return this.api.get<GroupListResponse>(`/groups?${params.toString()}`, this.authHeader());
   }
@@ -91,7 +97,13 @@ export class GroupJoinService {
    * resolveGuestSession() above — this works regardless of whether the
    * roster entry/group are still active. */
   getGuestBindingStatus(token: string): Observable<BindingStatusResponse> {
-    return this.api.get<BindingStatusResponse>(`/groups/guest-token/${token}/binding-status`);
+    // The endpoint is public; the header is optional and only fills in
+    // `already_in_group` (`authHeader()` is `{}` when logged out, which is
+    // the normal 訪客 case).
+    return this.api.get<BindingStatusResponse>(
+      `/groups/guest-token/${token}/binding-status`,
+      this.authHeader(),
+    );
   }
 
   /** contracts/guest-binding-api.md `POST /groups/guest-token/{token}/

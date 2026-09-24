@@ -1,0 +1,93 @@
+// A scorecard: the score sits front-and-center between the two team names;
+// for the viewer's own matches a colored edge signals the outcome at a
+// glance (backed by the explicit 勝/敗 badge, never color alone).
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  border-left: 4px solid var(--color-border);
+  cursor: pointer;
+}
+
+:host(.match-card--win) {
+  border-left-color: var(--color-positive);
+}
+
+:host(.match-card--loss) {
+  border-left-color: var(--color-negative);
+}
+
+.match-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.time-range {
+  font-size: var(--font-size-caption);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.match-card__body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.match-card__team {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--font-weight-bold);
+  overflow-wrap: break-word;
+}
+
+// Partners' names are separated, not run together ("小美、大雄").
+.match-card__sep {
+  color: var(--color-text-muted);
+}
+
+.match-card__team--right {
+  text-align: right;
+}
+
+.match-card__score {
+  flex-shrink: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-black);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.match-card__result {
+  display: flex;
+  justify-content: flex-end;
+}
+
+// The viewer's own matches: the short 勝/敗 badge rides at the end of the
+// meta row instead of taking a row of its own under the score — on a phone
+// list that row is a sixth of every card. (A group's records carry a
+// "winner: …" badge of any length instead, so they keep the stacked layout.)
+:host(.match-card--win),
+:host(.match-card--loss) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'meta result'
+    'body body';
+  align-items: start;
+  column-gap: var(--space-sm);
+
+  .match-card__meta {
+    grid-area: meta;
+  }
+
+  .match-card__body {
+    grid-area: body;
+  }
+
+  .match-card__result {
+    grid-area: result;
+  }
+}

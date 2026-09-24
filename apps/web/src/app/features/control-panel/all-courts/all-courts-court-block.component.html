@@ -1,10 +1,13 @@
 <section class="court-block card">
   <h2>{{ name() }}</h2>
-  @if (state(); as s) {
+  @if (displayState(); as s) {
+    @if (cancelScoreErrorKey(); as key) {
+      <p role="alert">{{ key | translate }}</p>
+    }
     @if (s.current_match; as match) {
       <div class="score-controls-toolbar">
         <button type="button" class="btn btn--secondary" (click)="toggleSwap()">
-          ⇄ {{ 'controlPanel.swapTeams' | translate }}
+          <app-icon name="swap" /> {{ 'controlPanel.swapTeams' | translate }}
         </button>
       </div>
       <div class="score-board">
@@ -14,7 +17,7 @@
               type="button"
               class="btn"
               [disabled]="connectionState() !== 'connected'"
-              (click)="score(leftTeam(), 1)"
+              (click)="plusPressed(leftTeam())"
             >
               +1
             </button>
@@ -54,7 +57,7 @@
               type="button"
               class="btn"
               [disabled]="connectionState() !== 'connected'"
-              (click)="score(rightTeam(), 1)"
+              (click)="plusPressed(rightTeam())"
             >
               +1
             </button>
@@ -69,6 +72,18 @@
           </div>
         </div>
       </div>
+      <app-shot-placement-picker
+        #shotPlacementPicker
+        [participants]="match.participants"
+        [scoringTeam]="pendingScoringSide()"
+        [servingTeam]="pendingServingTeam()"
+        [servingScore]="pendingServingScore()"
+        [servingRosterEntryId]="pendingServingRosterEntryId()"
+        [leftTeam]="leftTeam()"
+        (confirmed)="onShotPlacementConfirmed($event)"
+        (scoreCancelled)="onShotPlacementCancelled()"
+        (closed)="onShotPlacementClosed()"
+      />
       <button
         type="button"
         class="btn btn--danger"
@@ -78,7 +93,16 @@
         {{ 'controlPanel.endMatch' | translate }}
       </button>
       <app-confirm-dialog
+        #matchPointDialog
+        variant="primary"
+        [title]="'controlPanel.matchPointConfirmTitle' | translate"
+        [body]="'controlPanel.matchPointConfirmBody' | translate"
+        (confirmed)="onMatchPointConfirmed()"
+        (closed)="onMatchPointDialogClosed()"
+      />
+      <app-confirm-dialog
         #endMatchDialog
+        variant="primary"
         [title]="'controlPanel.endMatchConfirmTitle' | translate"
         [body]="'controlPanel.endMatchConfirmBody' | translate"
         (confirmed)="confirmEndMatch()"
@@ -86,9 +110,9 @@
     } @else if (s.waiting_reason === 'manual_assignment') {
       <p>{{ 'scheduleManagement.waitingManualAssignment' | translate }}</p>
     } @else {
-      <p>{{ 'scheduleManagement.waitingNoQueuedMatch' | translate }}</p>
+      <p>{{ waitingReasonKey(s.waiting_reason) | translate }}</p>
     }
   } @else {
-    <p>{{ 'common.loading' | translate }}</p>
+    <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
   }
 </section>

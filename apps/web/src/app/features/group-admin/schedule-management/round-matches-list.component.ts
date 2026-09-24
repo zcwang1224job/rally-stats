@@ -1,4 +1,5 @@
-import { Component, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { IconComponent } from '../../../shared/icon/icon.component';
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
@@ -6,8 +7,10 @@ import {
   ParticipantSummary,
   RoundPhase,
   RosterScheduleStatus,
+  RoundMatchesResponse,
   RoundMatchSummary,
   Team,
+  WaitingOnRest,
 } from './schedule.models';
 import { ScheduleService } from './schedule.service';
 
@@ -35,7 +38,7 @@ import { ScheduleService } from './schedule.service';
  * 的回饋只是名字悄悄換掉，很容易被忽略。 */
 @Component({
   selector: 'app-round-matches-list',
-  imports: [TranslatePipe, DragDropModule],
+  imports: [TranslatePipe, DragDropModule, IconComponent],
   templateUrl: './round-matches-list.component.html',
   styleUrl: './round-matches-list.component.scss',
 })
@@ -43,6 +46,10 @@ export class RoundMatchesListComponent {
   readonly groupId = input.required<string>();
   readonly roundPhase = input<RoundPhase | null>(null);
   readonly roster = input<RosterScheduleStatus[]>([]);
+  /** 父層每重新讀取一次賽程就加一；清單展開時跟著安靜地重新載入。以前清單
+   * 只在展開或按「重新整理」時才載入，比賽打完、換下一場、有人加入後，
+   * 剩餘場數與比分都停在舊資料。 */
+  readonly refreshKey = input(0);
 
   editable(): boolean {
     const phase = this.roundPhase();
@@ -67,6 +74,44 @@ export class RoundMatchesListComponent {
   readonly saving = signal(false);
   readonly actionSuccess = signal(false);
 
+  // 本輪進度摘要：還剩幾場、預估多久打完、誰這輪沒有排到。循環賽一輪可能
+  // 有數十場，沒有這些資訊時管理員看不出這一輪還要打多久。
+  readonly remainingCount = signal(0);
+  readonly estimatedRemainingMinutes = signal<number | null>(null);
+  readonly sittingOutNames = signal<string | null>(null);
+
+  /** 037-rest-ready-toggle FR-021: queued matches waiting on resting
+   * players. `stalled` = the round can't go on without them. */
+  readonly waitingOnRest = signal<WaitingOnRest | null>(null);
+  readonly waitingOnRestNames = computed(
+    () => this.waitingOnRest()?.players.map((p) => p.nickname).join(', ') ?? '',
+  );
+  /** Whether the group auto-advances: a stalled round then moves on by
+   * itself, so the "mark them ready or end the round" hint is only for
+   * groups where the admin has to act. */
+  readonly autoNextRound = input(false);
+
+  private applyResponse(response: RoundMatchesResponse): void {
+    this.roundNumber.set(response.round_number);
+    this.matches.set(response.matches);
+    this.remainingCount.set(response.remaining_count);
+    this.estimatedRemainingMinutes.set(response.estimated_remaining_minutes);
+    const names = response.sitting_out.map((entry) => entry.nickname);
+    this.sittingOutNames.set(names.length > 0 ? names.join(', ') : null);
+    this.waitingOnRest.set(response.waiting_on_rest ?? null);
+  }
+
+  restEffectKey(match: RoundMatchSummary): string | null {
+    switch (match.rest_effect) {
+      case 'held':
+        return 'restToggle.effectHeld';
+      case 'substitute':
+        return 'restToggle.effectSubstitute';
+      default:
+        return null;
+    }
+  }
+
   private flashSuccess(): void {
     this.actionSuccess.set(true);
     setTimeout(() => this.actionSuccess.set(false), 2000);
@@ -89,6 +134,36 @@ export class RoundMatchesListComponent {
       }
       this.wasEditable = isEditable;
     });
+
+    effect(() => {
+      const key = this.refreshKey();
+      untracked(() => {
+        if (key === this.lastRefreshKey) {
+          return;
+        }
+        this.lastRefreshKey = key;
+        this.refresh();
+      });
+    });
+  }
+
+  private lastRefreshKey = 0;
+
+  /** 背景更新：不顯示載入狀態、不清掉操作訊息。管理員正在點選要互換的
+   * 球員、或調整還在送出時先跳過，免得清單在手底下變動。 */
+  private refresh(): void {
+    if (!this.expanded() || this.loading() || this.saving() || this.firstPick() !== null) {
+      return;
+    }
+    this.scheduleService.getRoundMatches(this.groupId()).subscribe({
+      next: (response) => {
+        if (!this.saving() && this.firstPick() === null) {
+          this.applyResponse(response);
+        }
+      },
+      // 背景更新失敗時保留現有清單；下次重新讀取或手動重新整理會再試。
+      error: () => undefined,
+    });
   }
 
   toggle(): void {
@@ -107,8 +182,7 @@ export class RoundMatchesListComponent {
     this.firstPick.set(null);
     this.scheduleService.getRoundMatches(this.groupId()).subscribe({
       next: (response) => {
-        this.roundNumber.set(response.round_number);
-        this.matches.set(response.matches);
+        this.applyResponse(response);
         this.loading.set(false);
       },
       error: (error: ApiError) => {
@@ -152,6 +226,12 @@ export class RoundMatchesListComponent {
     );
   }
 
+  /** 037 FR-029: marks a resting player in the swap and change pickers;
+   * they stay selectable — the admin has the final say. */
+  isResting(rosterEntryId: string): boolean {
+    return this.roster().some((entry) => entry.roster_entry_id === rosterEntryId && !!entry.resting);
+  }
+
   isSelected(matchId: string, rosterEntryId: string): boolean {
     const first = this.firstPick();
     return first !== null && first.matchId === matchId && first.rosterEntryId === rosterEntryId;
@@ -179,8 +259,7 @@ export class RoundMatchesListComponent {
       .swapPlannedMatchPlayers(this.groupId(), first.matchId, first.rosterEntryId, matchId, rosterEntryId)
       .subscribe({
         next: (response) => {
-          this.roundNumber.set(response.round_number);
-          this.matches.set(response.matches);
+          this.applyResponse(response);
           this.firstPick.set(null);
           this.saving.set(false);
           this.flashSuccess();
@@ -205,8 +284,7 @@ export class RoundMatchesListComponent {
       .changeMatchPlayer(this.groupId(), matchId, oldRosterEntryId, newRosterEntryId)
       .subscribe({
         next: (response) => {
-          this.roundNumber.set(response.round_number);
-          this.matches.set(response.matches);
+          this.applyResponse(response);
           this.saving.set(false);
           this.flashSuccess();
         },
@@ -242,8 +320,7 @@ export class RoundMatchesListComponent {
     this.saving.set(true);
     this.scheduleService.reorderPlannedMatches(this.groupId(), queuedOrder).subscribe({
       next: (response) => {
-        this.roundNumber.set(response.round_number);
-        this.matches.set(response.matches);
+        this.applyResponse(response);
         this.saving.set(false);
         this.flashSuccess();
       },

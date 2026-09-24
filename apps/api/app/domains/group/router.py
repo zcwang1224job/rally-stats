@@ -25,6 +25,8 @@ from app.domains.group.schemas import (
     BindResponse,
     CreateGroupRequest,
     CreateGroupResponse,
+    DetailedScoringRequest,
+    DetailedScoringResponse,
     EditGroupRequest,
     EditScoringSettingsRequest,
     GroupListItem,
@@ -58,20 +60,27 @@ from app.domains.member.models import Member
 from app.domains.member.security import optional_member, require_verified_member
 from app.domains.schedule.schemas import (
     AllCourtsLiveState,
+    RecordShotPlacementRequest,
+    RestStateRequest,
+    RestStateResponse,
     RoundMatchesResponse,
     ScheduleResponse,
     ScoreMutationResult,
     ScoreRequest,
+    ShotPlacementAttachResponse,
+    UndoMatchCompletionRequest,
 )
 from app.domains.schedule.service import (
     abandon_group_matches,
     apply_score_delta,
+    attach_shot_placement,
     auto_pair_on_enter_fixed_partner,
     build_round_matches_list,
     build_schedule_snapshot,
     clear_partnerships_on_exit,
     court_live_state,
     end_match_early,
+    undo_match_completion,
 )
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -111,6 +120,11 @@ def _to_admin_view(group: Group) -> AdminGroupResponse:
         all_courts_control_panel_token=str(group.all_courts_control_panel_token),
         all_courts_link_version=group.all_courts_link_version,
         scoreboard_scoring_enabled=group.scoreboard_scoring_enabled,
+        detailed_scoring_enabled=group.detailed_scoring_enabled,
+        scoring_mode=group.scoring_mode,
+        target_score=group.target_score,
+        deuce_threshold=group.deuce_threshold,
+        cap_score=group.cap_score,
     )
 
 
@@ -154,10 +168,26 @@ async def list_groups(
     group_name: str | None = None,
     creator_nickname: str | None = None,
     match_mode: MatchMode | None = None,
+    pinned_group_id: uuid.UUID | None = None,
 ) -> GroupListResponse:
     """Public group browse list (US1/US5); an optional `Authorization`
     Bearer token adds per-item `joined_by_me` personalization (US6, research.md
-    #2). Excludes disbanded groups (data-model.md §1)."""
+    #2). Excludes disbanded groups (data-model.md §1).
+
+    The viewer's own groups are listed first: for a Member, the group they're
+    active in plus any group they created. A Guest has no server-side
+    identity to derive that from, so the client passes the group it's in as
+    `pinned_group_id`; it's ignored for a Member. It only reorders the list,
+    so an arbitrary value is harmless."""
+    # Computed once for the whole list, not per item — a Member has at most
+    # one active RosterEntry anywhere (the one-active-group invariant), so
+    # this single lookup already answers "is it in THIS item's group or a
+    # different one" for every item below.
+    active_group_id = (
+        await service.get_active_group_id_for_member(session, member.id)
+        if member is not None
+        else None
+    )
     groups, total_pages = await service.list_groups(
         session,
         page=page,
@@ -167,15 +197,8 @@ async def list_groups(
         group_name=group_name,
         creator_nickname=creator_nickname,
         match_mode=match_mode,
-    )
-    # Computed once for the whole list, not per item — a Member has at most
-    # one active RosterEntry anywhere (the one-active-group invariant), so
-    # this single lookup already answers "is it in THIS item's group or a
-    # different one" for every item below.
-    active_group_id = (
-        await service.get_active_group_id_for_member(session, member.id)
-        if member is not None
-        else None
+        pinned_group_id=active_group_id if member is not None else pinned_group_id,
+        pinned_creator_member_id=member.id if member is not None else None,
     )
     items = []
     for group in groups:
@@ -397,6 +420,24 @@ async def set_scoreboard_scoring(
     )
 
 
+@router.patch("/{group_id}/detailed-scoring", response_model=DetailedScoringResponse)
+async def set_detailed_scoring(
+    group_id: uuid.UUID,
+    payload: DetailedScoringRequest,
+    group: Annotated[Group, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DetailedScoringResponse:
+    """031-shot-placement-scoring: lets the admin opt the group into the
+    "tap the court, pick the scoring player" interaction for matches
+    created from now on (research.md Decision 5 — same lightweight
+    dedicated-toggle shape as `set_scoreboard_scoring` above). Errors:
+    `ADMIN_TOKEN_INVALID`."""
+    if group.id != group_id:
+        raise ApiError("ADMIN_TOKEN_INVALID", status_code=401)
+    updated = await service.set_detailed_scoring(session, group, payload.enabled)
+    return DetailedScoringResponse(detailed_scoring_enabled=updated.detailed_scoring_enabled)
+
+
 @router.post("/{group_id}/disband", response_model=GroupPublicResponse)
 async def disband(
     group_id: uuid.UUID,
@@ -524,13 +565,22 @@ async def resolve_guest_session(
 async def get_guest_binding_status(
     token: str,
     session: Annotated[AsyncSession, Depends(get_session)],
+    member: Annotated[Member | None, Depends(optional_member)],
 ) -> BindingStatusResponse:
     """028-guest-stats-binding contracts/guest-binding-api.md. Public —
-    authorization is holding the `token` itself (research.md #1). Errors:
+    authorization is holding the `token` itself (research.md #1). The
+    `Authorization` header stays optional and never gates the response; it
+    only fills in `already_in_group`, the mirror of `POST .../bind`'s
+    `MEMBER_ALREADY_IN_GROUP` refusal, so the frontend can drop the binding
+    entry point instead of offering a button that can only fail. Errors:
     `LINK_NOT_FOUND`."""
     roster_entry = await service.resolve_guest_binding_target(session, token)
     group = await service.get_group_by_id(session, roster_entry.group_id)
+    already_in_group = member is not None and (
+        await service.active_roster_entry_for_member(session, group.id, member.id) is not None
+    )
     return BindingStatusResponse(
+        already_in_group=already_in_group,
         already_bound=roster_entry.member_id is not None,
         roster_entry_id=str(roster_entry.id),
         group_id=str(roster_entry.group_id),
@@ -560,7 +610,7 @@ async def bind_guest_session(
     `group.service`, e.g. `verify_ever_group_member`) since a
     `group/service.py -> member/service.py` import would be circular the
     other way around. Errors: `LINK_NOT_FOUND`, `ROSTER_ENTRY_ALREADY_BOUND`,
-    `INVALID_REQUEST`, `CAPTCHA_INVALID`,
+    `MEMBER_ALREADY_IN_GROUP`, `INVALID_REQUEST`, `CAPTCHA_INVALID`,
     `EMAIL_ALREADY_REGISTERED`, `INVALID_CREDENTIALS`."""
     result = await member_service.complete_guest_bind(
         session,
@@ -644,6 +694,62 @@ async def score_by_all_courts_token(
     return await apply_score_delta(
         session, court, match_id, payload.side, payload.delta, source="all_courts"
     )
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/shot-placement",
+    response_model=ShotPlacementAttachResponse,
+)
+async def record_shot_placement_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: RecordShotPlacementRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ShotPlacementAttachResponse:
+    """032-score-then-record: attaches landing/player detail to a `+1`
+    that's already been applied via `score_by_all_courts_token` above.
+    Errors: `LINK_NOT_FOUND`、`MATCH_NOT_FOUND`、
+    `DETAILED_SCORING_NOT_ENABLED`、`INVALID_LANDING_COORDINATES`、
+    `SCORE_EVENT_NOT_FOUND`、`SCORE_EVENT_NOT_A_POINT`、
+    `SHOT_PLACEMENT_ALREADY_RECORDED`、`PARTICIPANT_NOT_IN_MATCH`、
+    `SCORING_PLAYER_NOT_ON_CREDITED_SIDE`、`SCORING_AND_LOSING_PLAYER_SAME_TEAM`、
+    `SCORING_PLAYER_WRONG_TEAM_FOR_LANDING`、
+    `ENDING_TYPE_CONTRADICTS_LANDING`、`ENDING_TYPE_CONTRADICTS_SERVE`（035）。"""
+    _group, court = await _all_courts_court(token, court_id, session)
+    await attach_shot_placement(
+        session,
+        court,
+        match_id,
+        uuid.UUID(payload.score_event_id),
+        uuid.UUID(payload.roster_entry_id) if payload.roster_entry_id is not None else None,
+        uuid.UUID(payload.losing_roster_entry_id)
+        if payload.losing_roster_entry_id is not None
+        else None,
+        payload.landing_x,
+        payload.landing_y,
+        ending_type=payload.ending_type,
+    )
+    return ShotPlacementAttachResponse()
+
+
+@router.post(
+    "/by-all-courts-token/{token}/courts/{court_id}/matches/{match_id}/undo-completion",
+    response_model=ScoreMutationResult,
+)
+async def undo_match_completion_by_all_courts_token(
+    token: uuid.UUID,
+    court_id: uuid.UUID,
+    match_id: uuid.UUID,
+    payload: UndoMatchCompletionRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ScoreMutationResult:
+    """032-cancel-score: all-courts counterpart to
+    `undo_match_completion_by_token`. Errors: `LINK_NOT_FOUND`、
+    `MATCH_NOT_FOUND`、`MATCH_NOT_COMPLETED`、`SIDE_DID_NOT_WIN_THIS_MATCH`、
+    `ROUND_ALREADY_ADVANCED`、`NEXT_MATCH_ALREADY_STARTED`。"""
+    _group, court = await _all_courts_court(token, court_id, session)
+    return await undo_match_completion(session, court, match_id, payload.side)
 
 
 @router.post(
@@ -797,6 +903,32 @@ async def leave_group(
         member_id=member.id if member is not None else None,
     )
     return LeaveGroupResponse(roster_entry_id=str(updated.id), status="left")
+
+
+@router.put("/{group_id}/roster/{roster_entry_id}/rest-state", response_model=RestStateResponse)
+async def set_own_rest_state(
+    group_id: uuid.UUID,
+    roster_entry_id: uuid.UUID,
+    payload: RestStateRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    member: Annotated[Member | None, Depends(optional_member)],
+) -> RestStateResponse:
+    """037-rest-ready-toggle US1: a player resting or coming back, on
+    their own — same ownership proof as `leave`. The body is the target
+    state, so repeating it is harmless (`changed: false`). Errors:
+    `ROSTER_ENTRY_NOT_FOUND` (also when the caller can't prove ownership),
+    `GROUP_DISBANDED`, `REST_ENDS_ROUND` (resting would end the round on
+    the spot; resend with `confirm_round_end: true`)."""
+    group = await service.get_group_by_id(session, group_id)
+    return await service.set_own_rest_state(
+        session,
+        group,
+        roster_entry_id,
+        resting=payload.resting,
+        confirm_round_end=payload.confirm_round_end,
+        guest_session_token=payload.guest_session_token,
+        member_id=member.id if member is not None else None,
+    )
 
 
 @join_router.get("/join/{join_link_token}", response_model=JoinLinkPreviewResponse)

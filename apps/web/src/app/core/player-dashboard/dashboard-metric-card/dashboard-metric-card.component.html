@@ -1,0 +1,60 @@
+@let m = metric();
+
+<!-- 036: id + tabindex so an insight sentence can land here (FR-010) —
+     PlayerDashboardComponent.focusMetric() scrolls to it and moves focus. -->
+<article class="metric" [attr.data-metric]="m.key" [attr.id]="'metric-' + m.key" tabindex="-1">
+  <h4 class="metric__label">{{ labelKey() | translate }}</h4>
+
+  @if (m.all; as all) {
+    <p class="metric__value" data-value>{{ value() }}</p>
+    <p class="metric__fraction" data-fraction>
+      @if (isPerMatch()) {
+        {{
+          'playerDashboard.fraction.perMatch'
+            | translate: { total: all.numerator, matches: all.denominator }
+        }}
+      } @else {
+        {{ all.numerator }}/{{ all.denominator }}
+      }
+    </p>
+    <p class="metric__basis" data-basis>
+      {{ 'playerDashboard.basedOn' | translate: { used: all.matches_used, total: totalMatches() } }}
+    </p>
+
+    @if (m.recent || m.verdict) {
+      <div class="metric__recent" data-recent>
+        <span class="metric__recent-label">{{ 'playerDashboard.recent.label' | translate }}</span>
+        @if (m.recent; as recent) {
+          <span class="metric__recent-value">{{ recentValue() }}</span>
+          <span class="metric__recent-basis">
+            {{ 'playerDashboard.recent.basedOn' | translate: { used: recent.matches_used } }}
+          </span>
+          @if (delta(); as difference) {
+            <span class="metric__delta" data-delta>
+              {{ deltaKey() | translate: { delta: difference } }}
+            </span>
+          }
+        }
+        @if (m.verdict; as verdict) {
+          <span class="metric__verdict" [attr.data-verdict]="verdict">
+            <span class="metric__verdict-icon" aria-hidden="true">{{ verdictIcon(verdict) }}</span>
+            {{ 'playerDashboard.verdict.' + verdict | translate }}
+          </span>
+        }
+      </div>
+    }
+
+    <button
+      type="button"
+      class="metric__trend-button"
+      [attr.aria-pressed]="trendSelected()"
+      (click)="trendToggle.emit()"
+    >
+      {{ 'playerDashboard.trend.show' | translate }}
+    </button>
+  } @else {
+    <p class="metric__empty" data-empty>{{ emptyKey() | translate }}</p>
+  }
+
+  <p class="metric__hint">{{ hintKey() | translate }}</p>
+</article>

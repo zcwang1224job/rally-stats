@@ -1,9 +1,9 @@
 @if (loading()) {
-  <p>{{ 'common.loading' | translate }}</p>
+  <p class="loading-state" role="status">{{ 'common.loading' | translate }}</p>
 } @else if (member(); as m) {
   <section class="card">
     <div class="member-identity">
-      <span class="friend-row__avatar" aria-hidden="true">{{ (m.nickname || m.user_number).charAt(0) }}</span>
+      <span class="avatar" aria-hidden="true">{{ (m.nickname || m.user_number).charAt(0) }}</span>
       <div>
         <h1>{{ m.nickname || m.user_number }}</h1>
         <p class="user-number">{{ 'auth.userNumber' | translate }}: {{ m.user_number }}</p>
@@ -54,6 +54,6 @@
         <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6" /></svg>
       </a>
     </nav>
-    <button type="button" class="btn btn--secondary logout-action" (click)="logout()">{{ 'nav.logout' | translate }}</button>
+    <button type="button" class="btn btn--danger-outline logout-action" (click)="logout()">{{ 'nav.logout' | translate }}</button>
   </section>
 }

@@ -8,7 +8,12 @@
   <ul class="roster-picker">
     @for (entry of availableRoster(); track entry.roster_entry_id) {
       <li>
-        <span>{{ entry.nickname }}</span>
+        <span>
+          {{ entry.nickname }}
+          @if (entry.resting) {
+            <span class="resting-suffix">{{ 'scheduleManagement.restingSuffix' | translate }}</span>
+          }
+        </span>
         <button
           type="button"
           class="btn btn--secondary team-toggle"

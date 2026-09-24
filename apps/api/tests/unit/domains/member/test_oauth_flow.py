@@ -19,7 +19,12 @@ from app.domains.group.models import Group
 from app.domains.group.security import hash_admin_pin
 from app.domains.group.service import join_group
 from app.domains.member import service
-from app.domains.member.models import EmailVerificationToken, Member, MemberOAuthIdentity
+from app.domains.member.models import (
+    EmailVerificationToken,
+    Member,
+    MemberLoginRecord,
+    MemberOAuthIdentity,
+)
 from app.domains.member.oauth_client import OAuthProfile
 from app.domains.member.oauth_providers import get_provider_config
 from app.domains.member.security import decode_oauth_state, hash_password, issue_oauth_state
@@ -170,6 +175,99 @@ async def test_returning_member_logs_in_without_creating_duplicate(
         )
     ).scalars().all()
     assert len(identities) == 1
+
+
+# --- bugfix/oauth-login-record: every successful OAuth login records one
+# MemberLoginRecord, same as Email/password's login() — this was missing
+# entirely before, so an OAuth-only member's "最近登入" list never showed
+# anything no matter how many times they signed in. ----------------------
+
+
+async def test_new_member_oauth_login_records_a_login(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile = OAuthProfile(sub="google-sub-newlogin", email="newlogin@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    result = await complete_oauth_callback(
+        db_session, "google", code="auth-code", state=_login_state(), error=None,
+        user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS) Mobile/15E148",
+    )
+    assert result.status == "success"
+
+    member = (
+        await db_session.execute(select(Member).where(Member.email == "newlogin@example.com"))
+    ).scalar_one()
+    records = (
+        await db_session.execute(
+            select(MemberLoginRecord).where(MemberLoginRecord.member_id == member.id)
+        )
+    ).scalars().all()
+    assert len(records) == 1
+    assert records[0].device_category == "mobile"
+
+
+async def test_returning_member_oauth_login_records_a_login_each_time(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    existing = await _make_member(db_session, "returning-login@example.com")
+    db_session.add(
+        MemberOAuthIdentity(
+            member_id=existing.id, provider="google", provider_user_id="google-sub-returning"
+        )
+    )
+    await db_session.commit()
+
+    profile = OAuthProfile(sub="google-sub-returning", email="returning-login@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    await complete_oauth_callback(
+        db_session, "google", code="c1", state=_login_state(), error=None,
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    )
+    await complete_oauth_callback(
+        db_session, "google", code="c2", state=_login_state(), error=None, user_agent=None,
+    )
+
+    records = (
+        await db_session.execute(
+            select(MemberLoginRecord)
+            .where(MemberLoginRecord.member_id == existing.id)
+            .order_by(MemberLoginRecord.created_at)
+        )
+    ).scalars().all()
+    assert len(records) == 2
+    assert records[0].device_category == "desktop"
+    assert records[1].device_category == "unknown"
+
+
+async def test_deleted_oauth_account_login_does_not_record_a_login(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    existing = await _make_member(db_session, "deleted-oauth@example.com")
+    existing.deleted_at = datetime.now(UTC)
+    db_session.add(
+        MemberOAuthIdentity(
+            member_id=existing.id, provider="google", provider_user_id="google-sub-deleted"
+        )
+    )
+    await db_session.commit()
+
+    profile = OAuthProfile(sub="google-sub-deleted", email="deleted-oauth@example.com")
+    monkeypatch.setattr(service, "exchange_code_for_profile", _make_fake_exchange(profile))
+
+    result = await complete_oauth_callback(
+        db_session, "google", code="c", state=_login_state(), error=None
+    )
+
+    assert result.status == "error"
+    assert result.error_code == "ACCOUNT_DELETED"
+    records = (
+        await db_session.execute(
+            select(MemberLoginRecord).where(MemberLoginRecord.member_id == existing.id)
+        )
+    ).scalars().all()
+    assert records == []
 
 
 # --- T014: cancel/deny + state-invalid -----------------------------------
