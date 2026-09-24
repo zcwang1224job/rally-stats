@@ -167,7 +167,8 @@ class RoundMatchSummary(BaseModel):
     participants: list[ParticipantSummary]
     score_a: int
     score_b: int
-    winner_team: Team | None
+    # 043: "D" is a draw (a manual end on a level score).
+    winner_team: Literal["A", "B", "D"] | None
     # 037-rest-ready-toggle: only for a queued match with a resting player —
     # "held" (kept for their return) or "substitute" (a substitute plays).
     rest_effect: RestEffect | None = None

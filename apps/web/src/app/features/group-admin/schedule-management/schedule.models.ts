@@ -192,7 +192,7 @@ export interface RoundMatchSummary {
   participants: ParticipantSummary[];
   score_a: number;
   score_b: number;
-  winner_team: Team | null;
+  winner_team: Team | 'D' | null;
   /** 037：排隊中且含休息中球員的場次——held＝保留等他回來，substitute＝輪到時
    * 由替補上場；其他情況為 null（舊後端沒有這個欄位）。 */
   rest_effect?: RestEffect | null;

@@ -242,6 +242,12 @@ async def test_draw_in_standings_and_detail(
     await client.post(f"{url}/score", json={"side": "B", "delta": 1})
     await client.post(f"{url}/score", json={"side": "B", "delta": 1})
     assert (await client.post(f"{url}/finish")).json()["winner_team"] == "D"
+    # The round's match list shows the draw too (a 500 before the fix).
+    round_matches = await client.get(
+        f"/groups/{g['created']['group_id']}/member-schedule/round-matches", params=token
+    )
+    assert round_matches.status_code == 200, round_matches.text
+    assert [m["winner_team"] for m in round_matches.json()["matches"]] == ["D"]
 
     win_id = await _start(client, g)
     url = _urls(g, win_id)["token"][0]
