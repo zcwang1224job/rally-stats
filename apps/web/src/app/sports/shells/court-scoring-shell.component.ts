@@ -124,7 +124,17 @@ export interface ScorePadContext {
       gap: 0.25rem;
       padding: 0.75rem;
       border-radius: 0.75rem;
-      background: var(--color-surface-muted, rgba(0, 0, 0, 0.04));
+      border: 2px solid transparent;
+      color: #fff;
+    }
+    /* The same team colours every score display uses (_tokens.scss). */
+    .team--a {
+      background: var(--color-team-a-bg);
+      border-color: var(--color-team-a-border);
+    }
+    .team--b {
+      background: var(--color-team-b-bg);
+      border-color: var(--color-team-b-border);
     }
     .names {
       display: flex;
@@ -169,8 +179,13 @@ export class CourtScoringShellComponent {
   readonly abandonDialog = viewChild<ConfirmDialogComponent>('abandonDialog');
   readonly connected = computed(() => this.realtime.connectionState() === 'connected');
 
-  /** This client's own last result, until the page's state catches up. */
+  /** This client's own last result. Realtime echoes of this client's
+   * EARLIER actions can arrive after a later action's response and would
+   * briefly show an older score, so the page's state only takes over again
+   * once the echoes have had time to arrive (they come in order). */
   private readonly own = signal<Partial<LiveMatch> & { match_id: string } | null>(null);
+  private ownTimer: ReturnType<typeof setTimeout> | undefined;
+  static readonly OWN_RESULT_GRACE_MS = 2500;
 
   readonly shown = computed<LiveMatch>(() => {
     const match = this.match();
@@ -188,11 +203,25 @@ export class CourtScoringShellComponent {
   }));
 
   constructor() {
-    // A new state from the page (realtime push, reload) is the truth again.
+    this.destroyRef.onDestroy(() => clearTimeout(this.ownTimer));
+    // Another match on the court: nothing of the old one applies.
     effect(() => {
-      this.match();
-      untracked(() => this.own.set(null));
+      const matchId = this.match().match_id;
+      untracked(() => {
+        if (this.own() && this.own()!.match_id !== matchId) {
+          this.own.set(null);
+        }
+      });
     });
+  }
+
+  private holdOwn(own: Partial<LiveMatch> & { match_id: string }): void {
+    this.own.set(own);
+    clearTimeout(this.ownTimer);
+    this.ownTimer = setTimeout(
+      () => this.own.set(null),
+      CourtScoringShellComponent.OWN_RESULT_GRACE_MS,
+    );
   }
 
   run(action: Observable<ScoringResult>): void {
@@ -208,7 +237,7 @@ export class CourtScoringShellComponent {
           this.changed.emit();
           return;
         }
-        this.own.set({
+        this.holdOwn({
           match_id: result.match_id,
           score_a: result.score_a,
           score_b: result.score_b,

@@ -68,6 +68,17 @@ import { courtLinkActions } from './scoring-actions';
       }
     }
   `,
+  styles: `
+    :host {
+      display: block;
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: var(--space-md);
+    }
+    .round-label {
+      margin: 0 0 var(--space-md);
+    }
+  `,
 })
 export class CourtLinkPageComponent {
   readonly waitingReasonKey = waitingReasonKey;

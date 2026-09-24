@@ -78,6 +78,28 @@ describe('CourtScoringShellComponent', () => {
     expect(scores).toEqual(['1', '1']);
   });
 
+  it('a late echo of an earlier action does not override the newer result', () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = setup();
+      fixture.componentInstance.undo(); // own result: 1 : 1
+      // The echo of an action from before the undo arrives afterwards.
+      fixture.componentRef.setInput('match', { ...MATCH, score_a: 1, score_b: 3 });
+      fixture.detectChanges();
+      const scores = () =>
+        [...(fixture.nativeElement as HTMLElement).querySelectorAll('[data-testid="match-score"]')].map(
+          (s) => s.textContent,
+        );
+      expect(scores()).toEqual(['1', '1']);
+      // Once the echoes have had time to arrive, the page's state is the truth.
+      vi.advanceTimersByTime(CourtScoringShellComponent.OWN_RESULT_GRACE_MS);
+      fixture.detectChanges();
+      expect(scores()).toEqual(['1', '3']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('a result that ends the match asks the page to reload', () => {
     const fixture = setup();
     let changed = 0;
