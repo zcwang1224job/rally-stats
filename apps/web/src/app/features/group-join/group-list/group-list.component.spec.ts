@@ -176,6 +176,38 @@ describe('GroupListComponent', () => {
     );
   });
 
+  it('043: filters by activity, shows it as a chip, and labels each group card', () => {
+    const billiards = {
+      ...group,
+      sport: {
+        sport_key: 'billiards',
+        type_key: 'frames',
+        name_key: 'sports.billiards',
+        name: null,
+        icon: 'billiards',
+        nouns: { venue: 'table', score: 'frame', member: 'player' },
+      },
+    } as const;
+    const listGroups = vi.fn(() => of({ groups: [billiards], page: 1, total_pages: 1 }));
+    const fixture = setup(1, [billiards], { listGroups });
+
+    const options = [...(fixture.nativeElement as HTMLElement).querySelectorAll('select[formcontrolname="sport"] option')];
+    expect(options.map((o) => (o as HTMLOptionElement).value)).toContain('custom_or_other');
+    expect(options.map((o) => (o as HTMLOptionElement).value)).not.toContain('other');
+
+    fixture.componentInstance.filterForm.patchValue({ sport: 'billiards' });
+    fixture.componentInstance.applyFilters();
+    fixture.detectChanges();
+    expect(listGroups).toHaveBeenLastCalledWith(1, expect.objectContaining({ sport: 'billiards' }));
+    expect(fixture.componentInstance.activeFilterChips().map((chip) => chip.key)).toContain('sport');
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="group-sport"]')?.textContent).toContain(
+      'sports.billiards',
+    );
+
+    fixture.componentInstance.clearFilter('sport');
+    expect(listGroups).toHaveBeenLastCalledWith(1, expect.objectContaining({ sport: undefined }));
+  });
+
   it('"clear filters" resets every field and re-applies', () => {
     const listGroups = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
     const fixture = setup(1, [group], { listGroups });

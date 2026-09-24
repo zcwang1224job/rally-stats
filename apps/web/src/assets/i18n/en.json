@@ -121,7 +121,10 @@
     "applyFilters": "Apply Filters",
     "clearFilters": "Clear Filters",
     "emptyState": "No groups match the current filters",
-    "capacity": "{{current}} / {{max}} members"
+    "capacity": "{{current}} / {{max}} members",
+    "sportFilter": "Activity",
+    "sportFilterAny": "All activities",
+    "sportFilterCustomOrOther": "Custom / other"
   },
   "guestBinding": {
     "title": "Create an account and save your stats",
@@ -223,7 +226,8 @@
       "disbandedFrom": "Disbanded (From)",
       "disbandedTo": "Disbanded (To)",
       "matchCountMin": "Matches played (min)",
-      "matchCountMax": "Matches played (max)"
+      "matchCountMax": "Matches played (max)",
+      "sport": "Activity"
     },
     "forgotPinButton": "Forgot Admin PIN",
     "forgotPinConfirmTitle": "Reset this group's admin PIN?",
@@ -1367,7 +1371,8 @@
     "generateError": "Couldn't create the card. Please try again.",
     "shareError": "Sharing failed. You can use “Download image” instead.",
     "copyError": "Copying failed. You can use “Download image” instead.",
-    "dateFormat": "MMM d, yyyy"
+    "dateFormat": "MMM d, yyyy",
+    "activityLabel": "Activity: {{name}}"
   },
   "groupShareCard": {
     "openButton": "Share card",

@@ -1,3 +1,4 @@
+import { SportSummary } from './sport.models';
 // Mirrors apps/api/app/domains/friend/schemas.py and the relevant shapes in
 // apps/api/app/domains/member/schemas.py — see
 // specs/006-member-friends/contracts/{friends-api,member-api}.md and
@@ -81,6 +82,8 @@ export interface MyGroupSummary {
   // How many of the group's completed matches this member played in — the
   // same count as the group-history page's "場數".
   match_count: number;
+  /** 043 US6: the group's activity (optional for an older backend). */
+  sport?: SportSummary;
 }
 
 export interface MyGroupsResponse {
@@ -109,6 +112,9 @@ export interface MyGroupsFilters {
   match_count_min?: number;
   match_count_max?: number;
   group_id?: string;
+  /** 043 US6: a built-in `sport_key`, `custom_or_other` or
+   * `custom:<id>` of one of my custom activities. */
+  sport?: string;
 }
 
 export interface ForgotAdminPinResponse {

@@ -121,7 +121,10 @@
     "applyFilters": "套用篩選",
     "clearFilters": "清除篩選",
     "emptyState": "目前沒有符合條件的揪團",
-    "capacity": "{{current}} / {{max}} 人"
+    "capacity": "{{current}} / {{max}} 人",
+    "sportFilter": "活動",
+    "sportFilterAny": "全部活動",
+    "sportFilterCustomOrOther": "自訂／其他"
   },
   "guestBinding": {
     "title": "建立帳號並綁定戰績",
@@ -223,7 +226,8 @@
       "disbandedFrom": "解散時間（起）",
       "disbandedTo": "解散時間（迄）",
       "matchCountMin": "比賽場數（最少）",
-      "matchCountMax": "比賽場數（最多）"
+      "matchCountMax": "比賽場數（最多）",
+      "sport": "活動"
     },
     "forgotPinButton": "忘記管理 PIN 碼",
     "forgotPinConfirmTitle": "確定重設此團的管理 PIN 碼？",
@@ -1367,7 +1371,8 @@
     "generateError": "圖卡產生失敗，請稍後再試。",
     "shareError": "分享失敗，可以改用「下載圖片」。",
     "copyError": "複製失敗，可以改用「下載圖片」。",
-    "dateFormat": "yyyy/M/d"
+    "dateFormat": "yyyy/M/d",
+    "activityLabel": "活動：{{name}}"
   },
   "groupShareCard": {
     "openButton": "分享圖卡",

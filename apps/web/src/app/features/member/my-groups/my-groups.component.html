@@ -20,6 +20,15 @@
             <input type="text" inputmode="numeric" formControlName="group_number" maxlength="20" />
           </label>
           <label>
+            {{ 'myGroups.filters.sport' | translate }}
+            <select formControlName="sport">
+              <option value="">{{ 'myGroups.filters.any' | translate }}</option>
+              @for (option of sportOptions(); track option.value) {
+                <option [value]="option.value">{{ option.name ?? (option.labelKey ?? '' | translate) }}</option>
+              }
+            </select>
+          </label>
+          <label>
             {{ 'myGroups.filters.role' | translate }}
             <select formControlName="role">
               <option value="">{{ 'myGroups.filters.any' | translate }}</option>
@@ -91,6 +100,11 @@
             <span class="group-row-main__identity">
               <span class="group-name">{{ group.name }}</span>
               <span class="group-number">{{ group.group_number }}</span>
+              @if (group.sport; as sport) {
+                <span class="status-badge" data-testid="group-sport">
+                  {{ sport.name ?? (sport.name_key ?? '' | translate) }}
+                </span>
+              }
               <span class="status-badge">
                 {{ (group.is_creator ? 'myGroups.role.creator' : 'myGroups.role.member') | translate }}
               </span>

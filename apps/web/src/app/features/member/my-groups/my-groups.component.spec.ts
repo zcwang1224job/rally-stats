@@ -32,7 +32,8 @@ describe('MyGroupsComponent', () => {
         provideTranslateService({}),
         {
           provide: FriendsService,
-          useValue: { getMyGroups: () => of({ groups: [group, disbandedGroup], page: 1, total_pages: 1 }) },
+          useValue: { getMyCustomSports: () => of([]),
+            getMyGroups: () => of({ groups: [group, disbandedGroup], page: 1, total_pages: 1 }) },
         },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
@@ -66,6 +67,7 @@ describe('MyGroupsComponent', () => {
         {
           provide: FriendsService,
           useValue: {
+            getMyCustomSports: () => of([]),
             getMyGroups: () =>
               throwError(() => ({ errorCode: 'SOMETHING', i18nKey: 'errors.SOMETHING' })),
           },
@@ -86,7 +88,8 @@ describe('MyGroupsComponent', () => {
       imports: [MyGroupsComponent],
       providers: [
         provideTranslateService({}),
-        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
+        { provide: FriendsService, useValue: { getMyCustomSports: () => of([]),
+            getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
       ],
@@ -115,7 +118,8 @@ describe('MyGroupsComponent', () => {
         provideTranslateService({}),
         {
           provide: FriendsService,
-          useValue: { getMyGroups: () => of({ groups: [group, joinedGroup], page: 1, total_pages: 1 }) },
+          useValue: { getMyCustomSports: () => of([]),
+            getMyGroups: () => of({ groups: [group, joinedGroup], page: 1, total_pages: 1 }) },
         },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
@@ -142,7 +146,8 @@ describe('MyGroupsComponent', () => {
       imports: [MyGroupsComponent],
       providers: [
         provideTranslateService({}),
-        { provide: FriendsService, useValue: { getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
+        { provide: FriendsService, useValue: { getMyCustomSports: () => of([]),
+            getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }) } },
         { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
         {
           provide: Router,
@@ -174,6 +179,7 @@ describe('MyGroupsComponent', () => {
         {
           provide: FriendsService,
           useValue: {
+            getMyCustomSports: () => of([]),
             getMyGroups: () => of({ groups: [group], page: 1, total_pages: 1 }),
             forgotAdminPin: () => of({ admin_pin: '123456', admin_token: 'new-token' }),
           },
@@ -214,7 +220,7 @@ describe('MyGroupsComponent', () => {
         imports: [MyGroupsComponent],
         providers: [
           provideTranslateService({}),
-          { provide: FriendsService, useValue: { getMyGroups } },
+          { provide: FriendsService, useValue: { getMyGroups, getMyCustomSports: () => of([]) } },
           { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
           { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
         ],
@@ -247,6 +253,7 @@ describe('MyGroupsComponent', () => {
       component.goToPage(3);
 
       component.filterForm.setValue({
+        sport: '',
         name: '  週三 ',
         group_number: '100',
         role: 'creator',
@@ -307,6 +314,7 @@ describe('MyGroupsComponent', () => {
         disbanded_to: '',
         match_count_min: '',
         match_count_max: '',
+        sport: '',
       });
       expect(getMyGroups).toHaveBeenLastCalledWith(1, {
         name: undefined,
@@ -464,3 +472,44 @@ describe('MyGroupsComponent', () => {
     });
   });
 });
+
+describe('MyGroupsComponent activity filter (043)', () => {
+  it('offers my custom activities and filters by custom:<id>', () => {
+    const getMyGroups = vi.fn(() => of({ groups: [group], page: 1, total_pages: 1 }));
+    TestBed.configureTestingModule({
+      imports: [MyGroupsComponent],
+      providers: [
+        provideTranslateService({}),
+        {
+          provide: FriendsService,
+          useValue: {
+            getMyGroups,
+            getMyCustomSports: () =>
+              of([
+                {
+                  id: 'cs-1',
+                  name: '躲避球',
+                  type_key: 'generic',
+                  team_size_options: [2],
+                  defaults: {},
+                  created_at: '2026-09-24T00:00:00Z',
+                },
+              ]),
+          },
+        },
+        { provide: GroupAdminService, useValue: { setAdminToken: () => undefined } },
+        { provide: Router, useValue: { navigate: () => Promise.resolve(true) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(MyGroupsComponent);
+    fixture.detectChanges();
+    const values = fixture.componentInstance.sportOptions().map((option) => option.value);
+    expect(values).toContain('custom_or_other');
+    expect(values.at(-1)).toBe('custom:cs-1');
+
+    fixture.componentInstance.filterForm.patchValue({ sport: 'custom:cs-1' });
+    fixture.componentInstance.applyFilters();
+    expect(getMyGroups).toHaveBeenLastCalledWith(1, expect.objectContaining({ sport: 'custom:cs-1' }));
+  });
+});
+

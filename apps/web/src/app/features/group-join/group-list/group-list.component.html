@@ -37,6 +37,15 @@
             <input type="text" formControlName="creator_nickname" />
           </label>
           <label>
+            {{ 'groupJoin.sportFilter' | translate }}
+            <select formControlName="sport">
+              <option value="">{{ 'groupJoin.sportFilterAny' | translate }}</option>
+              @for (option of sportOptions; track option) {
+                <option [value]="option">{{ sportOptionKey(option) | translate }}</option>
+              }
+            </select>
+          </label>
+          <label>
             {{ 'groupJoin.matchModeFilter' | translate }}
             <select formControlName="match_mode">
               <option value="">{{ 'groupJoin.matchModeFilterAny' | translate }}</option>
@@ -119,6 +128,11 @@
                   [title]="'groupJoin.noPasswordLabel' | translate"
                   ><app-icon name="unlock" /> {{ 'groupJoin.noPasswordLabel' | translate }}</span
                 >
+              }
+              @if (group.sport; as sport) {
+                <span class="status-badge" data-testid="group-sport">
+                  {{ sport.name ?? (sport.name_key ?? '' | translate) }}
+                </span>
               }
               <span class="status-badge">
                 {{

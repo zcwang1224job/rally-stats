@@ -1,3 +1,4 @@
+import { BUILTIN_SPORT_KEYS, CUSTOM_OR_OTHER } from '../../../core/api/sport.models';
 import { Component, computed, inject, signal } from '@angular/core';
 import { IconComponent } from '../../../shared/icon/icon.component';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
@@ -16,6 +17,7 @@ type FilterChipKey =
   | 'creator_nickname'
   | 'court_name'
   | 'match_mode'
+  | 'sport'
   | 'time_range';
 
 interface FilterChip {
@@ -55,7 +57,18 @@ export class GroupListComponent {
     group_name: [''],
     creator_nickname: [''],
     match_mode: [''],
+    sport: [''],
   });
+
+  /** 043 US6: every built-in activity, then custom / other. */
+  readonly sportOptions: readonly string[] = [
+    ...BUILTIN_SPORT_KEYS.filter((key) => key !== 'other'),
+    CUSTOM_OR_OTHER,
+  ];
+
+  sportOptionKey(value: string): string {
+    return value === CUSTOM_OR_OTHER ? 'groupJoin.sportFilterCustomOrOther' : `sports.${value}`;
+  }
 
   /** Snapshot of the filters a load() call actually used — captured
    * separately from the live filterForm value so the "active filters"
@@ -68,6 +81,7 @@ export class GroupListComponent {
     creator_nickname: 'groupJoin.creatorNicknameFilter',
     court_name: 'groupJoin.courtNameFilter',
     match_mode: 'groupJoin.matchModeFilter',
+    sport: 'groupJoin.sportFilter',
     time_range: 'groupJoin.timeRangeFilter',
   };
 
@@ -88,6 +102,13 @@ export class GroupListComponent {
           filters.match_mode === 'singles'
             ? 'createGroup.matchModeSingles'
             : 'createGroup.matchModeDoubles',
+      });
+    }
+    if (filters.sport) {
+      chips.push({
+        key: 'sport',
+        labelKey: GroupListComponent.FILTER_CHIP_LABEL_KEYS.sport,
+        valueKey: this.sportOptionKey(filters.sport),
       });
     }
     if (filters.time_start && filters.time_end) {
@@ -150,6 +171,7 @@ export class GroupListComponent {
         group_name: raw.group_name || undefined,
         creator_nickname: raw.creator_nickname || undefined,
         match_mode: (raw.match_mode || undefined) as MatchMode | undefined,
+        sport: raw.sport || undefined,
         pinned_group_id: this.verifiedActiveGuestGroupId() ?? undefined,
       })
       .subscribe({
@@ -186,6 +208,9 @@ export class GroupListComponent {
       case 'match_mode':
         this.filterForm.patchValue({ match_mode: '' });
         break;
+      case 'sport':
+        this.filterForm.patchValue({ sport: '' });
+        break;
     }
     this.applyFilters();
   }
@@ -198,6 +223,7 @@ export class GroupListComponent {
       group_name: '',
       creator_nickname: '',
       match_mode: '',
+      sport: '',
     });
     this.applyFilters();
   }

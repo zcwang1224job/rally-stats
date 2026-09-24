@@ -5,6 +5,7 @@ import { Router } from '@angular/router';
 import { TranslatePipe } from '@ngx-translate/core';
 import { ApiError } from '../../../core/api/api-error';
 import { MyGroupSummary } from '../../../core/api/friend.models';
+import { BUILTIN_SPORT_KEYS, CUSTOM_OR_OTHER, CustomSport } from '../../../core/api/sport.models';
 import { localDayStart } from '../../../core/local-day';
 import { PaginationComponent } from '../../../shared/pagination/pagination.component';
 import { ConfirmDialogComponent } from '../../group-admin/shared/confirm-dialog.component';
@@ -72,7 +73,22 @@ export class MyGroupsComponent {
     // my completed matches in the group, both ends inclusive
     match_count_min: [''],
     match_count_max: [''],
+    // 043 US6: '' = every activity
+    sport: [''],
   });
+
+  /** 043 US6: built-in activities, custom / other, then my own custom
+   * activities (each `custom:<id>`). */
+  readonly customSports = signal<CustomSport[]>([]);
+  readonly sportOptions = computed(() => [
+    ...BUILTIN_SPORT_KEYS.filter((key) => key !== 'other').map((key) => ({
+      value: key as string,
+      labelKey: `sports.${key}` as string | null,
+      name: null as string | null,
+    })),
+    { value: CUSTOM_OR_OTHER, labelKey: 'groupJoin.sportFilterCustomOrOther', name: null },
+    ...this.customSports().map((sport) => ({ value: `custom:${sport.id}`, labelKey: null, name: sport.name })),
+  ]);
 
   /** Snapshot of the filters a load() call actually used — separate from
    * the live filterForm value so "clear filters" only shows once a filter
@@ -93,6 +109,10 @@ export class MyGroupsComponent {
 
   constructor() {
     this.load();
+    this.friends.getMyCustomSports().subscribe({
+      next: (sports) => this.customSports.set(sports),
+      error: () => this.customSports.set([]),
+    });
   }
 
   applyFilters(): void {
@@ -138,6 +158,7 @@ export class MyGroupsComponent {
         disbanded_before: localDayStart(raw.disbanded_to, 1),
         match_count_min: matchCountMin,
         match_count_max: matchCountMax,
+        sport: raw.sport || undefined,
       })
       .subscribe({
         next: (response) => {

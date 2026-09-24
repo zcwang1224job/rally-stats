@@ -80,3 +80,26 @@ export interface ActivitySummary {
   filter_value: string;
   match_count: number;
 }
+
+/** 043 US6: the built-in activities, in catalogue order ("other" last) —
+ * the list filters offer each, plus "custom or other". */
+export const BUILTIN_SPORT_KEYS = [
+  'badminton',
+  'table_tennis',
+  'pickleball',
+  'tennis_tiebreak',
+  'billiards',
+  'darts',
+  'board_game',
+  'esports',
+  'other',
+] as const;
+
+/** The `sport` filter value covering every custom and "other" activity. */
+export const CUSTOM_OR_OTHER = 'custom_or_other';
+
+/** The translation key (built-in) or the typed name (custom / other) of an
+ * activity — pass the key through the translate pipe. */
+export function sportLabel(sport: SportSummary): { key: string | null; name: string | null } {
+  return { key: sport.name ? null : sport.name_key, name: sport.name };
+}

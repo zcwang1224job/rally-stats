@@ -2,6 +2,7 @@
 // specs/004-join-group/contracts/group-list-api.md, join-api.md.
 
 import { MatchMode, SchedulingMechanism } from '../../features/group-admin/group-admin.models';
+import { SportSummary } from './sport.models';
 
 export interface GroupListItem {
   group_id: string;
@@ -27,6 +28,8 @@ export interface GroupListItem {
   // only failing after the Member picks one and confirms (the backend
   // still enforces this regardless — ALREADY_ACTIVE_IN_ANOTHER_GROUP).
   member_active_elsewhere?: boolean | null;
+  /** 043 US6: the group's activity (optional for an older backend). */
+  sport?: SportSummary;
 }
 
 export interface GroupListResponse {

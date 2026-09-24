@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { ApiClient } from '../../core/api/api-client';
+import { CustomSport } from '../../core/api/sport.models';
 import {
   FriendListResponse,
   FriendRequestResponse,
@@ -83,6 +84,13 @@ export class FriendsService {
       `/friends/${friendRequestId}`,
       this.authHeader(),
     );
+  }
+
+  /** 043 US6: my custom activities, for the 我的團 activity filter. */
+  getMyCustomSports(): Observable<CustomSport[]> {
+    return this.api
+      .get<{ custom: CustomSport[] }>('/sports', this.authHeader())
+      .pipe(map((catalog) => catalog.custom ?? []));
   }
 
   getMyGroups(page = 1, filters: MyGroupsFilters = {}): Observable<MyGroupsResponse> {

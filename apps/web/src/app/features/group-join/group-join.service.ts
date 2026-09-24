@@ -25,6 +25,8 @@ export interface GroupListFilters {
   group_name?: string;
   creator_nickname?: string;
   match_mode?: MatchMode;
+  /** 043 US6: a built-in `sport_key` or `custom_or_other`. */
+  sport?: string;
   /** A Guest's own group, listed first — the backend can't tell which
    * group an anonymous request is in; ignored for a logged-in Member. */
   pinned_group_id?: string;
@@ -52,6 +54,9 @@ export class GroupJoinService {
     }
     if (filters.creator_nickname) {
       params.set('creator_nickname', filters.creator_nickname);
+    }
+    if (filters.sport) {
+      params.set('sport', filters.sport);
     }
     if (filters.match_mode) {
       params.set('match_mode', filters.match_mode);
