@@ -16,7 +16,7 @@
 
 | kind | data |
 |---|---|
-| `metric_grid` | `{ metrics: [{ key, label_key, kind: "rate"\|"average"\|"ratio"\|"count", value: number\|null, numerator?, denominator?, better_when? }] }` |
+| `metric_grid` | `{ metrics: [{ key, label_key, kind: "rate"\|"average"\|"ratio"\|"count", value: number\|null, numerator?, denominator?, better_when?, group_average?: number\|null, delta?: number\|null }] }`（`group_average`／`delta` 由核心 `group_benchmark.build()` 以該類型指標值計算，供 FR-027 的基準比較） |
 | `stat_table` | `{ columns: [{ key, label_key }], rows: [{ [key]: string\|number\|null }] }` |
 | `score_timeline` | `{ target_score, cap_score, events: [{ side, delta, score_a, score_b, elapsed_seconds, kind }] }`（只含 `point`） |
 | `text_note` | `{ text_key, params? }` |
@@ -76,6 +76,8 @@
 ### 既有儀表板端點（不變形狀）
 
 `GET /members/me/match-dashboard`、`/members/{id}/match-dashboard`、`/members/me/match-insights`（若存在）、`benchmark`：新增 `sport` 查詢參數；`sport` 指向非隔網回合制活動時回 `409 SPORT_TYPE_NOT_SUPPORTED`（前端不會呼叫）。回應形狀零變更。
+
+`metrics` 的鍵集合依 `sport` 對應活動的 `type_params.modules` 過濾：`serve_tracking=false` 移除四個發球／接發球指標，`shot_placement=false` 移除落點與結束型態指標並使 `landing`／`error_breakdown` 為 `null`；`sport` 省略或為 `badminton` 時維持 23 項（研究 F3 釘點）。`sport` 省略時只納入隔網回合制活動的比賽（見 contracts/sports-api.md §4）。
 
 ## 5. 契約測試
 

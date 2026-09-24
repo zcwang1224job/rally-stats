@@ -128,6 +128,8 @@ ORM：`ScoreEvent` 類別名、模組路徑、屬性名全部不變（研究 F1�
 
 ## 7. `frames` 外掛表
 
+（由 `frames` 外掛自己的 migration 建立，不放在核心的基礎 migration 中；符合 contracts/plugin-boundary.md §5「migration 放外掛」。）
+
 ### `frames_frame_results`
 
 | 欄位 | 型別 | 說明 |
@@ -196,7 +198,9 @@ class SportTypePlugin(Protocol):
     def event_schemas(self) -> Mapping[str, type[BaseModel]]        # kind → payload schema（不含 'point'）
     def tables(self) -> Sequence[type[Base]]                        # 擁有的 ORM
     def on_match_start(self, session, match, participants) -> None
+    def on_match_requeued(self, session, match) -> None                 # undo-completion 把替補比賽退回佇列時清外掛狀態
     def on_spine_event(self, session, ctx: SpineEventContext) -> SpineEffect
+    def can_undo(self, session, match) -> bool                          # /undo 前詢問；預設 True，net_rally 回 False
     def apply_event(self, session, ctx: PluginEventContext) -> PluginEventResult   # /events
     def after_undo(self, session, match) -> None
     def live_state(self, session, match) -> dict | None

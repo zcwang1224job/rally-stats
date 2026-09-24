@@ -114,7 +114,7 @@
 
 ### 四個 records／dashboard 路由（`match_filters_query`）
 
-`/members/me/match-records`、`/members/{id}/match-records`、`/members/me/match-dashboard`、`/members/{id}/match-dashboard` 一律新增 `sport`（同上值域；另接受 `other:<name>` 以名稱歸類「其他」團）。四者參數集合維持相同（既有測試 `test_member_matchups.py:300-320` 驗證）。
+`/members/me/match-records`、`/members/{id}/match-records`、`/members/me/match-dashboard`、`/members/{id}/match-dashboard` 一律新增 `sport`（同上值域；另接受 `other:<name>` 以名稱歸類「其他」團）。四者參數集合維持相同（既有測試 `test_member_matchups.py:300-320` 驗證）。**`sport` 省略時只納入隔網回合制（`type_key='net_rally'`）活動的比賽**，因此只有羽球資料的既有測試結果不變；不同活動之間永不混算（FR-026）。`dashboard-sections` 的 `sport` 為必填。
 
 ## 5. 會員的活動清單
 

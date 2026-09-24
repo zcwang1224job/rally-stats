@@ -56,6 +56,8 @@ forbidden_modules = ["app.core.realtime", "app.domains.schedule.service", "app.d
 
 品質關卡指令（加入 README 與 docs 的既有清單）：`ruff check app tests && mypy app && lint-imports && python -m pytest -q`。
 
+名稱分支（`== "badminton"`、`== "frames"` 之類的字面比較）與外掛表查詢由 `tests/unit/sports/test_core_boundary_grep.py` 守住，隨 `pytest` 執行；允許清單（`catalog.py`、`system_config` 預設 key 退回、`alembic/versions/**`）以檔案路徑列於測試內。
+
 ## 2. 後端外掛介面
 
 見 [data-model.md §10](../data-model.md#10-後端外掛介面資料面)。補充呼叫時序：
@@ -64,6 +66,8 @@ forbidden_modules = ["app.core.realtime", "app.domains.schedule.service", "app.d
 |---|---|---|
 | `create_group` / `edit_group` | `params_schema()` | 驗證 `type_params` |
 | `_start_match` | `on_match_start()` | 比賽進入 `in_progress` 後、commit 前 |
+| `undo_match_completion` | `on_match_requeued()` | 替補比賽退回 `queued` 後、commit 前 |
+| `undo_last_event`（`/undo`） | `can_undo()` | 刪除脊椎列之前；回 `False` ⇒ `409 UNDO_NOT_SUPPORTED` |
 | `apply_score_delta` | `on_spine_event()` → commit → `match_wins()`（預設核心規則） | 寫脊椎 `point` 之後、commit 之前 |
 | `apply_plugin_event`（`/events`） | `event_schemas()` 驗證 → `apply_event()` → 若有 `follow_up_point` 再走 `on_spine_event()` | 同一交易 |
 | `undo_last_event`（`/undo`） | `after_undo()` | 刪除脊椎列之後、commit 之前 |
