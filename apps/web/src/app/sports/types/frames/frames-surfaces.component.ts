@@ -91,6 +91,7 @@ export class FramesControlPanelComponent {}
       [courtId]="courtId()"
       [name]="name()"
       [state]="state()"
+      [groupId]="groupId()"
       [pad]="pad"
       (changed)="changed.emit()"
     />`,
@@ -100,6 +101,8 @@ export class FramesAllCourtsBlockComponent {
   readonly courtId = input.required<string>();
   readonly name = input.required<string>();
   readonly state = input.required<CourtLiveState | null>();
+  /** The group, for the court's realtime channel (see the block shell). */
+  readonly groupId = input<string | null>(null);
   readonly changed = output<void>();
 }
 
