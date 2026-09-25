@@ -242,6 +242,7 @@
           <app-sport-surface
             [typeKey]="selectedSport().typeKey"
             surface="createFormFields"
+            [instanceKey]="selectedSport().key"
             [inputs]="{ form: typeParams, defaults: selectedSport().defaults.type_params }"
           />
         </div>

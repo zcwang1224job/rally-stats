@@ -1700,7 +1700,10 @@ def _record_completeness(score_events: Sequence[ScoreEvent]) -> RecordCompletene
     order."""
     if not score_events:
         return "none"
-    if score_events[0].score_a + score_events[0].score_b == 1:
+    first = score_events[0]
+    # 043: a first point may be worth more than 1 (score_steps); a −1 or a
+    # sport-type event (delta 0) can never be the match's first point.
+    if first.delta >= 1 and first.score_a + first.score_b == first.delta:
         return "complete"
     return "partial"
 

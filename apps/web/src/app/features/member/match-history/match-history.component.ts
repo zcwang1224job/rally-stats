@@ -1,3 +1,4 @@
+import { Team } from '../../../core/api/court-live-state.models';
 import { ActivitySummary } from '../../../core/api/sport.models';
 import { DashboardSectionsResponse } from '../../../core/api/sports.service';
 import { SectionOutletComponent } from '../../../sports/section-outlet/section-outlet.component';
@@ -182,8 +183,13 @@ export class MatchHistoryComponent {
     this.auth.getActivities().subscribe({
       next: (activities) => {
         this.activities.set(activities);
-        if (activities.length > 1 && this.selectedSport() === null) {
-          this.selectActivity(activities[0].filter_value);
+        // FR-026: several activities are tabs; one activity is shown as
+        // itself — unless it is net rally, which the page shows already.
+        const first = activities[0];
+        const showFirst =
+          activities.length > 1 || (first !== undefined && first.sport.type_key !== LEGACY_SPORT_TYPE);
+        if (showFirst && this.selectedSport() === null) {
+          this.selectActivity(first.filter_value);
         }
       },
       // Without the list the page stays on net rally, as before 043.
@@ -229,7 +235,10 @@ export class MatchHistoryComponent {
    * first load). 036 relies on it: in-group sentences only join the summary
    * while no filter is active (FR-034). */
   readonly hasActiveFilters = computed(() =>
-    Object.values(this.appliedFilters()).some((value) => value !== undefined),
+    // 043: the activity tab is not a filter the member set.
+    Object.entries(this.appliedFilters()).some(
+      ([key, value]) => key !== 'sport' && value !== undefined,
+    ),
   );
 
   // ---- 036 US3: the in-group comparison (research.md Decision 9) ----------
@@ -416,17 +425,28 @@ export class MatchHistoryComponent {
     };
     this.appliedFilters.set(filters);
     this.loadDashboard(filters);
+    // The first load races the activity tab's: only the latest answer counts.
+    const request = ++this.recordsRequest;
     this.auth.getMatchRecords(page, filters).subscribe({
       next: (response) => {
+        if (request !== this.recordsRequest) {
+          return;
+        }
         this.records.set(response);
         this.loadInviteCandidates(response);
         if (scrollToList) {
           this.scrollToMatchList();
         }
       },
-      error: (error: ApiError) => this.errorKey.set(error.i18nKey),
+      error: (error: ApiError) => {
+        if (request === this.recordsRequest) {
+          this.errorKey.set(error.i18nKey);
+        }
+      },
     });
   }
+
+  private recordsRequest = 0;
 
   private pickedKey(role: MatchupRole): string | undefined {
     const picked = this.pickedPlayer();
@@ -514,9 +534,18 @@ export class MatchHistoryComponent {
     // 040-match-share-card FR-016: this is the viewer's own match list, so
     // the share card takes their side. Which side is read off this row
     // (won + winner_team), never matched against the logged-in member.
-    // 043: a draw doesn't say which side was mine; the card takes team A's.
-    const winner = match.winner_team === 'D' ? 'A' : match.winner_team;
-    const myTeam = match.won ? winner : winner === 'A' ? 'B' : 'A';
+    // 043: a draw has no winner to read my side off, so my side comes
+    // from the roster (team A's if this member is on neither, e.g. an
+    // older list without member ids).
+    const me = this.auth.getCachedMemberId();
+    const onTeam = (team: readonly { member_id?: string | null }[]) =>
+      me !== null && team.some((p) => p.member_id === me);
+    let myTeam: Team;
+    if (match.winner_team === 'D') {
+      myTeam = onTeam(match.team_b) ? 'B' : 'A';
+    } else {
+      myTeam = match.won ? match.winner_team : match.winner_team === 'A' ? 'B' : 'A';
+    }
     this.shareContext.set({
       groupName: match.group_name,
       perspective: { kind: 'mine', myTeam },

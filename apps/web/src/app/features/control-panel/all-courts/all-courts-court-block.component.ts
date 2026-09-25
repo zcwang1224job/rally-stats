@@ -47,6 +47,9 @@ export class AllCourtsCourtBlockComponent implements OnInit {
   readonly courtId = input.required<string>();
   readonly name = input.required<string>();
   readonly state = input.required<CourtLiveState | null>();
+  /** 043: every court block gets the group id; this one subscribes by
+   * itself and has no use for it. */
+  readonly groupId = input<string | null>(null);
   readonly changed = output<void>();
 
   private readonly courtControl = inject(CourtControlService);

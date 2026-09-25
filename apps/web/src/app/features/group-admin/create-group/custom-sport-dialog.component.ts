@@ -211,9 +211,9 @@ export class CustomSportDialogComponent {
     singles: [true],
     doubles: [true],
     end_mode: ['manual' as EndMode],
-    target_score: [1],
-    win_by: [1],
-    cap_score: [null as number | null],
+    target_score: [1, [Validators.required, Validators.min(1)]],
+    win_by: [1, [Validators.required, Validators.min(1)]],
+    cap_score: [null as number | null, [Validators.min(1)]],
     allow_draw: [true],
     score_steps: ['1'],
     venue_noun: ['venue' as VenueNoun],
@@ -285,8 +285,12 @@ export class CustomSportDialogComponent {
 
   save(): void {
     this.form.markAllAsTouched();
-    if (this.form.invalid || !this.form.controls.name.value.trim()) {
+    if (this.form.controls.name.invalid || !this.form.controls.name.value.trim()) {
       this.errorKey.set('createGroup.customSport.nameRequired');
+      return;
+    }
+    if (this.form.invalid) {
+      this.errorKey.set('createGroup.customSport.numbersInvalid');
       return;
     }
     const body = this.body();

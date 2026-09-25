@@ -425,6 +425,29 @@ describe('AdminPageComponent', () => {
     expect(scoring.custom_cap_score.value).toBe(9);
   });
 
+  it('043: an activity without presets is not held to the hidden deuce / cap rules', () => {
+    // Billiards: first to 5 frames, no cap. Lowering the target used to fail
+    // the (hidden) custom-scoring validator and block saving silently.
+    const fixture = setup(false, {
+      getAdminView: () =>
+        of({
+          ...adminGroupResponse,
+          scoring_mode: 'custom' as const,
+          scoring_presets: [],
+          target_score: 5,
+          deuce_threshold: 4,
+          cap_score: null,
+          win_by: 1,
+        }),
+    });
+    const scoring = fixture.componentInstance.scoringForm;
+    expect(scoring.controls.uses_generic_params.value).toBe(true);
+    scoring.controls.custom_target_score.setValue(3);
+    expect(scoring.valid).toBe(true);
+    scoring.controls.custom_target_score.setValue(7);
+    expect(scoring.valid).toBe(true);
+  });
+
   it('leaves an in-progress settings edit alone when the 30s heartbeat refetches', () => {
     const fixture = setup();
     const name = fixture.componentInstance.editForm.controls.name;

@@ -286,9 +286,10 @@ export class CreateGroupComponent {
 
   /** "Target score" in the activity's own unit (points, frames, …). */
   scoreNoun(): string {
-    const key = this.selectedSport().key;
-    const builtin = this.catalog().builtin.find((sport) => sport.sport_key === key);
-    return `sports.nouns.${builtin?.nouns.score ?? 'point'}`;
+    const sport = this.selectedSport();
+    const custom = (sport.defaults as { nouns?: { score?: string } }).nouns?.score;
+    const builtin = this.catalog().builtin.find((s) => s.sport_key === sport.key);
+    return `sports.nouns.${custom ?? builtin?.nouns.score ?? 'point'}`;
   }
 
   iconFor(icon: string): string {
@@ -449,8 +450,9 @@ export class CreateGroupComponent {
       payload.scoring_mode = 'custom';
       payload.custom_scoring = null;
       payload.end_mode = raw.end_mode;
-      payload.target_score = raw.target_score;
-      payload.win_by = raw.win_by;
+      // Manual end hides the target and lead: send valid placeholders.
+      payload.target_score = raw.end_mode === 'manual' ? Math.max(1, raw.target_score || 1) : raw.target_score;
+      payload.win_by = raw.end_mode === 'manual' ? Math.max(1, raw.win_by || 1) : raw.win_by;
       payload.cap_score = raw.has_cap ? raw.cap_score : null;
       payload.allow_draw = raw.end_mode === 'manual' ? raw.allow_draw : false;
       payload.score_steps = parseScoreSteps(raw.score_steps) ?? [1];

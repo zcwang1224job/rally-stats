@@ -23,7 +23,7 @@ export interface ShareCardContext {
   perspective: { kind: 'neutral' } | { kind: 'mine'; myTeam: Team };
 }
 
-export type CardBadge = 'win' | 'victory' | 'defeat';
+export type CardBadge = 'win' | 'victory' | 'defeat' | 'draw';
 
 export interface CardTeam {
   /** The original side — keeps score, names and team color together after

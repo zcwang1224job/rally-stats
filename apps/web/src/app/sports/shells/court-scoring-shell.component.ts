@@ -14,7 +14,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslatePipe } from '@ngx-translate/core';
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 
 import { ApiError } from '../../core/api/api-error';
 import { Team } from '../../core/api/court-live-state.models';
@@ -171,6 +171,12 @@ export class CourtScoringShellComponent {
   /** A scoreboard shows the pad's read-only view and no buttons. */
   readonly readOnly = input(false);
   readonly showUndo = input(true);
+  /** The court's realtime channel. With it the shell follows other
+   * scorers' pushes itself (the all-courts and admin pages do not reload
+   * their state on every point) and asks the page to reload shortly after
+   * the last push, since pushes can arrive out of order. Without it the
+   * page handles pushes (the court link page does). */
+  readonly channel = input<string | null>(null);
   readonly changed = output<void>();
 
   readonly teams: readonly Team[] = ['A', 'B'];
@@ -186,11 +192,21 @@ export class CourtScoringShellComponent {
   private readonly own = signal<Partial<LiveMatch> & { match_id: string } | null>(null);
   private ownTimer: ReturnType<typeof setTimeout> | undefined;
   static readonly OWN_RESULT_GRACE_MS = 2500;
+  /** The latest realtime push for the match (see `channel`). */
+  private readonly live = signal<Partial<LiveMatch> & { match_id: string } | null>(null);
+  private pushSubscriptions: Subscription[] = [];
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
+  static readonly SETTLE_MS = 400;
 
   readonly shown = computed<LiveMatch>(() => {
     const match = this.match();
+    const live = this.live();
     const own = this.own();
-    return own && own.match_id === match.match_id ? { ...match, ...own } : match;
+    return {
+      ...match,
+      ...(live && live.match_id === match.match_id ? live : {}),
+      ...(own && own.match_id === match.match_id ? own : {}),
+    };
   });
 
   readonly padContext = computed<ScorePadContext>(() => ({
@@ -203,7 +219,11 @@ export class CourtScoringShellComponent {
   }));
 
   constructor() {
-    this.destroyRef.onDestroy(() => clearTimeout(this.ownTimer));
+    this.destroyRef.onDestroy(() => {
+      clearTimeout(this.ownTimer);
+      clearTimeout(this.settleTimer);
+      this.unsubscribePushes();
+    });
     // Another match on the court: nothing of the old one applies.
     effect(() => {
       const matchId = this.match().match_id;
@@ -211,8 +231,62 @@ export class CourtScoringShellComponent {
         if (this.own() && this.own()!.match_id !== matchId) {
           this.own.set(null);
         }
+        if (this.live() && this.live()!.match_id !== matchId) {
+          this.live.set(null);
+        }
       });
     });
+    effect(() => {
+      const channel = this.channel();
+      untracked(() => this.subscribePushes(channel));
+    });
+  }
+
+  private subscribePushes(channel: string | null): void {
+    this.unsubscribePushes();
+    if (!channel) {
+      return;
+    }
+    for (const event of ['match.scoreUpdated', 'match.eventApplied']) {
+      this.pushSubscriptions.push(
+        this.realtime.subscribe(channel, event).subscribe((message) => {
+          const data = message.data as {
+            match_id: string;
+            score_a: number;
+            score_b: number;
+            sport_state?: unknown;
+          };
+          if (data.match_id !== this.match().match_id) {
+            return;
+          }
+          this.live.set({
+            match_id: data.match_id,
+            score_a: data.score_a,
+            score_b: data.score_b,
+            ...(data.sport_state !== undefined && data.sport_state !== null
+              ? { sport_state: data.sport_state }
+              : {}),
+          });
+          clearTimeout(this.settleTimer);
+          this.settleTimer = setTimeout(
+            () => this.changed.emit(),
+            CourtScoringShellComponent.SETTLE_MS,
+          );
+        }),
+      );
+    }
+    // Pushes sent before the channel attached never arrive: read again.
+    this.realtime.whenAttached(channel).then(
+      () => this.changed.emit(),
+      () => undefined,
+    );
+  }
+
+  private unsubscribePushes(): void {
+    for (const subscription of this.pushSubscriptions) {
+      subscription.unsubscribe();
+    }
+    this.pushSubscriptions = [];
   }
 
   private holdOwn(own: Partial<LiveMatch> & { match_id: string }): void {

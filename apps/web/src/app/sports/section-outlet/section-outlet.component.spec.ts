@@ -2,7 +2,7 @@ import { Component, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
 
-import { clearPreloadedSportTypeModules, preloadSportTypeModule } from '../registry';
+import { SPORT_TYPE_LOADERS, clearPreloadedSportTypeModules, preloadSportTypeModule } from '../registry';
 import { Section, SectionComponent, SectionContext, SportTypeModule } from '../sport-type-module';
 import { SectionOutletComponent } from './section-outlet.component';
 
@@ -74,6 +74,26 @@ describe('SectionOutletComponent', () => {
     );
     expect(el.querySelector('[data-section-kind="metric_grid"]')).not.toBeNull();
     expect(el.querySelector('[data-metric="wins"]')?.textContent).toContain('3');
+  });
+
+  it('shows nothing but a loading note until the sport type chunk has loaded (no fallback flash)', async () => {
+    clearPreloadedSportTypeModules(['frames']);
+    const savedFramesLoader = SPORT_TYPE_LOADERS.frames;
+    let finish!: () => void;
+    SPORT_TYPE_LOADERS.frames = () => new Promise((resolve) => (finish = () => resolve(PROBE_MODULE)));
+    const fixture = TestBed.createComponent(SectionOutletComponent);
+    fixture.componentRef.setInput('sections', [{ kind: 'frames.frame_list', title_key: null, data: null }]);
+    fixture.componentRef.setInput('context', { typeKey: 'frames', source: null });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-state="sections-loading"]')).not.toBeNull();
+    expect(el.querySelector('[data-section-kind]')).toBeNull();
+    finish();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-state="sections-loading"]')).toBeNull();
+    expect(el.querySelector('.probe')?.textContent).toContain('frames.frame_list');
+    SPORT_TYPE_LOADERS.frames = savedFramesLoader;
   });
 
   it('an unknown kind falls back instead of rendering nothing or throwing', () => {

@@ -32,6 +32,10 @@ def validate_common_params(params: CommonParams) -> None:
     """Raise SportParamsError on the first broken rule."""
     if params.win_by < 1:
         raise SportParamsError("win_by", "win_by must be at least 1")
+    if params.target_score < 1:
+        raise SportParamsError("target_score", "target_score must be at least 1")
+    if params.cap_score is not None and params.cap_score < 1:
+        raise SportParamsError("cap_score", "cap_score must be at least 1")
     steps = params.score_steps
     if not steps:
         raise SportParamsError("score_steps", "score_steps must not be empty")
@@ -49,5 +53,3 @@ def validate_common_params(params: CommonParams) -> None:
             raise SportParamsError("target_score", "target_score must be at least win_by")
         if params.cap_score is not None and params.cap_score < params.target_score:
             raise SportParamsError("cap_score", "cap_score must be at least target_score")
-    elif params.target_score < 1:
-        raise SportParamsError("target_score", "target_score must be at least 1")

@@ -29,9 +29,10 @@ export function buildShareCardModel(
     sport && sport.sport_key !== 'badminton'
       ? { key: sport.name ? null : sport.name_key, name: sport.name }
       : null;
-  const winnerNames = (detail.winner_team === 'A' ? detail.team_a : detail.team_b)
-    .map((p) => p.nickname)
-    .join('、');
+  const draw = detail.winner_team === 'D';
+  const winnerNames = draw
+    ? ''
+    : (detail.winner_team === 'A' ? detail.team_a : detail.team_b).map((p) => p.nickname).join('、');
 
   return {
     groupName: context.groupName,
@@ -48,7 +49,7 @@ export function buildShareCardModel(
     durationSeconds: durationSeconds(detail.started_at, detail.ended_at),
     fileName: fileName(detail.started_at, teams),
     altText: {
-      key: 'matchShareCard.altText',
+      key: draw ? 'matchShareCard.altTextDraw' : 'matchShareCard.altText',
       params: {
         first: teams[0].nicknames.join('、'),
         firstScore: teams[0].score,
@@ -71,7 +72,7 @@ function cardTeam(
     nicknames: (team === 'A' ? detail.team_a : detail.team_b).map((p) => p.nickname),
     score: team === 'A' ? detail.score_a : detail.score_b,
     isWinner,
-    badge: badgeFor(team, isWinner, context),
+    badge: detail.winner_team === 'D' ? drawBadgeFor(team, context) : badgeFor(team, isWinner, context),
   };
 }
 
@@ -86,6 +87,12 @@ function badgeFor(team: Team, isWinner: boolean, context: ShareCardContext): Car
     return isWinner ? 'victory' : 'defeat';
   }
   return isWinner ? 'win' : null;
+}
+
+/** 043: a draw is marked on my own panel (mine) or on both (neutral). */
+function drawBadgeFor(team: Team, context: ShareCardContext): CardBadge | null {
+  const perspective = context.perspective;
+  return perspective.kind === 'mine' && team !== perspective.myTeam ? null : 'draw';
 }
 
 function durationSeconds(startedAt: string | null, endedAt: string | null): number | null {

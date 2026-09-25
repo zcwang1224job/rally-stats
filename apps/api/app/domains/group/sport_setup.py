@@ -109,6 +109,12 @@ def resolve_params(
     pre-043 way; explicit top-level values win over both."""
     defaults = sport.defaults
     mode = scoring_mode or defaults.get("scoring_mode", "custom")
+    if scoring_mode is None and mode in SCORING_PRESETS and (
+        "target_score" in given or "cap_score" in given or "deuce_threshold" in given
+    ):
+        # Explicit numbers without a named preset are a custom scheme, not
+        # the preset with its numbers quietly replaced.
+        mode = "custom"
     if mode in SCORING_PRESETS:
         target, deuce, cap = SCORING_PRESETS[mode]
         base_cap: int | None = cap

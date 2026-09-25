@@ -1,5 +1,6 @@
 import { NgComponentOutlet } from '@angular/common';
-import { Component, Type, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, Type, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { TranslatePipe } from '@ngx-translate/core';
 
 import { FallbackSectionComponent } from '../generic-sections/fallback-section.component';
 import { GENERIC_SECTION_COMPONENTS } from '../generic-sections/generic-sections';
@@ -14,13 +15,17 @@ import { Section, SectionComponent, SectionContext, SportTypeModule } from '../s
  */
 @Component({
   selector: 'app-section-outlet',
-  imports: [NgComponentOutlet],
+  imports: [NgComponentOutlet, TranslatePipe],
   template: `
     <div class="section-stack section-outlet">
+      @if (!ready() && needsModule()) {
+        <p class="loading-state" role="status" data-state="sections-loading">{{ 'common.loading' | translate }}</p>
+      } @else {
       @for (section of sections(); track $index) {
         <ng-container
           *ngComponentOutlet="componentFor(section); inputs: { section: section, context: context() }"
         />
+      }
       }
     </div>
   `,
@@ -34,6 +39,14 @@ export class SectionOutletComponent {
   /** The page's sport type module once its chunk has loaded; until then (or
    * if it fails to load) the generic sections and the fallback render. */
   private readonly loaded = signal<SportTypeModule | undefined>(undefined);
+  /** False while the module chunk loads: a module kind must not flash the
+   * "needs a newer version" fallback first. A failed load renders anyway. */
+  readonly ready = signal(false);
+  /** Generic kinds render at once; only `<typeKey>.*` kinds need the chunk. */
+  readonly needsModule = computed(() => {
+    const prefix = `${this.context().typeKey}.`;
+    return this.sections().some((section) => section.kind.startsWith(prefix));
+  });
 
   constructor() {
     effect(() => {
@@ -41,14 +54,20 @@ export class SectionOutletComponent {
       untracked(() => {
         const ready = this.registry.peek(typeKey);
         this.loaded.set(ready);
+        this.ready.set(ready !== undefined);
         if (!ready) {
           this.registry.resolve(typeKey).then(
             (module) => {
               if (this.context().typeKey === typeKey) {
                 this.loaded.set(module);
+                this.ready.set(true);
               }
             },
-            () => undefined,
+            () => {
+              if (this.context().typeKey === typeKey) {
+                this.ready.set(true);
+              }
+            },
           );
         }
       });

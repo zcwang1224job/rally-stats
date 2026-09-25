@@ -51,7 +51,14 @@ describe('GenericPadComponent', () => {
       params: { score: '3 : 2', team: '阿明' },
     });
     fixture.componentRef.setInput('match', { ...MATCH, allow_draw: false });
+    fixture.detectChanges();
     expect(fixture.componentInstance.finishText().key).toBe('genericSport.finishBodyNoDraw');
+    // Level with no draws: the button says why instead of offering a refusal.
+    expect((fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[data-action="finish"]')?.disabled).toBe(true);
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="no-draw-note"]')).not.toBeNull();
+    fixture.componentRef.setInput('match', { ...MATCH, allow_draw: false, score_a: 3 });
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[data-action="finish"]')?.disabled).toBe(false);
     fixture.componentInstance.finish();
     expect(finish).toHaveBeenCalledWith('m1');
   });

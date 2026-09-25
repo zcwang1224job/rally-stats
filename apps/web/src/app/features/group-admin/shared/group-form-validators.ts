@@ -98,6 +98,10 @@ export function genericScoringValidator(group: AbstractControl): ValidationError
   if (steps === null) {
     return { genericScoringInvalid: 'score_steps' };
   }
+  // Manual end hides the target and lead, so they are not checked.
+  if (endMode !== 'target') {
+    return null;
+  }
   if (target == null || target < 1) {
     return { genericScoringInvalid: 'target_score' };
   }

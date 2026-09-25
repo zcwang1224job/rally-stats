@@ -26,6 +26,7 @@ import { adminActions, allCourtsActions } from './scoring-actions';
             [match]="match"
             [actions]="actions()"
             [pad]="pad()"
+            [channel]="channel()"
             (changed)="changed.emit()"
           />
         } @else if (s.waiting_reason === 'manual_assignment') {
@@ -45,10 +46,16 @@ export class AllCourtsBlockShellComponent {
   readonly courtId = input.required<string>();
   readonly name = input.required<string>();
   readonly state = input.required<CourtLiveState | null>();
+  /** The group, for the court's realtime channel. */
+  readonly groupId = input<string | null>(null);
   readonly pad = input<TemplateRef<ScorePadContext> | null>(null);
   readonly changed = output<void>();
 
   readonly actions = computed(() => allCourtsActions(this.service, this.token(), this.courtId()));
+  readonly channel = computed(() => {
+    const groupId = this.groupId();
+    return groupId ? `court:${groupId}:${this.courtId()}` : null;
+  });
 }
 
 /**
@@ -64,6 +71,7 @@ export class AllCourtsBlockShellComponent {
         [match]="match"
         [actions]="actions()"
         [pad]="pad()"
+        [channel]="channel()"
         (changed)="changed.emit()"
       />
     }
@@ -80,4 +88,5 @@ export class AdminCourtShellComponent {
   readonly actions = computed(() =>
     adminActions(this.service, this.groupId(), this.court().court_id),
   );
+  readonly channel = computed(() => `court:${this.groupId()}:${this.court().court_id}`);
 }

@@ -81,6 +81,19 @@ async def test_unverified_member_is_refused(client: AsyncClient, db_session: Asy
             "defaults.allow_draw",
         ),
         ({"defaults": {**DODGEBALL["defaults"], "type_params": {"x": 1}}}, "defaults.type_params"),
+        # Review finding: a target of 0 with a cap used to pass (cap 0 ended every match).
+        (
+            {
+                "defaults": {
+                    **DODGEBALL["defaults"],
+                    "end_mode": "target",
+                    "allow_draw": False,
+                    "target_score": 0,
+                    "cap_score": 0,
+                }
+            },
+            "defaults.target_score",
+        ),
     ],
 )
 async def test_invalid_bodies_are_422(

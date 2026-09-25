@@ -179,3 +179,29 @@ async def test_detailed_scoring_needs_the_shot_placement_module(
     )
     assert response.status_code == 409
     assert response.json()["error_code"] == "MODULE_NOT_SUPPORTED"
+
+
+async def test_badminton_with_explicit_target_is_a_custom_scheme(
+    client: AsyncClient, valid_turnstile_token: str
+) -> None:
+    """Review finding: a target sent without a named preset used to keep
+    `scoring_mode=21pt` with the preset's deuce (20) above the target."""
+    created = await client.post(
+        "/groups",
+        json={
+            "max_members": 4,
+            "team_size": 1,
+            "sport": {"sport_key": "badminton"},
+            "scheduling_mechanism": "manual",
+            "creator_nickname": "P0",
+            "turnstile_token": valid_turnstile_token,
+            "target_score": 15,
+        },
+    )
+    assert created.status_code == 201, created.text
+    headers = {"Authorization": f"Bearer {created.json()['admin_token']}"}
+    group_id = created.json()["group_id"]
+    admin = (await client.get(f"/groups/{group_id}/admin", headers=headers)).json()
+    assert admin["scoring_mode"] == "custom"
+    assert admin["target_score"] == 15
+    assert admin["deuce_threshold"] == 14

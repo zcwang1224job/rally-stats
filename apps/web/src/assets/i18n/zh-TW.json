@@ -529,7 +529,8 @@
       "save": "儲存",
       "deleteLabel": "刪除自訂活動「{{name}}」",
       "deleteTitle": "刪除這個自訂活動？",
-      "deleteBody": "刪除「{{name}}」後就不能再用它開團；已經開的團不受影響。"
+      "deleteBody": "刪除「{{name}}」後就不能再用它開團；已經開的團不受影響。",
+      "numbersInvalid": "目標、需領先分與上限需為至少 1 的整數"
     }
   },
   "reauth": {
@@ -1233,7 +1234,8 @@
     "badge": {
       "win": "勝",
       "victory": "勝利",
-      "defeat": "落敗"
+      "defeat": "落敗",
+      "draw": "平手"
     },
     "round": "第 {{round}} 輪",
     "duration": "比賽時長 {{minutes}} 分 {{seconds}} 秒",
@@ -1249,7 +1251,8 @@
       "leadChanges": "領先易手 {{count}} 次",
       "bigMargin": "以 {{margin}} 分差勝出"
     },
-    "kind": "單場比賽"
+    "kind": "單場比賽",
+    "altTextDraw": "比賽圖卡：{{first}} {{firstScore}} 比 {{second}} {{secondScore}}，平手"
   },
   "errors": {
     "VALIDATION_ERROR": "欄位資料不正確，請檢查後重新送出",

@@ -2996,9 +2996,15 @@ def match_wins(
 
 
 async def _fetch_match_for_court(
-    session: AsyncSession, court: Court, match_id: uuid.UUID
+    session: AsyncSession, court: Court, match_id: uuid.UUID, *, for_update: bool = False
 ) -> Match:
-    result = await session.execute(select(Match).where(Match.id == match_id))
+    """`for_update` (043): lock the match row for the rest of the transaction,
+    so an undo or a sport-type event cannot interleave with a point or with
+    the match ending (their UPDATEs wait on the same row lock)."""
+    query = select(Match).where(Match.id == match_id)
+    if for_update:
+        query = query.with_for_update()
+    result = await session.execute(query)
     match = result.scalar_one_or_none()
     if match is None or match.court_id != court.id:
         raise ApiError("MATCH_NOT_FOUND", status_code=404)
@@ -3298,6 +3304,12 @@ async def undo_match_completion(
 
     if match.status != "completed":
         raise ApiError("MATCH_NOT_COMPLETED", status_code=422)
+    # 043: only a type scored point by point with −1 corrections can have
+    # its last point cancelled; the others take a whole action back with
+    # undo_last_event(). Checked before anything is written.
+    undo_plugin = registry.get(match.type_key)
+    if not (undo_plugin.direct_points and undo_plugin.negative_points):
+        raise ApiError("UNDO_NOT_SUPPORTED", status_code=409)
     if match.winner_team != side:
         raise ApiError("SIDE_DID_NOT_WIN_THIS_MATCH", status_code=422)
 
@@ -3436,7 +3448,7 @@ async def apply_plugin_event(
 
     Every row one call writes shares one `created_at`: that is what makes it
     one action for undo_last_event()."""
-    match = await _fetch_match_for_court(session, court, match_id)
+    match = await _fetch_match_for_court(session, court, match_id, for_update=True)
     plugin = registry.get(match.type_key)
     if match.status != "in_progress":
         raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
@@ -3473,8 +3485,8 @@ async def apply_plugin_event(
     follow_up = result.follow_up_point
     if follow_up is not None:
         column = Match.score_a if follow_up.side == "A" else Match.score_b
-        # The plugin's rows may already reference the follow-up point's id;
-        # they flush together with it below (table order follows the FKs).
+        # The plugin's rows may already reference the follow-up point's id:
+        # nothing flushes until the point row itself is written first below.
         with session.no_autoflush:
             row = (
                 await session.execute(
@@ -3500,6 +3512,9 @@ async def apply_plugin_event(
             created_at=now,
         )
         session.add(point)
+        # The point first: the plugin's rows point at it (FK), and the ORM
+        # has no relationship to order the two inserts by.
+        await session.flush([point])
         await plugin.on_spine_event(session, SpineEventContext(match=match, event=point))
 
     await session.commit()
@@ -3548,7 +3563,7 @@ async def undo_last_event(
     apply_score_delta() or apply_plugin_event()). The plugin's own rows go
     with them (ON DELETE CASCADE) and the match score drops by the removed
     points. Net rally refuses (it corrects with −1 instead)."""
-    match = await _fetch_match_for_court(session, court, match_id)
+    match = await _fetch_match_for_court(session, court, match_id, for_update=True)
     plugin = registry.get(match.type_key)
     if match.status != "in_progress":
         raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
@@ -3578,11 +3593,14 @@ async def undo_last_event(
     if match.score_a - taken_a < 0 or match.score_b - taken_b < 0:
         raise ApiError("UNDO_CONFLICT", status_code=409)
 
-    await session.execute(
+    reverted = await session.execute(
         update(Match)
-        .where(Match.id == match.id)
+        .where(Match.id == match.id, Match.status == "in_progress")
         .values(score_a=Match.score_a - taken_a, score_b=Match.score_b - taken_b)
     )
+    if reverted.rowcount != 1:
+        await session.rollback()
+        raise ApiError("MATCH_NOT_IN_PROGRESS", status_code=409)
     await session.execute(delete(ScoreEvent).where(ScoreEvent.id.in_([row.id for row in rows])))
     await session.execute(
         update(Group).where(Group.id == match.group_id).values(last_activity_at=datetime.now(UTC))

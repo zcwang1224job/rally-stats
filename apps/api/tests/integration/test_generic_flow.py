@@ -292,5 +292,37 @@ async def test_draw_in_standings_and_detail(
         ("B", 1),
     ]
     assert timeline["data"]["target_score"] is None
+    # A first point worth 2 is still the match's first point (T-review).
+    assert detail["record_completeness"] == "complete"
     assert grid["kind"] == "metric_grid"
     assert [m["key"] for m in grid["data"]["metrics"]] == ["points_for", "points_against", "margin"]
+
+
+async def test_cancel_score_is_refused_for_generic_and_frames_before_any_write(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    valid_turnstile_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review finding: `undo-completion` (the badminton picker's "cancel
+    score") used to reopen a finished generic/frames match, commit, and only
+    then fail on the −1 — leaving it in progress at its final score."""
+    monkeypatch.setattr("app.domains.schedule.service.publish", AsyncMock())
+    g = await _group(client, db_session, valid_turnstile_token, end_mode="manual", allow_draw=False)
+    match_id = await _start(client, g)
+    url = _urls(g, match_id)["token"][0]
+    await client.post(f"{url}/score", json={"side": "A", "delta": 1})
+    assert (await client.post(f"{url}/finish")).json()["status"] == "completed"
+
+    refused = await client.post(f"{url}/undo-completion", json={"side": "A"})
+    assert refused.status_code == 409
+    assert refused.json()["error_code"] == "UNDO_NOT_SUPPORTED"
+    state = (await client.get(f"/courts/by-token/{g['court']['scoreboard_token']}/state")).json()
+    assert state["current_match"] is None  # still completed, the court moved on
+    records = (
+        await client.get(
+            f"/groups/{g['created']['group_id']}/match-records",
+            params={"guest_session_token": g["created"]["guest_session_token"]},
+        )
+    ).json()
+    assert [m["winner_team"] for m in records["matches"]] == ["A"]

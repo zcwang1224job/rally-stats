@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideTranslateService } from '@ngx-translate/core';
-import { EMPTY, of, throwError } from 'rxjs';
+import { EMPTY, Subject, of, throwError } from 'rxjs';
 
 import { RealtimeService } from '../../core/realtime/ably.service';
 import { CourtScoringShellComponent } from './court-scoring-shell.component';
@@ -131,6 +131,54 @@ describe('CourtScoringShellComponent', () => {
     expect(button.disabled).toBe(true);
     fixture.componentInstance.undo();
     expect(undo).not.toHaveBeenCalled();
+  });
+
+  it('with a channel it follows other scorers pushes and asks for a reload after they settle', () => {
+    vi.useFakeTimers();
+    try {
+      const pushes = new Subject<{ data: unknown }>();
+      const subscribe = vi.fn((_channel: string, event: string) => (event === 'match.eventApplied' ? pushes : EMPTY));
+      const whenAttached = vi.fn(() => new Promise<void>(() => undefined));
+      TestBed.configureTestingModule({
+        providers: [
+          provideTranslateService({}),
+          { provide: RealtimeService, useValue: { connectionState: signal('connected'), subscribe, whenAttached } },
+        ],
+      });
+      const fixture = TestBed.createComponent(CourtScoringShellComponent);
+      fixture.componentRef.setInput('match', MATCH);
+      fixture.componentRef.setInput('actions', actions());
+      fixture.componentRef.setInput('channel', 'court:g1:c1');
+      fixture.detectChanges();
+      let changed = 0;
+      fixture.componentInstance.changed.subscribe(() => changed++);
+      expect(subscribe).toHaveBeenCalledWith('court:g1:c1', 'match.scoreUpdated');
+      expect(subscribe).toHaveBeenCalledWith('court:g1:c1', 'match.eventApplied');
+
+      pushes.next({ data: { match_id: 'm1', score_a: 4, score_b: 2, sport_state: { frame_no: 3 } } });
+      fixture.detectChanges();
+      const el = fixture.nativeElement as HTMLElement;
+      const scores = () => [...el.querySelectorAll('[data-testid="match-score"]')].map((s) => s.textContent);
+      expect(scores()).toEqual(['4', '2']);
+      expect(fixture.componentInstance.shown().sport_state).toEqual({ frame_no: 3 });
+      // Another match's push is ignored.
+      pushes.next({ data: { match_id: 'other', score_a: 9, score_b: 9 } });
+      fixture.detectChanges();
+      expect(scores()).toEqual(['4', '2']);
+      // Shortly after the last push the page is asked to reload.
+      expect(changed).toBe(0);
+      vi.advanceTimersByTime(CourtScoringShellComponent.SETTLE_MS);
+      expect(changed).toBe(1);
+      // My own result stays on top of the pushes, and outlives them.
+      fixture.componentInstance.undo(); // own result 1 : 1
+      fixture.detectChanges();
+      expect(scores()).toEqual(['1', '1']);
+      vi.advanceTimersByTime(CourtScoringShellComponent.OWN_RESULT_GRACE_MS);
+      fixture.detectChanges();
+      expect(scores()).toEqual(['4', '2']); // the last push, not the stale input
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('a scoreboard has no action buttons', () => {

@@ -30,7 +30,7 @@
       <app-sport-surface
         [typeKey]="sportTypeKey()"
         surface="allCourtsBlock"
-        [inputs]="{ token: token, courtId: court.court_id, name: court.name, state: stateFor(court.court_id) }"
+        [inputs]="{ token: token, courtId: court.court_id, name: court.name, state: stateFor(court.court_id), groupId: groupId() }"
         [outputs]="blockOutputs"
       />
     }

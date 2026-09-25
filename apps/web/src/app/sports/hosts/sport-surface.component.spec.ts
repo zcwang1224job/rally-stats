@@ -150,8 +150,33 @@ describe('SportSurfaceComponent', () => {
     finishGeneric();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(ProbeBlockComponent.last).toBe(first); // not torn down and rebuilt
+    expect(ProbeBlockComponent.last === first).toBe(true); // not torn down and rebuilt
     expect(fixture.nativeElement.querySelector('[data-state="sport-module-loading"]')).toBeNull();
+  });
+
+  it('a type whose module has no such surface still follows the next type change', () => {
+    // The custom activity dialog: net rally has no create-form fields.
+    preloadSportTypeModule({ ...module('net_rally', ProbeBlockComponent), surfaces: { ...module('net_rally', ProbeBlockComponent).surfaces, allCourtsBlock: null as never } });
+    preloadSportTypeModule(module('frames', ProbeBlockComponent));
+    const fixture = create('net_rally');
+    const host = fixture.nativeElement.parentElement as HTMLElement;
+    expect(host.querySelector('.probe')).toBeNull();
+    fixture.componentRef.setInput('typeKey', 'frames');
+    fixture.detectChanges();
+    expect(host.querySelector('.probe')).not.toBeNull();
+  });
+
+  it('a new instance key rebuilds the surface for the same type', () => {
+    preloadSportTypeModule(module('frames', ProbeBlockComponent));
+    ProbeBlockComponent.last = null;
+    const fixture = create('frames');
+    fixture.componentRef.setInput('instanceKey', 'billiards');
+    fixture.detectChanges();
+    const first = ProbeBlockComponent.last;
+    fixture.componentRef.setInput('instanceKey', 'darts');
+    fixture.detectChanges();
+    expect(ProbeBlockComponent.last === first).toBe(false);
+    expect((fixture.nativeElement.parentElement as HTMLElement).querySelectorAll('.probe').length).toBe(1);
   });
 
   it('a failed load shows a retry, and retrying renders the surface', async () => {

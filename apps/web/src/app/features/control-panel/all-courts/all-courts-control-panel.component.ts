@@ -84,6 +84,9 @@ export class AllCourtsControlPanelComponent {
   /** 043: whose court blocks to render — the group's sport type. */
   readonly sportTypeKey = computed(() => this.liveState()?.sport?.type_key ?? LEGACY_SPORT_TYPE);
 
+  /** 043: the group, for a block that follows its court's realtime channel. */
+  readonly groupId = computed(() => this.liveState()?.group_id ?? null);
+
   /** Output handlers for each court's block (a stable object per render). */
   readonly blockOutputs = { changed: () => this.refreshState() };
 

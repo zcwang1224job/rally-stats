@@ -57,12 +57,19 @@ export class SportSurfaceComponent implements OnInit {
   readonly surface = input.required<SurfaceName>();
   readonly inputs = input<Record<string, unknown>>({});
   readonly outputs = input<Record<string, (value: unknown) => void>>({});
+  /** A change of this key rebuilds the surface even for the same sport
+   * type (the create form: two activities of one type keep separate
+   * parameter fields). */
+  readonly instanceKey = input<string | null>(null);
 
   readonly loading = signal(false);
   readonly failed = signal(false);
 
   private ref: ComponentRef<unknown> | null = null;
-  private renderedKey: string | null = null;
+  /** `typeKey|instanceKey` of the last load asked for, and of what is on
+   * screen (set even when the module has no such surface, or failed). */
+  private requested: string | null = null;
+  private rendered: string | null = null;
   private subscriptions: { unsubscribe(): void }[] = [];
 
   constructor() {
@@ -70,12 +77,20 @@ export class SportSurfaceComponent implements OnInit {
     // Later input changes reach the rendered surface; a different sport type
     // swaps the surface.
     effect(() => {
-      const typeKey = this.typeKey();
+      const wanted = this.wanted();
       const inputs = this.inputs();
       untracked(() => {
-        if (this.renderedKey !== null && typeKey !== this.renderedKey) {
-          this.load();
-          return;
+        if (this.requested !== null && wanted !== this.requested) {
+          if (wanted === this.rendered) {
+            // Back to what is on screen while another type was loading:
+            // keep it; the pending load is dropped when it resolves.
+            this.requested = wanted;
+            this.loading.set(false);
+            this.failed.set(false);
+          } else {
+            this.load();
+            return;
+          }
         }
         this.applyInputs(inputs);
       });
@@ -90,28 +105,36 @@ export class SportSurfaceComponent implements OnInit {
     this.load();
   }
 
+  private wanted(): string {
+    return `${this.typeKey()}|${this.instanceKey() ?? ''}`;
+  }
+
   private load(): void {
     const typeKey = this.typeKey();
+    const wanted = this.wanted();
+    this.requested = wanted;
     const ready = this.registry.peek(typeKey);
     if (ready) {
       this.loading.set(false);
       this.failed.set(false);
-      this.render(ready, typeKey);
+      this.render(ready, wanted);
       return;
     }
     this.loading.set(true);
     this.failed.set(false);
     this.registry.resolve(typeKey).then(
       (module) => {
-        if (this.typeKey() !== typeKey) {
+        if (this.requested !== wanted) {
           this.retarget();
           return;
         }
         this.loading.set(false);
-        this.render(module, typeKey);
+        if (this.rendered !== wanted) {
+          this.render(module, wanted);
+        }
       },
       () => {
-        if (this.typeKey() !== typeKey) {
+        if (this.requested !== wanted) {
           this.retarget();
           return;
         }
@@ -126,22 +149,22 @@ export class SportSurfaceComponent implements OnInit {
    * type is already on screen, only the loading state goes; otherwise load
    * the wanted type. */
   private retarget(): void {
-    if (this.renderedKey === this.typeKey()) {
+    if (this.rendered === this.requested) {
       this.loading.set(false);
       return;
     }
     this.load();
   }
 
-  private render(module: SportTypeModule, typeKey: string): void {
+  private render(module: SportTypeModule, wanted: string): void {
     this.clear();
+    this.rendered = wanted;
     const component = module.surfaces[this.surface()];
     if (!component) {
       return;
     }
     this.failed.set(false);
     this.ref = this.container.createComponent(component);
-    this.renderedKey = typeKey;
     this.applyInputs(this.inputs());
     for (const [name, handler] of Object.entries(this.outputs())) {
       const emitter = (this.ref.instance as Record<string, unknown>)[name] as Subscribable | undefined;
@@ -168,7 +191,7 @@ export class SportSurfaceComponent implements OnInit {
     this.subscriptions = [];
     this.ref?.destroy();
     this.ref = null;
-    this.renderedKey = null;
+    this.rendered = null;
     this.container.clear();
   }
 }

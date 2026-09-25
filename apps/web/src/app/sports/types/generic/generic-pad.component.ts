@@ -39,7 +39,7 @@ import { LiveMatch, ScoringActions, ScoringResult } from '../../shells/scoring-a
           type="button"
           class="btn btn--primary finish-button"
           data-action="finish"
-          [disabled]="!enabled()"
+          [disabled]="!enabled() || !canFinish()"
           (click)="finishDialog.open()"
         >
           ✓ {{ 'genericSport.finish' | translate }}
@@ -52,6 +52,9 @@ import { LiveMatch, ScoringActions, ScoringResult } from '../../shells/scoring-a
           [confirmLabel]="'genericSport.finish' | translate"
           (confirmed)="finish()"
         />
+        @if (!canFinish()) {
+          <p class="level-note" data-testid="no-draw-note">{{ finishText().key | translate: finishText().params }}</p>
+        }
       }
     } @else if (manual() && match().score_a === match().score_b && match().allow_draw) {
       <p class="level-note">{{ 'genericSport.levelNow' | translate }}</p>
@@ -98,6 +101,11 @@ export class GenericPadComponent {
     return steps && steps.length > 0 ? steps : [1];
   });
   readonly manual = computed(() => this.match().end_mode === 'manual');
+  /** A level score can only be recorded where the activity allows draws. */
+  readonly canFinish = computed(() => {
+    const m = this.match();
+    return m.score_a !== m.score_b || m.allow_draw === true;
+  });
   readonly finishDialog = viewChild<ConfirmDialogComponent>('finishDialog');
 
   /** What "end and record the result" will record: the leader wins, a

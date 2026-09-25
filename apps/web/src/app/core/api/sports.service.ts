@@ -67,7 +67,8 @@ export interface CustomSportCreate {
 export class SportsService {
   private readonly injector = inject(Injector);
   private readonly baseUrl = environment.apiBaseUrl;
-  private catalog$: Observable<SportsCatalogResponse> | null = null;
+  /** One cache per login: the custom activities in it are the caller's. */
+  private readonly catalogs = new Map<string, Observable<SportsCatalogResponse>>();
 
   private http(): HttpClient | null {
     return this.injector.get(HttpClient, null);
@@ -80,15 +81,18 @@ export class SportsService {
     if (!http) {
       return of(FALLBACK_CATALOG);
     }
-    if (!this.catalog$ || refresh) {
-      this.catalog$ = http
+    const key = headers?.['Authorization'] ?? '';
+    let catalog$ = this.catalogs.get(key);
+    if (!catalog$ || refresh) {
+      catalog$ = http
         .get<SportsCatalogResponse>(`${this.baseUrl}/sports`, { headers })
         .pipe(
           catchError(() => of(FALLBACK_CATALOG)),
           shareReplay(1),
         );
+      this.catalogs.set(key, catalog$);
     }
-    return this.catalog$;
+    return catalog$;
   }
 
   createCustomSport(body: CustomSportCreate, headers: Record<string, string>): Observable<CustomSport> {

@@ -34,6 +34,16 @@ describe('buildShareCardModel — my perspective (040 US3)', () => {
     expect(model.teams[1].score).toBe(21);
   });
 
+  it('a draw is a draw on my card: no defeat, no winner named (043)', () => {
+    const detail = { ...makeDetail(), score_a: 17, score_b: 17, winner_team: 'D' as const };
+    const model = buildShareCardModel(detail, mine('B'));
+    expect(model.teams[0].badge).toBe('draw');
+    expect(model.teams[1].badge).toBeNull();
+    expect(model.altText.key).toBe('matchShareCard.altTextDraw');
+    const neutral = buildShareCardModel(detail, { groupName: 'g', perspective: { kind: 'neutral' } });
+    expect(neutral.teams.map((t) => t.badge)).toEqual(['draw', 'draw']);
+  });
+
   it('says Victory when I won', () => {
     const model = buildShareCardModel(makeDetail(), mine('A'));
 

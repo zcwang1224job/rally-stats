@@ -529,7 +529,8 @@
       "save": "Save",
       "deleteLabel": "Delete custom activity “{{name}}”",
       "deleteTitle": "Delete this custom activity?",
-      "deleteBody": "Once “{{name}}” is deleted you can't open groups with it; groups already opened keep it."
+      "deleteBody": "Once “{{name}}” is deleted you can't open groups with it; groups already opened keep it.",
+      "numbersInvalid": "Target, lead and cap must be whole numbers of at least 1"
     }
   },
   "reauth": {
@@ -1233,7 +1234,8 @@
     "badge": {
       "win": "WIN",
       "victory": "Victory",
-      "defeat": "Defeat"
+      "defeat": "Defeat",
+      "draw": "Draw"
     },
     "round": "Round {{round}}",
     "duration": "Duration {{minutes}}m {{seconds}}s",
@@ -1249,7 +1251,8 @@
       "leadChanges": "Lead changed {{count}} times",
       "bigMargin": "Won by {{margin}} points"
     },
-    "kind": "Match"
+    "kind": "Match",
+    "altTextDraw": "Match card: {{first}} {{firstScore}}, {{second}} {{secondScore}}. A draw"
   },
   "errors": {
     "VALIDATION_ERROR": "Some fields are invalid — please check them and try again",

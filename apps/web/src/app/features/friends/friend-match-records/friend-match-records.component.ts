@@ -173,8 +173,13 @@ export class FriendMatchRecordsComponent {
     this.auth.getFriendActivities(this.memberId).subscribe({
       next: (activities) => {
         this.activities.set(activities);
-        if (activities.length > 1 && this.selectedSport() === null) {
-          this.selectActivity(activities[0].filter_value);
+        // FR-026: several activities are tabs; one activity is shown as
+        // itself — unless it is net rally, which the page shows already.
+        const first = activities[0];
+        const showFirst =
+          activities.length > 1 || (first !== undefined && first.sport.type_key !== LEGACY_SPORT_TYPE);
+        if (showFirst && this.selectedSport() === null) {
+          this.selectActivity(first.filter_value);
         }
       },
       error: () => this.activities.set([]),
@@ -192,9 +197,18 @@ export class FriendMatchRecordsComponent {
     const request = sport
       ? this.auth.getFriendMatchRecords(this.memberId, page, sport)
       : this.auth.getFriendMatchRecords(this.memberId, page);
+    // The first load races the activity tab's: only the latest answer counts.
+    const sequence = ++this.recordsRequest;
     request.subscribe({
-      next: (response) => this.records.set(response),
+      next: (response) => {
+        if (sequence === this.recordsRequest) {
+          this.records.set(response);
+        }
+      },
       error: (error: ApiError) => {
+        if (sequence !== this.recordsRequest) {
+          return;
+        }
         this.records.set(null);
         // Refused now (unfriended / sharing turned off since the page
         // opened): nothing of theirs may stay on screen (023 FR-007).
@@ -212,11 +226,20 @@ export class FriendMatchRecordsComponent {
    * see the template. */
   private loadDashboard(): void {
     const sport = this.selectedSport();
+    const sequence = ++this.dashboardRequest;
     if (sport && this.usesSections()) {
       this.dashboard.set(null);
       this.auth.getFriendDashboardSections(this.memberId, sport).subscribe({
-        next: (response) => this.sectionsDashboard.set(response),
-        error: () => this.sectionsDashboard.set(null),
+        next: (response) => {
+          if (sequence === this.dashboardRequest) {
+            this.sectionsDashboard.set(response);
+          }
+        },
+        error: () => {
+          if (sequence === this.dashboardRequest) {
+            this.sectionsDashboard.set(null);
+          }
+        },
       });
       return;
     }
@@ -225,10 +248,21 @@ export class FriendMatchRecordsComponent {
       ? this.auth.getFriendMatchDashboard(this.memberId, sport)
       : this.auth.getFriendMatchDashboard(this.memberId);
     request.subscribe({
-      next: (response) => this.dashboard.set(response),
-      error: () => this.dashboard.set(null),
+      next: (response) => {
+        if (sequence === this.dashboardRequest) {
+          this.dashboard.set(response);
+        }
+      },
+      error: () => {
+        if (sequence === this.dashboardRequest) {
+          this.dashboard.set(null);
+        }
+      },
     });
   }
+
+  private recordsRequest = 0;
+  private dashboardRequest = 0;
 
   /** Mirrors `match-history.component.ts`'s existing `openDetail()` —
    * same dialog component, same loading/error signal dance, just a

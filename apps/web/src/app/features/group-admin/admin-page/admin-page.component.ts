@@ -215,6 +215,9 @@ export class AdminPageComponent {
       // (which may be off) instead of a deuce threshold.
       generic_win_by: [2],
       generic_has_cap: [true],
+      // 043: set from the group's activity; the deuce/cap validator skips
+      // an activity that edits the common parameters instead.
+      uses_generic_params: [false],
     },
     { validators: [customScoringValidator] },
   );
@@ -459,6 +462,10 @@ export class AdminPageComponent {
     // 和開團當下選的制度對不起來；團長若在這區按了儲存，還會把原本的設定
     // 靜默改成 21pt。自訂欄位只在 custom 模式下回填，其餘模式沿用表單預設
     // 當作切到 custom 時的起始值（後端預設展開值 21/20/30 不適合當草稿）。
+    // Group-level, so set whatever the member has typed (does not mark dirty).
+    this.scoringForm.controls.uses_generic_params.setValue(
+      (view.scoring_presets ?? ['21pt', '15pt']).length === 0,
+    );
     if (this.scoringForm.pristine) {
       this.scoringForm.patchValue({
         scoring_mode: view.scoring_mode,

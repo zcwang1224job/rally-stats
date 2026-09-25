@@ -47,6 +47,8 @@ module.exports = tseslint.config(
   // an inline disable comment.
   {
     files: [
+      "src/main.ts",
+      "src/app/*.ts",
       "src/app/core/**/*.ts",
       "src/app/features/**/*.ts",
       "src/app/shared/**/*.ts",
@@ -91,7 +93,16 @@ module.exports = tseslint.config(
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: ["**/sports/types/frames/**", "**/sports/types/generic/**"] },
+        {
+          patterns: [
+            "**/sports/types/frames/**",
+            "**/sports/types/generic/**",
+            "../frames/**",
+            "../generic/**",
+            "../../frames/**",
+            "../../generic/**",
+          ],
+        },
       ],
     },
   },
@@ -100,7 +111,16 @@ module.exports = tseslint.config(
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: ["**/sports/types/net-rally/**", "**/sports/types/generic/**"] },
+        {
+          patterns: [
+            "**/sports/types/net-rally/**",
+            "**/sports/types/generic/**",
+            "../net-rally/**",
+            "../generic/**",
+            "../../net-rally/**",
+            "../../generic/**",
+          ],
+        },
       ],
     },
   },
@@ -109,7 +129,16 @@ module.exports = tseslint.config(
     rules: {
       "no-restricted-imports": [
         "error",
-        { patterns: ["**/sports/types/net-rally/**", "**/sports/types/frames/**"] },
+        {
+          patterns: [
+            "**/sports/types/net-rally/**",
+            "**/sports/types/frames/**",
+            "../net-rally/**",
+            "../frames/**",
+            "../../net-rally/**",
+            "../../frames/**",
+          ],
+        },
       ],
     },
   }

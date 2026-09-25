@@ -957,6 +957,27 @@ describe('MatchHistoryComponent activity tabs (043)', () => {
     expect(recordCalls.every((call) => (call[1] as { sport?: string }).sport === undefined)).toBe(true);
   });
 
+  it('one non-badminton activity: shown as itself, with its sections', () => {
+    const recordCalls: unknown[][] = [];
+    const sectionsCalls: unknown[][] = [];
+    const fixture = setup([], { recordCalls, sectionsCalls, activities: [ACTIVITIES[0]] });
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.activity-tabs')).toBeNull();
+    expect((recordCalls.at(-1)?.[1] as { sport?: string }).sport).toBe('billiards');
+    expect((sectionsCalls.at(-1)?.[0] as { sport?: string }).sport).toBe('billiards');
+    expect(el.querySelector('[data-section="activity-dashboard"]')).not.toBeNull();
+    expect(el.querySelector('app-player-dashboard')).toBeNull();
+  });
+
+  it('the activity tab is not an active filter', () => {
+    const fixture = setup([], { activities: ACTIVITIES });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.selectedSport()).toBe('billiards');
+    expect(fixture.componentInstance.hasActiveFilters()).toBe(false);
+    expect([...(fixture.nativeElement as HTMLElement).querySelectorAll('form .btn--secondary')].some((b) => b.textContent?.includes('filters.clear'))).toBe(false);
+  });
+
   it('several activities: the most played is chosen and filters the page', () => {
     const recordCalls: unknown[][] = [];
     const sectionsCalls: unknown[][] = [];
