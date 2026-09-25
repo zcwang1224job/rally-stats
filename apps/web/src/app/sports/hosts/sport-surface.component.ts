@@ -94,6 +94,8 @@ export class SportSurfaceComponent implements OnInit {
     const typeKey = this.typeKey();
     const ready = this.registry.peek(typeKey);
     if (ready) {
+      this.loading.set(false);
+      this.failed.set(false);
       this.render(ready, typeKey);
       return;
     }
@@ -102,9 +104,7 @@ export class SportSurfaceComponent implements OnInit {
     this.registry.resolve(typeKey).then(
       (module) => {
         if (this.typeKey() !== typeKey) {
-          // The sport type changed while this one loaded (a page that
-          // learns its group's activity after first render): load that one.
-          this.load();
+          this.retarget();
           return;
         }
         this.loading.set(false);
@@ -112,13 +112,25 @@ export class SportSurfaceComponent implements OnInit {
       },
       () => {
         if (this.typeKey() !== typeKey) {
-          this.load();
+          this.retarget();
           return;
         }
         this.loading.set(false);
         this.failed.set(true);
       },
     );
+  }
+
+  /** A load finished for a sport type the surface no longer wants (a page
+   * that learns its group's activity after first render). If the wanted
+   * type is already on screen, only the loading state goes; otherwise load
+   * the wanted type. */
+  private retarget(): void {
+    if (this.renderedKey === this.typeKey()) {
+      this.loading.set(false);
+      return;
+    }
+    this.load();
   }
 
   private render(module: SportTypeModule, typeKey: string): void {

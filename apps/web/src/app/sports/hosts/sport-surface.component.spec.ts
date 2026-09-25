@@ -117,6 +117,43 @@ describe('SportSurfaceComponent', () => {
     expect(fixture.nativeElement.querySelector('[data-state="sport-module-loading"]')).toBeNull();
   });
 
+  it('switching to an already loaded type mid-load leaves no loading state behind', async () => {
+    preloadSportTypeModule(module('frames', ProbeBlockComponent));
+    let finishGeneric!: () => void;
+    SPORT_TYPE_LOADERS.generic = () =>
+      new Promise((resolve) => (finishGeneric = () => resolve(module('generic', OtherBlockComponent))));
+    const fixture = create('generic');
+    expect(fixture.nativeElement.querySelector('[data-state="sport-module-loading"]')).not.toBeNull();
+    fixture.componentRef.setInput('typeKey', 'frames');
+    fixture.detectChanges();
+    finishGeneric();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const host = fixture.nativeElement.parentElement as HTMLElement;
+    expect(host.querySelector('.probe')).not.toBeNull();
+    expect(host.querySelector('.other')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-state="sport-module-loading"]')).toBeNull();
+  });
+
+  it('switching away and back while the other type loads keeps the shown surface', async () => {
+    preloadSportTypeModule(module('frames', ProbeBlockComponent));
+    let finishGeneric!: () => void;
+    SPORT_TYPE_LOADERS.generic = () =>
+      new Promise((resolve) => (finishGeneric = () => resolve(module('generic', OtherBlockComponent))));
+    ProbeBlockComponent.last = null;
+    const fixture = create('frames');
+    const first = ProbeBlockComponent.last;
+    fixture.componentRef.setInput('typeKey', 'generic');
+    fixture.detectChanges();
+    fixture.componentRef.setInput('typeKey', 'frames');
+    fixture.detectChanges();
+    finishGeneric();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(ProbeBlockComponent.last).toBe(first); // not torn down and rebuilt
+    expect(fixture.nativeElement.querySelector('[data-state="sport-module-loading"]')).toBeNull();
+  });
+
   it('a failed load shows a retry, and retrying renders the surface', async () => {
     let fail = true;
     SPORT_TYPE_LOADERS.generic = () =>
